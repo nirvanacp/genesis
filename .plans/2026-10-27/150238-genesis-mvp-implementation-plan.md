@@ -1,6 +1,6 @@
 # Genesis MVP implementation plan
 
-Created 27 October 2026, Asia/Kolkata. Scope: the Genesis monorepo, its Android application and the YouTube/X applets. Status: implementation specification, not implemented or device-qualified.
+Created 27 October 2026, Asia/Kolkata. Scope: the Genesis monorepo, its Android application and the YouTube/X applets. Status: MVP-01 verified on the emulator; MVP-02 implemented but blocked at provider qualification; MVP-03 through MVP-07 pending. See the [delivery plan](150238-genesis-delivery-verification-plan.md) for gates and the [remaining implementation guide](../../.docs/2026-10-27/190156-genesis-remaining-mvp-guide.md) for ordered prompts.
 
 ## 1. Instructions for the implementing model
 
@@ -67,6 +67,8 @@ flowchart TB
 The local library uses the same browser slot, not a permanent second renderer. Switching between a source and a library, between applets, or between source IDs destroys the old WebView and creates a fresh one with the correct scripts. Retain the source's last committed URL. Cookies remain in the persistent WebView profile. Source back-stack entries and unsaved page state are not promised to survive this transition. Navigation within the same source uses its current WebView normally.
 
 ## 4. Repository design
+
+This is the target layout across all stages. Keep existing implementations and add later-stage modules only when needed; do not create empty files to match the tree.
 
 ```text
 genesis/
@@ -153,7 +155,7 @@ The host must accept multiple source definitions structurally and route a reques
 
 Do not implement a Chromium fork, native UI reconstruction of entire websites, a DOM mirror, a custom virtual DOM, general server API integrations, cloud synchronization, a package marketplace, on-phone npm builds, arbitrary ZIP installation, or background automation. Do not port the Bonsai application wholesale.
 
-Retain normal login and original media interaction where WebView supports them. Do not bypass embedded-browser authentication restrictions or assume that logging in through another browser establishes this WebView's session. Authentication is treated as ordinary browser-managed behavior. At the user's request, dedicated X sign-in and session-retention verification is deferred and is not a current implementation or release gate. This is a scope decision, not a claim that those checks passed.
+Retain normal login and original media interaction where WebView supports them. Follow the browser/session contract below. Dedicated sign-in and session-retention verification is user-deferred and is not a current implementation or release gate.
 
 ## 7. Fixed choices versus empirical work
 
@@ -165,12 +167,26 @@ If a selector fails, repair its applet target module. If required isolated-world
 
 The MVP is complete when Android Studio Run builds the project after one-time setup; both applets work on a physical Android device; the documented Shorts paths are blocked; categorized Genesis bookmarks persist independently of X; local library operations work offline; and native recovery handles a failed applet. The final delivery report must name unsupported routes, account flows and devices.
 
-This planning task changes documents only. It does not create app source, install toolchains, create test files or claim that any stage has passed.
+Only recorded acceptance evidence establishes completion. Implemented scaffolding does not verify a stage.
 
-## Account ownership clarification
+## 9. Browser and session contract
 
-Users sign in to their own existing accounts directly in Genesis's source WebView. There is no shared Genesis-operated website account, agent account, credential service, or central authentication backend. The browser retains ordinary first-party cookies and website session storage in the application's persistent WebView profile. Genesis must not read, export, log, synchronize or ask the user to send credentials, session cookies or tokens. Do not clear browsing data when switching sources, returning Home, recreating a view or installing an APK update. Websites still control session expiry, reauthentication and embedded-browser access.
+This section is authoritative for authentication and session semantics across all five plans. It incorporates the user's answers during MVP-02.
 
-The WebView cookie profile is separate from Chrome and other browsers. A user's existing Chrome sign-in is not automatically inherited; sign in inside Genesis. This is browser-managed authentication, not an applet authentication API. Genesis's local applet data profile remains separate from website account identity.
+Users sign in to their own existing accounts directly on the original website inside Genesis. There is no shared Genesis-operated account, agent account, native credential form or central authentication backend. Genesis must not read, export, log, synchronize or request credentials, cookies or authentication tokens. Applets have no authentication API.
 
-A connected physical device is an empirical qualification requirement, not an authentication implementation dependency or a request to share an account. Implementation and emulator checks may proceed without one. Users may sign in privately during normal browser use. Dedicated real-account login and session-retention checks are deferred by the user and do not block the current work or stage progression. Do not request a device or account access for authentication verification unless the user reopens that work. Physical-device results for injection, media and recovery remain pending until run on physical hardware; those independent requirements are unchanged.
+| State | Owner and lifetime |
+| --- | --- |
+| Website login | The website and Genesis's default persistent WebView profile manage cookies and origin-scoped website storage. The website controls expiry, logout and reauthentication. |
+| Browser profile | One profile within this installed Genesis app. Views of the same website use that profile; source IDs and applet IDs do not create separate website accounts. This does not share accounts between users/devices or inherit Chrome's profile. |
+| Tab state | DOM, history, unsaved forms and per-tab `sessionStorage` belong to the live view. The one-view scheduler replaces that view on source/applet/local-page switches; it does not promise to restore these values. |
+| Native `SourceSession` / `SessionSnapshot` | Source definitions, last URLs, lifecycle and navigation restoration metadata. These are not website login sessions or credential stores. |
+| Genesis applet data | The planned SQLite namespace is `(profileId: local, appletId)`. Bookmarks/settings survive website logout or account changes and remain local to this installation. No account detection or synchronization is required. |
+
+Home, source switches, ordinary-site recovery, renderer recreation and APK updates must not explicitly clear browsing data. Update with the same application ID and compatible signing identity; uninstalling or clearing app data removes local persistence. Cookie flushing does not make sessions permanent. Do not copy `sessionStorage` or cookies into native snapshots to simulate tab restoration. See [Android CookieManager](https://developer.android.com/reference/android/webkit/CookieManager) and [sessionStorage lifetime](https://developer.mozilla.org/en-US/docs/Web/API/Window/sessionStorage).
+
+"Like a browser" specifies who owns authentication. It does not promise every Chrome feature or sign-in flow. Chrome sign-in is not inherited, new-window browsing remains outside this MVP, and embedded-browser restrictions must not be bypassed. Keep source-origin injection restrictions independent of ordinary website navigation.
+
+Dedicated real-account sign-in, logout/account-switch and session-retention verification is deferred by the user and nonblocking, including for release. Record it as deferred, never passed. Do not request credentials, sign-in or a device solely for those checks unless the user reopens them. Feature behavior still needs actual evidence on accessible page variants; an unseen X feed is not a verified Save integration.
+
+Required provider APIs and physical-device injection, media and recovery checks remain separate gates. The latest provider result still blocks MVP-02 and progression to MVP-03. A browser-managed session does not supply missing injection capabilities.

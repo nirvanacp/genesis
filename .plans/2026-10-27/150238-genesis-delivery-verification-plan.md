@@ -6,13 +6,15 @@ Created 27 October 2026, Asia/Kolkata. Scope: execution of the [Genesis MVP impl
 
 Implement one stage at a time and verify it before expanding scope. Do not create placeholder implementations of later stages just to make their interfaces look complete. Keep errors explicit and preserve unrelated work in the repository.
 
-At the start of each implementation session, read root/nested AGENTS instructions, git status, the current stage, and the relevant companion plan. Do not move or rewrite the existing research collection. No commit is requested by this planning task. A later implement-and-commit request must follow the repository's prescribed commit format and author settings.
+At the start of each implementation session, read root/nested AGENTS instructions, git status, the current stage, and the relevant companion plan. Do not move or rewrite the existing research collection. Commit verified component changes using the repository's prescribed commit format and configured author email. Do not commit unrelated work.
 
 Do not create or modify automated test files without the user's explicit request for test coverage. Existing tests, compilation, linting, package validation and manual/device verification are allowed. If automated coverage is later authorized, prioritize source/document identity, CAS storage and virtualized-node cases. Do not silently create a separate test project as part of this plan.
 
 For each stage, record `pending`, `in_progress`, `blocked` or `verified`, with files changed, commands and actual outcomes. Record explicitly postponed checks as `deferred`. A deferred check is not passed, but does not block completion of the remaining required stage gates. Dedicated authentication and session-retention verification is deferred by the user; do not treat lack of a login experiment as a stage blocker. Independent physical-device or provider failures remain unverified. Keep implementation notes in a correctly timestamped document under `.reports/` when a saved delivery report is requested; otherwise provide the status in the implementation response.
 
 ## 2. MVP-01: Android Studio and reproducible builds
+
+Status: verified on the emulator; retain the existing build. [Recorded evidence](../../.docs/2026-10-27/161510-genesis-android-setup.md).
 
 Dependencies: none.
 
@@ -35,6 +37,8 @@ Exit: launcher and ordinary browsing run on an emulator or device, native Back/R
 
 ## 3. MVP-02: Prove the real browser contract
 
+Status: implemented, blocked on provider qualification. Reuse the current host/bootstrap and finish the missing evidence; do not rebuild MVP-01. [Recorded evidence](../../.reports/2026-10-27/182114-genesis-mvp02-qualification-report.md).
+
 Dependencies: MVP-01.
 
 Implement isolated-world registration, the nonce challenge handshake, embedded-Wasm loading, one managed style, one owned mount and native loading/error presentation. Implement source/page identities before exposing storage.
@@ -51,6 +55,7 @@ Required evidence:
 | X authentication | Deferred by the user. Normal browser-managed login is the selected behavior; dedicated sign-in/session-retention verification is not a current stage gate. |
 | YouTube playback | Original normal-video playback and fullscreen work before customization |
 | Unsupported provider | Native unsupported state, no crash or false active status |
+| Recovery | Retry/ordinary-site controls remain usable; creator failure retires customization; renderer loss recreates ordinary browsing with customization disabled. The timed repeated-recovery gate belongs to MVP-07. |
 
 Use one physical Android device for the real-site result. Record Android version, ABI, provider package/version, locale, sign-in state and relevant page variant. Do not collect credentials in logs or fixtures.
 
@@ -64,7 +69,7 @@ Dependencies: MVP-02.
 
 Complete `genesis-contracts`, Rust `targets`, `observations`, `effects`, `scopes` and route tracking modules, plus the thin SDK facade. Implement `watchElements`, styles, mounting, modal lifecycle, source/page navigation and generic navigation policy. Add native recovery and stale-callback rejection.
 
-Implement the manifest parser and generated package index in `tools/check-packages.mjs`. Validate paths, entries, origins, capabilities, action/page references and duplicate source IDs. Make root `npm run typecheck` and `npm run check:packages` real commands.
+Extend the existing manifest parser, generated index and checks in `tools/check-packages.mjs` for the full navigation contract, including query-value rules. Paths, entries, origins, capabilities, references and duplicate IDs already have validation. Keep the working root type/package commands and nonce/generation protections.
 
 Verification scenarios: target absent then present; target replaced; one element reused for a different content key; duplicate mount attempt; route change during a pending callback; callback from a destroyed view; Back/Forward/BFCache; app background/resume; Activity recreation; creator exception; repeated host removal; and deliberate renderer nonresponse with native recovery.
 
@@ -76,7 +81,7 @@ Validate two-source manifest structure with package validation and route source 
 
 Dependencies: MVP-03.
 
-Implement SQLite schema initialization, generic get/list/commit, bounded worker queue, typed errors and storage notifications. Add applet-owned page loading through WebViewAssetLoader and the single-view source/page transition contract.
+Implement SQLite schema initialization, generic get/list/commit, bounded worker queue, typed errors and storage notifications. Reuse the MVP-02 WebViewAssetLoader mapping and source/page transitions; expose generic storage to their bound contexts. Do not build a second local-page loader.
 
 Implement JSON validation and all CAS checks before applying writes. Use a transaction for each commit batch. Keep namespace identity host-derived. Do not add X tables, SQL field names or native category actions.
 
@@ -118,7 +123,7 @@ Acceptance matrix:
 | Cancel dialog | No bookmark/category membership change |
 | Write failure/timeout | No false success; reread resolves uncertain commit |
 | Offline library and app restart | Saved data remains usable |
-| X account switch | Local library retained with explicit profile scope |
+| Account-independent library | Storage keys contain only Genesis profile/applet identity; explain local scope. The live website account-switch experiment is deferred with authentication verification. |
 | Existing X bookmark control | X's original behavior/state remains independent |
 
 Exit: the user can complete save, categorize, browse, edit, delete-category and open-original flows without the development laptop. Do not count a working local library as proof of feed extraction. Record any unobserved feed feature cases separately. Dedicated sign-in and session-retention verification remains deferred by the user and does not become an account gate for implementation.
@@ -163,19 +168,13 @@ The build performs native cross-compilation. Add target-specific clippy executio
 
 Final handoff must include the setup guide, actual build commands, exact tool/provider versions, supported routes, remaining limitations, data persistence semantics, and the status of every acceptance gate. Generated setup/verification documents follow the repository's dated `.docs`/`.reports` rules. Link the setup guide from an appropriate entry point without rewriting unrelated research.
 
-## 9. Implementing-model handoff prompt
+## 9. Continuation and deferred checks
 
-> Implement the next unverified stage of the Genesis MVP plan. Read the root AGENTS.md and the five plan documents in this set first. Keep Android code under android/, site customization under applets/, and generic Rust page/runtime contracts in crates/. Follow the specified APIs and data model. Do not change engines, rendering architecture, storage model or creator language to get around a failed gate. Preserve unrelated changes. Do not create automated test files without an explicit request for coverage. Run the prescribed checks, distinguish passed checks from unavailable device checks and user-deferred authentication checks, and report the next stage only after the current stage's acceptance conditions are met.
+Use the [remaining implementation guide](../../.docs/2026-10-27/190156-genesis-remaining-mvp-guide.md) for bounded prompts and component order. Its substeps divide the existing stages; they do not add requirements or permit bypassing a failed gate.
 
-Use this as a bounded implementation instruction, not a request to scaffold every remaining stage in one unverified change.
+Apply the [browser/session contract](150238-genesis-mvp-implementation-plan.md#9-browser-and-session-contract). Dedicated real-account sign-in, logout/account-switch and session-retention experiments remain user-deferred and nonblocking. Do not request sign-in or a device for those checks. If the user reopens them, verify retention after reload, Home/source reopening, restart and install-as-update, without collecting credentials. Keep those results separate from applet-data persistence and feature evidence.
 
-## Account and device qualification clarification
-
-Implementation uses browser-managed sessions with user-owned existing website accounts. There is no shared account and no request for the user to send login credentials, cookies or tokens. The user enters credentials privately in Genesis's original website WebView. The persistent WebView profile is independent of Chrome; Chrome sign-in is not evidence of Genesis sign-in.
-
-MVP-02 implementation and emulator qualification may proceed without a connected physical device. The user has explicitly deferred dedicated X sign-in and session-retention verification. Treat authentication as ordinary browser-managed behavior, record that verification as deferred, and do not request a sign-in or device connection for it. Its deferral does not block current implementation or stage progression and does not imply a successful authentication experiment. A physical device is still required for the physical real-site release result. Emulator results must be labeled emulator results. Do not repeatedly request a device merely to implement the browser layer.
-
-If the user later reopens authentication verification, check session retention after their private sign-in by reloading, returning Home and reopening the source, restarting the app and installing an update without uninstalling. Do not promise perpetual sign-in: websites can expire or revoke sessions. Record these checks independently from initial authentication and from Genesis applet-data persistence. Continue no further than MVP-02 while its non-deferred platform qualification gates remain pending. Authentication verification does not contribute to that stop condition while deferred.
+A real accessible feed is still needed to qualify feed extraction. If a required feature cannot be observed, record that limitation and do not claim the whole feature verified. Deferring authentication does not authorize replacing a website with static HTML. Physical-device injection, media and recovery requirements remain in force. Continue no further than MVP-02 while its non-deferred platform gates remain pending.
 
 ## Current MVP-02 evidence
 

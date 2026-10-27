@@ -1,8 +1,8 @@
 # Genesis Android setup and MVP-01 handoff
 
-Status: MVP-01 verified on the named emulator. MVP-02 is ready to start and has not been started.
+Status: MVP-01 verified on the named emulator. MVP-02 has since been implemented but remains blocked at provider qualification. See the [MVP-02 report](../../.reports/2026-10-27/182114-genesis-mvp02-qualification-report.md) for current evidence.
 
-Scope: the Genesis monorepo's MVP-01 build foundation and ordinary browser. Site customization, isolated-world injection, the creator SDK, storage, and the bookmark library are incomplete. Bundled compilation entries deliberately say so. No MVP-02 implementation is included.
+Scope: setup instructions and historical MVP-01 evidence. MVP-02 now adds isolated-world qualification and local-page plumbing. Feature applets, the full SDK and storage remain pending.
 
 ## Project and preserved work
 
@@ -71,13 +71,13 @@ cargo check -p genesis-page-runtime --target wasm32-unknown-unknown --locked
 ./gradlew :app:assembleDebug :app:lintDebug
 ```
 
-Open `android/`, sync, select an arm64-v8a or x86_64 emulator or physical Android device with API 26 or newer, and press Run. This stage opens the original websites. The launcher explicitly reports that customization is unavailable. Check Home, Back, Reload and normal browsing. Use install-as-update for later APKs; do not uninstall to deploy over user data.
+Open `android/`, sync, select an arm64-v8a or x86_64 emulator or physical Android device with API 26 or newer, and press Run. The app opens the original websites. The current launcher reports MVP-02 qualification; unsupported providers offer ordinary browsing. Check Home, Back, Reload and normal browsing. Use install-as-update for later APKs; do not uninstall to deploy over user data.
 
 The build task `genesisBuildDebug` or `genesisBuildRelease` runs type checking, package checks, a real release Wasm compilation, matching wasm-bindgen generation, esbuild IIFE bundling with embedded Wasm bytes, package hashing, and cargo-ndk builds for both ABIs at API 26. Debug uses debug native libraries; Release uses release native libraries. `genesisBuild` builds all variants. Individual script stages are `check`, `assets`, `native` and `all`, selected through `node tools/build.mjs --stage <stage> --variant debug|release`.
 
 Generated assets and libraries live under `android/app/build/generated/genesis/<variant>/assets` and `jniLibs`. Intermediates live under `target/genesis/<variant>/`. AGP generated-source registration makes asset and JNI merges depend on the producer. Source and lockfile inputs invalidate the task. Sync only configures tasks; it does not execute the generator. Debug and Release have separate output and Cargo target directories.
 
-The package checker currently verifies the MVP-01 bundled schemas, identities, source origins, entry containment and action/page references. Full navigation-policy/runtime validation belongs to subsequent stages. Packaged local-page HTML is a build artifact only; the host does not expose local-page navigation yet.
+The package checker verifies bundled schemas, identities, source origins, entry containment and action/page references. MVP-02 exposes packaged local-page navigation for qualification. Full navigation-policy/runtime APIs and storage remain later-stage work.
 
 ## Workstation qualification
 
@@ -110,4 +110,4 @@ The emulator was `emulator-5554`, Medium Phone API 37.0, Android 17, arm64-v8a. 
 - A temporary YouTube entry edit reran the generator and changed its package revision. Restoring the exact entry restored revision `48a89e74b22a0ca2c8a381879ff9da05f184996a79229fd6cd4ff6171ad3a8c9`. The probe was removed.
 - Android Studio sync completed and Run installed the app successfully. The emulator displayed the Rust-supplied launcher and ordinary YouTube home and X sign-in pages. X sign-in was not attempted.
 
-An isolated Android Studio sync left generated index and both JNI library modification timestamps unchanged. Native Reload completed ordinary X browsing, native Back returned to the Rust launcher, and native Home returned from YouTube to the launcher. All required MVP-01 acceptance checks passed on this emulator; no required MVP-01 device check remains unverified. MVP-02 must remain unstarted until all MVP-01 acceptance checks are satisfied. Website injection, provider feature qualification, authentication, media playback and physical-device checks belong to MVP-02 or later.
+An isolated Android Studio sync left generated index and both JNI library modification timestamps unchanged. Native Reload completed ordinary X browsing, native Back returned to the Rust launcher, and native Home returned from YouTube to the launcher. All required MVP-01 acceptance checks passed on this emulator; no required MVP-01 device check remains unverified. Those results allowed MVP-02 implementation to begin. Its remaining injection/provider, media and physical-device gates are recorded separately in the MVP-02 report. Dedicated authentication and session-retention verification is now user-deferred and nonblocking under the [browser/session contract](../../.plans/2026-10-27/150238-genesis-mvp-implementation-plan.md#9-browser-and-session-contract).

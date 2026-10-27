@@ -4,7 +4,7 @@ Created 27 October 2026, Asia/Kolkata. Scope: `applets/youtube.com/` and `applet
 
 ## 1. Website inspection is an implementation task
 
-No logged-in YouTube or X DOM was inspected during this planning task. Candidate selectors below are starting points, not verified integrations. Stage MVP-02 records the actual mobile website variant, locale, provider, sign-in state, target markup and selector evidence. Do not invent an observed success.
+MVP-02 packages qualification entries, candidate targets and a local X page. Shorts filtering, feed Save controls, categories and the library repository are not implemented. No authenticated feed targets were qualified; the [MVP-02 report](../../.reports/2026-10-27/182114-genesis-mvp02-qualification-report.md) records the observed guest YouTube variant. Candidate selectors below are starting points, not verified integrations. Stage MVP-02 records the actual mobile website variant, locale, provider, sign-in state, target markup and selector evidence. Do not invent an observed success.
 
 Keep selector candidates and variant detection in each `targets.ts`. Feature files consume named functions such as `findPostCards`, `findPrimaryPermalink`, `findShortsCards` and `findShortsShelves`. A selector repair should not touch Rust or Java.
 
@@ -64,7 +64,7 @@ These layers cannot guarantee zero transient pixels/audio before every SPA trans
 
 ### YouTube acceptance cases
 
-Verify home, search, channel and subscriptions variants; delayed shelves; infinite scrolling; recycled cards; a normal video containing a Shorts link in its description; direct/redirected/history Shorts routes; navigation after sign-in; and switching between applets. Include ordinary player playback, seek, captions, fullscreen and Back. Preserve ordinary videos without duration-based false positives.
+Verify home, search, channel and subscriptions variants; delayed shelves; infinite scrolling; recycled cards; a normal video containing a Shorts link in its description; direct/redirected/history Shorts routes; navigation in an already available signed-in variant; and switching between applets. Do not require a new login experiment; record unavailable account-dependent variants as unobserved. Include ordinary player playback, seek, captions, fullscreen and Back. Preserve ordinary videos without duration-based false positives.
 
 ## 4. X product behavior
 
@@ -158,12 +158,12 @@ On successful save, update every currently mounted button for that post ID throu
 
 Verify normal posts, quote posts, repost wrappers, media-only posts, localized pages, virtualized reuse and detail routes. Confirm that Save selects the outer primary post rather than a quoted ID. Confirm that two instances of the same post show consistent Genesis state.
 
-Exercise zero/one/multiple categories; duplicate normalized names; rename; deletion of a category used by several bookmarks; deletion of the last category; cancellation; concurrent stale dialog edits; interrupted save; offline library; app restart; APK update; and X account switch. Confirm that original X bookmark state is unchanged.
+Exercise zero/one/multiple categories; duplicate normalized names; rename; deletion of a category used by several bookmarks; deletion of the last category; cancellation; concurrent stale dialog edits; interrupted save; offline library; app restart; APK update; and account-independent library scope. Verify that the library namespace has no website account key. A live X account-switch experiment is deferred with authentication verification. Confirm that original X bookmark state is unchanged when that control is accessible.
 
 For deleted/protected posts, keep the local saved record and let the original website explain access failure. Do not infer deletion from a failed request. Use the user's normal browser session when one is already available to inspect relevant page variants. Do not require an account or a device connection for dedicated authentication verification, which the user has deferred. Record unobserved feature cases honestly; do not manufacture authentication evidence.
 
-## User-operated sign-in
+## 9. User-operated sign-in
 
-YouTube and X continue to render their original sign-in pages. The user signs into their own existing account inside Genesis's WebView; no shared website account is provided or required. Applets neither collect credentials nor manage website access tokens. Normal browser cookies persist independently of applet activation and applet data. Account switching is the original website's behavior. The X bookmark library still belongs to the local Genesis profile and must not be silently reassigned based on guessed website account identity.
+Follow the [browser/session contract](150238-genesis-mvp-implementation-plan.md#9-browser-and-session-contract). Preserve original sign-in pages and let users operate their existing accounts. Applets never collect credentials or manage website access tokens. Absence of feed targets on a login page is an ordinary empty/unsupported variant, not failed authentication.
 
-A visible login page is an unauthenticated page variant, not successful authentication or a verified feed selector. Record guest inspection separately from user-confirmed feed access. A user can complete login privately on an emulator or physical device without sending secrets to the agent. At the user's request, dedicated sign-in and session-retention verification is deferred and is not an account gate for current implementation or stage progression. Do not ask the user to sign in or connect a device just to qualify authentication. Browser-managed authentication remains the selected behavior; deferred checks are not recorded as passed. Independent physical-device injection, media and recovery qualification is unchanged.
+The X library belongs to this installation's local Genesis profile across website account changes. Display that scope in library settings. Logging out does not clear bookmarks, and code must not infer an X identity to select storage. Website logout/account switching and dedicated session-retention verification are deferred and nonblocking. Use accessible page variants for feature checks; mark unobserved variants explicitly and do not count a login page as verified feed integration.

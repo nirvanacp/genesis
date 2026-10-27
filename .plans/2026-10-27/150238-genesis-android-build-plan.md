@@ -1,6 +1,6 @@
 # Genesis Android and build plan
 
-Created 27 October 2026, Asia/Kolkata. Scope: `android/`, shared build tooling and dependency manifests. Read the [MVP plan](150238-genesis-mvp-implementation-plan.md) first. All configuration below is proposed and must pass stage MVP-01 before it is called a working build.
+Created 27 October 2026, Asia/Kolkata. Scope: `android/`, shared build tooling and dependency manifests. Read the [MVP plan](150238-genesis-mvp-implementation-plan.md) first. The MVP-01 build is verified on the emulator. MVP-02 browser plumbing is implemented, with provider qualification still blocked. Database-worker behavior below remains MVP-04 work. See the [setup evidence](../../.docs/2026-10-27/161510-genesis-android-setup.md) and [MVP-02 report](../../.reports/2026-10-27/182114-genesis-mvp02-qualification-report.md).
 
 ## 1. Android Studio project
 
@@ -27,13 +27,11 @@ The [AGP compatibility table](https://developer.android.com/build/releases/agp-9
 
 Use the installed Studio if it supports this matrix. Disable minification in both debug and the initial release build. If minification is introduced later, add and verify JNI keep rules first.
 
-## 2. Current workstation findings
+## 2. Toolchain setup
 
-Read-only inspection found Rust 1.94.0, Cargo 1.94.0, Node 24.15.0 and npm 11.14.1. Android Studio and SDK platform `android-37.0` plus Build Tools 36.0.0 are present. Studio's bundled Java is 25.0.3; `/usr/libexec/java_home -V` does not find a separately registered JDK.
+MVP-01 installed/selected the required JDK, Rust targets and build tools and built both Android ABIs. The workstation uses a reduced NDK extraction because of disk limits; the setup guide records that limitation. For another workstation, use a complete pinned NDK installation.
 
-The NDK directory was not present in the inspected SDK tree. `cargo-ndk` and `wasm-bindgen` were not on PATH. Only `aarch64-apple-darwin` was an installed Rust target. These are setup gaps, not architectural blockers. Do not report the machine ready for Android/Rust compilation yet.
-
-One-time setup during implementation:
+One-time setup:
 
 1. Install/select JDK 17 for Gradle through Android Studio's Gradle JDK settings. Do not rely on the shell's `java` command.
 2. Install SDK platform 37, Build Tools 36.0.0 and the pinned NDK through SDK Manager as needed.
@@ -45,7 +43,7 @@ Do not hardcode `/Users/rit` in tracked files. Support ignored `android/local.pr
 
 ## 3. Dependencies and lock rules
 
-The following exact versions were observed in upstream registry metadata during planning. Use them as initial pins; they are not yet a resolved compatible graph. If compilation demonstrates incompatibility, change the smallest necessary pin, record the error and update this implementation's setup notes. Do not use `latest` in manifests or install scripts.
+The implemented dependencies are resolved in Cargo.lock and package-lock.json. `thiserror`, `rusqlite` and `wasm-bindgen-futures` remain planned dependencies; add them only when their stage needs them. If compilation demonstrates incompatibility, change the smallest necessary pin, record the error and update this implementation's setup notes. Do not use `latest` in manifests or install scripts.
 
 | Rust dependency | Pin | Used by |
 | --- | --- | --- |
@@ -136,10 +134,10 @@ If the renderer dies or becomes unresponsive, disable the failing applet in nati
 
 From the repository root: `npm ci`, `npm run typecheck`, `npm run check:packages`, and `cargo fmt --all -- --check`. From `android/`: `./gradlew :app:assembleDebug :app:lintDebug`. Then open `android/` in Android Studio, select the `app` configuration and press Run.
 
-Root npm scripts must exist before documenting them as executable. Include tool path setup, SDK/NDK requirements, supported emulator ABI and physical-device instructions in a dated Genesis Android setup guide under `.docs/` when implementation is requested. Do not require users to manually copy Wasm or native libraries before each Run.
+These root scripts and the dated Android setup guide already exist. Keep the guide current with tool paths, SDK/NDK requirements, emulator ABI and physical-device evidence. Do not require users to manually copy Wasm or native libraries before each Run.
 
-## Browser-managed account sessions
+## 8. Browser profile implementation
 
-Keep ordinary first-party WebView cookies enabled and use the application's persistent default WebView profile. Users enter their own existing credentials directly into the original website inside Genesis. Do not add a shared account, native credential form, cookie/token extraction bridge, Chrome-cookie import, or central sign-in backend. Destroying a WebView retires its execution context, not the persistent cookie profile. Flush pending cookies at suitable lifecycle boundaries without clearing them. Session storage follows website/WebView lifetime rules; do not promise that per-tab sessionStorage survives replacing the WebView. APK updates with the same application ID retain app data, subject to website expiry and Android/browser behavior.
+Follow the [browser/session contract](150238-genesis-mvp-implementation-plan.md#9-browser-and-session-contract). `BrowserAdapter` already enables cookies and DOM storage, uses the default WebView profile, and flushes pending cookies on pause. View destruction removes execution handlers and DOM state without clearing browser data. `MainActivity` restores navigation metadata, not credentials. Preserve these paths when adding later stages.
 
-Chrome and Genesis have separate profiles. Opening Chrome or signing in there does not establish this WebView's session. Do not bypass provider authentication restrictions or TLS errors. Dedicated sign-in and session-retention verification is deferred by the user and is not required to proceed with builds or implementation. Do not request a connected device for authentication. Independent actual-device injection, media and recovery checks still require their own evidence; deferring authentication does not change provider capabilities. The user never needs to give the implementing agent credentials. Reference: [Android CookieManager](https://developer.android.com/reference/android/webkit/CookieManager).
+Do not add per-source cookie jars, Chrome-cookie import or credential serialization. Retain the current third-party-cookie default; first-party cookie support alone is not proof that every federated sign-in flow works. [Android CookieManager](https://developer.android.com/reference/android/webkit/CookieManager) documents these separate policies. Dedicated authentication verification is deferred and nonblocking. Required provider features and physical-device qualification remain unchanged.

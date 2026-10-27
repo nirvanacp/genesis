@@ -1,6 +1,6 @@
 # Genesis runtime and SDK plan
 
-Created 27 October 2026, Asia/Kolkata. Scope: `crates/`, `packages/sdk/`, generic native services, and package contracts. Read the [MVP plan](150238-genesis-mvp-implementation-plan.md). The APIs below are specifications to implement, not existing packages.
+Created 27 October 2026, Asia/Kolkata. Scope: `crates/`, `packages/sdk/`, generic native services, and package contracts. Read the [MVP plan](150238-genesis-mvp-implementation-plan.md). MVP-02 implements identities, the handshake, qualification effects and bootstrap. Managed observation/navigation APIs remain MVP-03 work; storage remains MVP-04 work. The complete APIs below are target contracts, not a claim that every method is available.
 
 ## 1. Package manifest
 
@@ -44,7 +44,7 @@ Use separate types for `AppletId`, `InstanceId`, `SourceId`, `ViewId`, `ViewGene
 
 The native host owns `HashMap<InstanceId, AppletInstance>`. Each instance owns `HashMap<SourceId, SourceSession>` and an optional current applet page. `SourceSession` stores the definition, last committed URL, lifecycle status and optional live view binding. No shared static variable may hold a website DOM reference.
 
-Source states are `Dormant`, `Loading`, `Active`, `Suspended`, `Blocked`, `Failed` and `Closed`. The one-view scheduler retires the old document and recreates the WebView before opening another source ID, applet or local page. It retains the old source URL but invalidates every old DOM handle. Navigation within a source retains its WebView. The lifecycle contract permits a future scheduler to keep multiple views alive without changing these identities.
+The complete source lifecycle uses `Dormant`, `Loading`, `Active`, `Suspended`, `Blocked`, `Failed` and `Closed`. MVP-02 currently implements the first four plus `Failed`; complete the remaining transitions in MVP-03. The one-view scheduler retires the old document and recreates the WebView before opening another source ID, applet or local page. It retains the old source URL but invalidates every old DOM handle. Navigation within a source retains its WebView. The lifecycle contract permits a future scheduler to keep multiple views alive without changing these identities.
 
 Each live execution binding has kind `source` with a source ID, or kind `page` with a page ID. Storage is scoped to the applet/profile for both kinds. A local library page can request `sources.open("primary", url)` but has no direct access to a source DOM.
 
@@ -198,8 +198,10 @@ Source DOM handles never cross source boundaries. A future `observations.publish
 
 Direct page scripting, multiple live sources, private-page JavaScript access and strong applet fault isolation are separate capabilities. The MVP delivers one qualified page context and native recovery. It does not claim that Rust can interrupt an arbitrary infinite loop inside the browser renderer.
 
-## Website authentication boundary
+## 9. Website authentication boundary
 
-Authentication belongs to the original website and Android WebView's persistent browser profile. It does not belong to the applet SDK, native document store or a Genesis account service. The bridge has no method to obtain credentials, website cookies, authentication tokens or a user's Chrome session. Users sign in to their own existing website accounts privately inside Genesis. Do not inspect credential inputs or include their values in diagnostics. Debug markup inspection excludes input values and text that could expose credentials.
+Follow the [browser/session contract](150238-genesis-mvp-implementation-plan.md#9-browser-and-session-contract). `SourceSession` tracks navigation and lifecycle; `SessionSnapshot` restores host selection and source URLs. Neither represents a website account. Retiring a document invalidates handles, replies and owned effects without clearing browser cookies or website storage.
 
-Source/view retirement must not clear persistent browser cookies. It does invalidate document identities and owned effects. Session expiry and per-tab sessionStorage retention follow browser/site rules; applet storage is independently scoped to the local Genesis profile. Emulator implementation can proceed without a connected physical device. Dedicated real-account sign-in and session-retention verification is deferred by the user and is nonblocking for current implementation and stage progression. Treat it as browser-managed behavior, not a runtime/SDK prerequisite, and do not request device or account access to verify it. Record it as deferred, never verified. Physical-device injection/media/recovery qualification and required provider APIs remain independent evidence requirements.
+The bridge must not expose credentials, website cookies, authentication tokens or Chrome-session import. Applet SQLite storage stays independent of website storage. Diagnostics exclude credential inputs and values. The qualification bootstrap and SDK already have no authentication API; preserve that boundary in MVP-03 and MVP-04.
+
+Dedicated authentication/session-retention checks are deferred and nonblocking. This does not qualify unseen site variants or remove provider/injection gates.
