@@ -18,9 +18,11 @@ public final class MainActivity extends Activity {
     private HostViews views;
     private BrowserAdapter browser;
     private boolean attached;
+    private String retainedSession;
 
     @Override public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        android.webkit.WebView.setWebContentsDebuggingEnabled(false);
         views = new HostViews(this, this::send);
         browser = new BrowserAdapter(this, views, this::send);
         if (Build.VERSION.SDK_INT >= 33) {
@@ -34,6 +36,10 @@ public final class MainActivity extends Activity {
             while ((count = input.read(buffer)) != -1) bytes.write(buffer, 0, count);
             JSONObject attach = HostViews.event("attach");
             attach.put("index", new JSONObject(bytes.toString(StandardCharsets.UTF_8.name())));
+            attach.put("debug", (getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0);
+            if (savedInstanceState != null && savedInstanceState.getString("genesis.session") != null) {
+                attach.put("restore", new JSONObject(savedInstanceState.getString("genesis.session")));
+            }
             send(attach);
             attached = true;
         } catch (Exception | LinkageError error) { views.error("Genesis startup failed: " + error); }
@@ -48,15 +54,24 @@ public final class MainActivity extends Activity {
         } catch (Exception | LinkageError error) { views.error("Genesis host failed: " + error); }
     }
 
-    private void execute(JSONObject command) throws JSONException {
+    private void execute(JSONObject command) throws Exception {
         switch (command.getString("type")) {
             case "showLauncher": views.launcher(command.getJSONArray("entries"), command.getString("status")); break;
             case "showError": views.error(command.getString("message")); break;
-            case "createView": browser.create(command.getLong("generation")); break;
+            case "createView": browser.create(command); break;
+            case "presentation": if (browser.matches(command.getLong("generation"))) views.presentation(command); break;
+            case "diagnostics": views.diagnostics(command.getString("text")); break;
+            case "retainSession": retainedSession = command.getJSONObject("snapshot").toString(); break;
             case "destroyView":
             case "loadUrl":
             case "goBack":
-            case "reload": browser.execute(command); break;
+            case "reload":
+            case "challenge":
+            case "replyToPage":
+            case "scheduleDeadline":
+            case "terminateRenderer":
+            case "showFullscreen":
+            case "exitFullscreen": browser.execute(command); break;
             case "finishActivity": finish(); break;
             default: throw new IllegalArgumentException("Unknown native command: " + command);
         }
@@ -65,8 +80,12 @@ public final class MainActivity extends Activity {
     @SuppressWarnings("deprecation")
     @SuppressLint("GestureBackNavigation") // API 33+ uses the callback registered in onCreate.
     @Override public void onBackPressed() { send(HostViews.event("back")); }
-    @Override protected void onPause() { if (browser != null) browser.pause(); super.onPause(); }
-    @Override protected void onResume() { super.onResume(); if (browser != null) browser.resume(); }
+    @Override protected void onSaveInstanceState(Bundle out) {
+        if (attached) { send(HostViews.event("saveSession")); out.putString("genesis.session", retainedSession); }
+        super.onSaveInstanceState(out);
+    }
+    @Override protected void onPause() { if (attached) send(HostViews.event("suspended")); if (browser != null) browser.pause(); super.onPause(); }
+    @Override protected void onResume() { super.onResume(); if (browser != null) browser.resume(); if (attached) send(HostViews.event("resumed")); }
     @Override protected void onDestroy() {
         if (attached) send(HostViews.event("detach"));
         if (browser != null) browser.destroy();
