@@ -195,3 +195,9 @@ The database worker serializes commits, while compare-and-set protects stale app
 Source DOM handles never cross source boundaries. A future `observations.publish/subscribe` API can carry bounded JSON topics keyed by `(instanceId, sourceId, documentId, topic, revision)`. Do not expose or stub this API as working in v1.
 
 Direct page scripting, multiple live sources, private-page JavaScript access and strong applet fault isolation are separate capabilities. The MVP delivers one qualified page context and native recovery. It does not claim that Rust can interrupt an arbitrary infinite loop inside the browser renderer.
+
+## Website authentication boundary
+
+Authentication belongs to the original website and Android WebView's persistent browser profile. It does not belong to the applet SDK, native document store or a Genesis account service. The bridge has no method to obtain credentials, website cookies, authentication tokens or a user's Chrome session. Users sign in to their own existing website accounts privately inside Genesis. Do not inspect credential inputs or include their values in diagnostics. Debug markup inspection excludes input values and text that could expose credentials.
+
+Source/view retirement must not clear persistent browser cookies. It does invalidate document identities and owned effects. Session expiry and per-tab sessionStorage retention follow browser/site rules; applet storage is independently scoped to the local Genesis profile. Emulator implementation can proceed without a connected physical device. Real-account and physical-device qualification remain explicit evidence gates and are not inferred from successful handshake or storage checks.

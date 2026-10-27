@@ -161,3 +161,9 @@ Verify normal posts, quote posts, repost wrappers, media-only posts, localized p
 Exercise zero/one/multiple categories; duplicate normalized names; rename; deletion of a category used by several bookmarks; deletion of the last category; cancellation; concurrent stale dialog edits; interrupted save; offline library; app restart; APK update; and X account switch. Confirm that original X bookmark state is unchanged.
 
 For deleted/protected posts, keep the local saved record and let the original website explain access failure. Do not infer deletion from a failed request. Test with the user's own available session during implementation; do not manufacture authentication evidence.
+
+## User-operated sign-in
+
+YouTube and X continue to render their original sign-in pages. The user signs into their own existing account inside Genesis's WebView; no shared website account is provided or required. Applets neither collect credentials nor manage website access tokens. Normal browser cookies persist independently of applet activation and applet data. Account switching is the original website's behavior. The X bookmark library still belongs to the local Genesis profile and must not be silently reassigned based on guessed website account identity.
+
+A visible login page is an unauthenticated page variant, not successful authentication or a verified feed selector. Record guest inspection separately from user-confirmed feed access. A user can complete login privately on an emulator or physical device without sending secrets to the agent. If they do not do so, leave the account gate pending. The physical-device requirement is for real-site release qualification and does not force a shared account or block implementation.

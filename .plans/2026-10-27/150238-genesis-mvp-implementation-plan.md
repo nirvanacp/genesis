@@ -166,3 +166,11 @@ If a selector fails, repair its applet target module. If required isolated-world
 The MVP is complete when Android Studio Run builds the project after one-time setup; both applets work on a physical Android device; the documented Shorts paths are blocked; categorized Genesis bookmarks persist independently of X; local library operations work offline; and native recovery handles a failed applet. The final delivery report must name unsupported routes, account flows and devices.
 
 This planning task changes documents only. It does not create app source, install toolchains, create test files or claim that any stage has passed.
+
+## Account ownership clarification
+
+Users sign in to their own existing accounts directly in Genesis's source WebView. There is no shared Genesis-operated website account, agent account, credential service, or central authentication backend. The browser retains ordinary first-party cookies and website session storage in the application's persistent WebView profile. Genesis must not read, export, log, synchronize or ask the user to send credentials, session cookies or tokens. Do not clear browsing data when switching sources, returning Home, recreating a view or installing an APK update. Websites still control session expiry, reauthentication and embedded-browser access.
+
+The WebView cookie profile is separate from Chrome and other browsers. A user's existing Chrome sign-in is not automatically inherited; sign in inside Genesis. This is browser-managed authentication, not an applet authentication API. Genesis's local applet data profile remains separate from website account identity.
+
+A connected physical device is an empirical qualification requirement, not an authentication implementation dependency or a request to share an account. Implementation and emulator checks may proceed without one. A user can complete sign-in privately on their own emulator/device; otherwise real-account login remains pending. Physical-device results remain pending until run on physical hardware. Neither an X login page nor an emulator pass satisfies the physical release gate.

@@ -168,3 +168,11 @@ Final handoff must include the setup guide, actual build commands, exact tool/pr
 > Implement the next unverified stage of the Genesis MVP plan. Read the root AGENTS.md and the five plan documents in this set first. Keep Android code under android/, site customization under applets/, and generic Rust page/runtime contracts in crates/. Follow the specified APIs and data model. Do not change engines, rendering architecture, storage model or creator language to get around a failed gate. Preserve unrelated changes. Do not create automated test files without an explicit request for coverage. Run the prescribed checks, distinguish passed checks from unavailable device/login checks, and report the next stage only after the current stage's acceptance conditions are met.
 
 Use this as a bounded implementation instruction, not a request to scaffold every remaining stage in one unverified change.
+
+## Account and device qualification clarification
+
+Implementation uses browser-managed sessions with user-owned existing website accounts. There is no shared account and no request for the user to send login credentials, cookies or tokens. The user enters credentials privately in Genesis's original website WebView. The persistent WebView profile is independent of Chrome; Chrome sign-in is not evidence of Genesis sign-in.
+
+MVP-02 implementation and emulator qualification may proceed without a connected physical device. The X authentication gate requires user-completed login in the actual Genesis app and visible or user-confirmed access to its feed. If no private sign-in is performed, mark that gate pending, not failed or verified. A physical device is still required for the physical real-site release result. Emulator results must be labeled emulator results. Do not repeatedly request a device merely to implement the browser layer.
+
+After a successful private sign-in, verify session retention by reloading, returning Home and reopening the source, restarting the app and installing an update without uninstalling. Do not promise perpetual sign-in: websites can expire or revoke sessions. Record these checks independently from initial authentication and from Genesis applet-data persistence. Continue no further than MVP-02 while its required qualification gates remain pending.
