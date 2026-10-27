@@ -1,0 +1,15 @@
+[package]
+name = "genesis-android"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+genesis-contracts = { path = "../../crates/contracts" }
+serde_json.workspace = true
+url.workspace = true
+jni = "=0.22.4"
