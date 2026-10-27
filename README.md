@@ -1,5 +1,7 @@
 # Project Nirvana
 
+For the current proposed implementation, start with [Genesis live website customization](research/live-dom-customization/README.md). It describes incremental changes to the running website, a Rust runtime, JS/TS creator code, optional React UI, and the architecture, authoring workflow and build roadmap. This revises the earlier separate-source/result default. Runtime qualification is still pending.
+
 We're building a daily-driver on steroids. This project is trying to solve the following problems:
 
 ### 1. Automation that works:

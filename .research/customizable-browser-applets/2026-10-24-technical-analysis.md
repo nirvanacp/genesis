@@ -1,5 +1,7 @@
 # Customizable applets backed by browser tabs
 
+Current implementation guidance: [live website customization](../live-dom-customization/README.md) adopts incremental changes to the original page, a Rust runtime and JS/TS creator code. This document retains the original comparison and evidence limits.
+
 Research date: 24 October 2026, Asia/Kolkata.
 
 Question: How can a vibe coder create a persistent app-like interface backed by one or more browser tabs, and what could prevent it from working?

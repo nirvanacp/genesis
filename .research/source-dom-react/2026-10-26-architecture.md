@@ -1,5 +1,7 @@
 # Proposed Genesis projection architecture
 
+Current implementation guidance: [live website customization](../live-dom-customization/README.md) uses same-document customization by default, a Rust runtime and JS/TS creator code. This document preserves the earlier separate-document React/Kotlin proposal.
+
 Date: 26 October 2026, Asia/Kolkata. Status: proposed design, no implementation. [Research and sources](2026-10-26-research.md) explains the evidence. [Roadmap](2026-10-26-roadmap.md) defines the experiment sequence.
 
 ## 1. Runtime ownership
