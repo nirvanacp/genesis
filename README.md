@@ -1,6 +1,6 @@
 # Project Nirvana
 
-MVP-02 browser qualification is implemented but blocked on the current WebView provider. See the [MVP-02 qualification report](.reports/2026-10-27/182114-genesis-mvp02-qualification-report.md) for exact evidence and pending device/login gates.
+MVP-02 browser qualification is implemented but blocked on the current WebView provider. See the [MVP-02 qualification report](.reports/2026-10-27/182114-genesis-mvp02-qualification-report.md) for exact provider/device evidence. Dedicated authentication verification is deferred by the user; login and session handling belong to the browser layer.
 
 For the implemented MVP-01 Android build, see [Genesis Android setup and verification](.docs/2026-10-27/161510-genesis-android-setup.md). Site customization is not implemented yet.
 
