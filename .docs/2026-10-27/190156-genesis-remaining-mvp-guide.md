@@ -1,5 +1,7 @@
 # Genesis remaining MVP implementation guide
 
+Superseded for the active prototype by the [Hacker News continuation guide](200113-genesis-hacker-news-mvp-guide.md). The earlier prompts below describe the retired YouTube/X scope and must not be used for current implementation.
+
 Scope: the existing Genesis MVP stages, reviewed after the user's authentication/session clarifications. This guide organizes future work; it implements no new stage.
 
 ## Current position and review findings
@@ -41,7 +43,7 @@ Run one numbered prompt at a time. The prompts reference this guide and the five
 - [MVP architecture and session contract](../../.plans/2026-10-27/150238-genesis-mvp-implementation-plan.md)
 - [Android and build](../../.plans/2026-10-27/150238-genesis-android-build-plan.md)
 - [Runtime and SDK](../../.plans/2026-10-27/150238-genesis-runtime-sdk-plan.md)
-- [YouTube and X applets](../../.plans/2026-10-27/150238-genesis-youtube-x-applets-plan.md)
+- [YouTube and X applets](../../.plans/2026-10-27/150238-genesis-hacker-news-applet-plan.md)
 - [Delivery and verification](../../.plans/2026-10-27/150238-genesis-delivery-verification-plan.md)
 
 Every prompt follows these working rules:

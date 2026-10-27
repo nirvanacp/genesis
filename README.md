@@ -1,12 +1,12 @@
 # Project Nirvana
 
-MVP-02 browser qualification is implemented but blocked on the current WebView provider. See the [MVP-02 qualification report](.reports/2026-10-27/182114-genesis-mvp02-qualification-report.md) for exact provider/device evidence. Dedicated authentication verification is deferred by the user; login and session handling belong to the browser layer.
+The current Genesis prototype is a single **Hacker News bookmarking applet** for public pages at [news.ycombinator.com](https://news.ycombinator.com/). It requires no website login. The planned feature is local categorized story bookmarks with an offline library, preserving HN's original page and navigation.
 
-For the implemented MVP-01 Android build, see [Genesis Android setup and verification](.docs/2026-10-27/161510-genesis-android-setup.md). Site customization is not implemented yet.
+MVP-01's Android build is verified. MVP-02's generic browser host and HN qualification entries are implemented; saving, categories and durable storage remain pending. Only `hn-bookmarks` is bundled. Earlier YouTube/X source directories remain intact as inactive npm workspaces.
 
-For the current implementation contract, read the [MVP plan](.plans/2026-10-27/150238-genesis-mvp-implementation-plan.md). Follow the [remaining MVP guide](.docs/2026-10-27/190156-genesis-remaining-mvp-guide.md) for the qualification gate and ordered implementation prompts.
+Read the [MVP architecture](.plans/2026-10-27/150238-genesis-mvp-implementation-plan.md), [HN applet specification](.plans/2026-10-27/150238-genesis-hacker-news-applet-plan.md) and [ordered implementation prompts](.docs/2026-10-27/200113-genesis-hacker-news-mvp-guide.md). Open `android/` in Android Studio using the [setup guide](.docs/2026-10-27/161510-genesis-android-setup.md).
 
-For background research, see [Genesis live website customization](.research/live-dom-customization/README.md). It describes incremental changes to the running website, a Rust runtime, JS/TS creator code, optional React UI, and the architecture, authoring workflow and build roadmap. This revises the earlier separate-source/result default. Runtime qualification is still pending.
+See the [HN retargeting report](.reports/2026-10-27/200924-genesis-hacker-news-retargeting-report.md) for the current build and launcher evidence. The last tested provider lacked required isolated-world/navigation APIs. HN removes login dependence but does not remove those platform gates. The [earlier qualification report](.reports/2026-10-27/182114-genesis-mvp02-qualification-report.md) is historical evidence, not HN qualification. Background architecture research remains under [.research](.research/live-dom-customization/README.md).
 
 We're building a daily-driver on steroids. This project is trying to solve the following problems:
 

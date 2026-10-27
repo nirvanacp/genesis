@@ -9,34 +9,25 @@ Use `applet.json`, schema version 1. Validate every field at build time and agai
 ```json
 {
   "schemaVersion": 1,
-  "id": "youtube-no-shorts",
-  "name": "YouTube without Shorts",
+  "id": "hn-bookmarks",
+  "name": "Hacker News with Genesis bookmarks",
   "dataSchemaVersion": 1,
   "sources": [{
     "id": "primary",
-    "startUrl": "https://www.youtube.com/",
-    "origins": ["https://www.youtube.com", "https://m.youtube.com", "https://youtube.com"],
+    "startUrl": "https://news.ycombinator.com/",
+    "origins": ["https://news.ycombinator.com"],
     "entry": "src/main.ts",
-    "navigationRules": [{
-      "id": "deny-shorts",
-      "pathPrefix": "/shorts",
-      "action": "block",
-      "fallbackUrl": "https://www.youtube.com/"
-    }]
+    "navigationRules": []
   }],
-  "pages": [],
-  "actions": [],
-  "capabilities": ["dom", "navigation-policy"]
+  "pages": [{"id": "library", "entry": "src/library.tsx"}],
+  "actions": [{"id": "library", "label": "Genesis bookmarks", "pageId": "library"}],
+  "capabilities": ["dom", "storage"]
 }
 ```
 
-The X manifest uses ID `x-bookmarks`, source `primary`, start URL `https://x.com/home`, origins `https://x.com`, `https://www.x.com`, `https://mobile.x.com`, `https://twitter.com`, `https://www.twitter.com` and `https://mobile.twitter.com`, entry `src/main.tsx`, capabilities `dom` and `storage`, and no deny rule. It declares page `{ "id": "library", "entry": "src/library.tsx" }` and action `{ "id": "library", "label": "Genesis bookmarks", "pageId": "library" }`. Alias redirects still need qualification; listing an origin does not assert the service currently uses it.
+Manifest entries are source paths for the builder; the generated index maps them to compiled assets with hashes. Read compiled entries, never TypeScript. HN has exactly one injection origin. External article links may browse ordinarily, without broadening the source bridge allowlist. Back to HN rebinds its current document.
 
-Manifest entries are source paths for the builder. The generated package index maps them to compiled asset paths and records their hashes. The runtime reads compiled entries, never TypeScript. Source origins determine where injection is allowed, not which subresources the website may fetch.
-
-Navigation rules are generic runtime data supplied by the applet. `pathPrefix` uses a path-segment boundary: `/shorts` matches `/shorts` and `/shorts/id`, not `/shortstory`. Parse URLs with `url`, compare exact normalized HTTPS origins, decode path segments once for policy matching, and reject malformed URLs. Evaluate these rules only for the bound source. There must be no `if host == youtube` branch in Android code.
-
-Add optional `queryValueRules` to a source definition, with entries `{id, path, parameter, setId, fallbackUrl}`. A rule blocks an exact normalized path when its query parameter belongs to the named set. The source applet can add bounded values to an instance-local set through `ctx.navigation.addDeniedValues`. Accept only set IDs declared in that source, batches of at most 100 values and values of at most 64 characters. YouTube uses this for video IDs already identified as Shorts. It is not a global content classifier. Every fallback URL must belong to the source's allowed origins and must not match its static deny rules.
+Preserve existing static navigation-rule types and validation as generic compatibility code. This HN manifest declares no content-blocking rules. Dynamic query-value deny sets and `navigation.addDeniedValues` are outside the revised prototype; do not implement them just for a retired product requirement. Source/page URL validation and document lifecycle remain required.
 
 ## 2. Identity and source sessions
 
@@ -61,9 +52,9 @@ Binding sequence:
 3. Native checks the bound view, main-frame flag, callback origin and expected revision. It does not trust a message's claimed applet ID.
 4. Native challenges that nonce by executing a small function in the current document's same execution world. The function replies only if its locally held nonce matches. A delayed hello from an old document cannot bind the new document.
 5. Native returns a fresh document ID and the accepted source/page binding. The runtime rejects normal RPC until this handshake completes.
-6. Rust/Wasm installs managed effects and performs the first pass. It sends `runtime.ready` with effect statuses. Native removes the cover for a healthy eligible page. Absence of feed items during login is not itself a startup failure.
+6. Rust/Wasm installs managed effects and performs the first pass. It sends `runtime.ready` with effect statuses. Native removes the cover for a healthy eligible page. An empty or unsupported HN page is not a runtime startup failure; report feature coverage separately.
 
-The loader has a five-second startup deadline after delivery. A timeout produces a native failure with Retry and Open ordinary site. It never silently calls a broken customization active. A site navigation to a permitted authentication page without an applet entry uses ordinary-site presentation and no applet bridge.
+The loader has a five-second startup deadline after delivery. A timeout produces a native failure with Retry and Open ordinary site. It never silently calls a broken customization active. An external publisher origin uses ordinary-site presentation and no applet bridge. Login forms are outside story targets; never inspect their values or expand origins for article links.
 
 On `pageshow` restoration, rebind with a new document ID before accepting operations. Dispose or replace any previous applet scope so BFCache does not duplicate roots. Same-document route changes increment a route revision and refresh targets without treating the whole JS realm as a new document. The [Android navigation listener](https://developer.android.com/reference/androidx/webkit/NavigationListener) includes main-frame same-document notifications; qualify their behavior rather than relying on URL polling alone.
 
@@ -77,7 +68,7 @@ Use UTF-8 JSON. Do not send DOM nodes across the native bridge. Native callbacks
   "documentId": "doc-12",
   "requestId": "req-8",
   "method": "storage.get",
-  "params": {"collection": "bookmarks", "key": "x:post:12345"}
+  "params": {"collection": "bookmarks", "key": "hn:item:12345"}
 }
 ```
 
@@ -93,7 +84,7 @@ Use UTF-8 JSON. Do not send DOM nodes across the native bridge. Native callbacks
 
 Failure replies have `ok: false` and `error: {code, message, retryable}` instead of `result`. Codes are `UNSUPPORTED`, `INVALID_ARGUMENT`, `EXPIRED_CONTEXT`, `NOT_FOUND`, `CONFLICT`, `BUSY`, `QUOTA_EXCEEDED`, `STORAGE_FAILURE` and `INTERNAL`. No silent empty-object fallback.
 
-Methods in v1: `runtime.ready`, `runtime.error`, `route.changed`, `ui.modalState`, `sources.open`, `pages.open`, `navigation.addDeniedValues`, `storage.get`, `storage.list`, and `storage.commit`. Host events are `context.retired`, `storage.changed`, `ui.dismissModal`, `host.suspended` and `host.resumed`. Do not introduce arbitrary native method invocation.
+Methods in v1: `runtime.ready`, `runtime.error`, `route.changed`, `ui.modalState`, `sources.open`, `pages.open`, `storage.get`, `storage.list`, and `storage.commit`. Host events are `context.retired`, `storage.changed`, `ui.dismissModal`, `host.suspended` and `host.resumed`. Do not introduce arbitrary native method invocation.
 
 `sources.open` and `pages.open` acknowledge an accepted navigation request, not a completed page load. Send the acknowledgement before scheduling view replacement; the new view reports its own loading/ready/error state. Callers must not depend on code continuing after their document is retired.
 
@@ -119,7 +110,6 @@ interface AppletContext {
   };
   navigation: {
     onChange(callback: (url: string) => void): Dispose;
-    addDeniedValues(setId: string, values: string[]): Promise<void>;
   };
   sources: { open(sourceId: string, url?: string): Promise<void> };
   pages: { open(pageId: string): Promise<void> };
@@ -132,13 +122,13 @@ interface AppletContext {
 
 `WatchOptions` contains `selector`, optional `root`, `attributes: string[]`, `text: boolean`, `limit` with maximum 200, and `contentKey(element): string | null`. `ElementHandlers` provides `enter(binding)`, `update(binding)` and `leave(binding)`. A binding has an opaque binding ID, live Element, content key and current route revision. Missing keys are skipped and diagnosed.
 
-Rust tracks element identity separately from content key. Reusing an element for another post must call leave for the old binding before enter for the new one. Updates retain a binding only while both identities match. Async callbacks must revalidate or use the immutable record captured when the user chose Save.
+Rust tracks element identity separately from content key. Reusing an element for another story must call leave for the old binding before enter for the new one. Updates retain a binding only while both identities match. Async callbacks must revalidate or use the immutable record captured when the user chose Save.
 
 `MountOptions` specifies position `before`, `after` or `append`, CSS text, Shadow DOM enabled by default, and `render(container)` returning a disposer. Rust creates/removes the host and tracks its anchor. Creator code owns the container's contents. Never mount React on the website's existing application root. [React root ownership](https://react.dev/reference/react-dom/client/createRoot).
 
 The modal implementation permits one modal per applet context, reports open/closed state to native, traps focus, closes on Escape or native dismissal, restores focus when the target still exists, and prevents taps from falling through to the page. React can render modal contents. The runtime owns the outer host and its lifetime.
 
-Creators retain ordinary DOM APIs for unusual changes, with cleanup registered through `onDispose`. Those writes are not automatically reversible. The two bundled applets should use managed styles/hosts and narrow event listeners rather than unrestricted whole-page rewrites.
+Creators retain ordinary DOM APIs for unusual changes, with cleanup registered through `onDispose`. Those writes are not automatically reversible. The HN applet should use managed styles/hosts and narrow event listeners rather than unrestricted whole-page rewrites.
 
 ## 6. Observation and cleanup implementation
 
@@ -188,7 +178,7 @@ Store platform schema version using SQLite `user_version`. Applet dataSchemaVers
 
 Within `BEGIN IMMEDIATE`, validate every check, increment namespace revision once, apply all writes/deletes, and commit. Each written document gets the new namespace revision. On any failed check, roll back and return CONFLICT. Never partially save a bookmark and its category selection. A deletion followed by recreation gets a new namespace revision, preventing revision reuse.
 
-Only acknowledge a write after commit. Publish `storage.changed` with changed collection/key pairs to active contexts of the same namespace. Namespace identity comes from the host binding, never from creator-supplied parameters. Native SQL contains no X-specific tables or JSON fields.
+Only acknowledge a write after commit. Publish `storage.changed` with changed collection/key pairs to active contexts of the same namespace. Namespace identity comes from the host binding, never from creator-supplied parameters. Native SQL contains no HN-specific tables or JSON fields.
 
 The database worker serializes commits, while compare-and-set protects stale applet edits. Page code handles CONFLICT by reloading the affected records and asking the user to retry the edit. It must not silently overwrite another completed edit. Generic type parameters in TypeScript do not validate stored JSON; applet repositories validate their own records on read.
 
@@ -204,4 +194,4 @@ Follow the [browser/session contract](150238-genesis-mvp-implementation-plan.md#
 
 The bridge must not expose credentials, website cookies, authentication tokens or Chrome-session import. Applet SQLite storage stays independent of website storage. Diagnostics exclude credential inputs and values. The qualification bootstrap and SDK already have no authentication API; preserve that boundary in MVP-03 and MVP-04.
 
-Dedicated authentication/session-retention checks are deferred and nonblocking. This does not qualify unseen site variants or remove provider/injection gates.
+Authentication/session-retention experiments are outside the revised HN prototype. No account is needed for public story extraction or native bookmark storage. Required provider/injection gates remain unchanged.

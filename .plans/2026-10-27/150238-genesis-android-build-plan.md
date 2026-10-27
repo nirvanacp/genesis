@@ -1,6 +1,6 @@
 # Genesis Android and build plan
 
-Created 27 October 2026, Asia/Kolkata. Scope: `android/`, shared build tooling and dependency manifests. Read the [MVP plan](150238-genesis-mvp-implementation-plan.md) first. The MVP-01 build is verified on the emulator. MVP-02 browser plumbing is implemented, with provider qualification still blocked. Database-worker behavior below remains MVP-04 work. See the [setup evidence](../../.docs/2026-10-27/161510-genesis-android-setup.md) and [MVP-02 report](../../.reports/2026-10-27/182114-genesis-mvp02-qualification-report.md).
+Created 27 October 2026, Asia/Kolkata. Scope: `android/`, shared build tooling and dependency manifests. Read the [MVP plan](150238-genesis-mvp-implementation-plan.md) first. The MVP-01 build is verified on the emulator. MVP-02 browser plumbing is implemented, with provider qualification still blocked. The HN package replaces the earlier bundled product targets. Database-worker behavior below remains MVP-04 work. See the [setup evidence](../../.docs/2026-10-27/161510-genesis-android-setup.md) and [MVP-02 report](../../.reports/2026-10-27/182114-genesis-mvp02-qualification-report.md).
 
 ## 1. Android Studio project
 
@@ -57,16 +57,16 @@ The implemented dependencies are resolved in Cargo.lock and package-lock.json. `
 | web-sys / js-sys | 0.3.106 | Page runtime |
 | wasm-bindgen-futures | 0.4.79 | Page async integration |
 
-Enable only the web-sys APIs used by the implementation. Keep JNI/SQLite out of the Wasm dependency graph. Keep browser DOM bindings out of the native controller. No Tokio or HTTP client is required by these two applets.
+Enable only the web-sys APIs used by the implementation. Keep JNI/SQLite out of the Wasm dependency graph. Keep browser DOM bindings out of the native controller. No Tokio or HTTP client is required by the HN applet.
 
 | npm dependency | Pin | Used by |
 | --- | --- | --- |
 | typescript | 7.0.2 | Type checking |
 | esbuild | 0.28.2 | Creator bundles |
-| react / react-dom | 19.3.1 | X UI only |
-| @types/react / @types/react-dom | 19.3.0 | X compile-time types |
+| react / react-dom | 19.3.1 | HN dialog/library only |
+| @types/react / @types/react-dom | 19.3.0 | HN compile-time types |
 
-Use npm workspace package names `@genesis/sdk`, `@genesis/applet-youtube` and `@genesis/applet-x`, all private. Link the SDK through npm workspaces with a matching local version; do not require a published registry package. Use strict TypeScript, `noEmit`, `jsx: react-jsx`, ES2022 target, ESNext modules, Bundler module resolution and DOM libraries. esbuild performs transpilation, not type checking. Import CSS as text with esbuild's `.css: text` loader and a shared TypeScript module declaration; do not depend on Vite's `?inline` syntax.
+Use private workspace packages `@genesis/sdk` and `@genesis/applet-hacker-news`. Preserve earlier applet workspaces for source retention/type checking; select only `applets/news.ycombinator.com` in the bundled package list in `tools/check-packages.mjs`. Link the SDK through npm workspaces with a matching local version; do not require a published registry package. Use strict TypeScript, `noEmit`, `jsx: react-jsx`, ES2022 target, ESNext modules, Bundler module resolution and DOM libraries. esbuild performs transpilation, not type checking. Import CSS as text with esbuild's `.css: text` loader and a shared TypeScript module declaration; do not depend on Vite's `?inline` syntax.
 
 Registry references: [npm React](https://registry.npmjs.org/react/latest), [React DOM](https://registry.npmjs.org/react-dom/latest), [TypeScript](https://registry.npmjs.org/typescript/latest), [esbuild](https://registry.npmjs.org/esbuild/latest), [crates.io](https://crates.io/). Implementation must retain the exact resolved locks instead of rereading moving latest tags on each build.
 
@@ -79,10 +79,10 @@ The Gradle `genesisBuild` task invokes that script from the monorepo root and de
 Execution order:
 
 1. Validate tool paths and run package/manifest checks. Missing `node_modules` reports the root `npm ci` command.
-2. Run TypeScript checking for the SDK and both applets.
+2. Run TypeScript checking for the SDK and bundled HN applet. The root workspace check may also verify the preserved inactive applets.
 3. Compile `genesis-page-runtime` for `wasm32-unknown-unknown` in release mode. Run the matching wasm-bindgen CLI with web output into `target/genesis/page-runtime/`.
 4. Build each source entry into one IIFE with esbuild. Bundle the generated runtime JS and include Wasm bytes as a base64 constant. Set target to ES2022, JSX automatic, code splitting false, and dynamic imports unavailable in the final package. Package CSS as text used by the runtime, not a network URL. Resolve npm dependencies at build time.
-5. Build X's local library HTML and script. It can reuse the same bundled runtime and SDK, with a page context instead of a source context. Do not ship a development-server URL.
+5. Build HN's local library HTML and script. It can reuse the same bundled runtime and SDK, with a page context instead of a source context. Do not ship a development-server URL.
 6. Produce `packages/index.json` and immutable package asset directories under `android/app/build/generated/genesis/assets/`. Compute a SHA-256 revision from manifest plus compiled assets. Generate the Android source scripts from these exact assets.
 7. Run cargo-ndk for both native ABIs, using the selected NDK/API 26 and `genesis-android` cdylib. Output `libgenesis_android.so` under `android/app/build/generated/genesis/jniLibs/<abi>/`. Use debug native builds for Debug and release native builds for Release.
 
@@ -96,7 +96,7 @@ Gradle sync must not compile Rust or invoke npm. Android Studio Run may execute 
 
 Use a small command protocol between Java and native Rust. `NativeBridge.dispatch(eventJson)` runs on the Android UI thread and returns a JSON array of host commands. Java executes the commands through `BrowserAdapter` and `HostViews`.
 
-Examples of generic commands: `createView`, `destroyView`, `registerScript`, `loadUrl`, `replyToPage`, `showLauncher`, `showError`, `showLoadingCover`, `showFullscreen`, and `finishActivity`. Site-specific decisions do not appear as Java branches.
+Examples of generic commands: `createView`, `destroyView`, `registerScript`, `loadUrl`, `replyToPage`, `showLauncher`, `showError`, `showLoadingCover`, `showFullscreen`, and `finishActivity`. HN-specific decisions do not appear as Java branches.
 
 Rust's controller reduces an event into commands, then releases any mutable borrow before Java executes commands that can cause callbacks. Do not hold a mutex or a RefCell borrow across a Java/browser call.
 
@@ -118,15 +118,15 @@ Use WebViewAssetLoader for applet-owned local pages at `https://appassets.androi
 
 Switching source IDs, applets or source/page modes replaces the WebView object in the single browser slot. Save the source URL, retire its generation, remove its script handlers and destroy the view before creating the next one. Register only the destination context's scripts. Native Back from the library recreates the saved source URL; it does not rely on mixed website/local-page WebView history. A local page's injected entry waits for its body before creating its owned root.
 
-Keep native browser chrome outside the WebView. It includes Home, Back, Reload, a package action menu and a visible error/loading area. Actions in the menu come from the manifest. X supplies the Library action; Android does not hardcode it.
+Keep native browser chrome outside the WebView. It includes Home, Back, Reload, a package action menu and a visible error/loading area. Actions in the menu come from the manifest. HN supplies the Library action; Android does not hardcode it. MVP-06 also exposes declared library actions from the launcher for offline entry.
 
 Back priority is fullscreen player, applet modal if the host knows one is open, local library return, WebView history, launcher, then Activity exit. Page modal dismissal is bounded by a 300 ms reply timeout; on timeout offer native reload/disable rather than waiting indefinitely. The native menu always remains accessible.
 
-Implement WebChromeClient fullscreen entry/exit with a native fullscreen container. Retain the original website media view. Test rotation, Back and captions. File uploads, downloads, new-window browsing and camera/microphone permissions are outside this MVP and must return explicit unsupported outcomes where needed.
+Preserve the implemented WebChromeClient fullscreen container. The HN prototype does not require media playback/caption qualification. Verify rotation and native Back for source/library and modal states. File uploads, downloads, new-window browsing and camera/microphone permissions are outside this MVP and must return explicit unsupported outcomes where needed.
 
-Apply URL policy to native load commands, link navigation callbacks, redirects and navigation lifecycle events. Do not assume `shouldOverrideUrlLoading` observes every SPA change. Java forwards navigation information; Rust applies policy. Login pages may be shown without injected customization. Preserve the source binding's intended return origin. Authentication and session retention follow normal browser behavior; dedicated account-flow qualification is deferred by the user and is not a current build or implementation gate.
+Apply URL policy to native load commands, link navigation callbacks, redirects and navigation lifecycle events. Do not assume `shouldOverrideUrlLoading` observes every SPA change. Java forwards navigation information; Rust applies policy. External article pages use ordinary browsing without a Genesis bridge. Preserve the source selection for returning to HN. Authentication is outside this prototype; do not request login verification.
 
-On backgrounding, notify the runtime of stale/suspended observations and use view lifecycle callbacks. Avoid global `pauseTimers()` because it affects all WebViews. On resume, revalidate location and document bindings. On rotation or process recreation, restore only applet selection, source URLs and durable data; create fresh DOM handles.
+On backgrounding, notify the runtime of stale/suspended observations and use view lifecycle callbacks. Avoid global `pauseTimers()` because it affects all WebViews. On resume, revalidate location and document bindings. On rotation or process recreation, restore only applet selection, source URLs and durable data; create fresh DOM handles. If an APK update removes the saved applet/source/page from its bundle, return to the launcher instead of trying to restore an unknown destination. Do not clear browser/app data to handle that change.
 
 If the renderer dies or becomes unresponsive, disable the failing applet in native state before recreating its view. Handle renderer loss for every affected view. A normal reload is not enough if the same broken bundle immediately runs again. [Renderer recovery API](https://developer.android.com/reference/androidx/webkit/WebViewRenderProcess).
 
@@ -140,4 +140,4 @@ These root scripts and the dated Android setup guide already exist. Keep the gui
 
 Follow the [browser/session contract](150238-genesis-mvp-implementation-plan.md#9-browser-and-session-contract). `BrowserAdapter` already enables cookies and DOM storage, uses the default WebView profile, and flushes pending cookies on pause. View destruction removes execution handlers and DOM state without clearing browser data. `MainActivity` restores navigation metadata, not credentials. Preserve these paths when adding later stages.
 
-Do not add per-source cookie jars, Chrome-cookie import or credential serialization. Retain the current third-party-cookie default; first-party cookie support alone is not proof that every federated sign-in flow works. [Android CookieManager](https://developer.android.com/reference/android/webkit/CookieManager) documents these separate policies. Dedicated authentication verification is deferred and nonblocking. Required provider features and physical-device qualification remain unchanged.
+Do not add per-source cookie jars, Chrome-cookie import or credential serialization. Retain the current cookie policy. Public HN browsing and native bookmark storage require no website login. [Android CookieManager](https://developer.android.com/reference/android/webkit/CookieManager) documents these separate policies. Authentication verification is outside the revised HN prototype. Required provider features and physical-device qualification remain unchanged.

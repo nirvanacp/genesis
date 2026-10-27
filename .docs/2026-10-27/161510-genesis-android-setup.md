@@ -1,5 +1,7 @@
 # Genesis Android setup and MVP-01 handoff
 
+The active prototype now bundles Hacker News only. Follow the [HN continuation guide](200113-genesis-hacker-news-mvp-guide.md) for current stages; the MVP-01 results below are historical build evidence. The existing toolchain/setup commands still apply.
+
 Status: MVP-01 verified on the named emulator. MVP-02 has since been implemented but remains blocked at provider qualification. See the [MVP-02 report](../../.reports/2026-10-27/182114-genesis-mvp02-qualification-report.md) for current evidence.
 
 Scope: setup instructions and historical MVP-01 evidence. MVP-02 now adds isolated-world qualification and local-page plumbing. Feature applets, the full SDK and storage remain pending.

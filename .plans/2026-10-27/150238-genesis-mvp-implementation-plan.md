@@ -1,192 +1,109 @@
 # Genesis MVP implementation plan
 
-Created 27 October 2026, Asia/Kolkata. Scope: the Genesis monorepo, its Android application and the YouTube/X applets. Status: MVP-01 verified on the emulator; MVP-02 implemented but blocked at provider qualification; MVP-03 through MVP-07 pending. See the [delivery plan](150238-genesis-delivery-verification-plan.md) for gates and the [remaining implementation guide](../../.docs/2026-10-27/190156-genesis-remaining-mvp-guide.md) for ordered prompts.
+Created 27 October 2026, Asia/Kolkata. Revised for the user's Hacker News prototype. Scope: the Android browser host, reusable runtime/SDK and one public Hacker News bookmarking applet. MVP-01 is verified on the emulator. MVP-02 platform code is implemented, but its isolated-world qualification remains blocked on the last observed provider. The HN package is the new qualification target; no prior YouTube/X result verifies it.
 
-## 1. Instructions for the implementing model
+## 1. Authority and execution
 
-Implement the decisions in this plan. Do not reopen the framework, language, storage or directory choices during routine work. Complete the delivery stages in order. When a platform qualification gate fails, report its exact evidence and follow the specified fallback decision. Do not replace a failing capability with a mock and mark the stage complete.
-
-Read these companion plans before changing code:
+Read root/nested `AGENTS.md`, Git status and these companion plans before implementation:
 
 | Plan | Authority |
 | --- | --- |
-| [Android and build](150238-genesis-android-build-plan.md) | Android Studio project, versions, build pipeline, JNI and browser lifecycle |
-| [Runtime and SDK](150238-genesis-runtime-sdk-plan.md) | Manifest, injection, protocol, source identities, managed effects and storage |
-| [YouTube and X applets](150238-genesis-youtube-x-applets-plan.md) | Website-specific behavior, selectors, records and UI |
-| [Delivery and verification](150238-genesis-delivery-verification-plan.md) | Ordered tasks, acceptance evidence and handoff rules |
+| [Android/build](150238-genesis-android-build-plan.md) | Toolchain, packaging, JNI and browser lifecycle |
+| [Runtime/SDK](150238-genesis-runtime-sdk-plan.md) | Manifest, bindings, managed DOM APIs and generic storage |
+| [Hacker News applet](150238-genesis-hacker-news-applet-plan.md) | Story extraction, bookmark/category records and UI |
+| [Delivery/verification](150238-genesis-delivery-verification-plan.md) | Stage order, acceptance evidence and stop conditions |
 
-This set replaces the open alternatives in the [live customization research](../../.research/live-dom-customization/README.md) for this MVP. Root and nested `AGENTS.md` instructions still apply. The current instruction prohibits creating automated test files without an explicit request for test coverage. This plan provides acceptance scenarios; it does not override that instruction.
+Use the [continuation guide](../../.docs/2026-10-27/200113-genesis-hacker-news-mvp-guide.md) for bounded prompts. Implement one stage at a time and commit verified components using repository rules. Do not add/modify automated test files without explicit authorization. Existing tests and manual/build checks are allowed.
+
+These five plans supersede the earlier two-applet product scope. Preserve `applets/youtube.com/` and `applets/x.com/` unchanged as inactive workspaces. They are excluded from the bundled package index and current prototype acceptance. Do not resume their features or migrate/delete their data. Historical reports remain historical evidence.
 
 ## 2. User-visible scope
 
-The user opens `android/` in Android Studio, performs documented one-time toolchain setup, selects a device, and presses Run. Genesis opens a native launcher listing two bundled applets.
+Android Studio Run opens a native launcher with one applet, `Hacker News with Genesis bookmarks`. Its source is `https://news.ycombinator.com/`; its package ID is `hn-bookmarks`.
 
-- YouTube opens the ordinary mobile website with Shorts navigation, shelves and identifiable Shorts cards suppressed. Direct and internal Shorts routes are blocked. Regular videos use the original player.
-- X opens the ordinary website with a separate Genesis Save control on supported posts. The user can save a post into zero, one or several categories, manage categories, and browse a local library. Genesis never calls X's bookmark action.
-- Native Home, Back, Reload and recovery controls remain available. An applet failure is visible, and the user can disable customization and open the ordinary site.
-- A creator edits code under `applets/`, rebuilds through Android Studio, and sees the updated customization without changing the platform. Installing an updated APK must preserve local bookmarks.
+- Browse HN's original public story lists and story discussion pages without signing in.
+- Add a separate `Save to Genesis` control to supported story rows. Save to zero, one or several local categories; edit or remove a saved item explicitly.
+- Create, rename and delete categories. Browse All, Uncategorized and category filters in a packaged local library that works offline for already saved metadata.
+- Open a saved HN discussion from the library. Preserve HN title links, pagination, comment trees, voting and favorite controls; never invoke account actions to save a Genesis bookmark.
+- Keep native Home, Back, Reload, library access and recovery available. An unsupported provider or failed applet remains explicit and offers ordinary browsing.
 
-Defaults are local device storage, one Genesis profile named `local`, and no synchronization. Bookmarks are shared across X account switches within that Genesis profile. Display this fact in the library settings; do not infer an X account identity that the runtime cannot reliably obtain.
+All Genesis data is local to profile `local` and this app installation. The prototype requires no website account, account detector, cloud service or HN API client. It stores bounded text/URLs, not full articles, comment trees or downloaded media.
 
 ## 3. Fixed architecture
 
-| Decision | Selected implementation |
+| Component | Selected implementation |
 | --- | --- |
-| Browser | Android System WebView with AndroidX WebKit 1.18.0 |
-| Android host | Native Rust controller behind a narrow Java Activity/WebView/JNI adapter |
-| Page runtime | Rust/Wasm in an isolated execution world, compiled with wasm-bindgen |
-| Creator language | TypeScript and CSS; React only where useful |
-| YouTube UI library | None. Plain TypeScript rules and CSS |
-| X UI library | React/React DOM for save dialog and bookmark library |
-| Rendering | Preserve the running source page; mount new UI into owned containers |
-| Local library | Applet-owned local HTML page in the single browser slot, served by WebViewAssetLoader |
-| Persistence | Rust `rusqlite`, generic document storage with atomic compare-and-set batches |
-| Bundler | esbuild, single IIFE for each injected entry; no external imports at runtime |
-| Package manager | npm workspaces and one root package-lock.json |
-| Creator distribution | Bundled applets rebuilt into the APK for MVP |
-| Source model | An applet instance owns a map of named source sessions; no global current website singleton |
-| MVP source budget | One live source WebView across the foreground app; other sessions retain definitions and last URLs |
+| Browser | Android System WebView and AndroidX WebKit 1.18.0 |
+| Host/controller | Rust under `android/native/`, narrow Java Activity/WebView/JNI adapters |
+| Page runtime | Rust/Wasm in the isolated `genesis.v1` execution world |
+| Creator code | TypeScript/CSS; plain DOM for per-story buttons, React for one dialog and the library |
+| Rendering | Preserve the live website; use owned styles and Shadow DOM hosts |
+| Storage | Native Rust `rusqlite`, generic document namespaces and atomic CAS batches |
+| Local page | WebViewAssetLoader, declared immutable package assets, no development server |
+| Build | npm workspaces, esbuild IIFEs with embedded Wasm, Gradle-generated assets/JNI libraries |
+| Resource budget | One live WebView; source/local-page switches recreate the view |
 
-Java contains platform plumbing and generic view rendering only. It must not contain YouTube URL rules, X selectors, category logic, persistence decisions or an independent app state machine. Rust owns these platform decisions, and applet TypeScript owns website customizations. Generated JavaScript/Wasm bindings and React remain necessary parts of the execution stack.
+Java handles generic platform plumbing. Rust owns host state, binding and storage policy. HN selectors, URL normalization, item extraction, category algorithms and custom UI belong in the HN applet. Native SQL must not know what an HN story/category is.
 
 ```mermaid
 flowchart TB
-    L[Native launcher and recovery controls] --> H[Native Rust host]
-    H --> S[Source session registry]
-    S --> W[One foreground WebView]
-    W --> P[Website and original DOM]
-    W --> R[Rust/Wasm page runtime]
-    R --> A[Applet TypeScript and optional React]
-    A --> E[Managed CSS and owned UI]
-    E --> P
-    A <-->|storage requests| H
-    H --> D[SQLite generic document store]
-    H --> B[Applet-owned bookmark library page]
+  Native[Native launcher and recovery] --> Host[Rust host controller]
+  Host --> View[One foreground WebView]
+  View --> Site[Original Hacker News DOM]
+  View --> Runtime[Isolated Rust/Wasm runtime]
+  Runtime --> Applet[HN TypeScript and owned React UI]
+  Applet --> Site
+  Applet <-->|bound storage RPC| Host
+  Host --> DB[Generic SQLite documents]
+  Host --> Library[Packaged local library in same browser slot]
 ```
 
-The local library uses the same browser slot, not a permanent second renderer. Switching between a source and a library, between applets, or between source IDs destroys the old WebView and creates a fresh one with the correct scripts. Retain the source's last committed URL. Cookies remain in the persistent WebView profile. Source back-stack entries and unsaved page state are not promised to survive this transition. Navigation within the same source uses its current WebView normally.
+## 4. Repository ownership and reuse
 
-## 4. Repository design
+| Location | Responsibility |
+| --- | --- |
+| `android/app/` | Existing Java host, resources, Gradle-generated assets and JNI registration |
+| `android/native/src/` | Existing controller, source registry, package validation/JNI; future generic storage worker |
+| `crates/contracts/` | Shared identities, envelopes and typed errors |
+| `crates/page-runtime/` | Wasm DOM scopes, watchers, effects and routes |
+| `packages/sdk/` | Thin creator-facing TypeScript wrappers |
+| `applets/news.ycombinator.com/` | HN manifest, qualification entry/inspector; future targets, extraction, repository, categories, Save dialog and library |
+| `tools/` | Existing build orchestration and bundled package selection/validation |
+| `applets/youtube.com/`, `applets/x.com/` | Preserved inactive code; no current delivery obligations |
 
-This is the target layout across all stages. Keep existing implementations and add later-stage modules only when needed; do not create empty files to match the tree.
+Reuse MVP-01/02's workspace/toolchain locks, real Wasm build, ABI outputs, launcher, nonce handshake, source/page loader, qualification effect lifecycle, inspector and recovery paths. Do not replace the running browser or rebuild these components. The current qualification entries explicitly lack bookmark operations. No placeholder persistence may be presented as durable storage.
 
-```text
-genesis/
-  Cargo.toml                       # workspace
-  Cargo.lock
-  rust-toolchain.toml
-  package.json                     # npm workspaces and commands
-  package-lock.json
-  tsconfig.base.json
-  .nvmrc
-  android/                         # open THIS directory in Android Studio
-    settings.gradle.kts
-    build.gradle.kts
-    gradle.properties
-    gradle/libs.versions.toml
-    gradle/wrapper/
-    gradlew
-    gradlew.bat
-    local.properties               # ignored, machine paths only
-    app/
-      build.gradle.kts
-      src/main/AndroidManifest.xml
-      src/main/java/app/nirvana/genesis/
-        MainActivity.java
-        NativeBridge.java
-        BrowserAdapter.java
-        HostViews.java
-      src/main/res/
-      build/generated/genesis/     # ignored generated assets and JNI libraries
-    native/
-      Cargo.toml
-      src/lib.rs                   # JNI boundary
-      src/controller.rs            # HostState and host events
-      src/browser.rs               # generic browser commands
-      src/sources.rs               # source sessions and view bindings
-      src/packages.rs              # bundled package validation
-      src/storage.rs               # generic SQLite document transactions
-      src/recovery.rs
-  crates/
-    contracts/                     # pure Rust wire types, identities, errors
-    page-runtime/                  # Rust/Wasm DOM and lifecycle implementation
-  packages/
-    sdk/                           # small TS facade over Rust exports
-      src/{index,protocol,storage,source,ui}.ts
-  applets/
-    youtube.com/
-      applet.json
-      package.json
-      tsconfig.json
-      src/{main,targets,shorts,routes}.ts
-      src/styles.css
-    x.com/
-      applet.json
-      package.json
-      tsconfig.json
-      src/main.tsx
-      src/library.tsx
-      src/{targets,extract-post,post-url,repository,categories}.ts
-      src/components/
-      src/styles.css
-      src/library.css
-  tools/
-    build.mjs                      # Node orchestration, no site behavior
-    check-packages.mjs
-  .plans/
-  .research/
-```
+## 5. Source and document lifecycle
 
-Keep Android-specific Rust under `android/native/`. Shared Rust contracts and page runtime belong in `crates/`. All YouTube/X selectors, feature rules, bookmark/category algorithms and custom UI belong in their respective `applets/` directories. Generic storage code must not know what a tweet or category is.
+Keep source definitions as an array, keyed by `(instanceId, sourceId)`, even with one bundled HN source named `primary`. Source DOM handles are valid only for the current document. Source/local-page transitions retire the old binding, destroy its view and recreate destination-specific scripts. Retain the last committed URL; history, forms and DOM handles are not restoration guarantees.
 
-Start with three Rust crates: `genesis-contracts`, `genesis-page-runtime`, and `genesis-android`. Avoid one crate per file. Use focused modules inside those crates. Do not add a separate service, repository factory, dependency-injection framework or event bus where a struct and explicit method suffice.
-
-## 5. Hybrid applets without premature multi-tab machinery
-
-Every manifest uses `sources: [...]`, even when it has one source. Every source has an ID, start URL, origin allowlist and injected entry. A future hybrid package can declare `youtube` and `x`, import shared applet modules, and have its own aggregate UI and data namespace.
-
-The host keys sessions by `(instanceId, sourceId)`. A live DOM handle is valid only inside its source's current document. The SDK exposes an asynchronous `sources.open(sourceId, url?)` operation; code must not assume that opening a source leaves the previous document alive. In the MVP it switches the one available view.
-
-Reserve a versioned observation topic contract for later cross-source records. Do not implement a fake synchronous cross-tab DOM API. A later multi-view scheduler can replace the one-view budget while retaining source IDs, document identities, package format and storage namespaces. Concurrently fresh multi-source data remains future work and requires new lifecycle/resource evidence.
-
-The host must accept multiple source definitions structurally and route a requested source by ID. This is the concrete extension point. It does not require shipping a third hybrid applet in this MVP.
+Multiple source definitions remain a structural extension point in the generic host. Do not ship a hybrid applet, simultaneous renderers, cross-tab DOM API or background automation for this prototype.
 
 ## 6. Scope exclusions
 
-Do not implement a Chromium fork, native UI reconstruction of entire websites, a DOM mirror, a custom virtual DOM, general server API integrations, cloud synchronization, a package marketplace, on-phone npm builds, arbitrary ZIP installation, or background automation. Do not port the Bonsai application wholesale.
+No YouTube filtering, X integration, HN comment bookmarking, account login/retention experiments, HN favorites synchronization, voting automation, API feed reconstruction, cloud sync, marketplace, arbitrary package installation or browser fork. Jobs, user profiles, search results and individual comment permalinks are outside required bookmark coverage. Unsupported layouts remain visible and receive no guessed Save identity.
 
-Retain normal login and original media interaction where WebView supports them. Follow the browser/session contract below. Dedicated sign-in and session-retention verification is user-deferred and is not a current implementation or release gate.
+Existing native fullscreen/media support is preserved, but media/playback gates are not requirements of this text-based HN prototype. Do not require signing into any website to finish it.
 
-## 7. Fixed choices versus empirical work
+## 7. Qualification and stop conditions
 
-Architecture, module ownership, APIs, data semantics and build structure are fixed by this set. The exact live website selectors and provider compatibility still require inspection on the chosen device. No document can responsibly manufacture those facts.
+The selected world-aware injection, bridge and navigation APIs remain required. The last observed emulator provider lacked `JS_INJECTION_IN_FRAME_AND_WORLD` and `NAVIGATION_LISTENER`. Switching to HN removes login dependence; it does not supply missing browser APIs. Check actual provider flags, then prove the HN document/realm contract before MVP-03. Do not change worlds, relax origins, simulate Wasm success or change engines to bypass a failed gate.
 
-If a selector fails, repair its applet target module. If required isolated-world Wasm loading fails, stop at the qualification gate with the exact CSP/provider result. Do not silently move the runtime to JavaScript, switch to page-world execution, relax origin rules, or start a browser fork.
+Public HTML inspection supports candidate HN selectors only. Actual Android isolated-world startup, twenty fresh-document cycles, local-page activation and native recovery still need HN evidence. Label emulator and physical-device results separately.
 
 ## 8. Completion definition
 
-The MVP is complete when Android Studio Run builds the project after one-time setup; both applets work on a physical Android device; the documented Shorts paths are blocked; categorized Genesis bookmarks persist independently of X; local library operations work offline; and native recovery handles a failed applet. The final delivery report must name unsupported routes, account flows and devices.
-
-Only recorded acceptance evidence establishes completion. Implemented scaffolding does not verify a stage.
+The prototype is ready when the documented build runs; HN story Save/edit/remove and category operations work on the named physical Android device; the offline local library and update/restart persistence pass; original HN navigation remains usable; and native recovery works. Every non-deferred gate must have evidence. No successful login experiment is required.
 
 ## 9. Browser and session contract
 
-This section is authoritative for authentication and session semantics across all five plans. It incorporates the user's answers during MVP-02.
-
-Users sign in to their own existing accounts directly on the original website inside Genesis. There is no shared Genesis-operated account, agent account, native credential form or central authentication backend. Genesis must not read, export, log, synchronize or request credentials, cookies or authentication tokens. Applets have no authentication API.
+This section is authoritative across all five plans. HN bookmarking uses public pages and native local storage. Authentication is outside this prototype. Do not request website credentials or account/device access for login verification.
 
 | State | Owner and lifetime |
 | --- | --- |
-| Website login | The website and Genesis's default persistent WebView profile manage cookies and origin-scoped website storage. The website controls expiry, logout and reauthentication. |
-| Browser profile | One profile within this installed Genesis app. Views of the same website use that profile; source IDs and applet IDs do not create separate website accounts. This does not share accounts between users/devices or inherit Chrome's profile. |
-| Tab state | DOM, history, unsaved forms and per-tab `sessionStorage` belong to the live view. The one-view scheduler replaces that view on source/applet/local-page switches; it does not promise to restore these values. |
-| Native `SourceSession` / `SessionSnapshot` | Source definitions, last URLs, lifecycle and navigation restoration metadata. These are not website login sessions or credential stores. |
-| Genesis applet data | The planned SQLite namespace is `(profileId: local, appletId)`. Bookmarks/settings survive website logout or account changes and remain local to this installation. No account detection or synchronization is required. |
+| Website cookies/storage | WebView's existing persistent default profile and the website; keep enabled and preserve across view recreation. No credential bridge or Chrome-cookie import. |
+| Tab state | The live view owns DOM, history and `sessionStorage`; replacement may discard them. |
+| Native `SourceSession` / `SessionSnapshot` | Navigation definitions, URLs and lifecycle metadata; never a credential store. |
+| Genesis bookmarks | Planned SQLite namespace `(local, hn-bookmarks)`, independent of website cookies or account identity. |
 
-Home, source switches, ordinary-site recovery, renderer recreation and APK updates must not explicitly clear browsing data. Update with the same application ID and compatible signing identity; uninstalling or clearing app data removes local persistence. Cookie flushing does not make sessions permanent. Do not copy `sessionStorage` or cookies into native snapshots to simulate tab restoration. See [Android CookieManager](https://developer.android.com/reference/android/webkit/CookieManager) and [sessionStorage lifetime](https://developer.mozilla.org/en-US/docs/Web/API/Window/sessionStorage).
-
-"Like a browser" specifies who owns authentication. It does not promise every Chrome feature or sign-in flow. Chrome sign-in is not inherited, new-window browsing remains outside this MVP, and embedded-browser restrictions must not be bypassed. Keep source-origin injection restrictions independent of ordinary website navigation.
-
-Dedicated real-account sign-in, logout/account-switch and session-retention verification is deferred by the user and nonblocking, including for release. Record it as deferred, never passed. Do not request credentials, sign-in or a device solely for those checks unless the user reopens them. Feature behavior still needs actual evidence on accessible page variants; an unseen X feed is not a verified Save integration.
-
-Required provider APIs and physical-device injection, media and recovery checks remain separate gates. The latest provider result still blocks MVP-02 and progression to MVP-03. A browser-managed session does not supply missing injection capabilities.
+Home, ordinary-site recovery, source/library switches and renderer recovery must not clear browser data or applet data. Install updates with the same application ID and compatible signing; uninstall/app-data clearing removes local persistence. Preserve earlier applet data if present. Session expiry follows browser/site rules. Future authentication work needs its own scope; it is not a prerequisite for this prototype.

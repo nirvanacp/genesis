@@ -1,6 +1,6 @@
 # Genesis delivery and verification plan
 
-Created 27 October 2026, Asia/Kolkata. Scope: execution of the [Genesis MVP implementation plan](150238-genesis-mvp-implementation-plan.md). MVP-01 is verified on the emulator. MVP-02 implementation is present, but qualification is blocked on missing provider APIs; later stages remain pending. Numerical gates require actual evidence, not inferred success.
+Created 27 October 2026, Asia/Kolkata. Scope: the single Hacker News bookmarking prototype in the [Genesis MVP implementation plan](150238-genesis-mvp-implementation-plan.md). MVP-01 is verified on the emulator. MVP-02 implementation is present, but qualification is blocked on missing provider APIs; later stages remain pending. Numerical gates require actual evidence, not inferred success.
 
 ## 1. Execution rules
 
@@ -10,7 +10,7 @@ At the start of each implementation session, read root/nested AGENTS instruction
 
 Do not create or modify automated test files without the user's explicit request for test coverage. Existing tests, compilation, linting, package validation and manual/device verification are allowed. If automated coverage is later authorized, prioritize source/document identity, CAS storage and virtualized-node cases. Do not silently create a separate test project as part of this plan.
 
-For each stage, record `pending`, `in_progress`, `blocked` or `verified`, with files changed, commands and actual outcomes. Record explicitly postponed checks as `deferred`. A deferred check is not passed, but does not block completion of the remaining required stage gates. Dedicated authentication and session-retention verification is deferred by the user; do not treat lack of a login experiment as a stage blocker. Independent physical-device or provider failures remain unverified. Keep implementation notes in a correctly timestamped document under `.reports/` when a saved delivery report is requested; otherwise provide the status in the implementation response.
+For each stage, record `pending`, `in_progress`, `blocked` or `verified`, with files changed, commands and actual outcomes. Record explicitly postponed checks as `deferred`. A deferred check is not passed, but does not block completion of the remaining required stage gates. Authentication/session-retention experiments are outside this public HN prototype; do not request them as stage prerequisites. Independent physical-device or provider failures remain unverified. Keep implementation notes in a correctly timestamped document under `.reports/` when a saved delivery report is requested; otherwise provide the status in the implementation response.
 
 ## 2. MVP-01: Android Studio and reproducible builds
 
@@ -35,33 +35,25 @@ Verify generated assets and ABI libraries are inside the APK. Verify a second un
 
 Exit: launcher and ordinary browsing run on an emulator or device, native Back/Reload/Home respond, and the native library is genuinely executing. This does not yet pass applet functionality.
 
-## 3. MVP-02: Prove the real browser contract
+## 3. MVP-02: Prove the public Hacker News browser contract
 
-Status: implemented, blocked on provider qualification. Reuse the current host/bootstrap and finish the missing evidence; do not rebuild MVP-01. [Recorded evidence](../../.reports/2026-10-27/182114-genesis-mvp02-qualification-report.md).
+Dependencies: MVP-01. Status: host/bootstrap implemented; HN target added; actual HN realm qualification pending. Earlier YouTube/X evidence is historical and must not be relabeled HN success.
 
-Dependencies: MVP-01.
-
-Implement isolated-world registration, the nonce challenge handshake, embedded-Wasm loading, one managed style, one owned mount and native loading/error presentation. Implement source/page identities before exposing storage.
-
-Inspect the chosen real YouTube and X variants using the actual app browser. Add a debug-only inspector that can report selected markup, URL, feature flags and package/runtime status; do not depend on it for production execution. If CDP is used during development, repeat the workflow with debugging disabled.
-
-Required evidence:
+Bundle only `hn-bookmarks` with source `primary`, its qualification inspector and packaged React library page. Preserve earlier applet source directories but omit their packages from the generated index. Reuse isolated-world registration, nonce challenge, embedded Wasm, managed style/mount, native cover and source/page identities.
 
 | Experiment | Pass criterion |
 | --- | --- |
-| Navigate/reload supported source | 20/20 cycles bind only the current document and reach ready |
-| Wasm/creator/CSS loading | Each succeeds separately under the actual realm policy |
-| Local applet page | Loads fully from packaged assets without a development server |
-| X authentication | Deferred by the user. Normal browser-managed login is the selected behavior; dedicated sign-in/session-retention verification is not a current stage gate. |
-| YouTube playback | Original normal-video playback and fullscreen work before customization |
-| Unsupported provider | Native unsupported state, no crash or false active status |
-| Recovery | Retry/ordinary-site controls remain usable; creator failure retires customization; renderer loss recreates ordinary browsing with customization disabled. The timed repeated-recovery gate belongs to MVP-07. |
+| Public HN page | Original home/news, newest, Ask/Show and top-level item discussion load without sign-in |
+| Navigate/reload | 20/20 fresh-document cycles on the HN source reach ready and reject stale bindings |
+| Wasm/creator/CSS/mount | Each succeeds separately under actual isolated-realm policy |
+| Packaged local page | Activates fully from APK assets without a development server |
+| External title link and Back | Ordinary publisher browsing has no source bridge; returning to HN establishes its valid binding |
+| Unsupported provider | Explicit native unsupported state with usable ordinary-site recovery and no false ready |
+| Creator/renderer failure | Scope retires; native disable/retry or ordinary recovery remains usable |
 
-Use one physical Android device for the real-site result. Record Android version, ABI, provider package/version, locale, sign-in state and relevant page variant. Do not collect credentials in logs or fixtures.
+Use one physical Android device for the real-site qualification result. Record device/ABI/provider/locale and actual HN variant. Emulator results are useful but labeled separately. Inspect story versus comment targets through the debug-only structural inspector; no credentials or page-text dumps.
 
-The selected website selectors are discovered here and belong in the applets' target modules. Do not freeze guessed selectors as a public API.
-
-Stop conditions: isolated-world startup fails on the intended provider or ordinary YouTube playback fails. Dedicated authentication verification is deferred by the user and is not a stop condition for this work. Report the exact failure before implementing the applet feature layers. Do not replace X with static saved HTML or YouTube with an unrelated embedded player. A GeckoView experiment requires a deliberate plan revision, not an automatic architectural substitution by the implementing model.
+Stop if required world/navigation APIs are missing or isolated startup fails. The last observed provider lacks `JS_INJECTION_IN_FRAME_AND_WORLD` and `NAVIGATION_LISTENER`; recheck actual flags. Do not fall back to page-world injection, a different engine or static HTML to call this gate passed. Login and media are outside the revised prototype and are not MVP-02 gates. Do not start MVP-03 until required HN qualification passes.
 
 ## 4. MVP-03: Implement the reusable runtime and SDK
 
@@ -69,7 +61,7 @@ Dependencies: MVP-02.
 
 Complete `genesis-contracts`, Rust `targets`, `observations`, `effects`, `scopes` and route tracking modules, plus the thin SDK facade. Implement `watchElements`, styles, mounting, modal lifecycle, source/page navigation and generic navigation policy. Add native recovery and stale-callback rejection.
 
-Extend the existing manifest parser, generated index and checks in `tools/check-packages.mjs` for the full navigation contract, including query-value rules. Paths, entries, origins, capabilities, references and duplicate IDs already have validation. Keep the working root type/package commands and nonce/generation protections.
+Retain the existing manifest parser, generated index and checks in `tools/check-packages.mjs`; complete generic source/page navigation validation where needed. HN declares no deny rules; dynamic query-value policies are outside this prototype. Paths, entries, origins, capabilities, references and duplicate IDs already have validation. Keep the working root type/package commands and nonce/generation protections.
 
 Verification scenarios: target absent then present; target replaced; one element reused for a different content key; duplicate mount attempt; route change during a pending callback; callback from a destroyed view; Back/Forward/BFCache; app background/resume; Activity recreation; creator exception; repeated host removal; and deliberate renderer nonresponse with native recovery.
 
@@ -83,56 +75,49 @@ Dependencies: MVP-03.
 
 Implement SQLite schema initialization, generic get/list/commit, bounded worker queue, typed errors and storage notifications. Reuse the MVP-02 WebViewAssetLoader mapping and source/page transitions; expose generic storage to their bound contexts. Do not build a second local-page loader.
 
-Implement JSON validation and all CAS checks before applying writes. Use a transaction for each commit batch. Keep namespace identity host-derived. Do not add X tables, SQL field names or native category actions.
+Implement JSON validation and all CAS checks before applying writes. Use a transaction for each commit batch. Keep namespace identity host-derived. Do not add HN tables, SQL field names or native category actions.
 
 Verification scenarios: put/get/list/delete; CAS conflict; failed batch leaves no partial writes; deletion/recreation gets a fresh revision; payload/queue limit; document closes before reply; app process ends after a committed write; APK update; and offline local page reopening.
 
 Exit: persisted data survives app restart and reinstall-as-update, old replies cannot reach a new document, and failed transactions do not acknowledge success. Uninstall/app-data clearing are destructive and outside persistence guarantees. Do not use uninstall as a routine build/deploy step once real data exists.
 
-## 6. MVP-05: YouTube Shorts blocking
+## 6. MVP-05: Hacker News extraction and story Save
 
-Dependencies: MVP-03, with the platform gate already passed. It can be completed before X storage UI work, but verify the shared runtime first.
+Dependencies: verified MVP-04, which includes the shared runtime. This revised stage replaces the retired filtering stage.
 
-Implement `applets/youtube.com/` exactly as the [applet plan](150238-genesis-youtube-x-applets-plan.md) specifies. Register URL policies from the manifest, managed styles and positive classifications. Add reasons to diagnostics for each hidden card and blocked route.
+Implement `item-url.ts`, qualified story/metadata targets, immutable extraction and the bookmark/order repository in `applets/news.ycombinator.com/`. Add plain-DOM owned Save controls and one React dialog. Start with uncategorized saving; MVP-06 adds category management/library filters. Keep the final record schema from the [HN applet plan](150238-genesis-hacker-news-applet-plan.md) so no destructive migration is needed.
 
-Run the full surface/navigation matrix: home, search, subscriptions, channel Shorts tab, bottom/side navigation, direct URL, redirect, SPA transition, browser history, delayed insertion and virtualized reuse. Verify a normal video with a Shorts link in its description remains visible. Verify a known Short ID through a normal watch URL is blocked while that ID remains in the active deny set.
+Verify external-link stories and self-posts on home/news, newest, Ask, Show, pagination and item discussion pages. Exclude comment rows, jobs and ambiguous identities. Verify list/detail duplicate saves, missing metadata, replaced/reused nodes, cancellation, edit/remove, stale CAS conflicts and uncertain writes. Original title/comment/vote/favorite controls remain intact and no account action is invoked.
 
-Exit: no supported Shorts route remains playable, identifiable Shorts surfaces are suppressed after content updates, and ordinary player controls still work. Record transient flashes or audio separately. No blanket "all Shorts everywhere" claim is permitted from link hiding alone.
+Exit: real public HN pages save/edit/remove correct story records durably without login; duplicate controls/identities are absent; failed writes show no false success. Do not use synthetic records as proof of real extraction.
 
-When a page variant is unsupported, record it and show degraded status. Do not hide the whole feed to improve the apparent blocking rate.
+## 7. MVP-06: Categories and offline bookmark library
 
-## 7. MVP-06: X independent categorized bookmarks
+Dependencies: verified MVP-05 and its generic storage/runtime prerequisites.
 
-Dependencies: MVP-04 and the non-deferred platform gates from MVP-02. X uses the user's ordinary browser session when available; dedicated authentication qualification is not a prerequisite.
-
-Implement primary-post extraction, plain-DOM feed Save controls, one React save dialog, the applet repository/category algorithms and the React library page. Keep bookmark ordering and category-name indexes in generic applet storage.
-
-Acceptance matrix:
+Implement category algorithms, the save dialog's category selection, React library and native manifest-driven launcher library access. Reuse the existing local-page loader and navigation contract. No source page or network connection is required to open saved metadata.
 
 | Scenario | Required result |
 | --- | --- |
-| Save normal or media-only post | Correct primary post ID and canonical URL |
-| Save post containing a quote | Saves the selected outer post, not the quote |
-| Recycled timeline element | New control identity; no stale metadata written |
-| Save with no categories | Appears in All and Uncategorized |
-| Save with several categories | Appears under each selected active category |
-| Duplicate category name | Clear conflict; no duplicate normalized entry |
+| Zero/one/multiple categories | Correct All/Uncategorized/category membership |
+| Reserved or duplicate normalized name | Clear conflict; no duplicate index |
 | Rename category | Existing memberships retained |
-| Delete last category of a bookmark | Bookmark remains and appears in Uncategorized |
-| Edit in a stale dialog | CAS conflict with reload/retry, no silent lost update |
-| Cancel dialog | No bookmark/category membership change |
-| Write failure/timeout | No false success; reread resolves uncertain commit |
-| Offline library and app restart | Saved data remains usable |
-| Account-independent library | Storage keys contain only Genesis profile/applet identity; explain local scope. The live website account-switch experiment is deferred with authentication verification. |
-| Existing X bookmark control | X's original behavior/state remains independent |
+| Delete a category | Bookmarks retained; no remaining active categories means Uncategorized |
+| Stale dialog or uncertain commit | CAS conflict/reread; no silent lost update or false success |
+| Cancel bookmark edit | No membership change; explicit category creation remains independently committed |
+| Sparse category pagination | Correct next cursor, no skipped/duplicated items; progress/cancellation |
+| Source and library state | Save/edit/remove updates consistent views through notifications |
+| Offline launcher/menu entry | Library opens without first loading HN and shows local records |
+| Open discussion | Returns to the correct HN item and valid source context |
+| Restart/install-as-update | Saved data retained; no credentials/account identity required |
 
-Exit: the user can complete save, categorize, browse, edit, delete-category and open-original flows without the development laptop. Do not count a working local library as proof of feed extraction. Record any unobserved feed feature cases separately. Dedicated sign-in and session-retention verification remains deferred by the user and does not become an account gate for implementation.
+Exit: save, categorize, manage, browse, remove and Open discussion work together on the named device. The library explains that storage is local to Genesis. Authentication and media tests are outside scope.
 
 ## 8. MVP-07: Integration, device quality and handoff
 
 Dependencies: all earlier stages.
 
-Run both applets in alternation; open the X library while offline; return to the source; rotate; background/resume; recover from creator failure; and install an updated APK over a populated database. Ensure applet settings and saved data do not leak between namespaces.
+Alternate HN source and library; open the library from the launcher while offline; return to the source; rotate; background/resume; recover from creator failure; and install an updated APK over a populated database. Ensure applet settings and saved data do not leak between namespaces.
 
 Proposed performance checks on the named physical device:
 
@@ -142,13 +127,13 @@ Proposed performance checks on the named physical device:
 | UI response | Save dialog/category selection to displayed response, p95 <=100 ms excluding durable-save acknowledgement |
 | Managed runtime batch | p95 <=4 ms; report worst cases and total website/frame cost separately |
 | Local save | Submit to acknowledged SQLite commit, p95 <=250 ms for normal records over 100 operations |
-| Unfiltered library first page | First 20 entries from 500 saved bookmarks, target <=1 s on warm storage |
+| Unfiltered library first page | First 20 entries from 500 saved HN bookmarks, target <=1 s on warm storage |
 | Filtered library | Report scanned records and duration; no constant-time promise for rare categories |
 | Recovery | Native disable to usable ordinary page on a controlled local route, <=5 s in 20/20 runs |
 
 Use one monotonic clock per measured interval. Do not call a DOM update acknowledgement a measured painted frame. If a threshold fails, profile and fix the observed bottleneck before changing the architecture. Report network time separately from local runtime cost.
 
-Measure process memory for ordinary browsing, YouTube customization and X with populated bookmarks, counting shared renderer memory once. Report supported source budget as one live view. Do not extrapolate a safe multi-tab count without measurement.
+Measure process memory for ordinary HN browsing, HN with Save controls and the populated local library, counting shared renderer memory once. Report supported source budget as one live view. Do not extrapolate a safe multi-tab count without measurement.
 
 Run formatting/type/package/Android lint/build checks appropriate to the changed files. At minimum:
 
@@ -168,14 +153,8 @@ The build performs native cross-compilation. Add target-specific clippy executio
 
 Final handoff must include the setup guide, actual build commands, exact tool/provider versions, supported routes, remaining limitations, data persistence semantics, and the status of every acceptance gate. Generated setup/verification documents follow the repository's dated `.docs`/`.reports` rules. Link the setup guide from an appropriate entry point without rewriting unrelated research.
 
-## 9. Continuation and deferred checks
+## 9. Continuation and historical evidence
 
-Use the [remaining implementation guide](../../.docs/2026-10-27/190156-genesis-remaining-mvp-guide.md) for bounded prompts and component order. Its substeps divide the existing stages; they do not add requirements or permit bypassing a failed gate.
+Use the [HN continuation guide](../../.docs/2026-10-27/200113-genesis-hacker-news-mvp-guide.md) for ordered prompts. Apply the [browser/session contract](150238-genesis-mvp-implementation-plan.md#9-browser-and-session-contract). Login is outside the prototype; public HN feature evidence and physical-device isolation/recovery remain required.
 
-Apply the [browser/session contract](150238-genesis-mvp-implementation-plan.md#9-browser-and-session-contract). Dedicated real-account sign-in, logout/account-switch and session-retention experiments remain user-deferred and nonblocking. Do not request sign-in or a device for those checks. If the user reopens them, verify retention after reload, Home/source reopening, restart and install-as-update, without collecting credentials. Keep those results separate from applet-data persistence and feature evidence.
-
-A real accessible feed is still needed to qualify feed extraction. If a required feature cannot be observed, record that limitation and do not claim the whole feature verified. Deferring authentication does not authorize replacing a website with static HTML. Physical-device injection, media and recovery requirements remain in force. Continue no further than MVP-02 while its non-deferred platform gates remain pending.
-
-## Current MVP-02 evidence
-
-See [182114-genesis-mvp02-qualification-report.md](../../.reports/2026-10-27/182114-genesis-mvp02-qualification-report.md) for the provider flags, passed emulator checks and remaining gates. The actual provider lacks isolated-world injection and navigation-listener support. MVP-02 remains blocked, so MVP-03 must not start.
+The [earlier MVP-02 report](../../.reports/2026-10-27/182114-genesis-mvp02-qualification-report.md) records the last provider flags and prior-site results. Preserve those observations without transferring their pass status to HN. The [HN retargeting report](../../.reports/2026-10-27/200924-genesis-hacker-news-retargeting-report.md) records code/build/launcher checks separately. Missing provider APIs still stop progression to MVP-03.
