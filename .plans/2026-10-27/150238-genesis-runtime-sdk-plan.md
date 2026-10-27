@@ -97,6 +97,8 @@ Methods in v1: `runtime.ready`, `runtime.error`, `route.changed`, `ui.modalState
 
 `sources.open` and `pages.open` acknowledge an accepted navigation request, not a completed page load. Send the acknowledgement before scheduling view replacement; the new view reports its own loading/ready/error state. Callers must not depend on code continuing after their document is retired.
 
+For MVP-02 qualification, the bound envelope also accepts `runtime.phase` with `{phase: "wasm"}` to report initialization progress without claiming ready. The debug host alone accepts `debug.inspection` responses to its explicit inspector request. These are named qualification diagnostics, not arbitrary native invocation or a public storage capability. Feature methods in the v1 table remain unavailable until their delivery stage.
+
 Use at most 32 pending page requests, 256 KiB encoded message size and a five-second RPC timeout. Validate before queueing. Timeouts do not prove that a storage transaction failed; the applet rereads the affected record. Never retry a write automatically. Deliver replies through the document-bound reply channel and drop them after retirement.
 
 Keep protocol types in `genesis-contracts` and mirrored TypeScript types in `packages/sdk/src/protocol.ts`. The Rust types and this method table are authoritative. Keep the small mirror explicit; do not build a code-generator framework for v1. Increment the protocol version for incompatible changes.

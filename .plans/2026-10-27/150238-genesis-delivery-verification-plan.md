@@ -1,6 +1,6 @@
 # Genesis delivery and verification plan
 
-Created 27 October 2026, Asia/Kolkata. Scope: execution of the [Genesis MVP implementation plan](150238-genesis-mvp-implementation-plan.md). Every stage is pending. Numerical gates are proposed acceptance criteria, not existing results.
+Created 27 October 2026, Asia/Kolkata. Scope: execution of the [Genesis MVP implementation plan](150238-genesis-mvp-implementation-plan.md). MVP-01 is verified on the emulator. MVP-02 implementation is present, but qualification is blocked on missing provider APIs; later stages remain pending. Numerical gates require actual evidence, not inferred success.
 
 ## 1. Execution rules
 
@@ -176,3 +176,7 @@ Implementation uses browser-managed sessions with user-owned existing website ac
 MVP-02 implementation and emulator qualification may proceed without a connected physical device. The X authentication gate requires user-completed login in the actual Genesis app and visible or user-confirmed access to its feed. If no private sign-in is performed, mark that gate pending, not failed or verified. A physical device is still required for the physical real-site release result. Emulator results must be labeled emulator results. Do not repeatedly request a device merely to implement the browser layer.
 
 After a successful private sign-in, verify session retention by reloading, returning Home and reopening the source, restarting the app and installing an update without uninstalling. Do not promise perpetual sign-in: websites can expire or revoke sessions. Record these checks independently from initial authentication and from Genesis applet-data persistence. Continue no further than MVP-02 while its required qualification gates remain pending.
+
+## Current MVP-02 evidence
+
+See [182114-genesis-mvp02-qualification-report.md](../../.reports/2026-10-27/182114-genesis-mvp02-qualification-report.md) for the provider flags, passed emulator checks and remaining gates. The actual provider lacks isolated-world injection and navigation-listener support. MVP-02 remains blocked, so MVP-03 must not start.
