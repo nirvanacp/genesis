@@ -1,13 +1,12 @@
 import { createRoot } from "react-dom/client";
+import { definePage } from "@genesis/sdk";
 
-// Packaged for build verification only. The host does not expose local pages yet.
-const mount = () => {
-  const container = document.createElement("main");
-  document.body.append(container);
-  createRoot(container).render(<p>Genesis MVP-01. Bookmark library is not implemented.</p>);
-};
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", mount, { once: true });
-} else {
-  mount();
-}
+export default definePage({
+  activate({ root }) {
+    const react = createRoot(root);
+    react.render(<section><h1>Genesis local page</h1>
+      <p>The packaged page and React entry loaded without a development server.</p>
+      <p>Bookmark storage and library operations are not implemented in MVP-02.</p></section>);
+    return () => react.unmount();
+  },
+});
