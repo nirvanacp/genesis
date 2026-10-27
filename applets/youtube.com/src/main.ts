@@ -1,4 +1,8 @@
-import { implementationStage } from "@genesis/sdk";
+import { defineApplet } from "@genesis/sdk";
+import { inspectTargets } from "./targets";
 
-// MVP-01 build entry only. Shorts filtering is not implemented or activated.
-console.info(`Genesis ${implementationStage}: YouTube customization is incomplete.`);
+// MVP-02 qualifies the browser contract; it does not suppress Shorts yet.
+export default defineApplet({
+  activate({ root }) { root.textContent = "Genesis · YouTube qualification"; },
+  inspect: inspectTargets,
+});
