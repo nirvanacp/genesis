@@ -1,7 +1,7 @@
-//! MVP-01 host and package contracts. Page RPC is intentionally not implemented.
+//! Shared package, host, and document qualification contracts. Storage RPC is not exposed.
 use serde::{Deserialize, Serialize};
 
-pub const IMPLEMENTATION_STAGE: &str = "MVP-01";
+pub const IMPLEMENTATION_STAGE: &str = "MVP-02";
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -74,11 +74,79 @@ pub struct Action {
     pub page_id: String,
 }
 
+// Host-issued identities never come from a website's claimed applet ID.
+macro_rules! identity {
+    ($($name:ident),+ $(,)?) => { $(
+        #[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Deserialize, Serialize)]
+        #[serde(transparent)]
+        pub struct $name(pub String);
+    )+ };
+}
+identity!(
+    AppletId,
+    InstanceId,
+    SourceId,
+    ViewId,
+    DocumentId,
+    DocumentNonce,
+    RequestId
+);
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(transparent)]
+pub struct ViewGeneration(pub u64);
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(transparent)]
+pub struct RouteRevision(pub u64);
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum ContextKind {
+    Source {
+        #[serde(rename = "sourceId")]
+        source_id: SourceId,
+    },
+    Page {
+        #[serde(rename = "pageId")]
+        page_id: String,
+    },
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExecutionContext {
+    pub instance_id: InstanceId,
+    pub applet_id: AppletId,
+    pub view_id: ViewId,
+    pub generation: ViewGeneration,
+    pub binding: ContextKind,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionSnapshot {
+    pub selection: Option<Selection>,
+    pub source_urls: std::collections::HashMap<String, String>,
+    pub disabled: Vec<AppletId>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Selection {
+    pub applet_id: AppletId,
+    pub source_id: SourceId,
+    pub page_id: Option<String>,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum HostEvent {
     Attach {
         index: PackageIndex,
+        #[serde(default)]
+        debug: bool,
+        restore: Option<SessionSnapshot>,
     },
     Open {
         #[serde(rename = "appletId")]
@@ -86,21 +154,62 @@ pub enum HostEvent {
         #[serde(rename = "sourceId")]
         source_id: String,
     },
+    OpenPage {
+        #[serde(rename = "pageId")]
+        page_id: String,
+    },
     Home,
     Back {
         #[serde(rename = "canGoBack")]
         can_go_back: bool,
     },
     Reload,
+    Retry,
+    Ordinary,
+    Inspect,
+    Qualify,
+    DebugFailure,
+    DebugTerminate,
+    SaveSession,
+    Suspended,
+    Resumed,
+    FullscreenRequested,
+    FullscreenClosed,
+    Capabilities {
+        generation: u64,
+        supported: bool,
+        details: String,
+    },
+    NavigationStarted {
+        generation: u64,
+        url: String,
+        #[serde(rename = "sameDocument")]
+        same_document: bool,
+    },
     Navigated {
         generation: u64,
         url: String,
+    },
+    PageMessage {
+        generation: u64,
+        channel: u64,
+        origin: String,
+        #[serde(rename = "mainFrame")]
+        main_frame: bool,
+        message: String,
+    },
+    Deadline {
+        generation: u64,
+        epoch: u64,
     },
     LoadFailed {
         generation: u64,
         message: String,
     },
     RendererGone {
+        generation: u64,
+    },
+    RendererUnresponsive {
         generation: u64,
     },
     Detach,
@@ -115,6 +224,13 @@ pub enum HostCommand {
     },
     CreateView {
         generation: u64,
+        package: Box<Package>,
+        context: ExecutionContext,
+        origins: Vec<String>,
+        entry: String,
+        customized: bool,
+        #[serde(rename = "localAssets")]
+        local_assets: Vec<LocalAsset>,
     },
     DestroyView {
         generation: u64,
@@ -129,10 +245,50 @@ pub enum HostCommand {
     Reload {
         generation: u64,
     },
+    Presentation {
+        generation: u64,
+        state: String,
+        message: String,
+        actions: Vec<Action>,
+    },
+    Challenge {
+        generation: u64,
+        channel: u64,
+        nonce: DocumentNonce,
+        challenge: String,
+    },
+    ReplyToPage {
+        generation: u64,
+        channel: u64,
+        message: serde_json::Value,
+    },
+    ScheduleDeadline {
+        generation: u64,
+        epoch: u64,
+    },
+    TerminateRenderer {
+        generation: u64,
+    },
+    ShowFullscreen,
+    ExitFullscreen,
+    Diagnostics {
+        text: String,
+    },
+    RetainSession {
+        snapshot: SessionSnapshot,
+    },
     ShowError {
         message: String,
     },
     FinishActivity,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalAsset {
+    pub url_path: String,
+    pub asset_path: String,
+    pub sha256: String,
 }
 
 #[derive(Debug, Serialize)]

@@ -10,3 +10,4 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 wasm-bindgen.workspace = true
+web-sys = { version = "=0.3.106", features = ["Window", "Document", "Element", "HtmlElement", "Node", "ShadowRoot", "ShadowRootInit", "ShadowRootMode", "CssStyleDeclaration"] }
