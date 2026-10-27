@@ -173,8 +173,12 @@ pub enum HostEvent {
     SaveSession,
     Suspended,
     Resumed,
-    FullscreenRequested,
-    FullscreenClosed,
+    FullscreenRequested {
+        generation: u64,
+    },
+    FullscreenClosed {
+        generation: u64,
+    },
     Capabilities {
         generation: u64,
         supported: bool,
@@ -269,8 +273,12 @@ pub enum HostCommand {
     TerminateRenderer {
         generation: u64,
     },
-    ShowFullscreen,
-    ExitFullscreen,
+    ShowFullscreen {
+        generation: u64,
+    },
+    ExitFullscreen {
+        generation: u64,
+    },
     Diagnostics {
         text: String,
     },

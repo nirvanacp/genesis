@@ -1,5 +1,6 @@
 mod controller;
 mod packages;
+mod sources;
 
 use controller::HostState;
 use genesis_contracts::{HostCommand, HostEvent};
