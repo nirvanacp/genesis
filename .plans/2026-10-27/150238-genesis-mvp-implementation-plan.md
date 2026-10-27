@@ -39,7 +39,7 @@ Defaults are local device storage, one Genesis profile named `local`, and no syn
 | YouTube UI library | None. Plain TypeScript rules and CSS |
 | X UI library | React/React DOM for save dialog and bookmark library |
 | Rendering | Preserve the running source page; mount new UI into owned containers |
-| Local library | Applet-owned local HTML page in the same WebView, served by WebViewAssetLoader |
+| Local library | Applet-owned local HTML page in the single browser slot, served by WebViewAssetLoader |
 | Persistence | Rust `rusqlite`, generic document storage with atomic compare-and-set batches |
 | Bundler | esbuild, single IIFE for each injected entry; no external imports at runtime |
 | Package manager | npm workspaces and one root package-lock.json |
@@ -64,7 +64,7 @@ flowchart TB
     H --> B[Applet-owned bookmark library page]
 ```
 
-The local library reuses the view; it is not a permanent second browser renderer. Entering it retires the current source document and retains its URL. Returning recreates the source document with fresh bindings. Cookies remain in the WebView profile. Unsaved page state is not promised to survive this transition.
+The local library uses the same browser slot, not a permanent second renderer. Switching between a source and a library, between applets, or between source IDs destroys the old WebView and creates a fresh one with the correct scripts. Retain the source's last committed URL. Cookies remain in the persistent WebView profile. Source back-stack entries and unsaved page state are not promised to survive this transition. Navigation within the same source uses its current WebView normally.
 
 ## 4. Repository design
 
