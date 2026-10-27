@@ -2,13 +2,24 @@
   "name": "genesis",
   "version": "0.1.0",
   "private": true,
-  "workspaces": ["packages/sdk", "applets/youtube.com", "applets/x.com"],
-  "engines": { "node": "24.15.0", "npm": "11.14.1" },
+  "workspaces": [
+    "packages/sdk",
+    "applets/youtube.com",
+    "applets/x.com",
+    "applets/news.ycombinator.com"
+  ],
+  "engines": {
+    "node": "24.15.0",
+    "npm": "11.14.1"
+  },
   "packageManager": "npm@11.14.1",
   "scripts": {
     "typecheck": "npm run typecheck --workspaces",
     "check:packages": "node tools/check-packages.mjs",
     "build": "node tools/build.mjs --stage all --variant debug"
   },
-  "devDependencies": { "typescript": "7.0.2", "esbuild": "0.28.2" }
+  "devDependencies": {
+    "typescript": "7.0.2",
+    "esbuild": "0.28.2"
+  }
 }
