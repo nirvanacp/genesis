@@ -65,14 +65,10 @@ Prioritize code that is easy to read, understand, and maintain:
 
 ## Version control
 
-<!--
-- Never create a Git commit unless the user explicitly asks you to commit the changes.
--->
+When the user asks you to implement a plan, commit the resulting changes as part of the implementation unless the user explicitly asks you not to commit. A separate request to commit is not required.
 
-When the user asks you to implement a plan **and** commit the changes:
-
-1. Break the plan into logical steps when needed, and implement them in order.
-2. After completing and verifying each step, commit its changes in the affected repositories. Include only changes related to that step; do not commit unrelated work or repositories.
+1. Break the plan into multiple logical steps, organized by software component, and implement them in order.
+2. After completing and verifying each step, commit its changes in the affected repositories. Use separate commits for different components rather than combining the entire plan into one commit. Include only changes related to that step; do not commit unrelated work or repositories.
 3. Use the commit message format `feat/(_x): short message`. Replace `_x` with the relevant section, feature, or module name, such as `feat/(auth): add sign-in`.
 4. Use the email returned by `git config user.email` in each affected repository as the commit author email. Do not substitute another email address.
 5. Follow the coding philosophy above and the repository's existing architecture and design patterns.
