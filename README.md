@@ -1,5 +1,7 @@
 # Project Nirvana
 
+For the implemented MVP-01 Android build, see [Genesis Android setup and verification](.docs/2026-10-27/161510-genesis-android-setup.md). Site customization is not implemented yet.
+
 For the current proposed implementation, start with [Genesis live website customization](research/live-dom-customization/README.md). It describes incremental changes to the running website, a Rust runtime, JS/TS creator code, optional React UI, and the architecture, authoring workflow and build roadmap. This revises the earlier separate-source/result default. Runtime qualification is still pending.
 
 We're building a daily-driver on steroids. This project is trying to solve the following problems:
