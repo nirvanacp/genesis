@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "youtube-no-shorts",
+  "name": "YouTube without Shorts",
+  "dataSchemaVersion": 1,
+  "sources": [{
+    "id": "primary",
+    "startUrl": "https://www.youtube.com/",
+    "origins": ["https://www.youtube.com", "https://m.youtube.com", "https://youtube.com"],
+    "entry": "src/main.ts",
+    "navigationRules": [{ "id": "deny-shorts", "pathPrefix": "/shorts", "action": "block", "fallbackUrl": "https://www.youtube.com/" }]
+  }],
+  "pages": [],
+  "actions": [],
+  "capabilities": ["dom", "navigation-policy"]
+}
