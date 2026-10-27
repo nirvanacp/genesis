@@ -153,7 +153,7 @@ The host must accept multiple source definitions structurally and route a reques
 
 Do not implement a Chromium fork, native UI reconstruction of entire websites, a DOM mirror, a custom virtual DOM, general server API integrations, cloud synchronization, a package marketplace, on-phone npm builds, arbitrary ZIP installation, or background automation. Do not port the Bonsai application wholesale.
 
-Retain normal login and original media interaction where WebView supports them. Do not bypass embedded-browser authentication restrictions or assume that logging in through another browser establishes this WebView's session. Successful X authentication in the actual app is a release gate.
+Retain normal login and original media interaction where WebView supports them. Do not bypass embedded-browser authentication restrictions or assume that logging in through another browser establishes this WebView's session. Authentication is treated as ordinary browser-managed behavior. At the user's request, dedicated X sign-in and session-retention verification is deferred and is not a current implementation or release gate. This is a scope decision, not a claim that those checks passed.
 
 ## 7. Fixed choices versus empirical work
 
@@ -173,4 +173,4 @@ Users sign in to their own existing accounts directly in Genesis's source WebVie
 
 The WebView cookie profile is separate from Chrome and other browsers. A user's existing Chrome sign-in is not automatically inherited; sign in inside Genesis. This is browser-managed authentication, not an applet authentication API. Genesis's local applet data profile remains separate from website account identity.
 
-A connected physical device is an empirical qualification requirement, not an authentication implementation dependency or a request to share an account. Implementation and emulator checks may proceed without one. A user can complete sign-in privately on their own emulator/device; otherwise real-account login remains pending. Physical-device results remain pending until run on physical hardware. Neither an X login page nor an emulator pass satisfies the physical release gate.
+A connected physical device is an empirical qualification requirement, not an authentication implementation dependency or a request to share an account. Implementation and emulator checks may proceed without one. Users may sign in privately during normal browser use. Dedicated real-account login and session-retention checks are deferred by the user and do not block the current work or stage progression. Do not request a device or account access for authentication verification unless the user reopens that work. Physical-device results for injection, media and recovery remain pending until run on physical hardware; those independent requirements are unchanged.

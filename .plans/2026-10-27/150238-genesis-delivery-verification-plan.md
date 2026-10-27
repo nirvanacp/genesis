@@ -10,7 +10,7 @@ At the start of each implementation session, read root/nested AGENTS instruction
 
 Do not create or modify automated test files without the user's explicit request for test coverage. Existing tests, compilation, linting, package validation and manual/device verification are allowed. If automated coverage is later authorized, prioritize source/document identity, CAS storage and virtualized-node cases. Do not silently create a separate test project as part of this plan.
 
-For each stage, record `pending`, `in_progress`, `blocked` or `verified`, with files changed, commands and actual outcomes. A blocked physical-device or login check is not a verified stage. Keep implementation notes in a correctly timestamped document under `.reports/` when a saved delivery report is requested; otherwise provide the status in the implementation response.
+For each stage, record `pending`, `in_progress`, `blocked` or `verified`, with files changed, commands and actual outcomes. Record explicitly postponed checks as `deferred`. A deferred check is not passed, but does not block completion of the remaining required stage gates. Dedicated authentication and session-retention verification is deferred by the user; do not treat lack of a login experiment as a stage blocker. Independent physical-device or provider failures remain unverified. Keep implementation notes in a correctly timestamped document under `.reports/` when a saved delivery report is requested; otherwise provide the status in the implementation response.
 
 ## 2. MVP-01: Android Studio and reproducible builds
 
@@ -48,7 +48,7 @@ Required evidence:
 | Navigate/reload supported source | 20/20 cycles bind only the current document and reach ready |
 | Wasm/creator/CSS loading | Each succeeds separately under the actual realm policy |
 | Local applet page | Loads fully from packaged assets without a development server |
-| X authentication | An available user account can sign in through the actual app and reach its feed |
+| X authentication | Deferred by the user. Normal browser-managed login is the selected behavior; dedicated sign-in/session-retention verification is not a current stage gate. |
 | YouTube playback | Original normal-video playback and fullscreen work before customization |
 | Unsupported provider | Native unsupported state, no crash or false active status |
 
@@ -56,7 +56,7 @@ Use one physical Android device for the real-site result. Record Android version
 
 The selected website selectors are discovered here and belong in the applets' target modules. Do not freeze guessed selectors as a public API.
 
-Stop conditions: isolated-world startup fails on the intended provider, X cannot authenticate through this host, or ordinary YouTube playback fails. Report the exact failure before implementing the applet feature layers. Do not replace X with static saved HTML or YouTube with an unrelated embedded player. A GeckoView experiment requires a deliberate plan revision, not an automatic architectural substitution by the implementing model.
+Stop conditions: isolated-world startup fails on the intended provider or ordinary YouTube playback fails. Dedicated authentication verification is deferred by the user and is not a stop condition for this work. Report the exact failure before implementing the applet feature layers. Do not replace X with static saved HTML or YouTube with an unrelated embedded player. A GeckoView experiment requires a deliberate plan revision, not an automatic architectural substitution by the implementing model.
 
 ## 4. MVP-03: Implement the reusable runtime and SDK
 
@@ -98,7 +98,7 @@ When a page variant is unsupported, record it and show degraded status. Do not h
 
 ## 7. MVP-06: X independent categorized bookmarks
 
-Dependencies: MVP-04 and qualified X access from MVP-02.
+Dependencies: MVP-04 and the non-deferred platform gates from MVP-02. X uses the user's ordinary browser session when available; dedicated authentication qualification is not a prerequisite.
 
 Implement primary-post extraction, plain-DOM feed Save controls, one React save dialog, the applet repository/category algorithms and the React library page. Keep bookmark ordering and category-name indexes in generic applet storage.
 
@@ -121,7 +121,7 @@ Acceptance matrix:
 | X account switch | Local library retained with explicit profile scope |
 | Existing X bookmark control | X's original behavior/state remains independent |
 
-Exit: the user can complete save, categorize, browse, edit, delete-category and open-original flows without the development laptop. Do not count a working local library as a pass if feed extraction/authentication is broken.
+Exit: the user can complete save, categorize, browse, edit, delete-category and open-original flows without the development laptop. Do not count a working local library as proof of feed extraction. Record any unobserved feed feature cases separately. Dedicated sign-in and session-retention verification remains deferred by the user and does not become an account gate for implementation.
 
 ## 8. MVP-07: Integration, device quality and handoff
 
@@ -165,7 +165,7 @@ Final handoff must include the setup guide, actual build commands, exact tool/pr
 
 ## 9. Implementing-model handoff prompt
 
-> Implement the next unverified stage of the Genesis MVP plan. Read the root AGENTS.md and the five plan documents in this set first. Keep Android code under android/, site customization under applets/, and generic Rust page/runtime contracts in crates/. Follow the specified APIs and data model. Do not change engines, rendering architecture, storage model or creator language to get around a failed gate. Preserve unrelated changes. Do not create automated test files without an explicit request for coverage. Run the prescribed checks, distinguish passed checks from unavailable device/login checks, and report the next stage only after the current stage's acceptance conditions are met.
+> Implement the next unverified stage of the Genesis MVP plan. Read the root AGENTS.md and the five plan documents in this set first. Keep Android code under android/, site customization under applets/, and generic Rust page/runtime contracts in crates/. Follow the specified APIs and data model. Do not change engines, rendering architecture, storage model or creator language to get around a failed gate. Preserve unrelated changes. Do not create automated test files without an explicit request for coverage. Run the prescribed checks, distinguish passed checks from unavailable device checks and user-deferred authentication checks, and report the next stage only after the current stage's acceptance conditions are met.
 
 Use this as a bounded implementation instruction, not a request to scaffold every remaining stage in one unverified change.
 
@@ -173,9 +173,9 @@ Use this as a bounded implementation instruction, not a request to scaffold ever
 
 Implementation uses browser-managed sessions with user-owned existing website accounts. There is no shared account and no request for the user to send login credentials, cookies or tokens. The user enters credentials privately in Genesis's original website WebView. The persistent WebView profile is independent of Chrome; Chrome sign-in is not evidence of Genesis sign-in.
 
-MVP-02 implementation and emulator qualification may proceed without a connected physical device. The X authentication gate requires user-completed login in the actual Genesis app and visible or user-confirmed access to its feed. If no private sign-in is performed, mark that gate pending, not failed or verified. A physical device is still required for the physical real-site release result. Emulator results must be labeled emulator results. Do not repeatedly request a device merely to implement the browser layer.
+MVP-02 implementation and emulator qualification may proceed without a connected physical device. The user has explicitly deferred dedicated X sign-in and session-retention verification. Treat authentication as ordinary browser-managed behavior, record that verification as deferred, and do not request a sign-in or device connection for it. Its deferral does not block current implementation or stage progression and does not imply a successful authentication experiment. A physical device is still required for the physical real-site release result. Emulator results must be labeled emulator results. Do not repeatedly request a device merely to implement the browser layer.
 
-After a successful private sign-in, verify session retention by reloading, returning Home and reopening the source, restarting the app and installing an update without uninstalling. Do not promise perpetual sign-in: websites can expire or revoke sessions. Record these checks independently from initial authentication and from Genesis applet-data persistence. Continue no further than MVP-02 while its required qualification gates remain pending.
+If the user later reopens authentication verification, check session retention after their private sign-in by reloading, returning Home and reopening the source, restarting the app and installing an update without uninstalling. Do not promise perpetual sign-in: websites can expire or revoke sessions. Record these checks independently from initial authentication and from Genesis applet-data persistence. Continue no further than MVP-02 while its non-deferred platform qualification gates remain pending. Authentication verification does not contribute to that stop condition while deferred.
 
 ## Current MVP-02 evidence
 
