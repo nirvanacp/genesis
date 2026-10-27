@@ -3,7 +3,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const directories = ["applets/youtube.com", "applets/x.com"];
+// Only the current prototype is bundled. Earlier applet workspaces remain preserved.
+const directories = ["applets/news.ycombinator.com"];
 const identifier = /^[a-z][a-z0-9-]{0,63}$/;
 
 function requireValue(condition, message) {
