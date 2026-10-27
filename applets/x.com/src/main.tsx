@@ -1,4 +1,8 @@
-import { implementationStage } from "@genesis/sdk";
+import { defineApplet } from "@genesis/sdk";
+import { inspectTargets } from "./targets";
 
-// MVP-01 build entry only. Save controls and storage are not implemented.
-console.info(`Genesis ${implementationStage}: X customization is incomplete.`);
+// MVP-02 preserves the original site. Save controls and storage arrive later.
+export default defineApplet({
+  activate({ root }) { root.textContent = "Genesis · X qualification"; },
+  inspect: inspectTargets,
+});
