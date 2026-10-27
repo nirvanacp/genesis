@@ -67,7 +67,7 @@ async function assets(packages) {
     "--target", "web", "--out-dir", runtime, "--out-name", "genesis_page_runtime", "--no-typescript"]);
   const wasm = await readFile(path.join(runtime, "genesis_page_runtime_bg.wasm"));
   const { build } = await import("esbuild");
-  const index = { schemaVersion: 1, implementationStage: "MVP-01", packages: [] };
+  const index = { schemaVersion: 1, implementationStage: "MVP-02", packages: [] };
   const output = path.join(generated, "assets");
   await rm(output, { recursive: true, force: true });
   for (const { base, manifest: original } of packages) {
@@ -78,11 +78,10 @@ async function assets(packages) {
         const originalEntry = path.join(base, entry.entry);
         entry.entry = `${kind}/${entry.id}.js`;
         const runtimeImport = JSON.stringify(path.join(runtime, "genesis_page_runtime.js"));
-        const source = `import { initSync, implementation_stage } from ${runtimeImport};
-          import ${JSON.stringify(originalEntry)};
-          const bytes = Uint8Array.from(atob(${JSON.stringify(wasm.toString("base64"))}), c => c.charCodeAt(0));
-          initSync({ module: bytes });
-          console.info(implementation_stage());`;
+        const source = `import * as runtime from ${runtimeImport};
+          import entry from ${JSON.stringify(originalEntry)};
+          import { bootstrap } from "./packages/sdk/src/bootstrap.ts";
+          bootstrap(__GENESIS_BINDING__, ${JSON.stringify(wasm.toString("base64"))}, runtime, entry);`;
         const result = await build({
           stdin: { contents: source, resolveDir: root, sourcefile: `${original.id}-${entry.id}.js` },
           bundle: true, format: "iife", target: "es2022", platform: "browser", splitting: false,
@@ -95,7 +94,7 @@ async function assets(packages) {
         }
         files.set(entry.entry, result.outputFiles[0].contents);
         if (kind === "pages") {
-          files.set(`pages/${entry.id}/index.html`, Buffer.from(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${entry.id}</title></head><body><script src="../${entry.id}.js"></script></body></html>`));
+          files.set(`pages/${entry.id}/index.html`, Buffer.from(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${entry.id}</title></head><body><noscript>Genesis requires JavaScript for this local page.</noscript></body></html>`));
         }
       }
     }
