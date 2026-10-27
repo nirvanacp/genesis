@@ -87,7 +87,28 @@ impl HostState {
                             }
                         }
                     }
-                    if let Some(selection) = snapshot.selection {
+                    // An APK may retire a bundled applet while its old Activity state survives.
+                    // Restore only destinations still declared by the current package index.
+                    let selection = snapshot.selection.filter(|selection| {
+                        self.index.as_ref().is_some_and(|index| {
+                            index.packages.iter().any(|package| {
+                                package.manifest.id == selection.applet_id.0
+                                    && package
+                                        .manifest
+                                        .sources
+                                        .iter()
+                                        .any(|source| source.id == selection.source_id.0)
+                                    && selection.page_id.as_ref().is_none_or(|page_id| {
+                                        package
+                                            .manifest
+                                            .pages
+                                            .iter()
+                                            .any(|page| &page.id == page_id)
+                                    })
+                            })
+                        })
+                    });
+                    if let Some(selection) = selection {
                         self.open(selection, &mut commands)?;
                     } else {
                         commands.push(self.launcher());
