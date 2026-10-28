@@ -1,7 +1,7 @@
-//! Shared package, host, and document qualification contracts. Managed runtime/navigation contracts. Storage RPC is not yet exposed.
+//! Shared package, host, and document qualification contracts. Shared host, managed runtime/navigation and generic storage contracts.
 use serde::{Deserialize, Serialize};
 
-pub const IMPLEMENTATION_STAGE: &str = "MVP-03";
+pub const IMPLEMENTATION_STAGE: &str = "MVP-04";
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -183,6 +183,9 @@ pub enum HostEvent {
     Qualify,
     DebugFailure,
     DebugTerminate,
+    StorageCompleted {
+        completion: StorageCompletion,
+    },
     SaveSession,
     Suspended,
     Resumed,
@@ -305,6 +308,9 @@ pub enum HostCommand {
     ExitFullscreen {
         generation: u64,
     },
+    StorageJob {
+        job: StorageJob,
+    },
     Diagnostics {
         text: String,
     },
@@ -331,4 +337,72 @@ pub struct LauncherEntry {
     pub applet_id: String,
     pub source_id: String,
     pub label: String,
+}
+
+// Generic storage operations carry no website-specific fields. Namespace is host-issued.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(tag = "method", content = "params")]
+pub enum StorageOperation {
+    #[serde(rename = "storage.get")]
+    Get(StorageKey),
+    #[serde(rename = "storage.list")]
+    List(StorageList),
+    #[serde(rename = "storage.commit")]
+    Commit(StorageBatch),
+}
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct StorageKey {
+    pub collection: String,
+    pub key: String,
+}
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct StorageList {
+    pub collection: String,
+    pub after_key: Option<String>,
+    pub limit: usize,
+}
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct StorageCheck {
+    pub collection: String,
+    pub key: String,
+    pub expected_revision: Option<u64>,
+}
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct StoragePut {
+    pub collection: String,
+    pub key: String,
+    pub value: serde_json::Value,
+}
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct StorageBatch {
+    pub checks: Vec<StorageCheck>,
+    pub puts: Vec<StoragePut>,
+    pub deletes: Vec<StorageKey>,
+}
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct StorageJob {
+    pub generation: u64,
+    pub document_id: DocumentId,
+    pub channel: u64,
+    pub request_id: String,
+    pub applet_id: String,
+    pub data_schema_version: u32,
+    pub operation: StorageOperation,
+}
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct StorageCompletion {
+    pub generation: u64,
+    pub document_id: DocumentId,
+    pub channel: u64,
+    pub request_id: String,
+    pub applet_id: String,
+    pub response: serde_json::Value,
+    pub changed: Vec<StorageKey>,
 }

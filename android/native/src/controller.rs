@@ -390,6 +390,28 @@ impl HostState {
             E::FullscreenClosed { generation } if self.current(generation) => {
                 self.fullscreen = false
             }
+            E::StorageCompleted { completion } => {
+                if let Some(view) = &self.active
+                    && view.context.applet_id.0 == completion.applet_id
+                    && let Some(doc) = &view.document
+                {
+                    if view.context.generation.0 == completion.generation
+                        && doc.id == completion.document_id
+                        && doc.channel == completion.channel
+                    {
+                        commands.push(C::ReplyToPage {
+                            generation: completion.generation,
+                            channel: completion.channel,
+                            message: completion.response.clone(),
+                        });
+                    }
+                    if !completion.changed.is_empty() {
+                        commands.push(C::ReplyToPage { generation:view.context.generation.0,channel:doc.channel,
+                            message:json!({"type":"storage.changed","documentId":doc.id,"changes":completion.changed,
+                            "namespaceRevision":completion.response["result"]["namespaceRevision"]}) });
+                    }
+                }
+            }
             E::SaveSession => commands.push(C::RetainSession {
                 snapshot: self.snapshot(),
             }),
@@ -650,7 +672,7 @@ impl HostState {
             } else if view.ready {
                 self.present(
                     "ready",
-                    "MVP-03 · Managed runtime ready. Bookmark features remain incomplete.",
+                    "MVP-04 · Runtime ready; storage calls available. HN bookmark UI remains incomplete.",
                     commands,
                 );
             } else {
@@ -742,7 +764,7 @@ impl HostState {
                     })
                 })
                 .collect(),
-            status: "MVP-03 · Managed runtime. Bookmark storage is not implemented yet.".into(),
+            status: "MVP-04 · Durable storage. HN bookmark UI remains incomplete.".into(),
         }
     }
 
@@ -876,6 +898,21 @@ impl HostState {
                         if self.debug { trace(&mut self.startup_trace, "runtime error"); }
                         let reason=message["params"]["message"].as_str().unwrap_or("Unknown creator/runtime error");
                         let bounded:String=reason.chars().take(1024).collect();self.failure(&bounded,commands);
+                    }
+                    Some("storage.get") | Some("storage.list") | Some("storage.commit") => {
+                        let operation=serde_json::from_value::<StorageOperation>(json!({"method":message["method"],"params":message["params"]}));
+                        if !view.package.manifest.capabilities.iter().any(|c|c=="storage") {
+                            commands.push(C::ReplyToPage {generation,channel,message:json!({"v":1,"documentId":doc.id,"requestId":request,"ok":false,
+                                "error":{"code":"UNSUPPORTED","message":"Storage capability is not declared","retryable":false}})});
+                        } else {
+                            match operation.map_err(|e|crate::storage::StorageError{code:"INVALID_ARGUMENT",message:e.to_string()})
+                                .and_then(|op| {crate::storage::validate(&op)?;Ok(op)}) {
+                                Ok(operation)=>commands.push(C::StorageJob {job:StorageJob {generation,document_id:doc.id.clone(),channel,request_id:request.into(),
+                                    applet_id:view.context.applet_id.0.clone(),data_schema_version:view.package.manifest.data_schema_version,operation}}),
+                                Err(error)=>commands.push(C::ReplyToPage {generation,channel,message:json!({"v":1,"documentId":doc.id,"requestId":request,"ok":false,
+                                    "error":{"code":error.code,"message":error.message,"retryable":false}})}),
+                            }
+                        }
                     }
                     Some("route.changed") => {
                         let requested = message["params"]["url"].as_str();
