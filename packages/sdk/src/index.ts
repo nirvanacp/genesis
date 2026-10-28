@@ -6,3 +6,4 @@ export interface AppletEntry { activate(context: AppletContext): void | Dispose;
 export const defineApplet = (entry: AppletEntry): AppletEntry => entry;
 // Retain activate compatibility for preserved inactive applet workspaces.
 export const definePage = defineApplet;
+export type { AppletStorage, StoredDocument, StorageBatch, StorageCheck, StoragePut, StorageKey, StorageChange } from "./storage";

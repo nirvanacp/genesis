@@ -2,6 +2,7 @@ import type { BootstrapConfig, ExecutionContext, RuntimeScope } from "./protocol
 import { PageScope } from "./scope";
 import { ManagedRuntime } from "./runtime";
 import { RpcClient } from "./rpc";
+import type { StorageChange } from "./storage";
 import type { AppletEntry } from "./index";
 import qualificationCss from "./qualification.css";
 
@@ -83,6 +84,7 @@ export function bootstrap(config: BootstrapConfig, entry: AppletEntry): void {
       } else if (message.documentId === documentId && documentId) {
         if (message.type === "context.retired") { cleanup(); documentId = null; }
         client?.receive(message);
+        if (message.type === "storage.changed") runtime?.storageChanged(message as unknown as StorageChange);
         if (message.type === "route.changed") runtime?.route();
         if (message.type === "ui.dismissModal") runtime?.dismissModal();
         if (message.type === "host.suspended") cleanup();

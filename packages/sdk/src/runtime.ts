@@ -1,3 +1,4 @@
+import { storageApi, type AppletStorage, type StorageChange } from "./storage";
 import type { ExecutionContext } from "./protocol";
 
 export type Dispose = () => void;
@@ -41,6 +42,7 @@ export interface AppletContext {
   navigation: { onChange(callback: (url: string) => void): Dispose };
   sources: { open(sourceId: string, url?: string): Promise<void> };
   pages: { open(pageId: string): Promise<void> };
+  storage: AppletStorage;
   onDispose(callback: Dispose): void;
 }
 interface Watcher {
@@ -70,6 +72,7 @@ export class ManagedRuntime {
   private readonly watchers = new Map<string, Watcher>();
   private readonly effects = new Map<string, Effect>();
   private readonly disposers = new Set<Dispose>();
+  private readonly storageListeners = new Set<(change: StorageChange) => void>();
   private readonly routes = new Set<(url: string) => void>();
   private readonly observer: MutationObserver;
   private modal: Dispose | undefined;
@@ -97,6 +100,10 @@ export class ManagedRuntime {
       } },
       sources: { open: (sourceId, url) => this.call<void>("sources.open", { sourceId, ...(url ? { url } : {}) }) },
       pages: { open: pageId => this.call<void>("pages.open", { pageId }) },
+      storage: storageApi(call, callback => {
+        this.assertActive(); this.storageListeners.add(callback);
+        return this.track(() => this.storageListeners.delete(callback));
+      }),
       onDispose: callback => { this.assertActive(); this.track(callback); },
     };
     this.observer = new MutationObserver(records => {
@@ -275,11 +282,14 @@ export class ManagedRuntime {
     void this.call("route.changed", { url: this.url }).catch(error => this.fatal(error));
     this.schedule();
   }
+  storageChanged(change: StorageChange): void {
+    if (!this.disposed) for (const callback of [...this.storageListeners]) this.invoke(() => callback(change));
+  }
   dismissModal(): void { this.modal?.(); }
   diagnostics() {
     return { watchers: this.watchers.size, bindings: [...this.watchers.values()].reduce((n, w) => n + w.bindings.size, 0),
       effects: this.effects.size, disposers: this.disposers.size, routes: this.routes.size,
-      modal: !!this.modal, missingKeys: this.missingKeys, conflicts: this.conflicts,
+      storageListeners: this.storageListeners.size, modal: !!this.modal, missingKeys: this.missingKeys, conflicts: this.conflicts,
       routeRevision: this.revision, batchesMs: this.batches.slice(-100) };
   }
   dispose(): void {
@@ -288,6 +298,6 @@ export class ManagedRuntime {
     if (this.frame) cancelAnimationFrame(this.frame); this.frame = 0;
     // Each registered callback runs once; exceptions cannot skip remaining cleanup.
     for (const dispose of [...this.disposers].reverse()) dispose();
-    this.observer.disconnect(); this.watchers.clear(); this.effects.clear(); this.routes.clear();
+    this.observer.disconnect(); this.watchers.clear(); this.effects.clear(); this.routes.clear(); this.storageListeners.clear();
   }
 }
