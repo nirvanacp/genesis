@@ -1,5 +1,7 @@
 # Genesis Android setup and MVP-01 handoff
 
+Updated 28 October: the active browser runtime is TypeScript/JavaScript. Android builds require Node and native Rust/cargo-ndk, with no wasm-bindgen CLI or Wasm target requirement. Historical MVP-01 Wasm observations below remain historical. MVP-04 stores generic applet documents in private `files/genesis.sqlite3`, independently of website cookies. Preserve this file and the default WebView profile by installing updates with the same app ID/signing key; do not uninstall or clear app data for routine verification.
+
 The active prototype now bundles Hacker News only. Follow the [HN continuation guide](200113-genesis-hacker-news-mvp-guide.md) for current stages; the MVP-01 results below are historical build evidence. The existing toolchain/setup commands still apply.
 
 Status: MVP-01 verified on the named emulator. MVP-02 has since been implemented but remains blocked at provider qualification. See the [MVP-02 report](../../.reports/2026-10-27/182114-genesis-mvp02-qualification-report.md) for current evidence.

@@ -1,6 +1,6 @@
 # Genesis delivery and verification plan
 
-Architecture revision approved 28 October: all browser customization and the managed DOM runtime use TypeScript/JavaScript under `packages/sdk/` and `applets/`, with React for custom dialogs and local pages. Native Rust retains the controller, contracts and SQLite services. HN refuses Wasm compilation in its source realm, as recorded in the [historical qualification report](../../.reports/2026-10-28/162112-genesis-hn-wasm-qualification-report.md). The TS runtime passed [MVP-02 emulator qualification](../../.reports/2026-10-28/174427-genesis-hn-typescript-qualification-report.md); MVP-03 may proceed. Physical hardware remains required before release in MVP-07.
+Architecture revision approved 28 October: all browser customization and the managed DOM runtime use TypeScript/JavaScript under `packages/sdk/` and `applets/`, with React for custom dialogs and local pages. Native Rust retains the controller, contracts and SQLite services. HN refuses Wasm compilation in its source realm, as recorded in the [historical qualification report](../../.reports/2026-10-28/162112-genesis-hn-wasm-qualification-report.md). The TS runtime passed [MVP-02 emulator qualification](../../.reports/2026-10-28/174427-genesis-hn-typescript-qualification-report.md); MVP-03 passed emulator verification. MVP-04 storage is implemented with Android end-to-end gates pending; see the [current progress report](../../.reports/2026-10-28/182416-genesis-mvp04-storage-progress-report.md). Physical hardware remains required before release in MVP-07.
 
 Created 27 October 2026, Asia/Kolkata. Scope: the single Hacker News bookmarking prototype in the [Genesis MVP implementation plan](150238-genesis-mvp-implementation-plan.md). MVP-01 is verified on the emulator. MVP-02 implementation is present; TS source qualification passed on the emulator; later stages remain pending. Numerical gates require actual evidence, not inferred success.
 
@@ -73,7 +73,7 @@ Validate two-source manifest structure with package validation and route source 
 
 ## 5. MVP-04: Durable generic storage and local pages
 
-Dependencies: MVP-03.
+Dependencies: MVP-03. Status: in_progress. Native SQLite/JNI and SDK checks passed; Android persistence/offline gates await restored desktop control. See the [storage progress report](../../.reports/2026-10-28/182416-genesis-mvp04-storage-progress-report.md).
 
 Implement SQLite schema initialization, generic get/list/commit, bounded worker queue, typed errors and storage notifications. Reuse the MVP-02 WebViewAssetLoader mapping and source/page transitions; expose generic storage to their bound contexts. Do not build a second local-page loader.
 
