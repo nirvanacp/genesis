@@ -1,7 +1,7 @@
 use crate::sources::*;
 use genesis_contracts::{HostCommand as C, HostEvent as E, *};
 use serde_json::{Value, json};
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use url::Url;
 
 #[derive(Default)]
@@ -16,6 +16,8 @@ pub struct HostState {
     fullscreen: bool,
     details: String,
     qualification: Option<HashSet<DocumentId>>,
+    // Debug labels only: never retain page messages, URLs, nonces or credentials.
+    startup_trace: VecDeque<&'static str>,
 }
 
 pub(crate) fn increment(value: &mut u64) -> Result<u64, String> {
@@ -38,9 +40,28 @@ fn origin(url: &str) -> Option<String> {
         .map(|u| u.origin().ascii_serialization())
 }
 
+fn trace(events: &mut VecDeque<&'static str>, label: &'static str) {
+    if events.len() == 48 {
+        events.pop_front();
+    }
+    events.push_back(label);
+}
+
 impl HostState {
     pub fn dispatch(&mut self, event: E) -> Result<Vec<C>, String> {
         let mut commands = Vec::new();
+        if self.debug {
+            let label = match &event {
+                E::NavigationStarted { .. } => Some("navigation started"),
+                E::Navigated { .. } => Some("navigation committed"),
+                E::PageMessage { .. } => Some("page message received"),
+                E::Deadline { .. } => Some("deadline checked"),
+                _ => None,
+            };
+            if let Some(label) = label {
+                trace(&mut self.startup_trace, label);
+            }
+        }
         match event {
             E::Attach {
                 index,
@@ -237,6 +258,7 @@ impl HostState {
                 if view.customized
                     && view.supported == Some(true)
                     && !view.ready
+                    && !view.failed
                     && Self::eligible(view)
                 {
                     commands.push(C::ScheduleDeadline {
@@ -268,6 +290,7 @@ impl HostState {
                     && view.customized
                     && view.supported == Some(true)
                     && !view.ready
+                    && !view.failed
                     && Self::eligible(view)
                 {
                     self.failure("Startup timed out after five seconds. No current-document ready result was accepted.", &mut commands);
@@ -582,9 +605,10 @@ impl HostState {
             "documentId":v.document.as_ref().map(|d| &d.id), "nonceBound":v.document.as_ref().is_some_and(|d| !d.nonce.0.is_empty()),
             "ready":v.ready,"customized":v.customized,"epoch":v.epoch}));
         format!(
-            "{}\n{}",
+            "{}\n{}\nStartup: {:?}",
             self.details,
-            serde_json::to_string_pretty(&current).unwrap_or_default()
+            serde_json::to_string_pretty(&current).unwrap_or_default(),
+            self.startup_trace
         )
     }
     fn launcher(&self) -> C {
@@ -634,6 +658,9 @@ impl HostState {
         }
         match message["type"].as_str() {
             Some("hello") => {
+                if self.debug {
+                    trace(&mut self.startup_trace, "hello accepted");
+                }
                 let nonce = message["nonce"]
                     .as_str()
                     .filter(|s| s.len() == 36)
@@ -665,6 +692,12 @@ impl HostState {
                 });
             }
             Some("challengeAck") => {
+                if self.debug {
+                    trace(
+                        &mut self.startup_trace,
+                        "challenge acknowledgement received",
+                    );
+                }
                 let Some(pending) = view.challenge.as_ref() else {
                     return Ok(());
                 };
@@ -684,6 +717,9 @@ impl HostState {
                     route_revision: RouteRevision(0),
                 });
                 view.challenge = None;
+                if self.debug {
+                    trace(&mut self.startup_trace, "document bound");
+                }
                 commands.push(C::ReplyToPage {generation,channel,message:json!({"type":"bound","documentId":id,"nonce":nonce,"context":view.context})});
             }
             _ => {
@@ -691,6 +727,9 @@ impl HostState {
                     return Ok(());
                 };
                 if doc.channel != channel || message["documentId"].as_str() != Some(&doc.id.0) {
+                    if self.debug {
+                        trace(&mut self.startup_trace, "bound envelope rejected");
+                    }
                     return Ok(());
                 }
                 let request = message["requestId"]
@@ -698,13 +737,17 @@ impl HostState {
                     .filter(|r| r.len() <= 128)
                     .ok_or("Missing request ID")?;
                 match message["method"].as_str() {
-                    Some("runtime.phase") if message["params"]["phase"]=="wasm" => doc.wasm_reported=true,
+                    Some("runtime.phase") if message["params"]["phase"]=="wasm" => {
+                        doc.wasm_reported=true;
+                        if self.debug { trace(&mut self.startup_trace, "wasm initialized"); }
+                    },
                     Some("runtime.ready") => {
                         let phases=&message["params"]["phases"];
                         if !doc.wasm_reported || !["wasm","creator","style","mount"].iter().all(|p| phases[p]==true) {
                             self.failure("Runtime ready did not include all qualified effects",commands);return Ok(());
                         }
                         if view.ready {return Ok(());} view.ready=true;
+                        if self.debug { trace(&mut self.startup_trace, "runtime ready"); }
                         if let Some(seen)=&mut self.qualification {
                             if !seen.insert(doc.id.clone()) {self.failure("Qualification reused a retired document",commands);return Ok(());}
                             if seen.len()<20 {commands.push(C::Reload {generation});}
@@ -714,6 +757,7 @@ impl HostState {
                         self.navigation_presentation(commands);
                     }
                     Some("runtime.error") => {
+                        if self.debug { trace(&mut self.startup_trace, "runtime error"); }
                         let reason=message["params"]["message"].as_str().unwrap_or("Unknown creator/runtime error");
                         let bounded:String=reason.chars().take(1024).collect();self.failure(&bounded,commands);
                     }
