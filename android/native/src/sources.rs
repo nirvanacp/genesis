@@ -8,6 +8,8 @@ pub enum SourceStatus {
     Active,
     Suspended,
     Failed,
+    Blocked,
+    Closed,
 }
 
 pub struct SourceSession {

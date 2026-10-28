@@ -1,7 +1,7 @@
-//! Shared package, host, and document qualification contracts. Storage RPC is not exposed.
+//! Shared package, host, and document qualification contracts. Managed runtime/navigation contracts. Storage RPC is not yet exposed.
 use serde::{Deserialize, Serialize};
 
-pub const IMPLEMENTATION_STAGE: &str = "MVP-02";
+pub const IMPLEMENTATION_STAGE: &str = "MVP-03";
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -158,6 +158,19 @@ pub enum HostEvent {
         #[serde(rename = "pageId")]
         page_id: String,
     },
+    ActivateDestination {
+        generation: u64,
+        #[serde(rename = "documentId")]
+        document_id: DocumentId,
+        selection: Selection,
+        url: Option<String>,
+    },
+    ModalDeadline {
+        generation: u64,
+        #[serde(rename = "documentId")]
+        document_id: DocumentId,
+        token: u64,
+    },
     Home,
     Back {
         #[serde(rename = "canGoBack")]
@@ -269,6 +282,19 @@ pub enum HostCommand {
     ScheduleDeadline {
         generation: u64,
         epoch: u64,
+    },
+    DeferNavigation {
+        generation: u64,
+        #[serde(rename = "documentId")]
+        document_id: DocumentId,
+        selection: Selection,
+        url: Option<String>,
+    },
+    ScheduleModalDeadline {
+        generation: u64,
+        #[serde(rename = "documentId")]
+        document_id: DocumentId,
+        token: u64,
     },
     TerminateRenderer {
         generation: u64,

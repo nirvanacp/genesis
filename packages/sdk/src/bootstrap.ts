@@ -1,10 +1,13 @@
-import type { BootstrapConfig, ExecutionContext, QualificationEntry, RuntimeScope } from "./protocol";
+import type { BootstrapConfig, ExecutionContext, RuntimeScope } from "./protocol";
 import { PageScope } from "./scope";
+import { ManagedRuntime } from "./runtime";
+import { RpcClient } from "./rpc";
+import type { AppletEntry } from "./index";
 import qualificationCss from "./qualification.css";
 
 interface Bridge { postMessage(message: string): void; onmessage: ((event: MessageEvent<string>) => void) | null }
 
-export function bootstrap(config: BootstrapConfig, entry: QualificationEntry): void {
+export function bootstrap(config: BootstrapConfig, entry: AppletEntry): void {
   if (window !== window.top) return;
   const realm = globalThis as typeof globalThis & {
     genesisHost?: Bridge;
@@ -16,8 +19,9 @@ export function bootstrap(config: BootstrapConfig, entry: QualificationEntry): v
   let documentId: string | null = null;
   let counter = 0;
   let scope: RuntimeScope | undefined;
+  let runtime: ManagedRuntime | undefined;
+  let client: RpcClient | undefined;
   let abort: AbortController | undefined;
-  let disposeCreator: (() => void) | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let activating = false;
   let failed = false;
@@ -29,8 +33,8 @@ export function bootstrap(config: BootstrapConfig, entry: QualificationEntry): v
   const cleanup = () => {
     if (timer) clearTimeout(timer);
     abort?.abort();
-    try { disposeCreator?.(); } catch { /* Continue cleanup of runtime-owned effects. */ }
-    disposeCreator = undefined;
+    runtime?.dispose(); runtime = undefined;
+    client?.dispose(); client = undefined;
     scope?.dispose();
     scope?.free();
     scope = undefined;
@@ -60,8 +64,10 @@ export function bootstrap(config: BootstrapConfig, entry: QualificationEntry): v
       scope = new PageScope(qualificationCss);
       phases.style = true;
       phases.mount = scope.root().isConnected;
-      const disposer = entry.activate({ binding, signal: activation.signal, root: scope.root() });
-      disposeCreator = typeof disposer === "function" ? disposer : undefined;
+      client = new RpcClient(acceptedDocument!, message => bridge.postMessage(message));
+      runtime = new ManagedRuntime(binding, scope.root(), client.call, fail);
+      const disposer = entry.activate(runtime.context);
+      if (typeof disposer === "function") runtime.context.onDispose(disposer);
       phases.creator = true;
       if (!phases.mount) throw new Error("Owned UI mount is detached");
       rpc("runtime.ready", { phases, runtime: "typescript" });
@@ -76,9 +82,12 @@ export function bootstrap(config: BootstrapConfig, entry: QualificationEntry): v
         void activate(message.context as ExecutionContext);
       } else if (message.documentId === documentId && documentId) {
         if (message.type === "context.retired") { cleanup(); documentId = null; }
-        if (message.type === "host.suspended") abort?.abort();
+        client?.receive(message);
+        if (message.type === "route.changed") runtime?.route();
+        if (message.type === "ui.dismissModal") runtime?.dismissModal();
+        if (message.type === "host.suspended") cleanup();
         if (message.type === "host.resumed" && abort?.signal.aborted) hello();
-        if (message.type === "debug.inspect") rpc("debug.inspection", { phases, targets: entry.inspect?.() ?? null });
+        if (message.type === "debug.inspect") rpc("debug.inspection", { phases, managed: runtime?.diagnostics(), targets: entry.inspect?.() ?? null });
         if (message.type === "debug.fail") fail(new Error("Deliberate debug creator failure"));
       }
     } catch (error) { fail(error); }

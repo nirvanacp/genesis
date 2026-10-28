@@ -1,5 +1,8 @@
-// MVP-02 qualification API only. Observation and storage APIs are not exposed.
-export type { QualificationContext, QualificationEntry } from "./protocol";
-import type { QualificationEntry } from "./protocol";
-export const defineApplet = (entry: QualificationEntry): QualificationEntry => entry;
+export type { ExecutionContext, QualificationContext, QualificationEntry } from "./protocol";
+export type { AppletContext, ElementBinding, WatchOptions, ElementHandlers, MountOptions, Dispose } from "./runtime";
+export { GenesisError } from "./rpc";
+import type { AppletContext, Dispose } from "./runtime";
+export interface AppletEntry { activate(context: AppletContext): void | Dispose; inspect?(): unknown }
+export const defineApplet = (entry: AppletEntry): AppletEntry => entry;
+// Retain activate compatibility for preserved inactive applet workspaces.
 export const definePage = defineApplet;

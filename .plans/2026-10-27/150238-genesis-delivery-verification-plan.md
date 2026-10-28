@@ -59,7 +59,7 @@ Stop if required world/navigation APIs are missing or isolated startup fails. Th
 
 ## 4. MVP-03: Implement the reusable runtime and SDK
 
-Dependencies: MVP-02.
+Dependencies: MVP-02. Status: verified on the supported emulator. See the [MVP-03 report](../../.reports/2026-10-28/180813-genesis-mvp03-managed-runtime-report.md).
 
 Complete `genesis-contracts` and the TypeScript managed targets, observation, effects, scopes and route tracking in `packages/sdk/`. Implement `watchElements`, styles, mounting, modal lifecycle, source/page navigation and generic navigation policy. Add native recovery and stale-callback rejection.
 

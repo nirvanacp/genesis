@@ -30,13 +30,24 @@ export async function readPackages() {
     for (const source of manifest.sources) {
       requireValue(identifier.test(source.id) && !sourceIds.has(source.id), `${directory}: duplicate or invalid source ID`);
       sourceIds.add(source.id);
+      requireValue(Array.isArray(source.navigationRules ?? []), `${directory}: navigation rules must be an array`);
+      const ruleIds = new Set();
+      for (const rule of source.navigationRules ?? []) {
+        const fallback = new URL(rule.fallbackUrl);
+        requireValue(identifier.test(rule.id) && !ruleIds.has(rule.id) && rule.action === "block"
+          && typeof rule.pathPrefix === "string" && rule.pathPrefix.startsWith("/")
+          && fallback.protocol === "https:" && !fallback.username && !fallback.password
+          && source.origins.includes(fallback.origin)
+          && !(source.navigationRules ?? []).some(r => fallback.pathname.startsWith(r.pathPrefix)), `${directory}: invalid navigation rule or fallback loop`);
+        ruleIds.add(rule.id);
+      }
       requireValue(Array.isArray(source.origins) && source.origins.length > 0, `${directory}: origins required`);
       for (const origin of source.origins) {
         const url = new URL(origin);
         requireValue(url.protocol === "https:" && url.origin === origin, `${directory}: exact HTTPS origins required`);
       }
       const start = new URL(source.startUrl);
-      requireValue(start.protocol === "https:" && source.origins.includes(start.origin), `${directory}: start URL outside origins`);
+      requireValue(start.protocol === "https:" && !start.username && !start.password && source.origins.includes(start.origin), `${directory}: start URL outside origins`);
     }
     const pageIds = new Set();
     for (const page of manifest.pages) {

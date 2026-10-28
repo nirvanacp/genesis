@@ -2,7 +2,7 @@
 
 Architecture revision approved 28 October: all browser customization and the managed DOM runtime use TypeScript/JavaScript under `packages/sdk/` and `applets/`, with React for custom dialogs and local pages. Native Rust retains the controller, contracts and SQLite services. HN refuses Wasm compilation in its source realm, as recorded in the [historical qualification report](../../.reports/2026-10-28/162112-genesis-hn-wasm-qualification-report.md). The TS runtime passed [MVP-02 emulator qualification](../../.reports/2026-10-28/174427-genesis-hn-typescript-qualification-report.md); MVP-03 may proceed. Physical hardware remains required before release in MVP-07.
 
-Created 27 October 2026, Asia/Kolkata. Scope: `crates/`, `packages/sdk/`, generic native services, and package contracts. Read the [MVP plan](150238-genesis-mvp-implementation-plan.md). MVP-02 implements identities, the handshake, qualification effects and bootstrap. Managed observation/navigation APIs remain MVP-03 work; storage remains MVP-04 work. The complete APIs below are target contracts, not a claim that every method is available.
+Created 27 October 2026, Asia/Kolkata. Scope: `crates/`, `packages/sdk/`, generic native services, and package contracts. Read the [MVP plan](150238-genesis-mvp-implementation-plan.md). MVP-02 implements identities, the handshake, qualification effects and bootstrap. Managed observation/navigation APIs passed MVP-03 emulator verification; storage remains MVP-04 work. The complete APIs below are target contracts, not a claim that every method is available.
 
 ## 1. Package manifest
 
@@ -37,7 +37,7 @@ Use separate types for `AppletId`, `InstanceId`, `SourceId`, `ViewId`, `ViewGene
 
 The native host owns `HashMap<InstanceId, AppletInstance>`. Each instance owns `HashMap<SourceId, SourceSession>` and an optional current applet page. `SourceSession` stores the definition, last committed URL, lifecycle status and optional live view binding. No shared static variable may hold a website DOM reference.
 
-The complete source lifecycle uses `Dormant`, `Loading`, `Active`, `Suspended`, `Blocked`, `Failed` and `Closed`. MVP-02 currently implements the first four plus `Failed`; complete the remaining transitions in MVP-03. The one-view scheduler retires the old document and recreates the WebView before opening another source ID, applet or local page. It retains the old source URL but invalidates every old DOM handle. Navigation within a source retains its WebView. The lifecycle contract permits a future scheduler to keep multiple views alive without changing these identities.
+The complete source lifecycle uses `Dormant`, `Loading`, `Active`, `Suspended`, `Blocked`, `Failed` and `Closed`. The host implements these transitions, including blocked policy/provider states and retirement. The one-view scheduler retires the old document and recreates the WebView before opening another source ID, applet or local page. It retains the old source URL but invalidates every old DOM handle. Navigation within a source retains its WebView. The lifecycle contract permits a future scheduler to keep multiple views alive without changing these identities.
 
 Each live execution binding has kind `source` with a source ID, or kind `page` with a page ID. Storage is scoped to the applet/profile for both kinds. A local library page can request `sources.open("primary", url)` but has no direct access to a source DOM.
 
