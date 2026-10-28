@@ -25,7 +25,7 @@ pub struct DocumentBinding {
     pub id: DocumentId,
     pub channel: u64,
     pub nonce: DocumentNonce,
-    pub wasm_reported: bool,
+    pub runtime_reported: bool,
     pub route_revision: RouteRevision,
 }
 

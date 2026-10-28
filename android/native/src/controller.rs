@@ -535,7 +535,7 @@ impl HostState {
             } else if !Self::eligible(view) {
                 self.present("ordinary", "Ordinary external/authentication page. No Genesis bridge is registered for this origin.", commands);
             } else if view.ready {
-                self.present("ready", "MVP-02 · Wasm, creator, CSS and owned UI ready. Feature applets remain incomplete.", commands);
+                self.present("ready", "MVP-02 · TypeScript, creator, CSS and owned UI ready. Feature applets remain incomplete.", commands);
             } else {
                 self.present(
                     "loading",
@@ -713,7 +713,7 @@ impl HostState {
                     id: id.clone(),
                     channel,
                     nonce: nonce.clone(),
-                    wasm_reported: false,
+                    runtime_reported: false,
                     route_revision: RouteRevision(0),
                 });
                 view.challenge = None;
@@ -737,13 +737,13 @@ impl HostState {
                     .filter(|r| r.len() <= 128)
                     .ok_or("Missing request ID")?;
                 match message["method"].as_str() {
-                    Some("runtime.phase") if message["params"]["phase"]=="wasm" => {
-                        doc.wasm_reported=true;
-                        if self.debug { trace(&mut self.startup_trace, "wasm initialized"); }
+                    Some("runtime.phase") if message["params"]["phase"]=="typescript" => {
+                        doc.runtime_reported=true;
+                        if self.debug { trace(&mut self.startup_trace, "typescript initialized"); }
                     },
                     Some("runtime.ready") => {
                         let phases=&message["params"]["phases"];
-                        if !doc.wasm_reported || !["wasm","creator","style","mount"].iter().all(|p| phases[p]==true) {
+                        if !doc.runtime_reported || !["runtime","creator","style","mount"].iter().all(|p| phases[p]==true) {
                             self.failure("Runtime ready did not include all qualified effects",commands);return Ok(());
                         }
                         if view.ready {return Ok(());} view.ready=true;
@@ -751,7 +751,7 @@ impl HostState {
                         if let Some(seen)=&mut self.qualification {
                             if !seen.insert(doc.id.clone()) {self.failure("Qualification reused a retired document",commands);return Ok(());}
                             if seen.len()<20 {commands.push(C::Reload {generation});}
-                            else { self.qualification=None;commands.push(C::Diagnostics {text:"20/20 reload cycles accepted fresh document identities and reached Wasm/creator/CSS/mount ready.".into()}); }
+                            else { self.qualification=None;commands.push(C::Diagnostics {text:"20/20 reload cycles accepted fresh document identities and reached TypeScript/creator/CSS/mount ready.".into()}); }
                         }
                         self.source_status(SourceStatus::Active);
                         self.navigation_presentation(commands);
