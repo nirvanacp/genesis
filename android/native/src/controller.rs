@@ -14,6 +14,8 @@ pub struct HostState {
     serial: u64,
     debug: bool,
     fullscreen: bool,
+    modal_open: bool,
+    modal_token: u64,
     details: String,
     qualification: Option<HashSet<DocumentId>>,
     // Debug labels only: never retain page messages, URLs, nonces or credentials.
@@ -160,6 +162,48 @@ impl HostState {
                     self.open(selection, &mut commands)?;
                 }
             }
+            E::ActivateDestination {
+                generation,
+                document_id,
+                selection,
+                url,
+            } if self.current(generation)
+                && self
+                    .active
+                    .as_ref()
+                    .and_then(|v| v.document.as_ref())
+                    .is_some_and(|d| d.id == document_id) =>
+            {
+                if let Some(url) = url {
+                    let source = self
+                        .instances
+                        .get_mut(&instance_id(&selection.applet_id))
+                        .and_then(|i| i.sources.get_mut(&selection.source_id))
+                        .ok_or("Unknown source")?;
+                    source.last_url = url;
+                }
+                self.open(selection, &mut commands)?;
+            }
+            E::ModalDeadline {
+                generation,
+                document_id,
+                token,
+            } if self.current(generation)
+                && self.modal_open
+                && self.modal_token == token
+                && self
+                    .active
+                    .as_ref()
+                    .and_then(|v| v.document.as_ref())
+                    .is_some_and(|d| d.id == document_id) =>
+            {
+                self.disable_active();
+                self.failure(
+                    "Modal did not dismiss within 300 ms. Recovering the renderer.",
+                    &mut commands,
+                );
+                commands.push(C::TerminateRenderer { generation });
+            }
             E::Home => {
                 self.qualification = None;
                 self.retire(&mut commands);
@@ -167,7 +211,19 @@ impl HostState {
             }
             E::Back { can_go_back } => {
                 if let Some(view) = &self.active {
-                    if self.fullscreen {
+                    if self.modal_open {
+                        let generation = view.context.generation.0;
+                        if let Some(doc) = &view.document {
+                            let document_id = doc.id.clone();
+                            self.notify("ui.dismissModal", &mut commands);
+                            let token = increment(&mut self.modal_token)?;
+                            commands.push(C::ScheduleModalDeadline {
+                                generation,
+                                document_id,
+                                token,
+                            });
+                        }
+                    } else if self.fullscreen {
                         commands.push(C::ExitFullscreen {
                             generation: view.context.generation.0,
                         });
@@ -215,6 +271,7 @@ impl HostState {
                 self.details = details;
                 self.active.as_mut().expect("view").supported = Some(supported);
                 if !supported && self.active.as_ref().expect("view").customized {
+                    self.source_status(SourceStatus::Blocked);
                     self.present("unsupported", "This WebView provider lacks required customization features. Open the ordinary site or update the provider.", &mut commands);
                 }
             }
@@ -223,6 +280,9 @@ impl HostState {
                 url,
                 same_document,
             } if self.current(generation) => {
+                if self.redirect_policy(&url, &mut commands) {
+                    return Ok(commands);
+                }
                 let view = self.active.as_mut().expect("view");
                 if !same_document {
                     increment(&mut view.epoch)?;
@@ -237,13 +297,22 @@ impl HostState {
                     view.challenge = None;
                     view.ready = false;
                     view.failed = false;
+                    self.modal_open = false;
                 } else if let Some(doc) = &mut view.document {
                     increment(&mut doc.route_revision.0)?;
+                    commands.push(C::ReplyToPage {
+                        generation,
+                        channel: doc.channel,
+                        message: json!({"type":"route.changed","documentId":doc.id,"url":url}),
+                    });
                 }
                 view.url = url;
                 self.navigation_presentation(&mut commands);
             }
             E::Navigated { generation, url } if self.current(generation) => {
+                if self.redirect_policy(&url, &mut commands) {
+                    return Ok(commands);
+                }
                 let view = self.active.as_mut().expect("view");
                 view.url = url.clone();
                 if view.selection.page_id.is_none()
@@ -372,6 +441,48 @@ impl HostState {
             .as_ref()
             .is_some_and(|v| v.context.generation.0 == generation)
     }
+    fn redirect_policy(&mut self, url: &str, commands: &mut Vec<C>) -> bool {
+        let Some(view) = &self.active else {
+            return false;
+        };
+        if !view.customized || view.selection.page_id.is_some() {
+            return false;
+        }
+        let source = self
+            .instances
+            .get(&view.context.instance_id)
+            .and_then(|i| i.sources.get(&view.selection.source_id));
+        let fallback = Url::parse(url).ok().and_then(|u| {
+            source.and_then(|s| {
+                if !s
+                    .definition
+                    .origins
+                    .contains(&u.origin().ascii_serialization())
+                {
+                    return None;
+                }
+                s.definition
+                    .navigation_rules
+                    .iter()
+                    .find(|r| u.path().starts_with(&r.path_prefix))
+                    .map(|r| r.fallback_url.clone())
+            })
+        });
+        if let Some(url) = fallback {
+            let generation = view.context.generation.0;
+            self.notify("context.retired", commands);
+            if let Some(view) = &mut self.active {
+                view.document = None;
+                view.ready = false;
+                self.modal_open = false;
+            }
+            self.source_status(SourceStatus::Blocked);
+            commands.push(C::LoadUrl { generation, url });
+            true
+        } else {
+            false
+        }
+    }
     fn eligible(view: &LiveView) -> bool {
         origin(&view.url).is_some_and(|o| view.origins.contains(&o))
     }
@@ -491,6 +602,8 @@ impl HostState {
         Ok(())
     }
     fn retire(&mut self, commands: &mut Vec<C>) {
+        self.modal_open = false;
+        self.source_status(SourceStatus::Closed);
         if let Some(view) = self.active.take() {
             let generation = view.context.generation.0;
             if self.fullscreen {
@@ -535,7 +648,11 @@ impl HostState {
             } else if !Self::eligible(view) {
                 self.present("ordinary", "Ordinary external/authentication page. No Genesis bridge is registered for this origin.", commands);
             } else if view.ready {
-                self.present("ready", "MVP-02 · TypeScript, creator, CSS and owned UI ready. Feature applets remain incomplete.", commands);
+                self.present(
+                    "ready",
+                    "MVP-03 · Managed runtime ready. Bookmark features remain incomplete.",
+                    commands,
+                );
             } else {
                 self.present(
                     "loading",
@@ -625,8 +742,7 @@ impl HostState {
                     })
                 })
                 .collect(),
-            status: "MVP-02 · Browser qualification. Website features are not implemented yet."
-                .into(),
+            status: "MVP-03 · Managed runtime. Bookmark storage is not implemented yet.".into(),
         }
     }
 
@@ -761,9 +877,49 @@ impl HostState {
                         let reason=message["params"]["message"].as_str().unwrap_or("Unknown creator/runtime error");
                         let bounded:String=reason.chars().take(1024).collect();self.failure(&bounded,commands);
                     }
+                    Some("route.changed") => {
+                        let requested = message["params"]["url"].as_str();
+                        if requested.is_some_and(|url| Self::safe_website_url(url) && origin(url)==origin(&view.url)) {
+                            increment(&mut doc.route_revision.0)?;
+                        }
+                        commands.push(C::ReplyToPage { generation,channel,message:json!({"v":1,"documentId":doc.id,"requestId":request,"ok":true,"result":null}) });
+                    }
+                    Some("ui.modalState") if message["params"]["open"].is_boolean() => {
+                        self.modal_open = message["params"]["open"]==true;
+                        commands.push(C::ReplyToPage { generation,channel,message:json!({"v":1,"documentId":doc.id,"requestId":request,"ok":true,"result":null}) });
+                    }
+                    Some("sources.open") | Some("pages.open") => {
+                        let mut selection = view.selection.clone();
+                        let mut destination_url = None;
+                        let valid = if message["method"] == "pages.open" {
+                            let id = message["params"]["pageId"].as_str();
+                            selection.page_id = id.map(str::to_owned);
+                            id.is_some_and(|id|view.package.manifest.pages.iter().any(|p|p.id==id))
+                        } else {
+                            let id = message["params"]["sourceId"].as_str();
+                            selection.page_id = None;
+                            if let Some(source) = view.package.manifest.sources.iter().find(|s|Some(s.id.as_str())==id) {
+                                selection.source_id = SourceId(source.id.clone());
+                                if message["params"]["url"].is_null() { true }
+                                else if let Some(url) = message["params"]["url"].as_str() {
+                                    let valid = url.len()<=2048 && Self::safe_website_url(url)
+                                        && origin(url).is_some_and(|o|source.origins.contains(&o));
+                                    if valid { destination_url = Some(url.to_owned()); }
+                                    valid
+                                } else { false }
+                            } else { false }
+                        };
+                        if valid {
+                            commands.push(C::ReplyToPage {generation,channel,message:json!({"v":1,"documentId":doc.id,"requestId":request,"ok":true,"result":null})});
+                            commands.push(C::DeferNavigation { generation, document_id:doc.id.clone(),selection,url:destination_url });
+                        } else {
+                            commands.push(C::ReplyToPage {generation,channel,message:json!({"v":1,"documentId":doc.id,"requestId":request,"ok":false,
+                                "error":{"code":"INVALID_ARGUMENT","message":"Unknown destination or URL outside the declared source origins","retryable":false}})});
+                        }
+                    }
                     Some("debug.inspection") if self.debug => commands.push(C::Diagnostics {text:format!("{}\n{}",self.diagnostics(),message["params"])}),
                     _ => commands.push(C::ReplyToPage {generation,channel,message:json!({"v":1,"documentId":doc.id,"requestId":request,"ok":false,
-                        "error":{"code":"UNSUPPORTED","message":"Method is not exposed in MVP-02","retryable":false}})}),
+                        "error":{"code":"UNSUPPORTED","message":"Method is not exposed in this stage","retryable":false}})}),
                 }
             }
         }

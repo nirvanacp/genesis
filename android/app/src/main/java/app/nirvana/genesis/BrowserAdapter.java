@@ -196,6 +196,19 @@ final class BrowserAdapter {
             case "goBack": webView.goBack(); break;
             case "reload": webView.reload(); break;
             case "destroyView": destroy(); break;
+            case "deferNavigation": {
+                JSONObject event = HostViews.event("activateDestination");
+                event.put("documentId", command.getString("documentId"));
+                event.put("selection", command.getJSONObject("selection"));
+                event.put("url", command.opt("url"));
+                // Acknowledgement is posted first; replacement runs on a later UI turn.
+                main.post(() -> emit(event, expected)); break;
+            }
+            case "scheduleModalDeadline": {
+                JSONObject event = HostViews.event("modalDeadline");
+                event.put("documentId", command.getString("documentId")); event.put("token", command.getLong("token"));
+                main.postDelayed(() -> emit(event, expected), 300); break;
+            }
             case "scheduleDeadline": {
                 JSONObject event = HostViews.event("deadline"); event.put("epoch", command.getLong("epoch"));
                 main.postDelayed(() -> emit(event, expected), 5000); break;

@@ -53,12 +53,35 @@ pub fn validate(index: &PackageIndex) -> Result<(), String> {
             if !identifier(&source.id)
                 || !sources.insert(&source.id)
                 || start.scheme() != "https"
+                || !start.username().is_empty()
+                || start.password().is_some()
                 || !source
                     .origins
                     .contains(&start.origin().ascii_serialization())
                 || !assets.contains(&source.entry)
             {
                 return Err("Invalid bundled source definition".into());
+            }
+            let mut rule_ids = HashSet::new();
+            for rule in &source.navigation_rules {
+                let fallback = Url::parse(&rule.fallback_url).map_err(|e| e.to_string())?;
+                if !identifier(&rule.id)
+                    || !rule_ids.insert(&rule.id)
+                    || rule.action != "block"
+                    || !rule.path_prefix.starts_with('/')
+                    || fallback.scheme() != "https"
+                    || !fallback.username().is_empty()
+                    || fallback.password().is_some()
+                    || !source
+                        .origins
+                        .contains(&fallback.origin().ascii_serialization())
+                    || source
+                        .navigation_rules
+                        .iter()
+                        .any(|r| fallback.path().starts_with(&r.path_prefix))
+                {
+                    return Err("Invalid navigation rule or fallback loop".into());
+                }
             }
             for origin in &source.origins {
                 let url = Url::parse(origin).map_err(|e| e.to_string())?;

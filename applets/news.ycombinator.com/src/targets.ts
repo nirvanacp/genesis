@@ -1,4 +1,4 @@
-// Observed in public HTML on 2026-10-27. Android isolated-world qualification is pending.
+// Observed in public HTML on 2026-10-27. Android isolated-world qualification passed on 2026-10-28.
 // Comment rows also use .athing; only submission rows may become story Save targets.
 const selectors = ["#hnmain", "tr.athing.submission[id]", "tr.athing.submission .titleline > a:first-child", ".subtext", "tr.comtr"];
 

@@ -68,6 +68,8 @@ public final class MainActivity extends Activity {
             case "reload":
             case "challenge":
             case "replyToPage":
+            case "deferNavigation":
+            case "scheduleModalDeadline":
             case "scheduleDeadline":
             case "terminateRenderer":
             case "showFullscreen":
