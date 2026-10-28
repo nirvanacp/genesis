@@ -2,8 +2,8 @@ import { createRoot } from "react-dom/client";
 import { definePage } from "@genesis/sdk";
 
 export default definePage({
-  activate({ root }) {
-    const react = createRoot(root);
+  mount(_context, container) {
+    const react = createRoot(container);
     react.render(<section><h1>Genesis Hacker News bookmarks</h1>
       <p>This packaged TypeScript/React page qualifies the local-page runtime without a development server.</p>
       <p>The native storage layer is available. Story controls, categories and the bookmark library are still being implemented.</p>

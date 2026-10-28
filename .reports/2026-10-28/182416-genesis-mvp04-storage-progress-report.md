@@ -41,4 +41,6 @@ The emulator still uses Google WebView 156.0.8078.47. Android Studio's screensho
 
 Resume the temporary storage probe after restoring UI control. Verify source CRUD/conflict/change notification, local-page access to the same namespace, a committed marker after process restart and `install -r`, and local-page reopening without network. Then restore normal entries and finish the MVP-04 report. Only then start MVP-05 HN extraction/Save, followed by MVP-06 categories/offline library and MVP-07 integration/hardware qualification.
 
+A final API consistency pass added the declared `definePage({mount(ctx, container)})` adapter, retaining compatibility with inactive entries, and kept local-page state from marking the underlying source active. Type/package checks, native Clippy, formatting, Android assembly/lint and diff checks passed again; the final build took six seconds.
+
 The final normal APK is `android/app/build/outputs/apk/debug/app-debug.apk`. It still has qualification-only HN UI. The MVP is not ready for release. Existing untracked Android Studio `.idea` files were present at session start and remain uncommitted.

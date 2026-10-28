@@ -65,7 +65,7 @@ flowchart TB
 | Location | Responsibility |
 | --- | --- |
 | `android/app/` | Existing Java host, resources, Gradle-generated assets and JNI registration |
-| `android/native/src/` | Existing controller, source registry, package validation/JNI; future generic storage worker |
+| `android/native/src/` | Controller, source registry, package validation/JNI and generic storage worker |
 | `crates/contracts/` | Shared identities, envelopes and typed errors |
 | `crates/page-runtime/` | Preserved inactive Wasm qualification code; not bundled or extended |
 | `packages/sdk/` | Managed DOM runtime and creator-facing TypeScript SDK |

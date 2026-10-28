@@ -649,6 +649,7 @@ impl HostState {
     }
     fn source_status(&mut self, status: SourceStatus) {
         if let Some(v) = &self.active
+            && v.selection.page_id.is_none()
             && let Some(s) = self
                 .instances
                 .get_mut(&v.context.instance_id)
