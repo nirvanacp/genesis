@@ -1,6 +1,8 @@
 # Genesis MVP implementation plan
 
-Created 27 October 2026, Asia/Kolkata. Revised for the user's Hacker News prototype. Scope: the Android browser host, reusable runtime/SDK and one public Hacker News bookmarking applet. MVP-01 is verified on the emulator. MVP-02 platform code is implemented, but its isolated-world qualification remains blocked on the last observed provider. The HN package is the new qualification target; no prior YouTube/X result verifies it.
+Current qualification: [28 October HN report](../../.reports/2026-10-28/162112-genesis-hn-wasm-qualification-report.md). Google WebView 156.0.8078.47 now reports all required APIs supported. The packaged local page passes Wasm startup and 20 reloads, but HN source startup fails because Wasm compilation is refused in its realm. MVP-02 remains blocked pending the runtime architecture decision; no later stage is verified.
+
+Created 27 October 2026, Asia/Kolkata. Revised for the user's Hacker News prototype. Scope: the Android browser host, reusable runtime/SDK and one public Hacker News bookmarking applet. MVP-01 is verified on the emulator. MVP-02 platform code is implemented, but source-realm qualification remains blocked by Wasm compilation policy on HN. The HN package is the new qualification target; no prior YouTube/X result verifies it.
 
 ## 1. Authority and execution
 
@@ -87,7 +89,7 @@ Existing native fullscreen/media support is preserved, but media/playback gates 
 
 ## 7. Qualification and stop conditions
 
-The selected world-aware injection, bridge and navigation APIs remain required. The last observed emulator provider lacked `JS_INJECTION_IN_FRAME_AND_WORLD` and `NAVIGATION_LISTENER`. Switching to HN removes login dependence; it does not supply missing browser APIs. Check actual provider flags, then prove the HN document/realm contract before MVP-03. Do not change worlds, relax origins, simulate Wasm success or change engines to bypass a failed gate.
+The selected world-aware injection, bridge and navigation APIs remain required. The original emulator provider lacked `JS_INJECTION_IN_FRAME_AND_WORLD` and `NAVIGATION_LISTENER`; its official update resolved those missing APIs, as recorded above. Switching to HN removes login dependence; it does not supply missing browser APIs. Check actual provider flags, then prove the HN document/realm contract before MVP-03. On 28 October the user authorized progression after emulator qualification; physical-device repetition remains required before release in MVP-07. Do not change worlds, relax origins, simulate Wasm success or change engines to bypass a failed gate.
 
 Public HTML inspection supports candidate HN selectors only. Actual Android isolated-world startup, twenty fresh-document cycles, local-page activation and native recovery still need HN evidence. Label emulator and physical-device results separately.
 

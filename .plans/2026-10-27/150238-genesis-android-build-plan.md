@@ -1,5 +1,7 @@
 # Genesis Android and build plan
 
+Current qualification: [28 October HN report](../../.reports/2026-10-28/162112-genesis-hn-wasm-qualification-report.md). Google WebView 156.0.8078.47 now reports all required APIs supported. The packaged local page passes Wasm startup and 20 reloads, but HN source startup fails because Wasm compilation is refused in its realm. MVP-02 remains blocked pending the runtime architecture decision; no later stage is verified.
+
 Created 27 October 2026, Asia/Kolkata. Scope: `android/`, shared build tooling and dependency manifests. Read the [MVP plan](150238-genesis-mvp-implementation-plan.md) first. The MVP-01 build is verified on the emulator. MVP-02 browser plumbing is implemented, with provider qualification still blocked. The HN package replaces the earlier bundled product targets. Database-worker behavior below remains MVP-04 work. See the [setup evidence](../../.docs/2026-10-27/161510-genesis-android-setup.md) and [MVP-02 report](../../.reports/2026-10-27/182114-genesis-mvp02-qualification-report.md).
 
 ## 1. Android Studio project
@@ -141,3 +143,7 @@ These root scripts and the dated Android setup guide already exist. Keep the gui
 Follow the [browser/session contract](150238-genesis-mvp-implementation-plan.md#9-browser-and-session-contract). `BrowserAdapter` already enables cookies and DOM storage, uses the default WebView profile, and flushes pending cookies on pause. View destruction removes execution handlers and DOM state without clearing browser data. `MainActivity` restores navigation metadata, not credentials. Preserve these paths when adding later stages.
 
 Do not add per-source cookie jars, Chrome-cookie import or credential serialization. Retain the current cookie policy. Public HN browsing and native bookmark storage require no website login. [Android CookieManager](https://developer.android.com/reference/android/webkit/CookieManager) documents these separate policies. Authentication verification is outside the revised HN prototype. Required provider features and physical-device qualification remain unchanged.
+
+## 9. Emulator progression and release hardware
+
+On 28 October the user authorized implementation of MVP-03 through MVP-06 after supported-emulator MVP-02 qualification. Repeat required HN browser/lifecycle/recovery checks on a physical device in MVP-07 before release. This changes verification timing, not the required browser APIs or isolation architecture.

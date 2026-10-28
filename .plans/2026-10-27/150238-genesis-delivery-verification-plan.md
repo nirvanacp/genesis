@@ -1,6 +1,8 @@
 # Genesis delivery and verification plan
 
-Created 27 October 2026, Asia/Kolkata. Scope: the single Hacker News bookmarking prototype in the [Genesis MVP implementation plan](150238-genesis-mvp-implementation-plan.md). MVP-01 is verified on the emulator. MVP-02 implementation is present, but qualification is blocked on missing provider APIs; later stages remain pending. Numerical gates require actual evidence, not inferred success.
+Current qualification: [28 October HN report](../../.reports/2026-10-28/162112-genesis-hn-wasm-qualification-report.md). Google WebView 156.0.8078.47 now reports all required APIs supported. The packaged local page passes Wasm startup and 20 reloads, but HN source startup fails because Wasm compilation is refused in its realm. MVP-02 remains blocked pending the runtime architecture decision; no later stage is verified.
+
+Created 27 October 2026, Asia/Kolkata. Scope: the single Hacker News bookmarking prototype in the [Genesis MVP implementation plan](150238-genesis-mvp-implementation-plan.md). MVP-01 is verified on the emulator. MVP-02 implementation is present, but qualification is blocked by HN source-realm Wasm refusal; later stages remain pending. Numerical gates require actual evidence, not inferred success.
 
 ## 1. Execution rules
 
@@ -51,9 +53,9 @@ Bundle only `hn-bookmarks` with source `primary`, its qualification inspector an
 | Unsupported provider | Explicit native unsupported state with usable ordinary-site recovery and no false ready |
 | Creator/renderer failure | Scope retires; native disable/retry or ordinary recovery remains usable |
 
-Use one physical Android device for the real-site qualification result. Record device/ABI/provider/locale and actual HN variant. Emulator results are useful but labeled separately. Inspect story versus comment targets through the debug-only structural inspector; no credentials or page-text dumps.
+On 28 October the user authorized completing this stage on a supported emulator and proceeding to MVP-03 through MVP-06. Record device/ABI/provider/locale and actual HN variant. Repeat the real-site qualification on physical hardware before MVP-07 can declare release readiness; emulator evidence alone does not satisfy that final requirement. Inspect story versus comment targets through the debug-only structural inspector; no credentials or page-text dumps.
 
-Stop if required world/navigation APIs are missing or isolated startup fails. The last observed provider lacks `JS_INJECTION_IN_FRAME_AND_WORLD` and `NAVIGATION_LISTENER`; recheck actual flags. Do not fall back to page-world injection, a different engine or static HTML to call this gate passed. Login and media are outside the revised prototype and are not MVP-02 gates. Do not start MVP-03 until required HN qualification passes.
+Stop if required world/navigation APIs are missing or isolated startup fails. The earlier provider lacked `JS_INJECTION_IN_FRAME_AND_WORLD` and `NAVIGATION_LISTENER`; the current provider supports them, but the source-realm Wasm gate now fails. Do not fall back to page-world injection, a different engine or static HTML to call this gate passed. Login and media are outside the revised prototype and are not MVP-02 gates. Do not start MVP-03 until required HN qualification passes.
 
 ## 4. MVP-03: Implement the reusable runtime and SDK
 

@@ -6,7 +6,9 @@ Scope: the single public Hacker News bookmarking prototype. This replaces the ea
 
 MVP-01's build foundation is verified. MVP-02's generic host/bootstrap is implemented and now bundles only `hn-bookmarks`. Its source qualification entry, structural inspector and local React page compile, but they do not save bookmarks. YouTube/X applet source remains intact and excluded from the APK package index.
 
-HN provides public story pages, so login is no longer a prerequisite. Source injection must still run through the selected isolated world. The last observed emulator provider lacked `JS_INJECTION_IN_FRAME_AND_WORLD` and `NAVIGATION_LISTENER`. Recheck capabilities; HN does not remove that platform requirement. Do not advance to MVP-03 while MVP-02's required HN qualification is pending.
+HN provides public story pages, so login is not a prerequisite. The [28 October qualification report](../../.reports/2026-10-28/162112-genesis-hn-wasm-qualification-report.md) supersedes the earlier missing-API diagnosis. The official provider update to 156.0.8078.47 resolved that problem. The packaged local page passes Wasm startup and twenty reloads; HN source startup refuses Wasm compilation in its realm. A runtime architecture decision is pending before proceeding.
+
+The user authorized implementation to advance after emulator qualification on 28 October. Physical-device repetition remains required before final MVP-07 release, rather than before MVP-03. This does not waive required source-realm runtime success.
 
 | Plan | Read for |
 | --- | --- |
@@ -58,7 +60,7 @@ Finish MVP-02 qualification only for the Hacker News prototype. Read all five cu
 1. Inspect Git status and available Android devices/providers. Reuse the HN package and existing debug inspector. Record actual required feature flags. If world-aware injection or navigation APIs are missing, report the precise compatibility blocker and stop; do not request a login or bypass isolation.
 2. On a supported provider, load public HN home/news, newest, Ask, Show and a story discussion. Qualify the nonce challenge, embedded Wasm, creator execution, computed style and owned mount separately. Run 20/20 fresh-document cycles for the HN source and verify stale bindings are rejected.
 3. Activate the packaged library qualification page without a development server. Verify an external story title link uses ordinary browsing without the source bridge and Back rebinds HN correctly.
-4. Verify unsupported-provider handling, Retry/Open ordinary site, creator failure and renderer-loss recovery. Obtain the physical-device HN results required by MVP-02 and label emulator observations separately.
+4. Verify unsupported-provider handling, Retry/Open ordinary site, creator failure and renderer-loss recovery. Use emulator results for the implementation gate under the 28 October authorization; repeat the required checks on physical hardware before final MVP-07 release.
 5. Fix only MVP-02 defects, run appropriate checks, commit verified components and save a dated HN qualification report. Mark the stage verified only when its required gates pass. Stop before MVP-03.
 ```
 

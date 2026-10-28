@@ -1,5 +1,7 @@
 # Genesis Hacker News bookmarking applet plan
 
+Current qualification: [28 October HN report](../../.reports/2026-10-28/162112-genesis-hn-wasm-qualification-report.md). Google WebView 156.0.8078.47 now reports all required APIs supported. The packaged local page passes Wasm startup and 20 reloads, but HN source startup fails because Wasm compilation is refused in its realm. MVP-02 remains blocked pending the runtime architecture decision; no later stage is verified.
+
 Created 27 October 2026, Asia/Kolkata. Revised scope: only `applets/news.ycombinator.com/`. Read the [MVP architecture](150238-genesis-mvp-implementation-plan.md) and [runtime/SDK contract](150238-genesis-runtime-sdk-plan.md). The earlier applet directories remain preserved and inactive. This filename replaces the earlier YouTube/X applets plan.
 
 ## 1. Product and current implementation
@@ -111,3 +113,5 @@ Use the existing declared local-page loader, one-view transitions and React qual
 Verify external-link and self-post saves, list/detail duplicate identity, comments excluded, malformed ID handling, metadata absence, recycled/replaced rows, duplicate mounts and no interference with original links. Verify zero/one/multiple categories, reserved/duplicate names, rename/delete, stale edits, cancellation, uncertain writes, consistency across controls, pagination with sparse filters, offline library, restart and APK update. Verify original HN favorite/vote links are untouched without invoking them.
 
 The applet is complete only when both real public-page Save integration and durable offline library pass. Local fixture operations alone do not qualify extraction. No sign-in, account switch, media player or private page is part of acceptance. Required browser isolation and recovery gates remain in the [delivery plan](150238-genesis-delivery-verification-plan.md).
+
+The user authorized emulator-qualified development on 28 October. Complete and verify this applet on the supported emulator, then repeat required HN feature/lifecycle/recovery checks on physical hardware before release.

@@ -1,5 +1,7 @@
 # Genesis runtime and SDK plan
 
+Current qualification: [28 October HN report](../../.reports/2026-10-28/162112-genesis-hn-wasm-qualification-report.md). Google WebView 156.0.8078.47 now reports all required APIs supported. The packaged local page passes Wasm startup and 20 reloads, but HN source startup fails because Wasm compilation is refused in its realm. MVP-02 remains blocked pending the runtime architecture decision; no later stage is verified.
+
 Created 27 October 2026, Asia/Kolkata. Scope: `crates/`, `packages/sdk/`, generic native services, and package contracts. Read the [MVP plan](150238-genesis-mvp-implementation-plan.md). MVP-02 implements identities, the handshake, qualification effects and bootstrap. Managed observation/navigation APIs remain MVP-03 work; storage remains MVP-04 work. The complete APIs below are target contracts, not a claim that every method is available.
 
 ## 1. Package manifest
@@ -195,3 +197,5 @@ Follow the [browser/session contract](150238-genesis-mvp-implementation-plan.md#
 The bridge must not expose credentials, website cookies, authentication tokens or Chrome-session import. Applet SQLite storage stays independent of website storage. Diagnostics exclude credential inputs and values. The qualification bootstrap and SDK already have no authentication API; preserve that boundary in MVP-03 and MVP-04.
 
 Authentication/session-retention experiments are outside the revised HN prototype. No account is needed for public story extraction or native bookmark storage. Required provider/injection gates remain unchanged.
+
+MVP-02 emulator evidence may unlock the remaining runtime/storage implementation under the user's 28 October decision. Physical-device repetition remains a final MVP-07 release gate.
