@@ -1,6 +1,8 @@
 mod controller;
 mod packages;
 mod sources;
+mod storage;
+mod storage_worker;
 
 use controller::HostState;
 use genesis_contracts::{HostCommand, HostEvent};
@@ -42,6 +44,51 @@ pub extern "system" fn Java_app_nirvana_genesis_NativeBridge_dispatch<'local>(
     unowned
         .with_env(|env| -> jni::errors::Result<_> {
             JString::from_str(env, dispatch(&event.to_string()))
+        })
+        .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_app_nirvana_genesis_NativeBridge_configureStorage<'local>(
+    mut unowned: EnvUnowned<'local>,
+    class: JClass<'local>,
+    directory: JString<'local>,
+) -> JString<'local> {
+    unowned
+        .with_env(|env| -> jni::errors::Result<_> {
+            let result = catch_unwind(AssertUnwindSafe(|| -> Result<(), String> {
+                if storage_worker::initialized() {
+                    return Ok(());
+                }
+                let path = std::path::PathBuf::from(directory.to_string()).join("genesis.sqlite3");
+                let vm = env.get_java_vm().map_err(|e| e.to_string())?;
+                let callback = env.new_global_ref(&class).map_err(|e| e.to_string())?;
+                storage_worker::start(path, vm, callback)
+            }));
+            let message = match result {
+                Ok(Ok(())) => "ok".into(),
+                Ok(Err(e)) => e,
+                Err(_) => "Storage initialization failed".into(),
+            };
+            JString::from_str(env, message)
+        })
+        .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
+}
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_app_nirvana_genesis_NativeBridge_enqueueStorage<'local>(
+    mut unowned: EnvUnowned<'local>,
+    _class: JClass<'local>,
+    value: JString<'local>,
+) -> jni::sys::jboolean {
+    unowned
+        .with_env(|_env| -> jni::errors::Result<_> {
+            Ok(catch_unwind(AssertUnwindSafe(|| {
+                serde_json::from_str::<genesis_contracts::StorageJob>(&value.to_string())
+                    .ok()
+                    .filter(|job| storage::validate(&job.operation).is_ok())
+                    .is_some_and(storage_worker::submit)
+            }))
+            .unwrap_or(false))
         })
         .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
 }
