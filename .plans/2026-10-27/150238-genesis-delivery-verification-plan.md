@@ -1,8 +1,8 @@
 # Genesis delivery and verification plan
 
-Architecture revision approved 28 October: all browser customization and the managed DOM runtime use TypeScript/JavaScript under `packages/sdk/` and `applets/`, with React for custom dialogs and local pages. Native Rust retains the controller, contracts and SQLite services. HN refuses Wasm compilation in its source realm, as recorded in the [historical qualification report](../../.reports/2026-10-28/162112-genesis-hn-wasm-qualification-report.md). Requalify the TS runtime on the supported emulator before MVP-03. Physical hardware remains required before release in MVP-07.
+Architecture revision approved 28 October: all browser customization and the managed DOM runtime use TypeScript/JavaScript under `packages/sdk/` and `applets/`, with React for custom dialogs and local pages. Native Rust retains the controller, contracts and SQLite services. HN refuses Wasm compilation in its source realm, as recorded in the [historical qualification report](../../.reports/2026-10-28/162112-genesis-hn-wasm-qualification-report.md). The TS runtime passed [MVP-02 emulator qualification](../../.reports/2026-10-28/174427-genesis-hn-typescript-qualification-report.md); MVP-03 may proceed. Physical hardware remains required before release in MVP-07.
 
-Created 27 October 2026, Asia/Kolkata. Scope: the single Hacker News bookmarking prototype in the [Genesis MVP implementation plan](150238-genesis-mvp-implementation-plan.md). MVP-01 is verified on the emulator. MVP-02 implementation is present; TS source qualification and later stages remain pending. Numerical gates require actual evidence, not inferred success.
+Created 27 October 2026, Asia/Kolkata. Scope: the single Hacker News bookmarking prototype in the [Genesis MVP implementation plan](150238-genesis-mvp-implementation-plan.md). MVP-01 is verified on the emulator. MVP-02 implementation is present; TS source qualification passed on the emulator; later stages remain pending. Numerical gates require actual evidence, not inferred success.
 
 ## 1. Execution rules
 
@@ -39,7 +39,7 @@ Exit: launcher and ordinary browsing run on an emulator or device, native Back/R
 
 ## 3. MVP-02: Prove the public Hacker News browser contract
 
-Dependencies: MVP-01. Status: host/bootstrap implemented; HN target added; actual HN realm qualification pending. Earlier YouTube/X evidence is historical and must not be relabeled HN success.
+Dependencies: MVP-01. Status: verified on the supported emulator, with [HN evidence](../../.reports/2026-10-28/174427-genesis-hn-typescript-qualification-report.md). Earlier YouTube/X evidence is historical and must not be relabeled HN success.
 
 Bundle only `hn-bookmarks` with source `primary`, its qualification inspector and packaged React library page. Preserve earlier applet source directories but omit their packages from the generated index. Reuse isolated-world registration, nonce challenge, bundled TypeScript runtime, managed style/mount, native cover and source/page identities.
 
