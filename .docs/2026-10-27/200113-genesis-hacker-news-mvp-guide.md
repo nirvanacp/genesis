@@ -6,7 +6,7 @@ Scope: the single public Hacker News bookmarking prototype. This replaces the ea
 
 MVP-01's build foundation is verified. MVP-02's generic host/bootstrap is implemented and now bundles only `hn-bookmarks`. Its source qualification entry, structural inspector and local React page compile, but they do not save bookmarks. YouTube/X applet source remains intact and excluded from the APK package index.
 
-HN provides public story pages, so login is not a prerequisite. The [28 October qualification report](../../.reports/2026-10-28/162112-genesis-hn-wasm-qualification-report.md) supersedes the earlier missing-API diagnosis. The official provider update to 156.0.8078.47 resolved that problem. The packaged local page passes Wasm startup and twenty reloads; HN source startup refuses Wasm compilation in its realm. A runtime architecture decision is pending before proceeding.
+HN provides public story pages, so login is not a prerequisite. The [28 October qualification report](../../.reports/2026-10-28/162112-genesis-hn-wasm-qualification-report.md) supersedes the earlier missing-API diagnosis. The official provider update to 156.0.8078.47 resolved that problem. The packaged local page passes Wasm startup and twenty reloads; HN source startup refuses Wasm compilation in its realm. The user approved a TypeScript/JavaScript managed runtime and React customization. Keep native Rust contracts/controller/storage and repeat source qualification with the TS bundle before proceeding.
 
 The user authorized implementation to advance after emulator qualification on 28 October. Physical-device repetition remains required before final MVP-07 release, rather than before MVP-03. This does not waive required source-realm runtime success.
 
@@ -37,9 +37,7 @@ node --check tools/build.mjs
 node --check tools/check-packages.mjs
 cargo fmt --all -- --check
 cargo check -p genesis-contracts --locked
-cargo check -p genesis-page-runtime --target wasm32-unknown-unknown --locked
 cargo clippy -p genesis-android --locked -- -D warnings
-cargo clippy -p genesis-page-runtime --target wasm32-unknown-unknown --locked -- -D warnings
 ```
 
 From `android/`, with the pinned tools configured as in the [setup guide](161510-genesis-android-setup.md):
@@ -48,7 +46,7 @@ From `android/`, with the pinned tools configured as in the [setup guide](161510
 ./gradlew :app:assembleDebug :app:lintDebug --console=plain
 ```
 
-Build real Wasm and both ABIs; use target-specific native Clippy when its cross-compilation environment is available. Install as an update without uninstalling or clearing data. Compilation and public desktop HTML inspection do not replace actual Android browser/device results.
+Build the self-contained TS bundles and both native ABIs; use target-specific native Clippy when its cross-compilation environment is available. Install as an update without uninstalling or clearing data. Compilation and public desktop HTML inspection do not replace actual Android browser/device results.
 
 ## 1. Finish MVP-02 on Hacker News
 
@@ -58,7 +56,7 @@ The immediate next step is provider and realm qualification, using the newly bun
 Finish MVP-02 qualification only for the Hacker News prototype. Read all five current plans under .plans/2026-10-27/ and follow the working rules in the HN continuation guide.
 
 1. Inspect Git status and available Android devices/providers. Reuse the HN package and existing debug inspector. Record actual required feature flags. If world-aware injection or navigation APIs are missing, report the precise compatibility blocker and stop; do not request a login or bypass isolation.
-2. On a supported provider, load public HN home/news, newest, Ask, Show and a story discussion. Qualify the nonce challenge, embedded Wasm, creator execution, computed style and owned mount separately. Run 20/20 fresh-document cycles for the HN source and verify stale bindings are rejected.
+2. On a supported provider, load public HN home/news, newest, Ask, Show and a story discussion. Qualify the nonce challenge, TypeScript runtime, creator execution, computed style and owned mount separately. Run 20/20 fresh-document cycles for the HN source and verify stale bindings are rejected.
 3. Activate the packaged library qualification page without a development server. Verify an external story title link uses ordinary browsing without the source bridge and Back rebinds HN correctly.
 4. Verify unsupported-provider handling, Retry/Open ordinary site, creator failure and renderer-loss recovery. Use emulator results for the implementation gate under the 28 October authorization; repeat the required checks on physical hardware before final MVP-07 release.
 5. Fix only MVP-02 defects, run appropriate checks, commit verified components and save a dated HN qualification report. Mark the stage verified only when its required gates pass. Stop before MVP-03.
@@ -71,11 +69,11 @@ Build the reusable DOM lifecycle used by HN's future Save buttons.
 ```text
 Implement only the observation/effects portion of MVP-03 after recorded HN MVP-02 verification. Read all five current plans and follow the HN continuation guide's working rules.
 
-1. Reuse contracts, the qualified bootstrap and existing PageScope. Add focused Rust modules for targets, observation, effects and scope ownership with thin TypeScript SDK wrappers.
+1. Reuse contracts, the qualified bootstrap and existing PageScope. Add focused TypeScript modules under packages/sdk for targets, observation, effects and scope ownership. Keep native controller and shared Rust contracts in their current locations.
 2. Implement watchElements, one MutationObserver, coalesced frame work, bounded bindings, separate element/content identity, managed styles and owned mountAt hosts. Exclude Genesis-owned UI from source discovery.
 3. Handle absent/replaced targets, changed/recycled row identities, duplicate mounts, callback reentry and creator cleanup exceptions. Suspend effects after repeated page removal instead of remounting indefinitely.
 4. Verify zero duplicate owned roots, stale bindings or retained managed resources after disposal. Distinguish HN's ordinary document replacement from synthetic recycled-node stress checks.
-5. Run appropriate type/package/Rust/Wasm/Android checks, commit this component and report remaining MVP-03 work. Do not implement storage or HN Save behavior yet.
+5. Run appropriate type/package/native Rust/Android checks, commit this component and report remaining MVP-03 work. Do not implement storage or HN Save behavior yet.
 ```
 
 ## 3. Complete MVP-03 navigation, modal and lifecycle

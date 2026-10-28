@@ -1,8 +1,8 @@
 # Genesis MVP implementation plan
 
-Current qualification: [28 October HN report](../../.reports/2026-10-28/162112-genesis-hn-wasm-qualification-report.md). Google WebView 156.0.8078.47 now reports all required APIs supported. The packaged local page passes Wasm startup and 20 reloads, but HN source startup fails because Wasm compilation is refused in its realm. MVP-02 remains blocked pending the runtime architecture decision; no later stage is verified.
+Architecture revision approved 28 October: all browser customization and the managed DOM runtime use TypeScript/JavaScript under `packages/sdk/` and `applets/`, with React for custom dialogs and local pages. Native Rust retains the controller, contracts and SQLite services. HN refuses Wasm compilation in its source realm, as recorded in the [historical qualification report](../../.reports/2026-10-28/162112-genesis-hn-wasm-qualification-report.md). Requalify the TS runtime on the supported emulator before MVP-03. Physical hardware remains required before release in MVP-07.
 
-Created 27 October 2026, Asia/Kolkata. Revised for the user's Hacker News prototype. Scope: the Android browser host, reusable runtime/SDK and one public Hacker News bookmarking applet. MVP-01 is verified on the emulator. MVP-02 platform code is implemented, but source-realm qualification remains blocked by Wasm compilation policy on HN. The HN package is the new qualification target; no prior YouTube/X result verifies it.
+Created 27 October 2026, Asia/Kolkata. Revised for the user's Hacker News prototype. Scope: the Android browser host, reusable runtime/SDK and one public Hacker News bookmarking applet. MVP-01 is verified on the emulator. MVP-02 platform code is implemented; repeat source qualification with the approved TS runtime. The HN package is the new qualification target; no prior YouTube/X result verifies it.
 
 ## 1. Authority and execution
 
@@ -37,12 +37,12 @@ All Genesis data is local to profile `local` and this app installation. The prot
 | --- | --- |
 | Browser | Android System WebView and AndroidX WebKit 1.18.0 |
 | Host/controller | Rust under `android/native/`, narrow Java Activity/WebView/JNI adapters |
-| Page runtime | Rust/Wasm in the isolated `genesis.v1` execution world |
+| Page runtime | TypeScript/JavaScript in the isolated `genesis.v1` execution world |
 | Creator code | TypeScript/CSS; plain DOM for per-story buttons, React for one dialog and the library |
 | Rendering | Preserve the live website; use owned styles and Shadow DOM hosts |
 | Storage | Native Rust `rusqlite`, generic document namespaces and atomic CAS batches |
 | Local page | WebViewAssetLoader, declared immutable package assets, no development server |
-| Build | npm workspaces, esbuild IIFEs with embedded Wasm, Gradle-generated assets/JNI libraries |
+| Build | npm workspaces, self-contained esbuild TS/JS IIFEs, Gradle-generated assets/JNI libraries |
 | Resource budget | One live WebView; source/local-page switches recreate the view |
 
 Java handles generic platform plumbing. Rust owns host state, binding and storage policy. HN selectors, URL normalization, item extraction, category algorithms and custom UI belong in the HN applet. Native SQL must not know what an HN story/category is.
@@ -52,7 +52,7 @@ flowchart TB
   Native[Native launcher and recovery] --> Host[Rust host controller]
   Host --> View[One foreground WebView]
   View --> Site[Original Hacker News DOM]
-  View --> Runtime[Isolated Rust/Wasm runtime]
+  View --> Runtime[Isolated TypeScript runtime]
   Runtime --> Applet[HN TypeScript and owned React UI]
   Applet --> Site
   Applet <-->|bound storage RPC| Host
@@ -67,13 +67,13 @@ flowchart TB
 | `android/app/` | Existing Java host, resources, Gradle-generated assets and JNI registration |
 | `android/native/src/` | Existing controller, source registry, package validation/JNI; future generic storage worker |
 | `crates/contracts/` | Shared identities, envelopes and typed errors |
-| `crates/page-runtime/` | Wasm DOM scopes, watchers, effects and routes |
-| `packages/sdk/` | Thin creator-facing TypeScript wrappers |
+| `crates/page-runtime/` | Preserved inactive Wasm qualification code; not bundled or extended |
+| `packages/sdk/` | Managed DOM runtime and creator-facing TypeScript SDK |
 | `applets/news.ycombinator.com/` | HN manifest, qualification entry/inspector; future targets, extraction, repository, categories, Save dialog and library |
 | `tools/` | Existing build orchestration and bundled package selection/validation |
 | `applets/youtube.com/`, `applets/x.com/` | Preserved inactive code; no current delivery obligations |
 
-Reuse MVP-01/02's workspace/toolchain locks, real Wasm build, ABI outputs, launcher, nonce handshake, source/page loader, qualification effect lifecycle, inspector and recovery paths. Do not replace the running browser or rebuild these components. The current qualification entries explicitly lack bookmark operations. No placeholder persistence may be presented as durable storage.
+Reuse MVP-01/02's workspace/toolchain locks, native Rust build, ABI outputs, launcher, nonce handshake, source/page loader, qualification effect lifecycle, inspector and recovery paths. Do not replace the running browser or rebuild these components. The current qualification entries explicitly lack bookmark operations. No placeholder persistence may be presented as durable storage.
 
 ## 5. Source and document lifecycle
 
@@ -89,7 +89,7 @@ Existing native fullscreen/media support is preserved, but media/playback gates 
 
 ## 7. Qualification and stop conditions
 
-The selected world-aware injection, bridge and navigation APIs remain required. The original emulator provider lacked `JS_INJECTION_IN_FRAME_AND_WORLD` and `NAVIGATION_LISTENER`; its official update resolved those missing APIs, as recorded above. Switching to HN removes login dependence; it does not supply missing browser APIs. Check actual provider flags, then prove the HN document/realm contract before MVP-03. On 28 October the user authorized progression after emulator qualification; physical-device repetition remains required before release in MVP-07. Do not change worlds, relax origins, simulate Wasm success or change engines to bypass a failed gate.
+The selected world-aware injection, bridge and navigation APIs remain required. The original emulator provider lacked `JS_INJECTION_IN_FRAME_AND_WORLD` and `NAVIGATION_LISTENER`; its official update resolved those missing APIs, as recorded above. Switching to HN removes login dependence; it does not supply missing browser APIs. Check actual provider flags, then prove the HN document/realm contract before MVP-03. On 28 October the user authorized progression after emulator qualification; physical-device repetition remains required before release in MVP-07. Do not change worlds, relax origins, simulate runtime success or change engines to bypass a failed gate.
 
 Public HTML inspection supports candidate HN selectors only. Actual Android isolated-world startup, twenty fresh-document cycles, local-page activation and native recovery still need HN evidence. Label emulator and physical-device results separately.
 

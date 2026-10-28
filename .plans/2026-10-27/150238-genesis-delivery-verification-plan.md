@@ -1,8 +1,8 @@
 # Genesis delivery and verification plan
 
-Current qualification: [28 October HN report](../../.reports/2026-10-28/162112-genesis-hn-wasm-qualification-report.md). Google WebView 156.0.8078.47 now reports all required APIs supported. The packaged local page passes Wasm startup and 20 reloads, but HN source startup fails because Wasm compilation is refused in its realm. MVP-02 remains blocked pending the runtime architecture decision; no later stage is verified.
+Architecture revision approved 28 October: all browser customization and the managed DOM runtime use TypeScript/JavaScript under `packages/sdk/` and `applets/`, with React for custom dialogs and local pages. Native Rust retains the controller, contracts and SQLite services. HN refuses Wasm compilation in its source realm, as recorded in the [historical qualification report](../../.reports/2026-10-28/162112-genesis-hn-wasm-qualification-report.md). Requalify the TS runtime on the supported emulator before MVP-03. Physical hardware remains required before release in MVP-07.
 
-Created 27 October 2026, Asia/Kolkata. Scope: the single Hacker News bookmarking prototype in the [Genesis MVP implementation plan](150238-genesis-mvp-implementation-plan.md). MVP-01 is verified on the emulator. MVP-02 implementation is present, but qualification is blocked by HN source-realm Wasm refusal; later stages remain pending. Numerical gates require actual evidence, not inferred success.
+Created 27 October 2026, Asia/Kolkata. Scope: the single Hacker News bookmarking prototype in the [Genesis MVP implementation plan](150238-genesis-mvp-implementation-plan.md). MVP-01 is verified on the emulator. MVP-02 implementation is present; TS source qualification and later stages remain pending. Numerical gates require actual evidence, not inferred success.
 
 ## 1. Execution rules
 
@@ -20,20 +20,20 @@ Status: verified on the emulator; retain the existing build. [Recorded evidence]
 
 Dependencies: none.
 
-Create the three Cargo packages, npm workspace manifests, toolchain pins and `android/` Gradle project. Build only the generic native launcher and a basic WebView at this stage. Implement the Node build script incrementally, with actual native and Wasm artifacts; do not check in fake `.so` or `.wasm` files.
+Create the three Cargo packages, npm workspace manifests, toolchain pins and `android/` Gradle project. Build only the generic native launcher and a basic WebView at this stage. Implement the Node build script incrementally, with actual native artifacts and compiled TS bundles; do not check in fake binaries. The original Wasm build was completed in MVP-01 and is now inactive.
 
 Files are the root workspace manifests, `tools/build.mjs`, `android/` build files, the four Java adapter classes, and initial native/controller modules. The SDK/app entries may be minimal compilation entries until the next stage, explicitly labeled incomplete.
 
 Required commands and results:
 
 - Root `npm ci` resolves the pinned npm graph; subsequent builds preserve its lock.
-- `cargo check -p genesis-contracts` passes on the host.
-- `cargo check -p genesis-page-runtime --target wasm32-unknown-unknown` passes.
+- `cargo check -p genesis-contracts --locked` passes on the host.
+- The active TS runtime bundles without Wasm compilation or dynamic code evaluation.
 - The selected cargo-ndk build produces both ABI libraries from the Rust host.
 - From `android/`, `./gradlew :app:assembleDebug :app:lintDebug` passes.
 - Android Studio sync finishes without running npm/Rust compilation, and Run installs/starts the app after setup.
 
-Verify generated assets and ABI libraries are inside the APK. Verify a second unchanged build is incremental, while changing an applet entry regenerates assets. Record selected JDK, SDK, NDK, Rust, wasm-bindgen and Node paths. Document setup in a generated `.docs/<date>/<time>-genesis-android-setup.md` when preparing the implementation handoff.
+Verify generated assets and ABI libraries are inside the APK. Verify a second unchanged build is incremental, while changing an applet entry regenerates assets. Record selected JDK, SDK, NDK, Rust and Node paths. The original Wasm build is historical MVP-01 evidence. Document setup in a generated `.docs/<date>/<time>-genesis-android-setup.md` when preparing the implementation handoff.
 
 Exit: launcher and ordinary browsing run on an emulator or device, native Back/Reload/Home respond, and the native library is genuinely executing. This does not yet pass applet functionality.
 
@@ -41,13 +41,13 @@ Exit: launcher and ordinary browsing run on an emulator or device, native Back/R
 
 Dependencies: MVP-01. Status: host/bootstrap implemented; HN target added; actual HN realm qualification pending. Earlier YouTube/X evidence is historical and must not be relabeled HN success.
 
-Bundle only `hn-bookmarks` with source `primary`, its qualification inspector and packaged React library page. Preserve earlier applet source directories but omit their packages from the generated index. Reuse isolated-world registration, nonce challenge, embedded Wasm, managed style/mount, native cover and source/page identities.
+Bundle only `hn-bookmarks` with source `primary`, its qualification inspector and packaged React library page. Preserve earlier applet source directories but omit their packages from the generated index. Reuse isolated-world registration, nonce challenge, bundled TypeScript runtime, managed style/mount, native cover and source/page identities.
 
 | Experiment | Pass criterion |
 | --- | --- |
 | Public HN page | Original home/news, newest, Ask/Show and top-level item discussion load without sign-in |
 | Navigate/reload | 20/20 fresh-document cycles on the HN source reach ready and reject stale bindings |
-| Wasm/creator/CSS/mount | Each succeeds separately under actual isolated-realm policy |
+| TS runtime/creator/CSS/mount | Each succeeds separately under actual isolated-realm policy |
 | Packaged local page | Activates fully from APK assets without a development server |
 | External title link and Back | Ordinary publisher browsing has no source bridge; returning to HN establishes its valid binding |
 | Unsupported provider | Explicit native unsupported state with usable ordinary-site recovery and no false ready |
@@ -55,13 +55,13 @@ Bundle only `hn-bookmarks` with source `primary`, its qualification inspector an
 
 On 28 October the user authorized completing this stage on a supported emulator and proceeding to MVP-03 through MVP-06. Record device/ABI/provider/locale and actual HN variant. Repeat the real-site qualification on physical hardware before MVP-07 can declare release readiness; emulator evidence alone does not satisfy that final requirement. Inspect story versus comment targets through the debug-only structural inspector; no credentials or page-text dumps.
 
-Stop if required world/navigation APIs are missing or isolated startup fails. The earlier provider lacked `JS_INJECTION_IN_FRAME_AND_WORLD` and `NAVIGATION_LISTENER`; the current provider supports them, but the source-realm Wasm gate now fails. Do not fall back to page-world injection, a different engine or static HTML to call this gate passed. Login and media are outside the revised prototype and are not MVP-02 gates. Do not start MVP-03 until required HN qualification passes.
+Stop if required world/navigation APIs are missing or isolated startup fails. The earlier provider lacked `JS_INJECTION_IN_FRAME_AND_WORLD` and `NAVIGATION_LISTENER`; the current provider supports them, and the approved TypeScript runtime must now pass source-realm qualification. Do not fall back to page-world injection, a different engine or static HTML to call this gate passed. Login and media are outside the revised prototype and are not MVP-02 gates. Do not start MVP-03 until required HN qualification passes.
 
 ## 4. MVP-03: Implement the reusable runtime and SDK
 
 Dependencies: MVP-02.
 
-Complete `genesis-contracts`, Rust `targets`, `observations`, `effects`, `scopes` and route tracking modules, plus the thin SDK facade. Implement `watchElements`, styles, mounting, modal lifecycle, source/page navigation and generic navigation policy. Add native recovery and stale-callback rejection.
+Complete `genesis-contracts` and the TypeScript managed targets, observation, effects, scopes and route tracking in `packages/sdk/`. Implement `watchElements`, styles, mounting, modal lifecycle, source/page navigation and generic navigation policy. Add native recovery and stale-callback rejection.
 
 Retain the existing manifest parser, generated index and checks in `tools/check-packages.mjs`; complete generic source/page navigation validation where needed. HN declares no deny rules; dynamic query-value policies are outside this prototype. Paths, entries, origins, capabilities, references and duplicate IDs already have validation. Keep the working root type/package commands and nonce/generation protections.
 
@@ -144,8 +144,8 @@ Run formatting/type/package/Android lint/build checks appropriate to the changed
 npm run typecheck
 npm run check:packages
 cargo fmt --all -- --check
-cargo check -p genesis-contracts
-cargo check -p genesis-page-runtime --target wasm32-unknown-unknown
+cargo check -p genesis-contracts --locked
+cargo clippy -p genesis-android --locked -- -D warnings
 
 # android/
 ./gradlew :app:assembleDebug :app:lintDebug

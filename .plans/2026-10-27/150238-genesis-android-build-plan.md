@@ -1,8 +1,8 @@
 # Genesis Android and build plan
 
-Current qualification: [28 October HN report](../../.reports/2026-10-28/162112-genesis-hn-wasm-qualification-report.md). Google WebView 156.0.8078.47 now reports all required APIs supported. The packaged local page passes Wasm startup and 20 reloads, but HN source startup fails because Wasm compilation is refused in its realm. MVP-02 remains blocked pending the runtime architecture decision; no later stage is verified.
+Architecture revision approved 28 October: all browser customization and the managed DOM runtime use TypeScript/JavaScript under `packages/sdk/` and `applets/`, with React for custom dialogs and local pages. Native Rust retains the controller, contracts and SQLite services. HN refuses Wasm compilation in its source realm, as recorded in the [historical qualification report](../../.reports/2026-10-28/162112-genesis-hn-wasm-qualification-report.md). Requalify the TS runtime on the supported emulator before MVP-03. Physical hardware remains required before release in MVP-07.
 
-Created 27 October 2026, Asia/Kolkata. Scope: `android/`, shared build tooling and dependency manifests. Read the [MVP plan](150238-genesis-mvp-implementation-plan.md) first. The MVP-01 build is verified on the emulator. MVP-02 browser plumbing is implemented, with provider qualification still blocked. The HN package replaces the earlier bundled product targets. Database-worker behavior below remains MVP-04 work. See the [setup evidence](../../.docs/2026-10-27/161510-genesis-android-setup.md) and [MVP-02 report](../../.reports/2026-10-27/182114-genesis-mvp02-qualification-report.md).
+Created 27 October 2026, Asia/Kolkata. Scope: `android/`, shared build tooling and dependency manifests. Read the [MVP plan](150238-genesis-mvp-implementation-plan.md) first. The MVP-01 build is verified on the emulator. MVP-02 browser plumbing is implemented and the updated provider supports all required APIs; TS runtime qualification remains required. The HN package replaces the earlier bundled product targets. Database-worker behavior below remains MVP-04 work. See the [setup evidence](../../.docs/2026-10-27/161510-genesis-android-setup.md) and [MVP-02 report](../../.reports/2026-10-27/182114-genesis-mvp02-qualification-report.md).
 
 ## 1. Android Studio project
 
@@ -37,29 +37,28 @@ One-time setup:
 
 1. Install/select JDK 17 for Gradle through Android Studio's Gradle JDK settings. Do not rely on the shell's `java` command.
 2. Install SDK platform 37, Build Tools 36.0.0 and the pinned NDK through SDK Manager as needed.
-3. Add Rust targets `wasm32-unknown-unknown`, `aarch64-linux-android` and `x86_64-linux-android`.
-4. Install `wasm-bindgen-cli` exactly matching the selected wasm-bindgen crate, and `cargo-ndk` 4.1.2 as the initial build-tool candidate. Verify its version and target invocation before pinning the setup instructions as accepted.
+3. Add Rust targets `aarch64-linux-android` and `x86_64-linux-android`. The preserved Wasm crate is outside the active Android build.
+4. Install `cargo-ndk` 4.1.2. The active Android build does not require wasm-bindgen-cli.
 5. Resolve dependencies once, inspect failures, and commit Cargo.lock and package-lock.json with the implementation. Subsequent builds use the locks.
 
-Do not hardcode `/Users/rit` in tracked files. Support ignored `android/local.properties` keys `genesis.node`, `genesis.cargo`, and `genesis.wasmBindgen`. Resolve executables from those keys first, then PATH. Derive the SDK path from `sdk.dir` or the standard SDK environment setting. Derive NDK location from that SDK plus the pinned version. A missing tool must produce a message naming the exact setting or setup command needed.
+Do not hardcode `/Users/rit` in tracked files. Support ignored `android/local.properties` keys `genesis.node` and `genesis.cargo`. Resolve executables from those keys first, then PATH. Derive the SDK path from `sdk.dir` or the standard SDK environment setting. Derive NDK location from that SDK plus the pinned version. A missing tool must produce a message naming the exact setting or setup command needed.
 
 ## 3. Dependencies and lock rules
 
-The implemented dependencies are resolved in Cargo.lock and package-lock.json. `thiserror`, `rusqlite` and `wasm-bindgen-futures` remain planned dependencies; add them only when their stage needs them. If compilation demonstrates incompatibility, change the smallest necessary pin, record the error and update this implementation's setup notes. Do not use `latest` in manifests or install scripts.
+The implemented dependencies are resolved in Cargo.lock and package-lock.json. `rusqlite` remains a planned native dependency; add them only when their stage needs them. If compilation demonstrates incompatibility, change the smallest necessary pin, record the error and update this implementation's setup notes. Do not use `latest` in manifests or install scripts.
 
 | Rust dependency | Pin | Used by |
 | --- | --- | --- |
 | serde | 1.0.229, derive feature | Contracts and native host |
 | serde_json | 1.0.154 | Wire messages and stored JSON |
 | thiserror | 2.0.21 | Explicit runtime errors |
-| url | 2.5.8 | Native and Wasm URL policy evaluation |
+| url | 2.5.8 | Native URL policy evaluation |
 | jni | 0.22.4 | Android boundary only |
 | rusqlite | 0.41.0, bundled feature | Native host only |
-| wasm-bindgen | 0.2.129 | Page runtime |
-| web-sys / js-sys | 0.3.106 | Page runtime |
-| wasm-bindgen-futures | 0.4.79 | Page async integration |
+| wasm-bindgen | 0.2.129 | Preserved inactive Wasm crate only |
+| web-sys / js-sys | 0.3.106 | Preserved inactive Wasm crate only |
 
-Enable only the web-sys APIs used by the implementation. Keep JNI/SQLite out of the Wasm dependency graph. Keep browser DOM bindings out of the native controller. No Tokio or HTTP client is required by the HN applet.
+Do not add dependencies to the inactive Wasm crate. Keep browser DOM bindings out of the native controller. No Tokio or HTTP client is required by the HN applet.
 
 | npm dependency | Pin | Used by |
 | --- | --- | --- |
@@ -82,13 +81,13 @@ Execution order:
 
 1. Validate tool paths and run package/manifest checks. Missing `node_modules` reports the root `npm ci` command.
 2. Run TypeScript checking for the SDK and bundled HN applet. The root workspace check may also verify the preserved inactive applets.
-3. Compile `genesis-page-runtime` for `wasm32-unknown-unknown` in release mode. Run the matching wasm-bindgen CLI with web output into `target/genesis/page-runtime/`.
-4. Build each source entry into one IIFE with esbuild. Bundle the generated runtime JS and include Wasm bytes as a base64 constant. Set target to ES2022, JSX automatic, code splitting false, and dynamic imports unavailable in the final package. Package CSS as text used by the runtime, not a network URL. Resolve npm dependencies at build time.
+3. Preserve `crates/page-runtime/` as inactive historical code; it is not an Android asset input.
+4. Build each source entry and the TypeScript runtime into one IIFE with esbuild. Set target to ES2022, JSX automatic, code splitting false, and dynamic imports unavailable in the final package. Package CSS as text used by the runtime, not a network URL. Resolve npm dependencies at build time.
 5. Build HN's local library HTML and script. It can reuse the same bundled runtime and SDK, with a page context instead of a source context. Do not ship a development-server URL.
 6. Produce `packages/index.json` and immutable package asset directories under `android/app/build/generated/genesis/assets/`. Compute a SHA-256 revision from manifest plus compiled assets. Generate the Android source scripts from these exact assets.
 7. Run cargo-ndk for both native ABIs, using the selected NDK/API 26 and `genesis-android` cdylib. Output `libgenesis_android.so` under `android/app/build/generated/genesis/jniLibs/<abi>/`. Use debug native builds for Debug and release native builds for Release.
 
-Wasm-bindgen's output modes have different loading assumptions. The selected web output must be bundled and initialized with bytes explicitly, without a fetch to the website. This removes network asset delivery from the source bootstrap; it does not bypass realm CSP. [wasm-bindgen deployment](https://wasm-bindgen.github.io/wasm-bindgen/reference/deployment.html).
+The active bundle contains the TypeScript runtime and creator code. No Wasm compilation, `eval`, dynamic imports or website fetch is needed. Keep the existing isolated world and exact origin allowlist.
 
 Use the AGP variant API or explicit per-variant task wiring to prevent Debug and Release output races. Place variant outputs under `generated/genesis/<variant>/` when both variants are built. The unqualified paths above describe their logical contents. Register a single producer per output directory.
 
@@ -136,7 +135,7 @@ If the renderer dies or becomes unresponsive, disable the failing applet in nati
 
 From the repository root: `npm ci`, `npm run typecheck`, `npm run check:packages`, and `cargo fmt --all -- --check`. From `android/`: `./gradlew :app:assembleDebug :app:lintDebug`. Then open `android/` in Android Studio, select the `app` configuration and press Run.
 
-These root scripts and the dated Android setup guide already exist. Keep the guide current with tool paths, SDK/NDK requirements, emulator ABI and physical-device evidence. Do not require users to manually copy Wasm or native libraries before each Run.
+These root scripts and the dated Android setup guide already exist. Keep the guide current with tool paths, SDK/NDK requirements, emulator ABI and physical-device evidence. Do not require users to manually copy JavaScript or native libraries before each Run.
 
 ## 8. Browser profile implementation
 

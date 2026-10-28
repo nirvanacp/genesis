@@ -1,6 +1,6 @@
 # Genesis runtime and SDK plan
 
-Current qualification: [28 October HN report](../../.reports/2026-10-28/162112-genesis-hn-wasm-qualification-report.md). Google WebView 156.0.8078.47 now reports all required APIs supported. The packaged local page passes Wasm startup and 20 reloads, but HN source startup fails because Wasm compilation is refused in its realm. MVP-02 remains blocked pending the runtime architecture decision; no later stage is verified.
+Architecture revision approved 28 October: all browser customization and the managed DOM runtime use TypeScript/JavaScript under `packages/sdk/` and `applets/`, with React for custom dialogs and local pages. Native Rust retains the controller, contracts and SQLite services. HN refuses Wasm compilation in its source realm, as recorded in the [historical qualification report](../../.reports/2026-10-28/162112-genesis-hn-wasm-qualification-report.md). Requalify the TS runtime on the supported emulator before MVP-03. Physical hardware remains required before release in MVP-07.
 
 Created 27 October 2026, Asia/Kolkata. Scope: `crates/`, `packages/sdk/`, generic native services, and package contracts. Read the [MVP plan](150238-genesis-mvp-implementation-plan.md). MVP-02 implements identities, the handshake, qualification effects and bootstrap. Managed observation/navigation APIs remain MVP-03 work; storage remains MVP-04 work. The complete APIs below are target contracts, not a claim that every method is available.
 
@@ -43,7 +43,7 @@ Each live execution binding has kind `source` with a source ID, or kind `page` w
 
 ## 3. Injection and handshake
 
-Build one self-contained injected script per source entry. Its JavaScript loader initializes the embedded Wasm bytes, exposes the thin SDK facade and activates the applet. Genesis's observation, effect scheduling and route management remain Rust/Wasm. Bootstrap JS performs module/bridge wiring, not a second DOM runtime.
+Build one self-contained injected script per source entry. The script bundles the TypeScript managed DOM runtime, SDK and applet entry. It uses no Wasm compilation, dynamic code evaluation or website asset fetch. Observation, effect scheduling and route management run in TypeScript.
 
 Use isolated world name `genesis.v1` and bridge object `genesisHost`. World/listener/script registration must happen before source navigation. The injected script exits immediately in child frames. Do not change to the main world when an isolated-world assumption fails.
 
@@ -54,7 +54,7 @@ Binding sequence:
 3. Native checks the bound view, main-frame flag, callback origin and expected revision. It does not trust a message's claimed applet ID.
 4. Native challenges that nonce by executing a small function in the current document's same execution world. The function replies only if its locally held nonce matches. A delayed hello from an old document cannot bind the new document.
 5. Native returns a fresh document ID and the accepted source/page binding. The runtime rejects normal RPC until this handshake completes.
-6. Rust/Wasm installs managed effects and performs the first pass. It sends `runtime.ready` with effect statuses. Native removes the cover for a healthy eligible page. An empty or unsupported HN page is not a runtime startup failure; report feature coverage separately.
+6. The TypeScript runtime installs managed effects and performs the first pass. It sends `runtime.ready` with effect statuses. Native removes the cover for a healthy eligible page. An empty or unsupported HN page is not a runtime startup failure; report feature coverage separately.
 
 The loader has a five-second startup deadline after delivery. A timeout produces a native failure with Retry and Open ordinary site. It never silently calls a broken customization active. An external publisher origin uses ordinary-site presentation and no applet bridge. Login forms are outside story targets; never inspect their values or expand origins for article links.
 
@@ -90,7 +90,7 @@ Methods in v1: `runtime.ready`, `runtime.error`, `route.changed`, `ui.modalState
 
 `sources.open` and `pages.open` acknowledge an accepted navigation request, not a completed page load. Send the acknowledgement before scheduling view replacement; the new view reports its own loading/ready/error state. Callers must not depend on code continuing after their document is retired.
 
-For MVP-02 qualification, the bound envelope also accepts `runtime.phase` with `{phase: "wasm"}` to report initialization progress without claiming ready. The debug host alone accepts `debug.inspection` responses to its explicit inspector request. These are named qualification diagnostics, not arbitrary native invocation or a public storage capability. Feature methods in the v1 table remain unavailable until their delivery stage.
+For MVP-02 qualification, the bound envelope also accepts `runtime.phase` with `{phase: "typescript"}` to report initialization progress without claiming ready. The debug host alone accepts `debug.inspection` responses to its explicit inspector request. These are named qualification diagnostics, not arbitrary native invocation or a public storage capability. Feature methods in the v1 table remain unavailable until their delivery stage.
 
 Use at most 32 pending page requests, 256 KiB encoded message size and a five-second RPC timeout. Validate before queueing. Timeouts do not prove that a storage transaction failed; the applet rereads the affected record. Never retry a write automatically. Deliver replies through the document-bound reply channel and drop them after retirement.
 
@@ -120,13 +120,13 @@ interface AppletContext {
 }
 ```
 
-`defineApplet({activate(ctx)})` is the source entry contract. `definePage({mount(ctx, container)})` is the local page entry contract and returns a disposer. The SDK provides typed wrappers around Rust/Wasm exports. It does not force React on either entry type.
+`defineApplet({activate(ctx)})` is the source entry contract. `definePage({mount(ctx, container)})` is the local page entry contract and returns a disposer. The SDK implements the managed DOM runtime in TypeScript. It does not force React on either entry type.
 
 `WatchOptions` contains `selector`, optional `root`, `attributes: string[]`, `text: boolean`, `limit` with maximum 200, and `contentKey(element): string | null`. `ElementHandlers` provides `enter(binding)`, `update(binding)` and `leave(binding)`. A binding has an opaque binding ID, live Element, content key and current route revision. Missing keys are skipped and diagnosed.
 
-Rust tracks element identity separately from content key. Reusing an element for another story must call leave for the old binding before enter for the new one. Updates retain a binding only while both identities match. Async callbacks must revalidate or use the immutable record captured when the user chose Save.
+The runtime tracks element identity separately from content key. Reusing an element for another story must call leave for the old binding before enter for the new one. Updates retain a binding only while both identities match. Async callbacks must revalidate or use the immutable record captured when the user chose Save.
 
-`MountOptions` specifies position `before`, `after` or `append`, CSS text, Shadow DOM enabled by default, and `render(container)` returning a disposer. Rust creates/removes the host and tracks its anchor. Creator code owns the container's contents. Never mount React on the website's existing application root. [React root ownership](https://react.dev/reference/react-dom/client/createRoot).
+`MountOptions` specifies position `before`, `after` or `append`, CSS text, Shadow DOM enabled by default, and `render(container)` returning a disposer. The runtime creates/removes the host and tracks its anchor. Creator code owns the container's contents. Never mount React on the website's existing application root. [React root ownership](https://react.dev/reference/react-dom/client/createRoot).
 
 The modal implementation permits one modal per applet context, reports open/closed state to native, traps focus, closes on Escape or native dismissal, restores focus when the target still exists, and prevents taps from falling through to the page. React can render modal contents. The runtime owns the outer host and its lifetime.
 
@@ -134,11 +134,11 @@ Creators retain ordinary DOM APIs for unusual changes, with cleanup registered t
 
 ## 6. Observation and cleanup implementation
 
-Use one document MutationObserver in Rust, plus explicitly registered listeners. Its callback marks relevant watchers dirty and returns. One scheduled frame performs coalesced work. Exclude owned UI hosts from target discovery and do not observe their internal React mutations as source data. Observe relevant attribute names, not every attribute by default.
+Use one document MutationObserver in TypeScript, plus explicitly registered listeners. Its callback marks relevant watchers dirty and returns. One scheduled frame performs coalesced work. Exclude owned UI hosts from target discovery and do not observe their internal React mutations as source data. Observe relevant attribute names, not every attribute by default.
 
-Release Rust mutable state borrows before invoking creator callbacks because those callbacks can synchronously call the SDK again. Store callback handles and wasm-bindgen Closures in the owning scope, then drop them on disposal. Do not use permanent `Closure::forget` calls for per-document resources. Catch creator JS exceptions and retire the affected scope without abandoning the rest of cleanup.
+Release internal iteration state before invoking creator callbacks because they can synchronously call the SDK again. Keep observers, event listeners and timers in their owning scope and release them on disposal. Catch creator JS exceptions and retire the affected scope without abandoning the rest of cleanup.
 
-Use scoped discovery for changed subtrees and revalidate retained bindings. A root replacement triggers rediscovery. Keep one pending dirty item per watcher. The 200-result cap bounds retained bindings, not the duration of arbitrary CSS queries or creator functions. Measure both; neither can be preempted by a Rust timeout on the same event loop.
+Use scoped discovery for changed subtrees and revalidate retained bindings. A root replacement triggers rediscovery. Keep one pending dirty item per watcher. The 200-result cap bounds retained bindings, not the duration of arbitrary CSS queries or creator functions. Measure both; neither can be preempted by a runtime timeout on the same event loop.
 
 On each update, refresh element/content identity, run creator classification, and apply only changed effects. Track owned CSS markers and UI hosts. Repeated restoration by the page, initially three reversals within one second, suspends the affected effect and emits a conflict. Do not remount forever.
 
@@ -188,7 +188,7 @@ The database worker serializes commits, while compare-and-set protects stale app
 
 Source DOM handles never cross source boundaries. A future `observations.publish/subscribe` API can carry bounded JSON topics keyed by `(instanceId, sourceId, documentId, topic, revision)`. Do not expose or stub this API as working in v1.
 
-Direct page scripting, multiple live sources, private-page JavaScript access and strong applet fault isolation are separate capabilities. The MVP delivers one qualified page context and native recovery. It does not claim that Rust can interrupt an arbitrary infinite loop inside the browser renderer.
+Direct page scripting, multiple live sources, private-page JavaScript access and strong applet fault isolation are separate capabilities. The MVP delivers one qualified page context and native recovery. It does not claim that the runtime can interrupt an arbitrary infinite loop inside the browser renderer.
 
 ## 9. Website authentication boundary
 

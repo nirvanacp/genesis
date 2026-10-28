@@ -1,6 +1,6 @@
 # Genesis Hacker News bookmarking applet plan
 
-Current qualification: [28 October HN report](../../.reports/2026-10-28/162112-genesis-hn-wasm-qualification-report.md). Google WebView 156.0.8078.47 now reports all required APIs supported. The packaged local page passes Wasm startup and 20 reloads, but HN source startup fails because Wasm compilation is refused in its realm. MVP-02 remains blocked pending the runtime architecture decision; no later stage is verified.
+Architecture revision approved 28 October: all browser customization and the managed DOM runtime use TypeScript/JavaScript under `packages/sdk/` and `applets/`, with React for custom dialogs and local pages. Native Rust retains the controller, contracts and SQLite services. HN refuses Wasm compilation in its source realm, as recorded in the [historical qualification report](../../.reports/2026-10-28/162112-genesis-hn-wasm-qualification-report.md). Requalify the TS runtime on the supported emulator before MVP-03. Physical hardware remains required before release in MVP-07.
 
 Created 27 October 2026, Asia/Kolkata. Revised scope: only `applets/news.ycombinator.com/`. Read the [MVP architecture](150238-genesis-mvp-implementation-plan.md) and [runtime/SDK contract](150238-genesis-runtime-sdk-plan.md). The earlier applet directories remain preserved and inactive. This filename replaces the earlier YouTube/X applets plan.
 
