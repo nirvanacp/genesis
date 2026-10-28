@@ -203,8 +203,10 @@ final class BrowserAdapter {
             case "challenge": {
                 JavaScriptReplyProxy reply = channels.get(command.getLong("channel"));
                 if (reply != null && world != null && WebViewFeature.isFeatureSupported(WebViewFeature.JS_INJECTION_IN_FRAME_AND_WORLD)) {
+                    // WebView 156 dereferences the optional receiver. Supply one even though
+                    // only the nonce acknowledgement, not the evaluation result, binds a document.
                     reply.executeJavaScript("globalThis.__genesisChallenge?.(" + JSONObject.quote(command.getString("nonce")) + ","
-                        + JSONObject.quote(command.getString("challenge")) + ")", null);
+                        + JSONObject.quote(command.getString("challenge")) + ")", result -> {});
                 }
                 break;
             }
