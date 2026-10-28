@@ -15,7 +15,6 @@ abstract class GenesisBuild : DefaultTask() {
     @get:Input abstract val variant: Property<String>
     @get:Input abstract val nodeExecutable: Property<String>
     @get:Input abstract val cargoExecutable: Property<String>
-    @get:Input abstract val wasmBindgenExecutable: Property<String>
     @get:Input abstract val sdkPath: Property<String>
     @get:Internal abstract val workspace: DirectoryProperty
     @get:OutputDirectory abstract val assetsDirectory: DirectoryProperty
@@ -28,7 +27,7 @@ abstract class GenesisBuild : DefaultTask() {
                 isIgnoreExitValue = true
                 workingDir(workspace.get().asFile)
                 commandLine(nodeExecutable.get(), "tools/build.mjs", "--stage", "all", "--variant", variant.get(),
-                    "--cargo", cargoExecutable.get(), "--wasm-bindgen", wasmBindgenExecutable.get(),
+                    "--cargo", cargoExecutable.get(),
                     "--sdk", sdkPath.get())
             }
         } catch (error: org.gradle.process.internal.ExecException) {
@@ -76,14 +75,13 @@ androidComponents {
             this.variant.set(variant.name)
             nodeExecutable.set(configuredNode)
             cargoExecutable.set(localSettings.getProperty("genesis.cargo", "cargo"))
-            wasmBindgenExecutable.set(localSettings.getProperty("genesis.wasmBindgen", "wasm-bindgen"))
             sdkPath.set(localSettings.getProperty("sdk.dir")
                 ?: providers.environmentVariable("ANDROID_HOME").orNull
                 ?: providers.environmentVariable("ANDROID_SDK_ROOT").orNull ?: "")
             workspace.set(workspaceRoot)
             inputs.files(fileTree(workspaceRoot) {
                 include("Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "package.json", "package-lock.json",
-                    "tsconfig.base.json", ".nvmrc", "tools/**", "crates/**", "packages/**", "applets/**", "android/native/**")
+                    "tsconfig.base.json", ".nvmrc", "tools/**", "crates/contracts/**", "packages/**", "applets/**", "android/native/**")
                 exclude("**/node_modules/**", "**/target/**")
             })
             assetsDirectory.set(layout.buildDirectory.dir("generated/genesis/${variant.name}/assets"))

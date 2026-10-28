@@ -19,7 +19,7 @@ const sha256 = bytes => createHash("sha256").update(bytes).digest("hex");
 const options = new Map();
 for (let i = 2; i < process.argv.length; i += 2) {
   const key = process.argv[i];
-  if (!["--stage", "--variant", "--cargo", "--wasm-bindgen", "--sdk"].includes(key) || process.argv[i + 1] === undefined) {
+  if (!["--stage", "--variant", "--cargo", "--sdk"].includes(key) || process.argv[i + 1] === undefined) {
     throw new Error(`Unknown or incomplete build option: ${key}`);
   }
   options.set(key, process.argv[i + 1]);
@@ -30,7 +30,6 @@ if (!["check", "assets", "native", "all"].includes(stage) || !["debug", "release
   throw new Error("Use --stage check|assets|native|all and --variant debug|release");
 }
 const cargo = options.get("--cargo") || "cargo";
-const bindgen = options.get("--wasm-bindgen") || "wasm-bindgen";
 const sdk = options.get("--sdk") || process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT;
 const generated = path.join(root, "android/app/build/generated/genesis", variant);
 const intermediates = path.join(root, "target/genesis", variant);
@@ -56,38 +55,25 @@ async function check() {
 }
 
 async function assets(packages) {
-  let bindgenVersion;
-  try { bindgenVersion = run(bindgen, ["--version"], {}, true); }
-  catch (error) { throw new Error(`${error.message}\nInstall cargo install wasm-bindgen-cli --version 0.2.129 --locked, or set genesis.wasmBindgen in android/local.properties.`); }
-  if (bindgenVersion !== "wasm-bindgen 0.2.129") throw new Error(`Expected wasm-bindgen 0.2.129, got ${bindgenVersion}`);
-  run(cargo, ["build", "--locked", "-p", "genesis-page-runtime", "--target", "wasm32-unknown-unknown", "--release"], env);
-  const runtime = path.join(intermediates, "page-runtime");
-  await mkdir(runtime, { recursive: true });
-  run(bindgen, [path.join(env.CARGO_TARGET_DIR, "wasm32-unknown-unknown/release/genesis_page_runtime.wasm"),
-    "--target", "web", "--out-dir", runtime, "--out-name", "genesis_page_runtime", "--no-typescript"]);
-  const wasm = await readFile(path.join(runtime, "genesis_page_runtime_bg.wasm"));
   const { build } = await import("esbuild");
   const index = { schemaVersion: 1, implementationStage: "MVP-02", packages: [] };
   const output = path.join(generated, "assets");
   await rm(output, { recursive: true, force: true });
   for (const { base, manifest: original } of packages) {
     const manifest = structuredClone(original);
-    const files = new Map([["runtime.wasm", wasm]]);
+    const files = new Map();
     for (const [kind, entries] of [["sources", manifest.sources], ["pages", manifest.pages]]) {
       for (const entry of entries) {
         const originalEntry = path.join(base, entry.entry);
         entry.entry = `${kind}/${entry.id}.js`;
-        const runtimeImport = JSON.stringify(path.join(runtime, "genesis_page_runtime.js"));
-        const source = `import * as runtime from ${runtimeImport};
-          import entry from ${JSON.stringify(originalEntry)};
+        const source = `import entry from ${JSON.stringify(originalEntry)};
           import { bootstrap } from "./packages/sdk/src/bootstrap.ts";
-          bootstrap(__GENESIS_BINDING__, ${JSON.stringify(wasm.toString("base64"))}, runtime, entry);`;
+          bootstrap(__GENESIS_BINDING__, entry);`;
         const result = await build({
           stdin: { contents: source, resolveDir: root, sourcefile: `${original.id}-${entry.id}.js` },
           bundle: true, format: "iife", target: "es2022", platform: "browser", splitting: false,
           jsx: "automatic", loader: { ".css": "text" }, write: false, metafile: true,
-          // initSync receives bytes. The unused async loader must not resolve a page URL.
-          define: { "process.env.NODE_ENV": '"production"', "import.meta.url": '"genesis:embedded-runtime"' },
+          define: { "process.env.NODE_ENV": '"production"' },
         });
         if (Object.values(result.metafile.outputs).some(o => o.imports.length > 0)) {
           throw new Error(`${original.id}: bundle contains an external or dynamic import`);
@@ -110,7 +96,7 @@ async function assets(packages) {
   }
   await mkdir(path.join(output, "packages"), { recursive: true });
   await writeFile(path.join(output, "packages/index.json"), `${JSON.stringify(index, null, 2)}\n`);
-  console.log(`Generated real Wasm and package assets: ${output}`);
+  console.log(`Generated TypeScript runtime and package assets: ${output}`);
 }
 
 async function native() {
