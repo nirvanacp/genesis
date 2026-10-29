@@ -7,7 +7,7 @@ html.genesis-hn {background:var(--paper)!important;--gutter:16px}
 #hnmain>tbody>tr:first-child:has(.pagetop){display:none}
 table{max-width:100%}td{font-family:inherit!important}
 a:link,a:visited{color:var(--ink)}a:hover{color:var(--accent)}a:focus-visible,button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
-.titleline{display:block}.titleline>a:first-child{font-size:15px!important;line-height:1.4!important;font-weight:600;overflow-wrap:anywhere}
+.titleline{display:block;font-size:15px;line-height:21px}.titleline>a:first-child{display:inline-block;vertical-align:top;font-size:15px!important;line-height:1.4!important;font-weight:600;overflow-wrap:anywhere}
 .sitebit{display:block;margin-top:4px;color:var(--muted);font-size:12px}.sitebit a,.subtext a{color:var(--muted)!important}
 .subtext{font:12px/1.6 Verdana,Geneva,sans-serif!important;color:var(--muted)!important;white-space:normal!important}.subtext a{display:inline-block;min-height:28px}
 /* Preserve HN's native table/colspan relationships for its compact continuous feed. */
@@ -16,21 +16,25 @@ a:link,a:visited{color:var(--ink)}a:hover{color:var(--accent)}a:focus-visible,bu
 #bigbox>td>table:not(.fatitem)>tbody>tr.submission,#bigbox>td>table:not(.fatitem)>tbody>tr.submission+tr{display:table-row;padding:0;border:0;background:var(--paper)}
 #bigbox>td>table:not(.fatitem)>tbody>tr.submission>td,#bigbox>td>table:not(.fatitem)>tbody>tr.submission+tr>td{display:table-cell;padding:8px 4px 0;vertical-align:top;background:var(--paper)}
 #bigbox>td>table:not(.fatitem)>tbody>tr.submission>td:first-child:has(.rank){width:16px!important;padding-left:0}
-#bigbox>td>table:not(.fatitem)>tbody>tr.submission .rank{font:11px Verdana,Geneva,sans-serif;color:var(--muted)}
+#bigbox>td>table:not(.fatitem)>tbody>tr.submission>td.votelinks{padding-inline:0}
+#bigbox>td>table:not(.fatitem)>tbody>tr.submission .rank{display:block;font:11px/21px Verdana,Geneva,sans-serif;color:var(--muted)}
 #bigbox>td>table:not(.fatitem)>tbody>tr.submission>td.title:has(.titleline){min-width:0;padding-right:0}
 #bigbox>td>table:not(.fatitem)>tbody>tr.submission .titleline{position:relative;padding-right:44px}
 #bigbox>td>table:not(.fatitem)>tbody>tr.submission+tr>td{padding:0 0 8px;border-bottom:1px solid var(--line)}
 #bigbox>td>table:not(.fatitem)>tbody>tr.submission+tr>td.subtext{display:table-cell}
 .discussion-tile{cursor:pointer}.spacer{height:4px!important}
-.votelinks{width:32px!important;vertical-align:top}.votelinks a{display:inline-flex;align-items:center;justify-content:center;min-width:32px;min-height:48px}.votearrow{margin:0!important}
+.votelinks{width:44px!important;vertical-align:top}.votelinks center{margin:0}
+.votelinks a{display:flex;align-items:flex-start;justify-content:center;min-width:44px;min-height:44px;padding-top:6px;line-height:0;border-radius:8px}
+.votearrow{display:block;width:18px!important;height:14px!important;margin:0!important;background:var(--muted)!important;clip-path:polygon(50% 0,100% 100%,0 100%)}
+.votelinks a:hover .votearrow,.votelinks a:focus-visible .votearrow{background:var(--accent)!important}
 /* Discussion tables have spacer/colspan rows that must not size title or form columns. */
 .fatitem{display:block;width:100%;border-spacing:0}.fatitem>tbody{display:block}
 .fatitem>tbody>tr{display:block}.fatitem>tbody>tr>td{display:block;padding:0}
-.fatitem>tbody>tr.submission{display:grid;grid-template-columns:32px minmax(0,1fr);gap:8px}
+.fatitem>tbody>tr.submission{display:grid;grid-template-columns:44px minmax(0,1fr);gap:8px}
 .fatitem>tbody>tr.submission>td.title:has(.rank),.fatitem>tbody>tr>td:empty{display:none}
 .fatitem>tbody>tr.submission>td.title:has(.titleline){min-width:0}
 .fatitem .titleline{position:relative;padding-right:44px}
-.fatitem>tbody>tr>td.subtext{padding:0 0 12px 40px}.fatitem form{width:100%}
+.fatitem>tbody>tr>td.subtext{padding:0 0 12px 52px}.fatitem form{width:100%}
 .fatitem .titleline>a:first-child{font-size:18px!important}.fatitem .titleline{margin:0 0 12px}
 .visit-website{display:block;width:fit-content;padding:12px 0;font-size:14px;font-weight:600;color:var(--accent)!important}
 .comment-tree{width:100%;border-spacing:0 12px}.comment-tree .ind img{max-width:48px!important}.comment-tree .default{border-left:2px solid var(--line);padding-left:12px!important;min-width:0}
