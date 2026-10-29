@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-
-    <style name="Theme.NirvanaGenesis" parent="android:Theme.Material.Light.NoActionBar" />
+    <style name="Theme.NirvanaGenesis" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:colorAccent">#b93800</item>
+        <item name="android:windowBackground">#faf7f2</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
 </resources>
