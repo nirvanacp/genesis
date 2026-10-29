@@ -87,7 +87,7 @@ function StoryDialog({ context, snapshot, close }: { context: AppletContext; sna
     <div className="dialog-heading"><p className="eyebrow">SAVED STORIES</p><button disabled={busy} onClick={close}>Cancel</button></div><h2>{previous ? "Edit saved story" : "Save this story"}</h2>
     <p className="story-title">{previous?.value.title ?? snapshot.title}</p>
     <p className="muted">{snapshot.submitter ? `By ${snapshot.submitter} · ` : ""}HN item {snapshot.itemId}</p>
-    <p className="muted">Saved locally in Genesis. No Hacker News account required.</p>
+    <p className="muted">Saved in Genesis. No Hacker News account required.</p>
     {!loading && categories && <fieldset disabled={busy || readFailed}><legend>Categories</legend>
       {categories.categories.length === 0 && <p className="muted">No categories yet. Save without one to use Uncategorized.</p>}
       {categories.categories.map(record => <label key={record.value.id}><input type="checkbox"
