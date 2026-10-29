@@ -143,13 +143,14 @@ impl HostState {
             E::Open {
                 applet_id,
                 source_id,
+                page_id,
             } => {
                 self.qualification = None;
                 self.open(
                     Selection {
                         applet_id: AppletId(applet_id),
                         source_id: SourceId(source_id),
-                        page_id: None,
+                        page_id,
                     },
                     &mut commands,
                 )?;
@@ -671,11 +672,7 @@ impl HostState {
             } else if !Self::eligible(view) {
                 self.present("ordinary", "Ordinary external/authentication page. No Genesis bridge is registered for this origin.", commands);
             } else if view.ready {
-                self.present(
-                    "ready",
-                    "MVP-05 · Applet ready. Local library work remains.",
-                    commands,
-                );
+                self.present("ready", "MVP-06 · Applet ready.", commands);
             } else {
                 self.present(
                     "loading",
@@ -758,14 +755,29 @@ impl HostState {
                 .iter()
                 .flat_map(|i| &i.packages)
                 .flat_map(|p| {
-                    p.manifest.sources.iter().map(|s| LauncherEntry {
-                        applet_id: p.manifest.id.clone(),
-                        source_id: s.id.clone(),
-                        label: p.manifest.name.clone(),
-                    })
+                    let mut entries: Vec<_> = p
+                        .manifest
+                        .sources
+                        .iter()
+                        .map(|s| LauncherEntry {
+                            applet_id: p.manifest.id.clone(),
+                            source_id: s.id.clone(),
+                            page_id: None,
+                            label: p.manifest.name.clone(),
+                        })
+                        .collect();
+                    if let Some(source) = p.manifest.sources.first() {
+                        entries.extend(p.manifest.actions.iter().map(|action| LauncherEntry {
+                            applet_id: p.manifest.id.clone(),
+                            source_id: source.id.clone(),
+                            page_id: Some(action.page_id.clone()),
+                            label: action.label.clone(),
+                        }));
+                    }
+                    entries
                 })
                 .collect(),
-            status: "MVP-05 · Source bookmarks. Local library work remains.".into(),
+            status: "MVP-06 · Browse a source or open its local pages.".into(),
         }
     }
 
