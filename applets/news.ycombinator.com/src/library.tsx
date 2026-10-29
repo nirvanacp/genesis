@@ -20,15 +20,30 @@ export default definePage({
 });
 function Library({ context }: { context: AppletContext }) {
   const [section, setSection] = useState<"saved" | "categories">("saved");
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(() => localStorage.getItem("genesis.hn.savedQuery") ?? "");
   const [categories, setCategories] = useState<CategorySnapshot | null>(null);
   const [rows, setRows] = useState<StoredDocument<BookmarkV1>[]>([]);
-  const [filter, setFilter] = useState("all"), [version, setVersion] = useState(0);
+  const [filter, setFilter] = useState(() => localStorage.getItem("genesis.hn.savedFilter") ?? "all"), [version, setVersion] = useState(0);
   const [cursor, setCursor] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(true), [done, setDone] = useState(false);
   const [scanned, setScanned] = useState(0), [missing, setMissing] = useState(0), [message, setMessage] = useState("");
   const [removeId, setRemoveId] = useState<string | null>(null), [removing, setRemoving] = useState(false);
   const request = useRef(0), active = useRef<AbortController | null>(null);
+  const restoredScroll = useRef(false);
+  useEffect(() => { localStorage.setItem("genesis.hn.savedQuery", query); }, [query]);
+  useEffect(() => { localStorage.setItem("genesis.hn.savedFilter", filter); }, [filter]);
+  useEffect(() => {
+    const save = () => localStorage.setItem("genesis.hn.savedScroll", String(window.scrollY));
+    window.addEventListener("scroll", save, { passive: true });
+    context.onDispose(save);
+    return () => window.removeEventListener("scroll", save);
+  }, [context]);
+  useEffect(() => {
+    if (loading || restoredScroll.current || rows.length === 0) return;
+    restoredScroll.current = true;
+    const position = Number(localStorage.getItem("genesis.hn.savedScroll") ?? 0);
+    if (Number.isFinite(position) && position > 0) requestAnimationFrame(() => window.scrollTo(0, position));
+  }, [loading, rows.length]);
   const current = (id: number, controller: AbortController) => request.current === id && !controller.signal.aborted && !context.signal.aborted;
   const load = async (snapshot: CategorySnapshot, after: string | undefined, replace: boolean, id: number, controller: AbortController) => {
     setLoading(true); setScanned(0); setMessage("");
