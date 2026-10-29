@@ -71,7 +71,7 @@ export async function readPackages() {
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
     const packages = await readPackages();
-    console.log(`Package checks passed: ${packages.map(p => p.manifest.id).join(", ")}. Runtime qualification remains pending.`);
+    console.log(`Package checks passed: ${packages.map(p => p.manifest.id).join(", ")}. Device qualification is recorded separately.`);
   } catch (error) {
     console.error(error.message);
     process.exitCode = 1;
