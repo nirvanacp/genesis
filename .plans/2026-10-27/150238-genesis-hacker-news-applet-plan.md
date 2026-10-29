@@ -1,6 +1,6 @@
 # Genesis Hacker News bookmarking applet plan
 
-Architecture revision approved 28 October: all browser customization and the managed DOM runtime use TypeScript/JavaScript under `packages/sdk/` and `applets/`, with React for custom dialogs and local pages. Native Rust retains the controller, contracts and SQLite services. HN refuses Wasm compilation in its source realm, as recorded in the [historical qualification report](../../.reports/2026-10-28/162112-genesis-hn-wasm-qualification-report.md). The TS runtime passed [MVP-02 emulator qualification](../../.reports/2026-10-28/174427-genesis-hn-typescript-qualification-report.md); MVP-03 passed emulator verification. MVP-04 storage passed [Android emulator verification](../../.reports/2026-10-28/183914-genesis-mvp04-android-storage-verification-report.md); MVP-05 may proceed. Physical hardware remains required before release in MVP-07.
+Architecture revision approved 28 October: all browser customization and the managed DOM runtime use TypeScript/JavaScript under `packages/sdk/` and `applets/`, with React for custom dialogs and local pages. Native Rust retains the controller, contracts and SQLite services. HN refuses Wasm compilation in its source realm, as recorded in the [historical qualification report](../../.reports/2026-10-28/162112-genesis-hn-wasm-qualification-report.md). The TS runtime passed [MVP-02 emulator qualification](../../.reports/2026-10-28/174427-genesis-hn-typescript-qualification-report.md); MVP-03 passed emulator verification. MVP-04 storage passed [Android emulator verification](../../.reports/2026-10-28/183914-genesis-mvp04-android-storage-verification-report.md); MVP-05 Save code is implemented, with remaining emulator checks recorded in the [progress report](../../.reports/2026-10-29/093535-genesis-mvp05-save-progress-report.md); MVP-06 has not started. Physical hardware remains required before release in MVP-07.
 
 Created 27 October 2026, Asia/Kolkata. Revised scope: only `applets/news.ycombinator.com/`. Read the [MVP architecture](150238-genesis-mvp-implementation-plan.md) and [runtime/SDK contract](150238-genesis-runtime-sdk-plan.md). The earlier applet directories remain preserved and inactive. This filename replaces the earlier YouTube/X applets plan.
 
@@ -8,7 +8,7 @@ Created 27 October 2026, Asia/Kolkata. Revised scope: only `applets/news.ycombin
 
 Package ID is `hn-bookmarks`, display name `Hacker News with Genesis bookmarks`, source ID `primary`, start URL `https://news.ycombinator.com/`. Injection origins contain exactly `https://news.ycombinator.com`. There are no content-blocking rules and no authentication dependency.
 
-MVP-02 supplies a qualification entry, structural target inspector and packaged React library qualification page. Bookmark extraction, controls, repository, categories and storage operations remain future stage work. Do not present this entry as a working bookmark feature.
+MVP-05 supplies extraction, owned Save controls, an uncategorized save/edit dialog and the bookmark repository. Remaining emulator acceptance is in progress. The structural inspector and packaged React qualification page remain available. Categories and the complete offline library belong to MVP-06 and are not implemented yet.
 
 The final applet adds an explicit `Save to Genesis` control to supported public story rows. Save opens one dialog with captured title, HN discussion link and optional categories. Existing saves open Edit categories with a separate Remove action. Preserve all original title/comment/navigation/vote/favorite controls. Genesis never requests HN login, clicks favorite/vote, or submits forms on behalf of the user.
 
@@ -23,7 +23,7 @@ Public HTML fetched on 27 October 2026 showed `tr.athing.submission[id]`, `.titl
 | File | Responsibility |
 | --- | --- |
 | `applet.json` | Exact source origin, entries and manifest Library action |
-| `src/main.ts` | Qualification now; future watchers and feed-button lifecycle |
+| `src/main.ts` | Story watchers and owned Save-button lifecycle |
 | `src/targets.ts` | Supported story/metadata anchors and variant diagnostics |
 | `src/item-url.ts` | Pure HN item-ID and discussion-URL parsing |
 | `src/extract-item.ts` | Bounded immutable story snapshot from verified source DOM |

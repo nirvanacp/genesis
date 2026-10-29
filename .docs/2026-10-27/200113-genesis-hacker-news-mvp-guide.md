@@ -4,7 +4,7 @@ Scope: the single public Hacker News bookmarking prototype. This replaces the ea
 
 ## Current state
 
-MVP-01, MVP-02 and MVP-03 passed emulator verification. MVP-04 native storage and SDK passed Android persistence and offline gates. See the [current report](../../.reports/2026-10-28/183914-genesis-mvp04-android-storage-verification-report.md). The build bundles only `hn-bookmarks`. Its source qualification entry, structural inspector and local React page compile, but they do not save bookmarks. YouTube/X applet source remains intact and excluded from the APK package index.
+MVP-01, MVP-02 and MVP-03 passed emulator verification. MVP-04 native storage and SDK passed Android persistence and offline gates. See the [current report](../../.reports/2026-10-28/183914-genesis-mvp04-android-storage-verification-report.md). The build bundles only `hn-bookmarks`. The HN source now includes Save/edit/remove controls and a validated bookmark repository. MVP-05 has partial real-page verification; complete its remaining checks in the [progress report](../../.reports/2026-10-29/093535-genesis-mvp05-save-progress-report.md) before MVP-06. Categories and the full offline library are not implemented. YouTube/X applet source remains intact and excluded from the APK package index.
 
 HN provides public story pages, so login is not a prerequisite. The [28 October qualification report](../../.reports/2026-10-28/162112-genesis-hn-wasm-qualification-report.md) supersedes the earlier missing-API diagnosis. The official provider update to 156.0.8078.47 resolved that problem. The packaged local page passes Wasm startup and twenty reloads; HN source startup refuses Wasm compilation in its realm. The user approved a TypeScript/JavaScript managed runtime and React customization. Keep native Rust contracts/controller/storage and TS qualification passed on the emulator as recorded in the [current HN report](../../.reports/2026-10-28/174427-genesis-hn-typescript-qualification-report.md). Proceed with MVP-05; retain the ordered prompts below for reference.
 
@@ -50,7 +50,7 @@ Build the self-contained TS bundles and both native ABIs; use target-specific na
 
 ## 1. Finish MVP-02 on Hacker News
 
-The immediate next step is provider and realm qualification, using the newly bundled applet.
+This stage passed on the emulator. Retain this prompt for physical-device repetition and future provider changes.
 
 ```text
 Finish MVP-02 qualification only for the Hacker News prototype. Read all five current plans under .plans/2026-10-27/ and follow the working rules in the HN continuation guide.
