@@ -4,7 +4,7 @@ Scope: the single public Hacker News bookmarking prototype. This replaces the ea
 
 ## Current state
 
-MVP-01, MVP-02 and MVP-03 passed emulator verification. MVP-04 native storage and SDK passed Android persistence and offline gates. See the [current report](../../.reports/2026-10-28/183914-genesis-mvp04-android-storage-verification-report.md). The build bundles only `hn-bookmarks`. The HN source now includes Save/edit/remove controls and a validated bookmark repository. MVP-05 passed [Android Save verification](../../.reports/2026-10-29/095635-genesis-mvp05-android-save-verification-report.md); proceed to MVP-06. Categories and the full offline library are not implemented. YouTube/X applet source remains intact and excluded from the APK package index.
+MVP-01, MVP-02 and MVP-03 passed emulator verification. MVP-04 native storage and SDK passed Android persistence and offline gates. See the [current report](../../.reports/2026-10-28/183914-genesis-mvp04-android-storage-verification-report.md). The build bundles only `hn-bookmarks`. The HN source now includes Save/edit/remove controls and a validated bookmark repository. MVP-05 passed [Android Save verification](../../.reports/2026-10-29/095635-genesis-mvp05-android-save-verification-report.md); MVP-06 also passed [category/library emulator acceptance](../../.reports/2026-10-29/110545-genesis-mvp06-library-verification-report.md). Continue with MVP-07. YouTube/X applet source remains intact and excluded from the APK package index.
 
 HN provides public story pages, so login is not a prerequisite. The [28 October qualification report](../../.reports/2026-10-28/162112-genesis-hn-wasm-qualification-report.md) supersedes the earlier missing-API diagnosis. The official provider update to 156.0.8078.47 resolved that problem. The packaged local page passes Wasm startup and twenty reloads; HN source startup refuses Wasm compilation in its realm. The user approved a TypeScript/JavaScript managed runtime and React customization. Keep native Rust contracts/controller/storage and TS qualification passed on the emulator as recorded in the [current HN report](../../.reports/2026-10-28/174427-genesis-hn-typescript-qualification-report.md). Proceed with MVP-05; retain the ordered prompts below for reference.
 
@@ -120,7 +120,7 @@ Implement MVP-05 only after MVP-04 is verified. Read all five current plans and 
 
 ## 6. MVP-06 categories and offline library
 
-Complete the user workflow around durable story bookmarks.
+This stage passed emulator acceptance. The prompt below records its scope; do not repeat completed implementation.
 
 ```text
 Implement MVP-06 only after MVP-05 is verified. Read all five current plans and follow the HN continuation guide's working rules.
@@ -134,7 +134,7 @@ Implement MVP-06 only after MVP-05 is verified. Read all five current plans and 
 
 ## 7. MVP-07 integration and prototype handoff
 
-Measure and qualify the full HN prototype on physical hardware.
+Finish emulator integration, then repeat qualification on physical hardware before release. On 29 October the user requested finishing emulator checks while keeping release blocked on hardware.
 
 ```text
 Complete MVP-07 only after all earlier required stage gates pass. Read all five current plans and follow the HN continuation guide's working rules.

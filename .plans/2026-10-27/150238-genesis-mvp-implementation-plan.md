@@ -1,6 +1,6 @@
 # Genesis MVP implementation plan
 
-Architecture revision approved 28 October: all browser customization and the managed DOM runtime use TypeScript/JavaScript under `packages/sdk/` and `applets/`, with React for custom dialogs and local pages. Native Rust retains the controller, contracts and SQLite services. HN refuses Wasm compilation in its source realm, as recorded in the [historical qualification report](../../.reports/2026-10-28/162112-genesis-hn-wasm-qualification-report.md). The TS runtime passed [MVP-02 emulator qualification](../../.reports/2026-10-28/174427-genesis-hn-typescript-qualification-report.md); MVP-03 passed emulator verification. MVP-04 storage passed [Android emulator verification](../../.reports/2026-10-28/183914-genesis-mvp04-android-storage-verification-report.md); MVP-05 passed [Android Save verification](../../.reports/2026-10-29/095635-genesis-mvp05-android-save-verification-report.md); MVP-06 may proceed. Physical hardware remains required before release in MVP-07.
+Architecture revision approved 28 October: all browser customization and the managed DOM runtime use TypeScript/JavaScript under `packages/sdk/` and `applets/`, with React for custom dialogs and local pages. Native Rust retains the controller, contracts and SQLite services. HN refuses Wasm compilation in its source realm, as recorded in the [historical qualification report](../../.reports/2026-10-28/162112-genesis-hn-wasm-qualification-report.md). The TS runtime passed [MVP-02 emulator qualification](../../.reports/2026-10-28/174427-genesis-hn-typescript-qualification-report.md); MVP-03 passed emulator verification. MVP-04 storage passed [Android emulator verification](../../.reports/2026-10-28/183914-genesis-mvp04-android-storage-verification-report.md); MVP-05 passed [Android Save verification](../../.reports/2026-10-29/095635-genesis-mvp05-android-save-verification-report.md); MVP-06 passed [category/library emulator verification](../../.reports/2026-10-29/110545-genesis-mvp06-library-verification-report.md). Physical hardware remains required before release in MVP-07.
 
 Created 27 October 2026, Asia/Kolkata. Revised for the user's Hacker News prototype. Scope: the Android browser host, reusable runtime/SDK and one public Hacker News bookmarking applet. MVP-01 is verified on the emulator. MVP-02 platform code is implemented; the approved TS runtime is verified on the emulator. The HN package is the new qualification target; no prior YouTube/X result verifies it.
 
@@ -73,7 +73,7 @@ flowchart TB
 | `tools/` | Existing build orchestration and bundled package selection/validation |
 | `applets/youtube.com/`, `applets/x.com/` | Preserved inactive code; no current delivery obligations |
 
-Reuse MVP-01/02's workspace/toolchain locks, native Rust build, ABI outputs, launcher, nonce handshake, source/page loader, qualification effect lifecycle, inspector and recovery paths. Do not replace the running browser or rebuild these components. The current qualification entries explicitly lack bookmark operations. No placeholder persistence may be presented as durable storage.
+Reuse MVP-01/02's workspace/toolchain locks, native Rust build, ABI outputs, launcher, nonce handshake, source/page loader, qualification effect lifecycle, inspector and recovery paths. Do not replace the running browser or rebuild these components. The active HN entries now implement bookmarking and the local library. No placeholder persistence may be presented as durable storage.
 
 ## 5. Source and document lifecycle
 
@@ -106,6 +106,6 @@ This section is authoritative across all five plans. HN bookmarking uses public 
 | Website cookies/storage | WebView's existing persistent default profile and the website; keep enabled and preserve across view recreation. No credential bridge or Chrome-cookie import. |
 | Tab state | The live view owns DOM, history and `sessionStorage`; replacement may discard them. |
 | Native `SourceSession` / `SessionSnapshot` | Navigation definitions, URLs and lifecycle metadata; never a credential store. |
-| Genesis bookmarks | Planned SQLite namespace `(local, hn-bookmarks)`, independent of website cookies or account identity. |
+| Genesis bookmarks | SQLite namespace `(local, hn-bookmarks)`, independent of website cookies or account identity. |
 
 Home, ordinary-site recovery, source/library switches and renderer recovery must not clear browser data or applet data. Install updates with the same application ID and compatible signing; uninstall/app-data clearing removes local persistence. Preserve earlier applet data if present. Session expiry follows browser/site rules. Future authentication work needs its own scope; it is not a prerequisite for this prototype.

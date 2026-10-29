@@ -1,12 +1,12 @@
-# Genesis Android setup and MVP-01 handoff
+# Genesis Android setup and build evidence
 
 Updated 28 October: the active browser runtime is TypeScript/JavaScript. Android builds require Node and native Rust/cargo-ndk, with no wasm-bindgen CLI or Wasm target requirement. Historical MVP-01 Wasm observations below remain historical. MVP-04 stores generic applet documents in private `files/genesis.sqlite3`, independently of website cookies. Preserve this file and the default WebView profile by installing updates with the same app ID/signing key; do not uninstall or clear app data for routine verification.
 
 The active prototype now bundles Hacker News only. Follow the [HN continuation guide](200113-genesis-hacker-news-mvp-guide.md) for current stages; the MVP-01 results below are historical build evidence. The existing toolchain/setup commands still apply.
 
-Status: MVP-01 verified on the named emulator. MVP-02 has since been implemented but remains blocked at provider qualification. See the [MVP-02 report](../../.reports/2026-10-27/182114-genesis-mvp02-qualification-report.md) for current evidence.
+Status: MVP-01 through MVP-06 passed emulator acceptance. See the [category/library verification report](../../.reports/2026-10-29/110545-genesis-mvp06-library-verification-report.md). Physical-device qualification remains required before release.
 
-Scope: setup instructions and historical MVP-01 evidence. MVP-02 now adds isolated-world qualification and local-page plumbing. Feature applets, the full SDK and storage remain pending.
+Scope: current setup/build instructions followed by historical MVP-01 evidence. The current app has managed TypeScript customization, generic SQLite storage and the HN bookmarking library.
 
 ## Project and preserved work
 
@@ -26,7 +26,6 @@ The starter's AGP 9.4.1, Gradle 9.6.0, Java 25, minSdk 24, Compose entry point a
 | Build Tools / NDK | 36.0.0 / 28.2.13676358 |
 | AndroidX WebKit | 1.18.0 |
 | Rust / edition | 1.94.0 / 2024 |
-| wasm-bindgen crate and CLI | 0.2.129 |
 | cargo-ndk | 4.1.2 |
 | Node / npm | 24.15.0 / 11.14.1 |
 | Native ABIs | arm64-v8a, x86_64 |
@@ -42,9 +41,8 @@ nvm install
 nvm use
 npm install --global npm@11.14.1
 rustup toolchain install 1.94.0 --profile minimal --component rustfmt,clippy
-rustup target add --toolchain 1.94.0 wasm32-unknown-unknown aarch64-linux-android x86_64-linux-android
+rustup target add --toolchain 1.94.0 aarch64-linux-android x86_64-linux-android
 cargo +1.94.0 install cargo-ndk --version 4.1.2 --locked
-cargo +1.94.0 install wasm-bindgen-cli --version 0.2.129 --locked
 npm ci
 ```
 
@@ -56,7 +54,6 @@ Set machine-specific paths in ignored `android/local.properties`. Use absolute p
 sdk.dir=/absolute/path/to/Android/sdk
 genesis.node=/absolute/path/to/node
 genesis.cargo=/absolute/path/to/cargo
-genesis.wasmBindgen=/absolute/path/to/wasm-bindgen
 ```
 
 Gradle uses these executable keys before PATH. SDK lookup uses `sdk.dir`, then `ANDROID_HOME`, then `ANDROID_SDK_ROOT`. cargo-ndk must be in Cargo's bin directory or PATH. Java must be a registered/discoverable JDK 17, selected in Studio, or supplied through `JAVA_HOME` for terminal builds. Missing dependencies and tools produce setup errors; the build does not generate placeholder binaries.
@@ -69,21 +66,21 @@ npm run typecheck
 npm run check:packages
 cargo fmt --all -- --check
 cargo check -p genesis-contracts --locked
-cargo check -p genesis-page-runtime --target wasm32-unknown-unknown --locked
+cargo clippy -p genesis-android --locked -- -D warnings
 
 # android/
 ./gradlew :app:assembleDebug :app:lintDebug
 ```
 
-Open `android/`, sync, select an arm64-v8a or x86_64 emulator or physical Android device with API 26 or newer, and press Run. The app opens the original websites. The current launcher reports MVP-02 qualification; unsupported providers offer ordinary browsing. Check Home, Back, Reload and normal browsing. Use install-as-update for later APKs; do not uninstall to deploy over user data.
+Open `android/`, sync, select an arm64-v8a or x86_64 emulator or physical Android device with API 26 or newer, and press Run. The launcher offers the HN source and its packaged bookmark library. Library access does not first load HN. Customization requires the qualified provider APIs; unsupported providers offer ordinary browsing. Check Home, Back, Reload and normal browsing. Use install-as-update for later APKs; do not uninstall to deploy over user data.
 
-The build task `genesisBuildDebug` or `genesisBuildRelease` runs type checking, package checks, a real release Wasm compilation, matching wasm-bindgen generation, esbuild IIFE bundling with embedded Wasm bytes, package hashing, and cargo-ndk builds for both ABIs at API 26. Debug uses debug native libraries; Release uses release native libraries. `genesisBuild` builds all variants. Individual script stages are `check`, `assets`, `native` and `all`, selected through `node tools/build.mjs --stage <stage> --variant debug|release`.
+The build task `genesisBuildDebug` or `genesisBuildRelease` runs type checking, package checks, esbuild TypeScript IIFE bundling, package hashing, and cargo-ndk builds for both ABIs at API 26. Debug uses debug native libraries; Release uses release native libraries. `genesisBuild` builds all variants. Individual script stages are `check`, `assets`, `native` and `all`, selected through `node tools/build.mjs --stage <stage> --variant debug|release`.
 
 Generated assets and libraries live under `android/app/build/generated/genesis/<variant>/assets` and `jniLibs`. Intermediates live under `target/genesis/<variant>/`. AGP generated-source registration makes asset and JNI merges depend on the producer. Source and lockfile inputs invalidate the task. Sync only configures tasks; it does not execute the generator. Debug and Release have separate output and Cargo target directories.
 
-The package checker verifies bundled schemas, identities, source origins, entry containment and action/page references. MVP-02 exposes packaged local-page navigation for qualification. Full navigation-policy/runtime APIs and storage remain later-stage work.
+The package checker verifies bundled schemas, identities, source origins, entry containment and action/page references. The runtime exposes managed DOM observation, modal lifecycle, bound source/page navigation and generic storage. HN extraction, categories and library UI stay in the applet.
 
-## Workstation qualification
+## Historical MVP-01 workstation qualification
 
 Actual paths used on this workstation, with the home directory expressed portably:
 

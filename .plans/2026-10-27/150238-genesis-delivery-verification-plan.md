@@ -1,8 +1,8 @@
 # Genesis delivery and verification plan
 
-Architecture revision approved 28 October: all browser customization and the managed DOM runtime use TypeScript/JavaScript under `packages/sdk/` and `applets/`, with React for custom dialogs and local pages. Native Rust retains the controller, contracts and SQLite services. HN refuses Wasm compilation in its source realm, as recorded in the [historical qualification report](../../.reports/2026-10-28/162112-genesis-hn-wasm-qualification-report.md). The TS runtime passed [MVP-02 emulator qualification](../../.reports/2026-10-28/174427-genesis-hn-typescript-qualification-report.md); MVP-03 passed emulator verification. MVP-04 storage passed [Android emulator verification](../../.reports/2026-10-28/183914-genesis-mvp04-android-storage-verification-report.md); MVP-05 passed [Android Save verification](../../.reports/2026-10-29/095635-genesis-mvp05-android-save-verification-report.md); MVP-06 may proceed. Physical hardware remains required before release in MVP-07.
+Architecture revision approved 28 October: all browser customization and the managed DOM runtime use TypeScript/JavaScript under `packages/sdk/` and `applets/`, with React for custom dialogs and local pages. Native Rust retains the controller, contracts and SQLite services. HN refuses Wasm compilation in its source realm, as recorded in the [historical qualification report](../../.reports/2026-10-28/162112-genesis-hn-wasm-qualification-report.md). The TS runtime passed [MVP-02 emulator qualification](../../.reports/2026-10-28/174427-genesis-hn-typescript-qualification-report.md); MVP-03 passed emulator verification. MVP-04 storage passed [Android emulator verification](../../.reports/2026-10-28/183914-genesis-mvp04-android-storage-verification-report.md); MVP-05 passed [Android Save verification](../../.reports/2026-10-29/095635-genesis-mvp05-android-save-verification-report.md); MVP-06 passed [category/library emulator verification](../../.reports/2026-10-29/110545-genesis-mvp06-library-verification-report.md). Physical hardware remains required before release in MVP-07.
 
-Created 27 October 2026, Asia/Kolkata. Scope: the single Hacker News bookmarking prototype in the [Genesis MVP implementation plan](150238-genesis-mvp-implementation-plan.md). MVP-01 is verified on the emulator. MVP-02 implementation is present; TS source qualification passed on the emulator; later stages remain pending. Numerical gates require actual evidence, not inferred success.
+Created 27 October 2026, Asia/Kolkata. Scope: the single Hacker News bookmarking prototype in the [Genesis MVP implementation plan](150238-genesis-mvp-implementation-plan.md). MVP-01 is verified on the emulator. MVP-01 through MVP-06 passed emulator acceptance; MVP-07 integration remains in progress. Numerical gates require actual evidence, not inferred success.
 
 ## 1. Execution rules
 
@@ -95,7 +95,7 @@ Exit: real public HN pages save/edit/remove correct story records durably withou
 
 ## 7. MVP-06: Categories and offline bookmark library
 
-Dependencies: verified MVP-05 and its generic storage/runtime prerequisites.
+Dependencies: verified MVP-05 and its generic storage/runtime prerequisites. Status: verified on the supported emulator. See the category/library verification report linked above.
 
 Implement category algorithms, the save dialog's category selection, React library and native manifest-driven launcher library access. Reuse the existing local-page loader and navigation contract. No source page or network connection is required to open saved metadata.
 
