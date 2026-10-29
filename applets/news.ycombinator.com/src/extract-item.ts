@@ -6,7 +6,7 @@ export interface StorySnapshot {
 export const STORY_SELECTOR = "tr.athing.submission[id]";
 export function supportedRoute(url: string): boolean {
   try { const parsed = new URL(url);
-    return parsed.origin === "https://news.ycombinator.com" && ["/", "/news", "/newest", "/ask", "/show", "/item"].includes(parsed.pathname);
+    return parsed.origin === "https://news.ycombinator.com" && ["/", "/news", "/newest", "/ask", "/show", "/item", "/front", "/shownew", "/asknew", "/submitted", "/favorites", "/hidden", "/upvoted", "/best", "/active", "/from"].includes(parsed.pathname);
   } catch { return false; }
 }
 function bounded(text: string, limit: number): { text: string; truncated: boolean } {

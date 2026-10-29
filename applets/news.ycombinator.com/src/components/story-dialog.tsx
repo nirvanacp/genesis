@@ -1,3 +1,4 @@
+import { serviceMessage } from "@genesis/sdk";
 import { backendStorage } from "../backend";
 import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -35,7 +36,7 @@ function StoryDialog({ context, snapshot, close }: { context: AppletContext; sna
           initialized.current = true;
           setMessage(""); setLoading(false);
         }
-      }).catch(error => { if (alive.current) { setMessage(String(error.message ?? error)); setReadFailed(true); setLoading(false); } });
+      }).catch(error => { if (alive.current) { setMessage(serviceMessage(error)); setReadFailed(true); setLoading(false); } });
     return () => { alive.current = false; };
   }, [context, snapshot.itemId, reload]);
   const reread = async () => {
@@ -59,7 +60,7 @@ function StoryDialog({ context, snapshot, close }: { context: AppletContext; sna
     } catch (error) {
       const reason = error as GenesisError;
       if (alive.current) setMessage(reason.message ?? String(error));
-      if (reason.code === "CONFLICT" || reason.message?.includes("timed out")) {
+      if (reason.code === "CONFLICT" || ["TIMEOUT", "SERVICE_UNREACHABLE", "SERVICE_FAILURE", "RPC_TIMEOUT"].includes(reason.code) || reason.message?.includes("timed out")) {
         try {
           await reread();
           if (alive.current) setMessage(reason.code === "CONFLICT"

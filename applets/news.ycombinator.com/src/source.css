@@ -1,299 +1,39 @@
-html {
-  background:var(--paper)!important;
-}
-body {
-  margin:0!important;
-  padding:10px 12px 76px!important;
-  background:var(--paper)!important;
-  color:var(--ink)!important;
-  font:1rem/1.55 Verdana,Geneva,sans-serif!important;
-}
-body>center>table#hnmain {
-  width:100%!important;
-  max-width:760px;
-  margin:auto;
-  background:transparent!important;
-}
-table {
-  max-width:100%;
-}
-td {
-  font-family:inherit!important;
-}
-a:link,a:visited {
-  color:var(--ink);
-}
-a:hover {
-  color:var(--accent);
-}
-#hnmain>tbody>tr:first-child>td {
-  background:transparent!important;
-  padding:0 0 6px!important;
-}
-#hnmain>tbody>tr:first-child table {
-  width:100%;
-}
-#hnmain>tbody>tr:first-child>td>table>tbody>tr>td:first-child {
-  display:none;
-}
-.hnname {
-  display:block;
-  margin:0 0 6px;
-}
-.hnname a {
-  font:700 1.6rem/1.15 Verdana,Geneva,sans-serif!important;
-  letter-spacing:-.035em;
-}
-.pagetop {
-  display:block;
-  font:500 .875rem/2.8 Verdana,Geneva,sans-serif!important;
-  color:var(--muted);
-}
-.pagetop>a, .pagetop .topsel>a {
-  display:inline-block;
-  padding:0 12px;
-  min-height:44px;
-  border-radius:24px;
-  background:var(--wash);
-  margin:3px 1px;
-}
-.pagetop a[href="news"],.pagetop a[href="newest"] {
-  font-weight:700;
-}
-.titleline {
-  display:block;
-}
-.titleline>a:first-child {
-  font:600 1rem/1.4 Verdana,Geneva,sans-serif!important;
-  overflow-wrap:anywhere;
-}
-.sitebit {
-  display:block;
-  margin-top:3px;
-  font:400 .8125rem Verdana,Geneva,sans-serif;
-  color:var(--muted);
-}
-.sitebit a {
-  color:var(--muted)!important;
-}
-.subtext {
-  color:var(--muted)!important;
-  font:.75rem/1.5 Verdana,Geneva,sans-serif!important;
-  white-space:normal!important;
-}
-.subtext a {
-  display:inline-block;
-  min-height:28px;
-  color:var(--muted)!important;
-}
-.spacer {
-  height:6px!important;
-}
-.votelinks a {
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  min-width:28px;
-  min-height:44px;
-}
-.votearrow {
-  margin:0!important;
-}
-.comhead {
-  font:.8125rem/1.8 Verdana,Geneva,sans-serif!important;
-  color:var(--muted)!important;
-}
-.comhead .hnuser {
-  color:var(--accent)!important;
-  font-weight:700;
-}
-.commtext {
-  font:1rem/1.55 Verdana,Geneva,sans-serif!important;
-  color:var(--ink)!important;
-  overflow-wrap:anywhere;
-}
-.commtext p {
-  margin:10px 0;
-}
-.commtext pre {
-  max-width:75vw;
-  overflow:auto;
-}
-.commtext code {
-  white-space:pre-wrap;
-}
-.comment-tree {
-  width:100%;
-  border-spacing:0 8px;
-}
-.comment-tree .ind img {
-  max-width:28px;
-}
-.comment-tree .default {
-  border-left:2px solid var(--line);
-  padding-left:12px!important;
-}
-.reply a,.togg {
-  display:inline-flex;
-  align-items:center;
-  min-height:44px;
-}
-.fatitem .titleline>a:first-child {
-  font:700 1.12rem/1.3 Verdana,Geneva,sans-serif!important;
-}
-.fatitem .titleline {
-  margin:10px 0;
-}
-.fatitem {
-  width:100%;
-}
-input,textarea,select {
-  max-width:100%;
-  font:inherit;
-  border:1px solid var(--line);
-  border-radius:10px;
-  padding:10px;
-  background:var(--card);
-  color:var(--ink);
-}
-input[type=submit],button {
-  min-height:44px;
-}
-textarea {
-  width:100%;
-  box-sizing:border-box;
-}
-#hnmain>tbody>tr:last-child td {
-  overflow-wrap:anywhere;
-}
-.yclinks {
-  font:.75rem/1.5 Verdana,Geneva,sans-serif;
-  color:var(--muted);
-}
-.yclinks a {
-  display:inline-block;
-  padding:6px;
-}
-hr {
-  border:0;
-  border-top:1px solid var(--line);
-}
-@media(min-width:650px) {
-  body {
-    padding-top:14px!important;
-  }
-  .titleline>a:first-child {
-    font-size:1.0625rem!important;
-  }
-}
-@media(max-width:340px) {
-  body {
-    padding-left:10px!important;
-    padding-right:10px!important;
-  }
-  #bigbox>td>table>tbody>tr.athing.submission {
-    padding-left:10px;
-    padding-right:10px;
-  }
-}
-
-.commtext [class^="c"] { color: var(--ink) !important; }
-/* Preserve HN's header links while removing its text-only pipe separators. */
-.pagetop {
-  font-size: 0 !important;
-}
-.pagetop > a, .pagetop .topsel > a {
-  font-size: .875rem;
-}
-/* Keep the account action readable beside the scrolling source navigation. */
-#hnmain > tbody > tr:first-child > td > table > tbody > tr {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: start;
-  gap: 8px;
-}
-#hnmain > tbody > tr:first-child > td > table > tbody > tr > td:nth-child(2) {
-  min-width: 0;
-}
-#hnmain > tbody > tr:first-child .pagetop {
-  white-space: nowrap;
-}
-#hnmain > tbody > tr:first-child > td > table > tbody > tr > td:nth-child(2) .pagetop {
-  overflow-x: auto;
-  scrollbar-width: thin;
-}
-#hnmain > tbody > tr:first-child a[href^="login"] {
-  min-width: 48px;
-  white-space: nowrap;
-  overflow-wrap: normal;
-}
-
-/* Reserve one small action column, not a separate Save row. */
-tr.submission td.title:has(.titleline) { position:relative; }
-tr.submission .titleline { padding-right:42px; }
-/* HN's mobile stylesheet inherits row heights into cells; cards need natural heights. */
-#hnmain td {
-  height: auto !important;
-}
-#hnmain {
-  min-width: 0 !important;
-}
-body {
-  box-sizing: border-box;
-}
-#bigbox > td > table > tbody > tr.athing.submission + tr > td:empty {
-  display: none;
-}
-
-/* Keep HN's native table column and colspan relationships. */
-#bigbox > td > table { display:table; border-collapse:separate; }
-#bigbox > td > table > tbody { display:table-row-group; }
-#bigbox > td > table > tbody > tr.athing.submission,
-#bigbox > td > table > tbody > tr.athing.submission + tr { display:table-row; padding:0; border:0; }
-#bigbox > td > table > tbody > tr.athing.submission > td,
-#bigbox > td > table > tbody > tr.athing.submission + tr > td,
-#bigbox > td > table > tbody > tr.athing.submission > td:first-child,
-#bigbox > td > table > tbody > tr.athing.submission + tr > td:empty { display:table-cell; }
-#bigbox > td > table > tbody > tr.athing.submission > td { padding:8px 4px 0; vertical-align:top; border-top:1px solid var(--line); }
-#bigbox > td > table > tbody > tr.athing.submission > td:first-child { width:18px!important; padding-left:8px; border-radius:10px 0 0 0; }
-#bigbox > td > table > tbody > tr.athing.submission > td:last-child { padding-right:8px; border-radius:0 10px 0 0; }
-#bigbox > td > table > tbody > tr.athing.submission + tr > td { padding:2px 8px 8px 0; border-bottom:1px solid var(--line); }
-#bigbox > td > table > tbody > tr.athing.submission + tr > td:first-child { border-radius:0 0 0 10px; }
-#bigbox > td > table > tbody > tr.athing.submission + tr > td:last-child { border-radius:0 0 10px 0; }
-#bigbox .rank { font:11px Verdana,Geneva,sans-serif; color:var(--muted); }
-#bigbox .votelinks { width:24px!important; }
-
-#hnmain > tbody > tr:first-child > td > table > tbody > tr > td { width:auto!important; }
-
-.pagetop .topsel > a:link, .pagetop .topsel > a:visited {
-  color: var(--paper);
-  background: var(--ink);
-}
-.toptext {
-  font: 1rem/1.5 Verdana,Geneva,sans-serif;
-  color: var(--ink);
-  overflow-wrap: anywhere;
-}
-textarea {
-  height: 96px;
-  min-height: 80px;
-  resize: vertical;
-}
-
-/* Keep HN's own typeface throughout the customized source pages. */
-body, body * { font-family: Verdana, Geneva, sans-serif !important; }
-.hnname a { font-size: 1.45rem !important; letter-spacing: 0 !important; }
-.titleline > a:first-child { font-size: 1rem !important; line-height: 1.4 !important; }
-.fatitem .titleline > a:first-child { font-size: 1.12rem !important; }
-#hnmain > tbody > tr:first-child > td > table > tbody > tr > td:nth-child(2) .pagetop { display: none; }
-#hnmain > tbody > tr:first-child > td > table > tbody > tr { display: block; }
-#hnmain > tbody > tr:first-child > td > table > tbody > tr > td:last-child .pagetop { display: block; }
-#hnmain > tbody > tr:last-child > td {
-  border-top: 2px solid var(--accent);
-  text-align: center;
-  padding: 16px 10px 8px !important;
-}
-#hnmain > tbody > tr:last-child .yclinks { display: inline-block; line-height: 2; }
-#hnmain > tbody > tr:last-child .yclinks a { padding: 5px 7px; }
-form[action="//hn.algolia.com/"] { display: none !important; }
-html.genesis-account-hub body > center { display: none !important; }
+/* Source adapters preserve HN links and forms. Native shell owns all app chrome. */
+html.genesis-hn {background:var(--paper)!important;--gutter:16px}
+.genesis-hn body{box-sizing:border-box;margin:0!important;padding:16px var(--gutter)!important;background:var(--paper)!important;color:var(--ink)!important;font:15px/1.55 Verdana,Geneva,sans-serif!important}
+.genesis-hn body *{font-family:Verdana,Geneva,sans-serif!important;box-sizing:border-box}
+#hnmain{width:100%!important;max-width:760px;min-width:0!important;margin:auto;background:transparent!important}
+#hnmain td{height:auto!important}
+#hnmain>tbody>tr:first-child:has(.hnname){display:none}
+table{max-width:100%}td{font-family:inherit!important}
+a:link,a:visited{color:var(--ink)}a:hover{color:var(--accent)}a:focus-visible,button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.titleline{display:block}.titleline>a:first-child{font-size:15px!important;line-height:1.4!important;font-weight:600;overflow-wrap:anywhere}
+.sitebit{display:block;margin-top:4px;color:var(--muted);font-size:12px}.sitebit a,.subtext a{color:var(--muted)!important}
+.subtext{font:12px/1.6 Verdana,Geneva,sans-serif!important;color:var(--muted)!important;white-space:normal!important}.subtext a{display:inline-block;min-height:28px}
+/* Only recognized submission rows become cards; forms and comments retain table layout. */
+#bigbox>td>table:has(tr.submission){display:block;width:100%}
+#bigbox>td>table:has(tr.submission)>tbody{display:block}
+#bigbox tr.submission{display:grid;grid-template-columns:32px minmax(0,1fr);padding:12px 12px 4px;border:1px solid var(--line);border-bottom:0;border-radius:12px 12px 0 0;background:var(--card)}
+#bigbox tr.submission>td:first-child:has(.rank){display:none}
+#bigbox tr.submission>td.title:has(.titleline){min-width:0;position:relative}
+#bigbox tr.submission .titleline{padding-right:44px}
+#bigbox tr.submission+tr{display:block;padding:0 12px 12px 44px;border:1px solid var(--line);border-top:0;border-radius:0 0 12px 12px;background:var(--card)}
+#bigbox tr.submission+tr>td:empty{display:none}
+#bigbox tr.submission+tr>td.subtext{display:block}
+.discussion-tile{cursor:pointer}.spacer{height:10px!important}
+.votelinks{width:32px!important;vertical-align:top}.votelinks a{display:inline-flex;align-items:center;justify-content:center;min-width:32px;min-height:48px}.votearrow{margin:0!important}
+.fatitem{width:100%;border-spacing:0}.fatitem>tbody>tr>td:empty{display:none}.fatitem td.title:has(.rank){display:none}
+.fatitem .titleline>a:first-child{font-size:18px!important}.fatitem .titleline{margin:0 0 12px}
+.visit-website{display:block;width:fit-content;padding:12px 0;font-size:14px;font-weight:600;color:var(--accent)!important}
+.comment-tree{width:100%;border-spacing:0 12px}.comment-tree .ind img{max-width:48px!important}.comment-tree .default{border-left:2px solid var(--line);padding-left:12px!important;min-width:0}
+.comhead{font-size:12px!important;color:var(--muted)!important}.comhead .hnuser{color:var(--accent)!important;font-weight:700}
+.commtext,.commtext [class^=c],.toptext{font:15px/1.55 Verdana,Geneva,sans-serif!important;color:var(--ink)!important;overflow-wrap:anywhere}
+.commtext p{margin:10px 0}.commtext pre{max-width:65vw;overflow:auto}.commtext code{white-space:pre-wrap}.reply a,.togg{display:inline-flex;align-items:center;min-height:48px}
+input,textarea,select{max-width:100%;font:inherit;border:1px solid var(--line);border-radius:10px;padding:10px;background:var(--card);color:var(--ink)}
+input[type=submit],button{min-height:48px}textarea{width:100%;height:112px;resize:vertical}form{max-width:760px;margin-inline:auto}form td{white-space:normal!important}
+.yclinks{font-size:12px!important;color:var(--muted)}.yclinks a{display:inline-block;padding:8px}.yclinks a:focus-visible{outline:3px solid var(--accent)}
+#hnmain>tbody>tr:has(.yclinks)>td{border-top:2px solid var(--accent);text-align:center;padding:16px 0!important;overflow-wrap:anywhere}hr{border:0;border-top:1px solid var(--line)}
+form[action="//hn.algolia.com/"]{display:none!important}
+html.genesis-account-hub body>center{display:none!important}
+@media(max-width:359px){html.genesis-hn{--gutter:12px}}
+@media(max-width:480px){form table,form tbody,form tr,form td{display:block;width:100%}form input:not([type=submit]):not([type=hidden]){width:100%}}

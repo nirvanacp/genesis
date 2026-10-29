@@ -1,6 +1,7 @@
+import { serviceMessage } from "@genesis/sdk";
 import { backendStorage } from "./backend";
 import { useEffect, useRef, useState } from "react";
-import { createRoot } from "react-dom/client";
+import { mountReact } from "@genesis/sdk/react";
 import { definePage, type AppletContext, type StoredDocument } from "@genesis/sdk";
 import { CategoryRepository, activeMembership, type CategorySnapshot } from "./categories";
 import { readBookmarkPage } from "./library-data";
@@ -10,15 +11,16 @@ import { CategoryManager } from "./components/category-manager";
 import sharedCss from "./styles.css";
 import libraryCss from "./library.css";
 import theme from "./theme.css";
-import { Icon, Navigation } from "./components/navigation";
+import { tileClick } from "./story-interaction";
+import { Icon } from "./components/navigation";
 
 export default definePage({
   mount(context, container) {
-    const root = createRoot(container); root.render(<Library context={context} />);
-    return () => root.unmount();
+    return mountReact(context, container, <Library context={context} />);
   },
 });
 function Library({ context }: { context: AppletContext }) {
+  const [loaded, setLoaded] = useState(false);
   const [section, setSection] = useState<"saved" | "categories">("saved");
   const [query, setQuery] = useState(() => localStorage.getItem("genesis.hn.savedQuery") ?? "");
   const [categories, setCategories] = useState<CategorySnapshot | null>(null);
@@ -52,13 +54,14 @@ function Library({ context }: { context: AppletContext }) {
         count => { if (current(id, controller)) setScanned(count); });
       if (!current(id, controller)) return;
       setRows(previous => replace ? page.entries : [...previous, ...page.entries]);
-      setCursor(page.cursor); setDone(page.done); setScanned(page.scanned); setMissing(value => replace ? page.missing : value + page.missing);
+      setLoaded(true); setCursor(page.cursor); setDone(page.done); setScanned(page.scanned); setMissing(value => replace ? page.missing : value + page.missing);
     } catch (error) {
       if (!current(id, controller)) return;
       if ((error as { code?: string }).code === "CONFLICT") { setVersion(value => value + 1); }
-      else setMessage((error as Error).message);
+      else setMessage(serviceMessage(error));
     } finally { if (current(id, controller)) setLoading(false); }
   };
+  useEffect(() => context.onFocus(() => setVersion(value => value + 1)), [context]);
   useEffect(() => backendStorage(context).onChanged(change => {
     if (change.changes.some(item => ["bookmarks", "bookmark-order", "categories", "category-meta", "category-names"].includes(item.collection))) {
       active.current?.abort(); request.current++; setVersion(value => value + 1);
@@ -75,7 +78,7 @@ function Library({ context }: { context: AppletContext }) {
         setFilter("all"); return;
       }
       await load(snapshot, undefined, true, id, controller);
-    }).catch(error => { if (current(id, controller)) { setMessage((error as Error).message); setLoading(false); } });
+    }).catch(error => { if (current(id, controller)) { setMessage(serviceMessage(error)); setLoading(false); } });
     return () => { controller.abort(); request.current++; };
   }, [context, filter, version]);
   const selectFilter = (id: string) => {
@@ -93,7 +96,7 @@ function Library({ context }: { context: AppletContext }) {
   };
   const openDiscussion = async (url: string) => {
     try { await context.sources.open("primary", url); }
-    catch (error) { if (!context.signal.aborted) setMessage((error as Error).message); }
+    catch (error) { if (!context.signal.aborted) setMessage(serviceMessage(error)); }
   };
   const removeStory = async (record: StoredDocument<BookmarkV1>) => {
     if (removing) return;
@@ -112,7 +115,7 @@ function Library({ context }: { context: AppletContext }) {
   return <><style>{theme}{sharedCss}{libraryCss}</style><main className="library">
     <header><h1>{section === "categories" ? "Categories" : filter === "all" ? "Saved" : filter === "uncategorized" ? "Uncategorized" : categories?.categories.find(c => c.value.id === filter)?.value.name ?? "Saved"}</h1>
       <button className="manage-link" onClick={() => setSection(section === "saved" ? "categories" : "saved")}>{section === "saved" ? "Manage categories" : "Back to saved"}</button>
-      <p className="muted">Saved on your connected backend · Network required</p></header>
+      <p className="muted">Good stories, kept for later.</p></header>
     {section === "saved" && <><label className="search"><Icon name="search" /><input type="search" aria-label="Filter this page" placeholder="Filter this page" value={query} onChange={event => setQuery(event.target.value)} /></label>
       <p className="filter-note">Filters stories loaded below. Use Load more to include older saves.</p></>}
     {categories && section === "categories" && <CategoryManager context={context} snapshot={categories} changed={() => setVersion(value => value + 1)} />}
@@ -120,19 +123,18 @@ function Library({ context }: { context: AppletContext }) {
       {[{ id: "all", name: "All" }, { id: "uncategorized", name: "Uncategorized" }, ...sortedCategories.map(record => record.value)]
         .map(category => <button key={category.id} aria-pressed={filter === category.id} onClick={() => selectFilter(category.id)}>{category.name}</button>)}
     </nav>
-    <div className="library-status" role="status">{loading ? `Updating saved stories${scanned ? ` · ${scanned} checked` : ""}…` : `${rows.length} saved stories loaded${done ? "" : " · More available"}`}</div>
+    <div className="library-status" role="status">{loading ? `Updating saved stories${scanned ? ` · ${scanned} checked` : ""}…` : !loaded || message ? "" : `${rows.length} saved stories loaded${done ? "" : " · More available"}`}</div>
     {message && <p role="alert" className="notice">{message} <button onClick={() => setVersion(value => value + 1)}>Reload library</button></p>}
     {missing > 0 && <p className="notice">Skipped {missing} missing index targets. Existing data has been preserved.</p>}
     {!loading && done && rows.length === 0 && !message && <section className="empty"><h2>{filter === "all" ? "A place for the next good read" : "No stories in this filter"}</h2>
       <p>{filter === "all" ? "Browse Hacker News and save a story to keep it here." : "Edit a saved story to change its categories."}</p>
       {filter === "all" && <button onClick={() => { void context.sources.open("primary"); }}>Go to Home</button>}</section>}
-    {query && !loading && !rows.some(record => record.value.title.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())) && <p className="notice">No matches in loaded stories.{!done && " Load more to search the next page."}</p>}
+    {query && !loading && loaded && !message && !rows.some(record => record.value.title.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())) && <p className="notice">No matches in loaded stories.{!done && " Load more to search the next page."}</p>}
     <ol className="stories">{rows.filter(record => record.value.title.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())).map(record => {
       const value = record.value, memberships = categories ? activeMembership(value.categoryIds, categories) : [];
-      return <li key={value.itemId} className="story-card"><h2><button className="story-link" onClick={() => {
-        if (value.articleUrl) window.location.assign(value.articleUrl);
-        else void openDiscussion(value.discussionUrl);
-      }}>{value.title}</button></h2>
+      return <li key={value.itemId} className="story-card" onClick={event => tileClick(event.nativeEvent, () => { void openDiscussion(value.discussionUrl); })}><h2><a className="story-link" href={value.articleUrl ?? value.discussionUrl} onClick={event => {
+        if (!value.articleUrl) { event.preventDefault(); void openDiscussion(value.discussionUrl); }
+      }}>{value.title}</a></h2>
         <div className="story-meta">{memberships.map(id => <span className="tag" key={id}>{categories?.categories.find(category => category.value.id === id)?.value.name}</span>)}
           <span>{value.articleUrl ? new URL(value.articleUrl).hostname : "news.ycombinator.com"}</span><span>Saved {new Date(value.savedAtMs).toLocaleDateString()}</span></div>
         <div className="row-actions"><button onClick={() => { void openDiscussion(value.discussionUrl); }}>Discussion</button>
@@ -145,6 +147,6 @@ function Library({ context }: { context: AppletContext }) {
         </div>}
       </li>;
     })}</ol>
-    <div className="actions">{loading && scanned > 100 ? <button onClick={cancel}>Cancel scan</button> : !loading && !done && categories && <button className="primary" onClick={more}>Load more</button>}</div></>}
-  </main><Navigation context={context} current="saved" error={setMessage} /></>;
+    <div className="actions">{loading && scanned > 100 ? <button onClick={cancel}>Cancel scan</button> : !loading && loaded && !message && !done && categories && <button className="primary" onClick={more}>Load more</button>}</div></>}
+  </main></>;
 }

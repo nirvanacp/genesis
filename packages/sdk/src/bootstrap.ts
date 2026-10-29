@@ -68,6 +68,7 @@ export function bootstrap(config: BootstrapConfig, entry: AppletEntry): void {
       client = new RpcClient(acceptedDocument!, message => bridge.postMessage(message));
       runtime = new ManagedRuntime(binding, scope.root(), client.call, fail);
       const disposer = await entry.activate(runtime.context);
+      if (activation.signal.aborted || failed || documentId !== acceptedDocument) { if (typeof disposer === "function") disposer(); return; }
       if (typeof disposer === "function") runtime.context.onDispose(disposer);
       runtime.flushInitial();
       if (activation.signal.aborted || failed) return;

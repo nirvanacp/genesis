@@ -5,9 +5,10 @@
   color:var(--ink);
 }
 .library {
-  max-width:760px;
+  box-sizing:border-box;
+  max-width:792px;
   margin:auto;
-  padding:14px 16px 86px;
+  padding:16px;
   font:1rem/1.5 Verdana,Geneva,sans-serif;
 }
 h1 {
@@ -213,3 +214,5 @@ summary {
 }
 .library header .muted{font-size:.8125rem;margin:4px 0}.library .stories .story-link{min-height:36px}
 .filter-note{font-size:.75rem;color:var(--muted);margin:0 0 8px}
+
+@media(max-width:359px){.library{padding:12px}}
