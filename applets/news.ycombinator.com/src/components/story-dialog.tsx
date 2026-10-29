@@ -5,6 +5,7 @@ import type { StorySnapshot } from "../extract-item";
 import { BookmarkRepository, type BookmarkV1 } from "../repository";
 import { CategoryRepository, activeMembership, selectionChecks, type CategorySnapshot } from "../categories";
 import css from "../styles.css";
+import theme from "../theme.css";
 
 export function openStoryDialog(ctx: AppletContext, snapshot: Readonly<StorySnapshot>): void {
   let close = () => {};
@@ -15,6 +16,7 @@ export function openStoryDialog(ctx: AppletContext, snapshot: Readonly<StorySnap
   });
 }
 function StoryDialog({ context, snapshot, close }: { context: AppletContext; snapshot: Readonly<StorySnapshot>; close(): void }) {
+  const [confirmRemove, setConfirmRemove] = useState(false);
   const [previous, setPrevious] = useState<StoredDocument<BookmarkV1> | null>(null);
   const [categories, setCategories] = useState<CategorySnapshot | null>(null);
   const [selected, setSelected] = useState<string[]>([]), [name, setName] = useState("");
@@ -80,8 +82,8 @@ function StoryDialog({ context, snapshot, close }: { context: AppletContext; sna
       } catch { if (alive.current) { setReadFailed(true); setMessage("Category creation could not be confirmed. Reload saved state before retrying."); } }
     } finally { if (alive.current) setBusy(false); }
   };
-  return <><style>{css}</style><div className="genesis-dialog">
-    <p className="eyebrow">GENESIS BOOKMARKS</p><h2>{previous ? "Edit saved story" : "Save this story"}</h2>
+  return <><style>{theme}{css}{"section[role=dialog]{background:var(--paper)!important;color:var(--ink)!important;border-radius:22px!important}"}</style><div className="genesis-dialog">
+    <div className="dialog-heading"><p className="eyebrow">SAVED STORIES</p><button disabled={busy} onClick={close}>Cancel</button></div><h2>{previous ? "Edit saved story" : "Save this story"}</h2>
     <p className="story-title">{previous?.value.title ?? snapshot.title}</p>
     <p className="muted">{snapshot.submitter ? `By ${snapshot.submitter} · ` : ""}HN item {snapshot.itemId}</p>
     <p className="muted">Saved locally in Genesis. No Hacker News account required.</p>
@@ -99,6 +101,7 @@ function StoryDialog({ context, snapshot, close }: { context: AppletContext; sna
     {readFailed && <button disabled={busy} onClick={() => setReload(value => value + 1)}>Reload saved state</button>}
     <div className="actions"><button className="primary" disabled={busy || loading || readFailed} onClick={() => { void perform(false); }}>{busy ? "Working…" : previous ? "Save changes" : "Save to Genesis"}</button>
       <button disabled={busy} onClick={close}>Cancel</button>
-      {previous && <button className="danger" disabled={busy || loading || readFailed} onClick={() => { void perform(true); }}>Remove bookmark</button>}</div>
+      {previous && <button className="danger" disabled={busy || loading || readFailed} onClick={() => setConfirmRemove(true)}>Remove bookmark</button>}</div>
+    {confirmRemove && <div className="confirm-remove" role="group" aria-label="Confirm removal"><p>Remove this saved story? This cannot be undone.</p><div className="actions"><button className="danger" disabled={busy} onClick={() => { void perform(true); }}>Remove story</button><button disabled={busy} onClick={() => setConfirmRemove(false)}>Keep story</button></div></div>}
   </div></>;
 }
