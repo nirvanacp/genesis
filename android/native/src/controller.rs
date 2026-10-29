@@ -777,30 +777,16 @@ impl HostState {
                 .index
                 .iter()
                 .flat_map(|i| &i.packages)
-                .flat_map(|p| {
-                    let mut entries: Vec<_> = p
-                        .manifest
-                        .sources
-                        .iter()
-                        .map(|s| LauncherEntry {
-                            applet_id: p.manifest.id.clone(),
-                            source_id: s.id.clone(),
-                            page_id: None,
-                            label: p.manifest.name.clone(),
-                        })
-                        .collect();
-                    if let Some(source) = p.manifest.sources.first() {
-                        entries.extend(p.manifest.actions.iter().map(|action| LauncherEntry {
-                            applet_id: p.manifest.id.clone(),
-                            source_id: source.id.clone(),
-                            page_id: Some(action.page_id.clone()),
-                            label: action.label.clone(),
-                        }));
-                    }
-                    entries
+                .filter_map(|p| {
+                    p.manifest.sources.first().map(|source| LauncherEntry {
+                        applet_id: p.manifest.id.clone(),
+                        source_id: source.id.clone(),
+                        page_id: None,
+                        label: p.manifest.name.clone(),
+                    })
                 })
                 .collect(),
-            status: "Genesis · Browse Hacker News or open your bookmarks.".into(),
+            status: "Your customized apps".into(),
         }
     }
 
