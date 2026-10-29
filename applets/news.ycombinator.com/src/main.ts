@@ -103,9 +103,10 @@ export default defineApplet({
 
 /** Website cookies stay in WebView. Only public account identity coordinates retained views. */
 function synchronizeAccount(context: AppletContext): void {
-  const header = document.querySelector(".pagetop"), profile = document.querySelector(".pagetop a[href^='user?id=']");
-  // Headerless login forms must observe account changes without declaring a sign-out.
-  const identity = header ? profile?.textContent?.trim() ?? "" : null;
+  const profile = document.querySelector(".pagetop a[href^='user?id=']");
+  const login = document.querySelector(".pagetop a[href^='login']");
+  // Login forms and minimal submission headers observe changes without declaring a sign-out.
+  const identity = profile ? profile.textContent?.trim() ?? "" : login ? "" : null;
   const initialIdentity = context.storage.get<{ identity: string }>("session", "hn-account").then(async ({ document }) => {
     if (context.signal.aborted) return null;
     if (identity !== null && document?.value.identity !== identity) {
