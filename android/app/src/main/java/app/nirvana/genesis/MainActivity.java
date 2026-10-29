@@ -117,6 +117,7 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
     @Override protected void onPause() { if (attached) send(HostViews.event("suspended")); if (browser != null) browser.pause(); super.onPause(); }
     @Override protected void onResume() { super.onResume(); if (browser != null) browser.resume(); if (attached) send(HostViews.event("resumed")); }
     @Override protected void onDestroy() {
+        if (views != null) views.dispose();
         if (services != null) services.close();
         NativeBridge.detach(this);
         if (attached) send(HostViews.event("detach"));
