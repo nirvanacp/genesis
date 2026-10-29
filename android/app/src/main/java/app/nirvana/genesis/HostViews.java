@@ -50,6 +50,13 @@ final class HostViews {
     private String presentationState = "loading", presentationMessage = "";
     private boolean fullscreen;
     private boolean readerVisible;
+    private JSONObject shell;
+    private String appletId, sourceId, pageId;
+    private LinearLayout appHeader, sections;
+    private TextView brand;
+    private Button appBack, choices;
+    private boolean customizedRoute, detailRoute;
+
 
     @SuppressWarnings("deprecation")
     HostViews(Activity activity, Events events) {
@@ -127,8 +134,66 @@ final class HostViews {
         activity.setContentView(content);
     }
 
+    void configureShell(JSONObject command, PackageAssets assets) throws Exception {
+        JSONObject manifest = command.getJSONObject("package").getJSONObject("manifest");
+        shell = manifest.optJSONObject("shell"); appletId = manifest.getString("id");
+        JSONObject binding = command.getJSONObject("context").getJSONObject("binding");
+        sourceId = binding.optString("sourceId", "primary"); pageId = binding.optString("pageId", "");
+        if (appHeader != null) content.removeView(appHeader);
+        if (sections != null) content.removeView(sections);
+        if (shell == null) return;
+        appHeader = new LinearLayout(activity); appHeader.setGravity(Gravity.CENTER_VERTICAL); appHeader.setBackgroundColor(paper);
+        appHeader.setPadding(dp(8), 0, dp(8), 0);
+        appBack = button("‹", () -> events.send(event("back"))); appBack.setContentDescription("Back");
+        appHeader.addView(appBack, new LinearLayout.LayoutParams(dp(48), dp(52)));
+        android.widget.ImageView logo = new android.widget.ImageView(activity);
+        byte[] bytes = assets.bytes(shell.getString("brandAsset"));
+        logo.setImageBitmap(android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.length));
+        logo.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        appHeader.addView(logo, new LinearLayout.LayoutParams(dp(28), dp(28)));
+        brand = text(shell.getString("title"), 17); brand.setTypeface(null, Typeface.BOLD); brand.setPadding(dp(8), 0, 0, 0);
+        brand.setOnLongClickListener(v -> { menu(); return true; });
+        appHeader.addView(brand, new LinearLayout.LayoutParams(0, -2, 1));
+        choices = button("Top ▾", () -> {
+            PopupMenu popup = new PopupMenu(activity, choices, Gravity.END);
+            JSONArray items = shell.optJSONArray("choices");
+            if (items != null) for (int i = 0; i < items.length(); i++) {
+                JSONObject choice = items.optJSONObject(i);
+                popup.getMenu().add(choice.optString("label")).setOnMenuItemClickListener(item -> { events.send(open(sourceId, null, choice.optString("url"))); return true; });
+            }
+            popup.show();
+        });
+        appHeader.addView(choices, new LinearLayout.LayoutParams(-2, dp(52)));
+        content.addView(appHeader, new FrameLayout.LayoutParams(-1, dp(56), Gravity.TOP));
+        sections = new LinearLayout(activity); sections.setBackgroundColor(paper);
+        JSONArray entries = shell.optJSONArray("sections");
+        for (int i = 0; i < entries.length(); i++) {
+            JSONObject entry = entries.getJSONObject(i);
+            Button tab = button(entry.getString("label"), () -> events.send(open(entry.optString("sourceId"), entry.isNull("pageId") ? null : entry.optString("pageId"), null)));
+            tab.setTextSize(12); tab.setPadding(0, 0, 0, 0); tab.setElevation(0);
+            tab.setBackgroundTintList(null); tab.setBackgroundColor(paper);
+            boolean selected = pageId.isEmpty() ? (entry.isNull("pageId") || entry.optString("pageId").isEmpty()) && sourceId.equals(entry.optString("sourceId")) : pageId.equals(entry.optString("pageId"));
+            tab.setSelected(selected); tab.setTextColor(selected ? Color.rgb(185,56,0) : ink); tab.setTypeface(null, selected ? Typeface.BOLD : Typeface.NORMAL); tab.setContentDescription(entry.getString("label") + (selected ? ", selected" : ""));
+            sections.addView(tab, new LinearLayout.LayoutParams(0, dp(56), 1));
+        }
+        content.addView(sections, new FrameLayout.LayoutParams(-1, dp(56), Gravity.BOTTOM));
+    }
+    private JSONObject open(String source, String page, String url) {
+        JSONObject event = event("open");
+        try { event.put("appletId", appletId).put("sourceId", source); if (page != null) event.put("pageId", page); if (url != null) event.put("url", url); }
+        catch (JSONException error) { throw new IllegalStateException(error); }
+        return event;
+    }
+    void route(boolean customized, boolean detail) { customizedRoute = customized; detailRoute = detail; }
+    void modal(boolean open) { if (sections != null) for (int i = 0; i < sections.getChildCount(); i++) sections.getChildAt(i).setEnabled(!open); }
+    void reveal() {
+        cover.setVisibility(View.GONE);
+        browserSlot.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);
+    }
     void launcher(JSONArray entries, String message) throws JSONException {
         dismissMenu(); fullscreen = false; readerVisible = false;
+        if (appHeader != null) appHeader.setVisibility(View.GONE);
+        if (sections != null) sections.setVisibility(View.GONE);
         readerBar.setVisibility(View.GONE); pageProgress.setVisibility(View.GONE); browserSlot.setPadding(0, 0, 0, 0);
         cover.setVisibility(View.GONE); floatingMenu.setVisibility(View.GONE); actions = new JSONArray();
         browserSlot.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);
@@ -161,10 +226,10 @@ final class HostViews {
         recovery.setVisibility(failed ? View.VISIBLE : View.GONE);
         siteRecovery.setVisibility(siteError ? View.VISIBLE : View.GONE);
         boolean blocking = failed || siteError || loading;
-        cover.setVisibility(blocking ? View.VISIBLE : View.GONE);
+        if (blocking) cover.setVisibility(View.VISIBLE);
         // Hide the underlying document from accessibility while a blocking notice is visible.
         browserSlot.setImportantForAccessibility(blocking ? View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS : View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);
-        floatingMenu.setVisibility(fullscreen || readerVisible ? View.GONE : View.VISIBLE); floatingMenu.bringToFront();
+        floatingMenu.setVisibility(fullscreen || readerVisible || shell != null ? View.GONE : View.VISIBLE); floatingMenu.bringToFront();
     }
     void fullscreen(View view) {
         dismissMenu(); fullscreen = true; floatingMenu.setVisibility(View.GONE);
@@ -187,8 +252,17 @@ final class HostViews {
             readerOrigin.setText(("https".equals(parsed.getScheme()) ? "🔒 " : "") + (parsed.getHost() == null ? "Web page" : parsed.getHost()));
         }
         readerBar.setVisibility(reader ? View.VISIBLE : View.GONE);
-        browserSlot.setPadding(0, reader ? dp(52) : 0, 0, 0);
-        floatingMenu.setVisibility(fullscreen || reader ? View.GONE : View.VISIBLE);
+        boolean app = shell != null && !reader;
+        if (appHeader != null) { appHeader.setVisibility(app ? View.VISIBLE : View.GONE); appBack.setVisibility(detailRoute ? View.VISIBLE : View.GONE); }
+        if (sections != null) sections.setVisibility(app ? View.VISIBLE : View.GONE);
+        if (app && choices != null) {
+            choices.setVisibility(!detailRoute && pageId.isEmpty() && sourceId.equals(shell.optJSONArray("sections").optJSONObject(0).optString("sourceId")) ? View.VISIBLE : View.GONE);
+            JSONArray items = shell.optJSONArray("choices");
+            if (items != null) for (int i = 0; i < items.length(); i++) { JSONObject item = items.optJSONObject(i); if (Uri.parse(item.optString("url")).getPath().equals(Uri.parse(url).getPath())) choices.setText(item.optString("label") + " ▾"); }
+        }
+        browserSlot.setPadding(0, app ? dp(56) : reader ? dp(52) : 0, 0, app ? dp(56) : 0);
+        FrameLayout.LayoutParams bounds = (FrameLayout.LayoutParams) cover.getLayoutParams(); bounds.topMargin = app ? dp(56) : reader ? dp(52) : 0; bounds.bottomMargin = app ? dp(56) : 0; cover.setLayoutParams(bounds);
+        floatingMenu.setVisibility(fullscreen || reader || shell != null ? View.GONE : View.VISIBLE);
         readerBar.bringToFront(); pageProgress.bringToFront(); floatingMenu.bringToFront();
     }
     void pageLoading(int progress) {
@@ -198,7 +272,7 @@ final class HostViews {
     }
     void pageStarting() {
         coverTitle.setText("Loading page");
-        coverMessage.setText("Preparing this Hacker News page…");
+        coverMessage.setText("Preparing this page…");
         recovery.setVisibility(View.GONE);
         siteRecovery.setVisibility(View.GONE);
         cover.setVisibility(View.VISIBLE);

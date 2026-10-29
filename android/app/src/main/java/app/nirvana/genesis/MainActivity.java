@@ -18,7 +18,9 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
     private HostViews views;
     private BrowserAdapter browser;
     private ServiceClient services;
+    private final java.util.Map<Long, BrowserAdapter> sessions = new java.util.HashMap<>();
     private boolean attached;
+    private Bundle browserStates = new Bundle();
     private String retainedSession;
 
     @Override public void onCreate(Bundle savedInstanceState) {
@@ -27,7 +29,8 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
         views = new HostViews(this, this::send);
         services = new ServiceClient(this);
         browser = new BrowserAdapter(this, views, this::send);
-        browser.restoreStates(savedInstanceState);
+        if (savedInstanceState != null) browserStates = savedInstanceState;
+        browser.restoreStates(browserStates);
         if (Build.VERSION.SDK_INT >= 33) {
             getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
                 OnBackInvokedDispatcher.PRIORITY_DEFAULT, () -> send(HostViews.event("back")));
@@ -43,7 +46,9 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
             int count;
             while ((count = input.read(buffer)) != -1) bytes.write(buffer, 0, count);
             JSONObject attach = HostViews.event("attach");
-            attach.put("index", new JSONObject(bytes.toString(StandardCharsets.UTF_8.name())));
+            JSONObject index = new JSONObject(bytes.toString(StandardCharsets.UTF_8.name()));
+            attach.put("index", index);
+            services.importDevelopment(index.getJSONArray("packages"));
             attach.put("debug", (getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0);
             if (savedInstanceState != null && savedInstanceState.getString("genesis.session") != null) {
                 attach.put("restore", new JSONObject(savedInstanceState.getString("genesis.session")));
@@ -67,6 +72,9 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
             if ("copyLink".equals(type) || "shareLink".equals(type) || "openBrowser".equals(type)) {
                 browser.readerAction(type); return;
             }
+            if ("back".equals(type) && browser.readerBack()) return;
+            if (browser.hasReader() && "forward".equals(type)) { browser.readerForward(); return; }
+            if (browser.hasReader() && "reload".equals(type)) { browser.readerReload(); return; }
             if ("back".equals(event.getString("type"))) event.put("canGoBack", browser.canGoBack());
             JSONArray commands = new JSONArray(NativeBridge.dispatch(event.toString()));
             for (int i = 0; i < commands.length(); i++) execute(commands.getJSONObject(i));
@@ -92,20 +100,30 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
             }
             case "showLauncher": views.launcher(command.getJSONArray("entries"), command.getString("status")); break;
             case "showError": views.error(command.getString("message")); break;
-            case "createView": browser.create(command); break;
+            case "modalState": views.modal(command.getBoolean("open")); break;
+            case "replyToPage": { BrowserAdapter target = sessions.get(command.getLong("generation")); if (target != null) target.execute(command); break; }
+            case "parkView": browser.pause(); browser.detach(); break;
+            case "resumeView":
+                browser = sessions.get(command.getLong("generation"));
+                if (browser == null) throw new IllegalStateException("Missing browser session");
+                browser.attach(); browser.resume(); break;
+            case "createView":
+                browser = new BrowserAdapter(this, views, this::send);
+                browser.restoreStates(browserStates); browser.create(command); sessions.put(command.getLong("generation"), browser); break;
             case "presentation": if (browser.matches(command.getLong("generation"))) {
-                views.presentation(command);
-                browser.onPresentation(command.getString("state"));
+                browser.onPresentation(command);
             } break;
             case "diagnostics": views.diagnostics(command.getString("text")); break;
             case "retainSession": retainedSession = command.getJSONObject("snapshot").toString(); break;
-            case "destroyView":
+            case "destroyView": {
+                BrowserAdapter retired = sessions.remove(command.getLong("generation"));
+                if (retired != null) { retired.saveStates(browserStates); retired.destroy(); } break;
+            }
             case "loadUrl":
             case "goBack":
             case "goForward":
             case "reload":
             case "challenge":
-            case "replyToPage":
             case "deferNavigation":
             case "scheduleModalDeadline":
             case "scheduleDeadline":
@@ -122,7 +140,8 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
     @Override public void onBackPressed() { send(HostViews.event("back")); }
     @Override protected void onSaveInstanceState(Bundle out) {
         if (attached) { send(HostViews.event("saveSession")); out.putString("genesis.session", retainedSession); }
-        if (browser != null) browser.saveStates(out);
+        for (BrowserAdapter session : sessions.values()) session.saveStates(browserStates);
+        out.putAll(browserStates);
         super.onSaveInstanceState(out);
     }
     @Override protected void onPause() { if (attached) send(HostViews.event("suspended")); if (browser != null) browser.pause(); super.onPause(); }
@@ -132,7 +151,7 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
         if (services != null) services.close();
         NativeBridge.detach(this);
         if (attached) send(HostViews.event("detach"));
-        if (browser != null) browser.destroy();
+        for (BrowserAdapter session : sessions.values()) session.destroy(); sessions.clear();
         super.onDestroy();
     }
 }

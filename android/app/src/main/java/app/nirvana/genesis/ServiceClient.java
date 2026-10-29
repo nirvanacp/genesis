@@ -59,6 +59,40 @@ final class ServiceClient {
             || !(uri.getPath().isEmpty() || "/".equals(uri.getPath()))) throw new IllegalArgumentException("Enter an HTTPS origin without a path, query, or credentials.");
         return uri;
     }
+    /** One-time private debug import. Neither tokens nor certificates enter APK assets. */
+    void importDevelopment(JSONArray packages) throws Exception {
+        MainActivity owner = activity.get();
+        if (owner == null || (owner.getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) == 0) return;
+        java.io.File file = new java.io.File(owner.getFilesDir(), "genesis-service-import.json");
+        if (!file.isFile()) return;
+        try {
+            if (file.length() > 32768) throw new IllegalArgumentException("Provisioning envelope too large");
+            JSONObject envelope = new JSONObject(new String(java.nio.file.Files.readAllBytes(file.toPath()), java.nio.charset.StandardCharsets.UTF_8));
+            String applet = envelope.getString("appletId"), service = envelope.getString("serviceId");
+            boolean declared = false;
+            for (int i = 0; i < packages.length(); i++) {
+                JSONObject manifest = packages.getJSONObject(i).getJSONObject("manifest");
+                if (!applet.equals(manifest.getString("id"))) continue;
+                JSONArray ids = manifest.optJSONArray("services");
+                if (ids != null) for (int j = 0; j < ids.length(); j++) if (service.equals(ids.getString(j))) declared = true;
+            }
+            if (!declared || envelope.getInt("version") != 1) throw new IllegalArgumentException("Undeclared service import");
+            String origin = endpoint(envelope.getString("origin")).resolve("/").toString();
+            String token = envelope.getString("token"), cert = envelope.optString("certificate", "");
+            if (token.length() < 32 || token.length() > 4096 || !token.matches("[\\x21-\\x7e]+")) throw new IllegalArgumentException("Invalid credential");
+            if (!cert.isEmpty()) tls(cert); // Parse before atomically replacing the configuration.
+            String id = setting(applet, service);
+            if (!settings.edit().putString(id+"/url", origin).putString(id+"/token", encrypt(token)).putString(id+"/certificate", cert).commit()) throw new IllegalStateException("Import failed");
+            java.nio.file.Files.write(new java.io.File(owner.getFilesDir(), "genesis-service-ready").toPath(), "configured".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        } finally { java.nio.file.Files.deleteIfExists(file.toPath()); }
+    }
+    private javax.net.ssl.SSLSocketFactory tls(String certificate) throws Exception {
+        java.security.cert.CertificateFactory factory = java.security.cert.CertificateFactory.getInstance("X.509");
+        java.security.cert.Certificate cert = factory.generateCertificate(new java.io.ByteArrayInputStream(certificate.getBytes(java.nio.charset.StandardCharsets.US_ASCII)));
+        KeyStore trust = KeyStore.getInstance(KeyStore.getDefaultType()); trust.load(null); trust.setCertificateEntry("service", cert);
+        javax.net.ssl.TrustManagerFactory managers = javax.net.ssl.TrustManagerFactory.getInstance(javax.net.ssl.TrustManagerFactory.getDefaultAlgorithm()); managers.init(trust);
+        javax.net.ssl.SSLContext context = javax.net.ssl.SSLContext.getInstance("TLS"); context.init(null, managers.getTrustManagers(), null); return context.getSocketFactory();
+    }
     void configure(JSONObject command) throws Exception {
         MainActivity owner = activity.get(); if (owner == null) return;
         JSONArray services = command.getJSONArray("services");
@@ -75,7 +109,7 @@ final class ServiceClient {
         EditText url = new EditText(owner); url.setHint("https://your-server.example"); url.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI); url.setText(settings.getString(id + "/url", "")); form.addView(url);
         EditText token = new EditText(owner); token.setHint("Backend token"); token.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD); form.addView(token);
         AlertDialog dialog = new AlertDialog.Builder(owner).setTitle(service).setView(form).setNegativeButton("Cancel", null)
-            .setNeutralButton("Disconnect", (d,w) -> settings.edit().remove(id+"/url").remove(id+"/token").apply()).setPositiveButton("Save", null).create();
+            .setNeutralButton("Disconnect", (d,w) -> settings.edit().remove(id+"/url").remove(id+"/token").remove(id+"/certificate").apply()).setPositiveButton("Save", null).create();
         dialog.setOnShowListener(d -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(view -> {
             try {
                 String origin = endpoint(url.getText().toString().trim()).resolve("/").toString();
@@ -83,7 +117,7 @@ final class ServiceClient {
                 if (!raw.isEmpty() && (raw.length() > 4096 || !raw.matches("[\\x21-\\x7e]+"))) throw new IllegalArgumentException("Token must contain printable ASCII characters.");
                 String sealed = raw.isEmpty() && origin.equals(settings.getString(id+"/url", "")) ? settings.getString(id+"/token", "") : encrypt(raw);
                 if (raw.isEmpty() && !origin.equals(settings.getString(id+"/url", ""))) throw new IllegalArgumentException("Enter a token for the new server.");
-                if (!settings.edit().putString(id+"/url", origin).putString(id+"/token", sealed).commit()) throw new IllegalStateException("Could not save connection");
+                if (!settings.edit().putString(id+"/url", origin).putString(id+"/token", sealed).remove(id+"/certificate").commit()) throw new IllegalStateException("Could not save connection");
                 dialog.dismiss();
             } catch (Exception error) { url.setError(error.getMessage()); }
         })); dialog.show();
@@ -92,16 +126,19 @@ final class ServiceClient {
         // Capture one configuration for this operation; later edits affect future requests.
         String id = setting(job.optString("appletId"), job.optString("serviceId"));
         String origin = settings.getString(id+"/url", ""), sealed = settings.getString(id+"/token", "");
-        try { worker.execute(() -> execute(job, origin, sealed)); }
+        try { worker.execute(() -> execute(job, origin, sealed, settings.getString(id+"/certificate", ""))); }
         catch (java.util.concurrent.RejectedExecutionException error) { complete(job, null, "BUSY", "Service queue is full. Reread before retrying."); }
     }
-    private void execute(JSONObject job, String origin, String sealed) {
+    private void execute(JSONObject job, String origin, String sealed, String certificate) {
         HttpURLConnection connection = null;
         try {
-            if (origin.isEmpty() || sealed.isEmpty()) { complete(job, null, "CONFIGURATION_REQUIRED", "Open native Menu > Service connections, configure the backend, then reload."); return; }
+            if (origin.isEmpty() || sealed.isEmpty()) { complete(job, null, "CONFIGURATION_REQUIRED", "Saved stories are temporarily unavailable. Please try again later."); return; }
             URI base = endpoint(origin), destination = base.resolve(job.getString("path"));
             if (!base.getScheme().equals(destination.getScheme()) || !base.getRawAuthority().equals(destination.getRawAuthority()) || destination.getUserInfo() != null) throw new IllegalArgumentException("Service path changes origin");
             connection = (HttpURLConnection) destination.toURL().openConnection(); connection.setInstanceFollowRedirects(false);
+            MainActivity owner = activity.get();
+            if (!certificate.isEmpty() && owner != null && (owner.getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0)
+                ((javax.net.ssl.HttpsURLConnection) connection).setSSLSocketFactory(tls(certificate));
             connection.setConnectTimeout(3000); connection.setReadTimeout(3000); connection.setRequestMethod(job.getString("method"));
             connection.setRequestProperty("Authorization", "Bearer " + decrypt(sealed)); connection.setRequestProperty("Accept", "application/json");
             if (!job.isNull("body")) {
@@ -111,6 +148,7 @@ final class ServiceClient {
                 try (java.io.OutputStream output = connection.getOutputStream()) { output.write(body); }
             }
             int status = connection.getResponseCode();
+            if (status == 401 || status == 403) { complete(job, null, "AUTHENTICATION_FAILED", "Saved stories are unavailable. Please try again later."); return; }
             if (status >= 300 && status < 400) throw new IllegalArgumentException("Service redirects are disabled");
             InputStream stream = status >= 400 ? connection.getErrorStream() : connection.getInputStream();
             if (stream == null) throw new IllegalStateException("Service returned no JSON body");
@@ -120,7 +158,7 @@ final class ServiceClient {
             }
             Object body = new org.json.JSONTokener(bytes.toString("UTF-8")).nextValue();
             complete(job, new JSONObject().put("status", status).put("body", body), null, null);
-        } catch (Exception error) { complete(job, null, "SERVICE_FAILURE", "Service request failed. A write may have completed; reread before retrying."); }
+        } catch (Exception error) { complete(job, null, error instanceof java.net.SocketTimeoutException ? "TIMEOUT" : error instanceof javax.net.ssl.SSLException ? "CERTIFICATE_FAILED" : "SERVICE_UNREACHABLE", "Service request failed. A write may have completed; reread before retrying."); }
         finally { if (connection != null) connection.disconnect(); }
     }
     private void complete(JSONObject job, JSONObject result, String code, String message) {

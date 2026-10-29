@@ -207,6 +207,9 @@ pub enum HostEvent {
         document_id: DocumentId,
         token: u64,
     },
+    ClassifyUrl {
+        url: String,
+    },
     Home,
     Back {
         #[serde(rename = "canGoBack")]
@@ -283,6 +286,12 @@ pub enum HostEvent {
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum HostCommand {
+    ModalState {
+        open: bool,
+    },
+    ClassifiedUrl {
+        kind: String,
+    },
     ShowLauncher {
         entries: Vec<LauncherEntry>,
         status: String,
@@ -296,6 +305,12 @@ pub enum HostCommand {
         customized: bool,
         #[serde(rename = "localAssets")]
         local_assets: Vec<LocalAsset>,
+    },
+    ParkView {
+        generation: u64,
+    },
+    ResumeView {
+        generation: u64,
     },
     DestroyView {
         generation: u64,
