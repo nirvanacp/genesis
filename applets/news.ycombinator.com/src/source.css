@@ -4,7 +4,7 @@ html.genesis-hn {background:var(--paper)!important;--gutter:16px}
 .genesis-hn body *{font-family:Verdana,Geneva,sans-serif!important;box-sizing:border-box}
 #hnmain{width:100%!important;max-width:760px;min-width:0!important;margin:auto;background:transparent!important}
 #hnmain td{height:auto!important}
-#hnmain>tbody>tr:first-child:has(.hnname){display:none}
+#hnmain>tbody>tr:first-child:has(.pagetop){display:none}
 table{max-width:100%}td{font-family:inherit!important}
 a:link,a:visited{color:var(--ink)}a:hover{color:var(--accent)}a:focus-visible,button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 .titleline{display:block}.titleline>a:first-child{font-size:15px!important;line-height:1.4!important;font-weight:600;overflow-wrap:anywhere}
@@ -37,3 +37,5 @@ form[action="//hn.algolia.com/"]{display:none!important}
 html.genesis-account-hub body>center{display:none!important}
 @media(max-width:359px){html.genesis-hn{--gutter:12px}}
 @media(max-width:480px){form table,form tbody,form tr,form td{display:block;width:100%}form input:not([type=submit]):not([type=hidden]){width:100%}}
+
+.genesis-hn button{font:inherit;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 14px}

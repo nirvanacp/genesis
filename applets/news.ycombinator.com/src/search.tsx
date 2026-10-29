@@ -13,7 +13,7 @@ export default definePage({
 function SearchPage({ context }: { context: AppletContext }) {
   return <><style>{theme}{libraryCss}{`
     :host{display:block;background:var(--paper);min-height:100vh;color:var(--ink);font:15px/1.5 Verdana,Geneva,sans-serif}
-    .search-page{max-width:760px;margin:auto;padding:16px}
+    .search-page{max-width:792px;margin:auto;padding:16px}
     .search-page h1{font:700 1.6rem Verdana,Geneva,sans-serif;letter-spacing:0;margin:0 0 28px}
     .placeholder{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:26px 20px}
     .placeholder h2{font-size:1.1rem;margin:0 0 8px}.placeholder p{color:var(--muted);margin:0}
