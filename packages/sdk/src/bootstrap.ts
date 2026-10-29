@@ -62,13 +62,15 @@ export function bootstrap(config: BootstrapConfig, entry: AppletEntry): void {
         document.addEventListener("DOMContentLoaded", () => resolve(), { once: true, signal: activation.signal });
       });
       if (activation.signal.aborted || documentId !== acceptedDocument) return;
-      scope = new PageScope(qualificationCss);
+      scope = new PageScope(qualificationCss, binding.binding.kind === "page");
       phases.style = true;
       phases.mount = scope.root().isConnected;
       client = new RpcClient(acceptedDocument!, message => bridge.postMessage(message));
       runtime = new ManagedRuntime(binding, scope.root(), client.call, fail);
       const disposer = entry.activate(runtime.context);
       if (typeof disposer === "function") runtime.context.onDispose(disposer);
+      runtime.flushInitial();
+      if (activation.signal.aborted || failed) return;
       phases.creator = true;
       if (!phases.mount) throw new Error("Owned UI mount is detached");
       rpc("runtime.ready", { phases, runtime: "typescript" });

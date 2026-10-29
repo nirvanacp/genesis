@@ -282,6 +282,10 @@ export class ManagedRuntime {
     void this.call("route.changed", { url: this.url }).catch(error => this.fatal(error));
     this.schedule();
   }
+  flushInitial(): void {
+    this.assertActive();
+    for (const watcher of [...this.watchers.values()]) if (!this.disposed && watcher.dirty) this.reconcile(watcher);
+  }
   storageChanged(change: StorageChange): void {
     if (!this.disposed) for (const callback of [...this.storageListeners]) this.invoke(() => callback(change));
   }
