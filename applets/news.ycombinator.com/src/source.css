@@ -1,0 +1,237 @@
+html {
+  background:var(--paper)!important;
+}
+body {
+  margin:0!important;
+  padding:20px 16px 100px!important;
+  background:var(--paper)!important;
+  color:var(--ink)!important;
+  font:1rem/1.55 system-ui,sans-serif!important;
+}
+body>center>table#hnmain {
+  width:100%!important;
+  max-width:760px;
+  margin:auto;
+  background:transparent!important;
+}
+table {
+  max-width:100%;
+}
+td {
+  font-family:inherit!important;
+}
+a:link,a:visited {
+  color:var(--ink);
+}
+a:hover {
+  color:var(--accent);
+}
+#hnmain>tbody>tr:first-child>td {
+  background:transparent!important;
+  padding:0 0 20px!important;
+}
+#hnmain>tbody>tr:first-child table {
+  width:100%;
+}
+#hnmain>tbody>tr:first-child td:first-child {
+  display:none;
+}
+.hnname {
+  display:block;
+  margin:0 0 14px;
+}
+.hnname a {
+  font:700 2rem/1.15 Georgia,serif!important;
+  letter-spacing:-.035em;
+}
+.pagetop {
+  display:block;
+  font:500 .875rem/2.8 system-ui!important;
+  color:var(--muted);
+}
+.pagetop>a {
+  display:inline-block;
+  padding:0 12px;
+  min-height:44px;
+  border-radius:24px;
+  background:var(--wash);
+  margin:3px 1px;
+}
+.pagetop a[href="news"],.pagetop a[href="newest"] {
+  font-weight:700;
+}
+.itemlist {
+  width:100%;
+  border-spacing:0!important;
+}
+.itemlist>tbody>tr.athing {
+  background:var(--card);
+  display:grid;
+  grid-template-columns:28px minmax(0,1fr);
+  padding:18px 16px 0;
+  border:1px solid var(--line);
+  border-bottom:0;
+  border-radius:18px 18px 0 0;
+}
+.itemlist>tbody>tr.athing>.rank,.itemlist>tbody>tr.athing>td:first-child {
+  display:none;
+}
+.itemlist>tbody>tr.athing>td {
+  width:auto!important;
+}
+.titleline {
+  display:block;
+}
+.titleline>a:first-child {
+  font:700 1.25rem/1.35 Georgia,serif!important;
+  overflow-wrap:anywhere;
+}
+.sitebit {
+  display:block;
+  margin-top:6px;
+  font:400 .8125rem system-ui;
+  color:var(--muted);
+}
+.sitebit a {
+  color:var(--muted)!important;
+}
+.itemlist>tbody>tr.athing+tr {
+  display:block;
+  background:var(--card);
+  padding:8px 16px 16px 44px;
+  border:1px solid var(--line);
+  border-top:0;
+  border-radius:0 0 18px 18px;
+}
+.itemlist>tbody>tr.athing+tr>td:empty {
+  display:none;
+}
+.subtext {
+  color:var(--muted)!important;
+  font:.8125rem/2 system-ui!important;
+  white-space:normal!important;
+}
+.subtext a {
+  display:inline-block;
+  min-height:32px;
+  color:var(--muted)!important;
+}
+.spacer {
+  height:12px!important;
+}
+.votelinks a {
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-width:28px;
+  min-height:44px;
+}
+.votearrow {
+  margin:0!important;
+}
+.comhead {
+  font:.8125rem/1.8 system-ui!important;
+  color:var(--muted)!important;
+}
+.comhead .hnuser {
+  color:var(--accent)!important;
+  font-weight:700;
+}
+.commtext {
+  font:1rem/1.55 system-ui!important;
+  color:var(--ink)!important;
+  overflow-wrap:anywhere;
+}
+.commtext p {
+  margin:10px 0;
+}
+.commtext pre {
+  max-width:75vw;
+  overflow:auto;
+}
+.commtext code {
+  white-space:pre-wrap;
+}
+.comment-tree {
+  width:100%;
+  border-spacing:0 14px;
+}
+.comment-tree .ind img {
+  max-width:28px;
+}
+.comment-tree .default {
+  border-left:2px solid var(--line);
+  padding-left:12px!important;
+}
+.reply a,.togg {
+  display:inline-flex;
+  align-items:center;
+  min-height:44px;
+}
+.fatitem .titleline>a:first-child {
+  font:700 1.75rem/1.2 Georgia,serif!important;
+}
+.fatitem .titleline {
+  margin:10px 0;
+}
+.fatitem {
+  width:100%;
+}
+input,textarea,select {
+  max-width:100%;
+  font:inherit;
+  border:1px solid var(--line);
+  border-radius:10px;
+  padding:10px;
+  background:var(--card);
+  color:var(--ink);
+}
+input[type=submit],button {
+  min-height:44px;
+}
+textarea {
+  width:100%;
+  box-sizing:border-box;
+}
+#hnmain>tbody>tr:last-child td {
+  overflow-wrap:anywhere;
+}
+.yclinks {
+  font:.8125rem/2 system-ui;
+  color:var(--muted);
+}
+.yclinks a {
+  display:inline-block;
+  padding:6px;
+}
+hr {
+  border:0;
+  border-top:1px solid var(--line);
+}
+@media(min-width:650px) {
+  body {
+    padding-top:32px!important;
+  }
+  .titleline>a:first-child {
+    font-size:1.375rem!important;
+  }
+}
+@media(max-width:340px) {
+  body {
+    padding-left:10px!important;
+    padding-right:10px!important;
+  }
+  .itemlist>tbody>tr.athing {
+    padding-left:10px;
+    padding-right:10px;
+  }
+}
+
+.commtext [class^="c"] { color: var(--ink) !important; }
+/* Preserve HN's header links while removing its text-only pipe separators. */
+.pagetop {
+  font-size: 0 !important;
+}
+.pagetop > a {
+  font-size: .875rem;
+}

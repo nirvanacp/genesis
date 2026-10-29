@@ -13,7 +13,7 @@ export function CategoryManager({ context, snapshot, changed }: { context: Apple
     finally { if (alive.current) setBusy(false); }
   };
   const repository = new CategoryRepository(context.storage);
-  return <details className="category-manager"><summary>Manage categories</summary>
+  return <details className="category-manager" open><summary>Manage categories</summary>
     <p className="muted">Categories are saved immediately. Deleting one keeps its bookmarks.</p>
     {message && <p role="status" className="notice">{message}</p>}
     <form onSubmit={event => { event.preventDefault(); void run(async () => { await repository.create(name); if (alive.current) setName(""); }); }}>
@@ -27,8 +27,12 @@ export function CategoryManager({ context, snapshot, changed }: { context: Apple
 }
 function CategoryRow({ record, busy, rename, remove }: { record: StoredDocument<CategoryV1>; busy: boolean; rename(value: string): void; remove(): void }) {
   const [name, setName] = useState(record.value.name);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   useEffect(() => setName(record.value.name), [record.value.name]);
   return <div className="category-row"><label className="stack">Category name<input aria-label={`Rename ${record.value.name}`} value={name} onChange={event => setName(event.target.value)} disabled={busy} /></label>
     <div className="row-actions"><button disabled={busy || !name.trim() || name === record.value.name} onClick={() => rename(name)}>Rename</button>
-      <button className="danger" disabled={busy} onClick={remove}>Delete category</button></div></div>;
+      <button className="danger" disabled={busy} onClick={() => setConfirmDelete(true)}>Delete category</button></div>
+    {confirmDelete && <div className="confirm-remove" role="group" aria-label={`Delete ${record.value.name}`}><p>Delete this category? Its stories will stay saved.</p>
+      <div className="row-actions"><button className="danger" disabled={busy} onClick={remove}>Delete category permanently</button><button disabled={busy} onClick={() => setConfirmDelete(false)}>Keep category</button></div></div>}
+  </div>;
 }
