@@ -185,6 +185,8 @@ final class BrowserAdapter {
         capabilities.put("details", "Android " + Build.VERSION.RELEASE + " / " + Build.SUPPORTED_ABIS[0] + " / " + Locale.getDefault().toLanguageTag()
             + "\nProvider " + (provider == null ? "unavailable" : provider.packageName + " " + provider.versionName) + "\n" + flags.toString(2));
         emit(capabilities, current);
+        // The launcher and browser share one slot; do not retain the launcher underneath.
+        views.browserSlot.removeAllViews();
         views.browserSlot.addView(browser, new android.widget.FrameLayout.LayoutParams(-1, -1));
     }
 
