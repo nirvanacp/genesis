@@ -65,7 +65,7 @@ export default defineApplet({
       control.active = false; queue.delete(control); control.dispose(); controls.delete(binding.id);
     };
     const mount = (binding: ElementBinding) => {
-      const anchor = binding.element.querySelector(".titleline > a:first-child")?.closest("td"); if (!anchor) return;
+      const anchor = binding.element.querySelector(".titleline"); if (!anchor) return;
       const button = document.createElement("button"); button.type = "button";
       button.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v19l-6-4-6 4z"/></svg>';
       button.setAttribute("aria-label", "Save story to Genesis");
@@ -88,7 +88,7 @@ export default defineApplet({
       enter: mount,
       update(binding) {
         const control = controls.get(binding.id);
-        const anchor = binding.element.querySelector(".titleline > a:first-child")?.closest("td");
+        const anchor = binding.element.querySelector(".titleline");
         if (control && anchor !== control.anchor) { remove(binding); mount(binding); }
         else if (control) refresh(control);
       }, leave: remove,

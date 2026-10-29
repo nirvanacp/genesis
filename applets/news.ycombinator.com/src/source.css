@@ -10,17 +10,18 @@ a:link,a:visited{color:var(--ink)}a:hover{color:var(--accent)}a:focus-visible,bu
 .titleline{display:block}.titleline>a:first-child{font-size:15px!important;line-height:1.4!important;font-weight:600;overflow-wrap:anywhere}
 .sitebit{display:block;margin-top:4px;color:var(--muted);font-size:12px}.sitebit a,.subtext a{color:var(--muted)!important}
 .subtext{font:12px/1.6 Verdana,Geneva,sans-serif!important;color:var(--muted)!important;white-space:normal!important}.subtext a{display:inline-block;min-height:28px}
-/* Only recognized submission rows become cards; forms and comments retain table layout. */
-#bigbox>td>table:has(tr.submission){display:block;width:100%}
-#bigbox>td>table:has(tr.submission)>tbody{display:block}
-#bigbox tr.submission{display:grid;grid-template-columns:32px minmax(0,1fr);padding:12px 12px 4px;border:1px solid var(--line);border-bottom:0;border-radius:12px 12px 0 0;background:var(--card)}
-#bigbox tr.submission>td:first-child:has(.rank){display:none}
-#bigbox tr.submission>td.title:has(.titleline){min-width:0;position:relative}
-#bigbox tr.submission .titleline{padding-right:44px}
-#bigbox tr.submission+tr{display:block;padding:0 12px 12px 44px;border:1px solid var(--line);border-top:0;border-radius:0 0 12px 12px;background:var(--card)}
-#bigbox tr.submission+tr>td:empty{display:none}
-#bigbox tr.submission+tr>td.subtext{display:block}
-.discussion-tile{cursor:pointer}.spacer{height:10px!important}
+/* Preserve HN's native table/colspan relationships for its compact continuous feed. */
+#bigbox>td>table:has(tr.submission){display:table;width:100%;border-collapse:separate;border-spacing:0}
+#bigbox>td>table:has(tr.submission)>tbody{display:table-row-group}
+#bigbox tr.submission,#bigbox tr.submission+tr{display:table-row;padding:0;border:0;background:var(--paper)}
+#bigbox tr.submission>td,#bigbox tr.submission+tr>td{display:table-cell;padding:8px 4px 0;vertical-align:top;background:var(--paper)}
+#bigbox tr.submission>td:first-child:has(.rank){width:16px!important;padding-left:0}
+#bigbox tr.submission .rank{font:11px Verdana,Geneva,sans-serif;color:var(--muted)}
+#bigbox tr.submission>td.title:has(.titleline){min-width:0;padding-right:0}
+#bigbox tr.submission .titleline{position:relative;padding-right:44px}
+#bigbox tr.submission+tr>td{padding:0 0 8px;border-bottom:1px solid var(--line)}
+#bigbox tr.submission+tr>td.subtext{display:table-cell}
+.discussion-tile{cursor:pointer}.spacer{height:4px!important}
 .votelinks{width:32px!important;vertical-align:top}.votelinks a{display:inline-flex;align-items:center;justify-content:center;min-width:32px;min-height:48px}.votearrow{margin:0!important}
 .fatitem{width:100%;border-spacing:0}.fatitem>tbody>tr>td:empty{display:none}.fatitem td.title:has(.rank){display:none}
 .fatitem .titleline>a:first-child{font-size:18px!important}.fatitem .titleline{margin:0 0 12px}
