@@ -56,7 +56,7 @@ async function check() {
 
 async function assets(packages) {
   const { build } = await import("esbuild");
-  const index = { schemaVersion: 1, implementationStage: "MVP-06", packages: [] };
+  const index = { schemaVersion: 1, implementationStage: "MVP-07", packages: [] };
   const output = path.join(generated, "assets");
   await rm(output, { recursive: true, force: true });
   for (const { base, manifest: original } of packages) {
@@ -121,7 +121,7 @@ try {
   const packages = await check();
   if (stage === "assets" || stage === "all") await assets(packages);
   if (stage === "native" || stage === "all") await native();
-  console.log(`Genesis ${variant} ${stage} build passed. Applet functionality is incomplete.`);
+  console.log(`Genesis ${variant} ${stage} build passed. Build output is ready for device qualification.`);
 } catch (error) {
   console.error(`Genesis build failed: ${error.message}`);
   process.exitCode = 1;

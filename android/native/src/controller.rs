@@ -672,7 +672,7 @@ impl HostState {
             } else if !Self::eligible(view) {
                 self.present("ordinary", "Ordinary external/authentication page. No Genesis bridge is registered for this origin.", commands);
             } else if view.ready {
-                self.present("ready", "MVP-06 · Applet ready.", commands);
+                self.present("ready", "Genesis · Customization ready.", commands);
             } else {
                 self.present(
                     "loading",
@@ -777,7 +777,7 @@ impl HostState {
                     entries
                 })
                 .collect(),
-            status: "MVP-06 · Browse a source or open its local pages.".into(),
+            status: "Genesis · Browse Hacker News or open your bookmarks.".into(),
         }
     }
 
