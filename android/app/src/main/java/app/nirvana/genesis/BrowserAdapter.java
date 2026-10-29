@@ -93,7 +93,9 @@ final class BrowserAdapter {
         if (webView != null) throw new IllegalStateException("Previous browser was not retired");
         long current = command.getLong("generation"); generation = current;
         JSONObject binding = command.getJSONObject("context").getJSONObject("binding");
-        sessionKey = binding.getString("kind") + ":" + binding.optString("sourceId", binding.optString("pageId"));
+        sessionKey = command.getJSONObject("context").getString("appletId") + ":" + binding.getString("kind") + ":" + binding.optString("sourceId", binding.optString("pageId"));
+        JSONObject owner = command.optJSONObject("ownerSelection");
+        if (owner != null) sessionKey += ":detail:" + owner.optString("sourceId") + ":" + owner.optString("pageId");
         scrollPositions.clear(); pendingScrollUrl = null; visibleUrl = null;
         sourceOrigins = new HashSet<>();
         homePaths.clear();
@@ -233,7 +235,7 @@ final class BrowserAdapter {
                 .show();
         });
         browser.setOnScrollChangeListener((view, x, y, oldX, oldY) -> {
-            if (visibleUrl != null && isFeed(visibleUrl) && !visibleUrl.equals(pendingScrollUrl))
+            if (visibleUrl != null && !visibleUrl.equals(pendingScrollUrl))
                 scrollPositions.put(visibleUrl, y);
         });
         JSONObject flags = new JSONObject();
@@ -482,7 +484,6 @@ final class BrowserAdapter {
         if (all == null) all = new Bundle();
         final Bundle destination = all;
         histories.forEach(destination::putBundle);
-        /* histories copied above */
 
         if (webView != null && sessionKey != null) {
             all.putBundle(sessionKey, saveHistory(webView));
@@ -580,13 +581,11 @@ final class BrowserAdapter {
     private void updateNavigation(String url) {
         if (!attached || reader != null || webView == null || url == null) return;
         visibleUrl = url;
-        boolean source = !sourceOrigins.isEmpty();
-        boolean localPage = sessionKey != null && sessionKey.startsWith("page:");
         boolean reader = "ordinary".equals(routeKind);
         views.navigation(url, reader, webView.canGoBack(), webView.canGoForward());
     }
     private void recordScroll(WebView view) {
-        if (visibleUrl != null && isFeed(visibleUrl) && !visibleUrl.equals(pendingScrollUrl))
+        if (visibleUrl != null && !visibleUrl.equals(pendingScrollUrl))
             scrollPositions.put(visibleUrl, view.getScrollY());
     }
     private Bundle saveHistory(WebView view) {

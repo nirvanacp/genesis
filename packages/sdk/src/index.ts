@@ -19,6 +19,6 @@ export function initialLayout(): Promise<void> {
 export function serviceMessage(error: unknown): string {
   const code = (error as { code?: string })?.code;
   if (["CONFIGURATION_REQUIRED", "AUTHENTICATION_FAILED", "CERTIFICATE_FAILED", "SERVICE_UNREACHABLE", "TIMEOUT", "SERVICE_FAILURE"].includes(code ?? ""))
-    return "Saved stories are temporarily unavailable. Try again in a moment.";
+    return "This feature is temporarily unavailable. Try again in a moment.";
   return error instanceof Error ? error.message : "Something went wrong. Please try again.";
 }

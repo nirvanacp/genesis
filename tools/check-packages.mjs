@@ -81,6 +81,16 @@ export async function readPackages() {
       requireValue((await realpath(path.join(base, shell.brandAsset))).startsWith(`${await realpath(base)}${path.sep}`), `${directory}: brand escapes package`);
       for (const choice of shell.choices ?? []) requireValue(typeof choice.label === "string" && manifest.sources.some(source => source.origins.includes(new URL(choice.url).origin) && source.customizedPaths?.includes(new URL(choice.url).pathname)), `${directory}: invalid shell choice`);
     }
+    // Optional creator-only local service declaration. It is never bundled into the app.
+    let service;
+    try { service = JSON.parse(await readFile(path.join(base, "backend/service.json"), "utf8")); }
+    catch (error) { if (error.code !== "ENOENT") throw error; }
+    if (service) {
+      requireValue(manifest.services.includes(service.serviceId) && typeof service.entry === "string" && !path.isAbsolute(service.entry) && !service.entry.split("/").some(p => p === ".." || p === "." || !p) && !service.entry.includes("\\"), `${directory}: invalid service entry`);
+      requireValue((await realpath(path.join(base, service.entry))).startsWith(`${await realpath(base)}${path.sep}`), `${directory}: service entry escapes applet`);
+      requireValue(Number.isInteger(service.port) && service.port >= 1024 && service.port <= 65535 && /^\/[a-z0-9/-]+$/.test(service.healthPath), `${directory}: invalid service health/port`);
+      requireValue(["token", "database", "port", "certificate", "key"].every(key => /^[A-Z][A-Z0-9_]+$/.test(service.environment?.[key] ?? "")), `${directory}: invalid service environment contract`);
+    }
     packages.push({ base, manifest });
   }
   return packages;

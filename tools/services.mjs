@@ -19,13 +19,13 @@ async function provision(origin, token, certificate = '') {
   const url = new URL(origin);
   if (url.protocol !== 'https:' || url.origin !== origin || url.username || url.password) throw new Error('Use an exact HTTPS origin');
   if (token.length < 32 || token.length > 4096 || /[^\x21-\x7e]/.test(token)) throw new Error('Invalid service token');
-  const envelope = { version: 1, appletId: manifest.id, serviceId: declaration.serviceId, origin, token, certificate };
+  const envelope = { version: 1, appletId: manifest.id, serviceId: declaration.serviceId, origin, token, certificate, healthPath: declaration.healthPath };
   device(['shell', 'run-as', application, 'rm', '-f', 'files/genesis-service-ready']);
   run(adb, ['-s', serial, 'shell', 'run-as', application, 'sh', '-c', '"umask 077; cat > files/genesis-service-import.json"'], JSON.stringify(envelope));
   device(['shell', 'am', 'force-stop', application]);
   device(['shell', 'am', 'start', '-n', `${application}/.MainActivity`]);
   let imported = false;
-  for (let i = 0; i < 30; i++) { try { if (device(['shell', 'run-as', application, 'cat', 'files/genesis-service-ready']) === 'configured') { imported = true; break; } } catch {} await new Promise(resolve => setTimeout(resolve, 200)); }
+  for (let i = 0; i < 30; i++) { try { if (device(['shell', 'run-as', application, 'cat', 'files/genesis-service-ready']) === 'ready') { imported = true; break; } } catch {} await new Promise(resolve => setTimeout(resolve, 200)); }
   if (!imported) throw new Error('Android did not acknowledge the private import');
 }
 const state = path.join(homedir(), '.local/share/genesis/services', manifest.id, declaration.serviceId);

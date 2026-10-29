@@ -81,9 +81,14 @@ final class ServiceClient {
             String token = envelope.getString("token"), cert = envelope.optString("certificate", "");
             if (token.length() < 32 || token.length() > 4096 || !token.matches("[\\x21-\\x7e]+")) throw new IllegalArgumentException("Invalid credential");
             if (!cert.isEmpty()) tls(cert); // Parse before atomically replacing the configuration.
+            String healthPath = envelope.getString("healthPath");
+            if (!healthPath.matches("/[A-Za-z0-9/_-]+")) throw new IllegalArgumentException("Invalid service health path");
             String id = setting(applet, service);
             if (!settings.edit().putString(id+"/url", origin).putString(id+"/token", encrypt(token)).putString(id+"/certificate", cert).commit()) throw new IllegalStateException("Import failed");
-            java.nio.file.Files.write(new java.io.File(owner.getFilesDir(), "genesis-service-ready").toPath(), "configured".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            JSONObject health = new JSONObject().put("generation", -1).put("documentId", "provisioning")
+                .put("channel", 0).put("requestId", "provisioning-health").put("path", healthPath).put("method", "GET").put("body", JSONObject.NULL);
+            String sealed = settings.getString(id+"/token", "");
+            worker.execute(() -> execute(health, origin, sealed, cert));
         } finally { java.nio.file.Files.deleteIfExists(file.toPath()); }
     }
     private javax.net.ssl.SSLSocketFactory tls(String certificate) throws Exception {
@@ -158,17 +163,24 @@ final class ServiceClient {
             }
             Object body = new org.json.JSONTokener(bytes.toString("UTF-8")).nextValue();
             complete(job, new JSONObject().put("status", status).put("body", body), null, null);
-        } catch (Exception error) { complete(job, null, error instanceof java.net.SocketTimeoutException ? "TIMEOUT" : error instanceof javax.net.ssl.SSLException ? "CERTIFICATE_FAILED" : "SERVICE_UNREACHABLE", "Service request failed. A write may have completed; reread before retrying."); }
+        } catch (Exception error) { complete(job, null, error instanceof org.json.JSONException ? "INVALID_RESPONSE" : error instanceof java.net.SocketTimeoutException ? "TIMEOUT" : error instanceof javax.net.ssl.SSLException ? "CERTIFICATE_FAILED" : "SERVICE_UNREACHABLE", "Service request failed. A write may have completed; reread before retrying."); }
         finally { if (connection != null) connection.disconnect(); }
     }
     private void complete(JSONObject job, JSONObject result, String code, String message) {
         try {
+            if (job.optLong("generation") == -1 && "provisioning-health".equals(job.optString("requestId"))) {
+                MainActivity owner = activity.get();
+                boolean healthy = code == null && result != null && result.optInt("status") == 200
+                    && result.optJSONObject("body") != null && result.optJSONObject("body").optBoolean("ready");
+                if (owner != null) java.nio.file.Files.write(new java.io.File(owner.getFilesDir(), "genesis-service-ready").toPath(), (healthy ? "ready" : "unavailable").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                return;
+            }
             JSONObject reply = new JSONObject().put("v",1).put("documentId",job.getString("documentId")).put("requestId",job.getString("requestId")).put("ok",code==null);
             if (code==null) reply.put("result",result); else reply.put("error",new JSONObject().put("code",code).put("message",message).put("retryable",false));
             JSONObject completion = new JSONObject().put("generation",job.getLong("generation")).put("documentId",job.getString("documentId")).put("channel",job.getLong("channel")).put("response",reply);
             JSONObject event = HostViews.event("serviceCompleted"); event.put("completion",completion);
             main.post(() -> { MainActivity owner=activity.get(); if (owner!=null && !owner.isDestroyed()) owner.send(event); });
-        } catch (org.json.JSONException ignored) { /* Host-produced job was malformed. */ }
+        } catch (org.json.JSONException | java.io.IOException ignored) { /* Completion could not be delivered. */ }
     }
     void close() { worker.shutdownNow(); activity.clear(); }
 }
