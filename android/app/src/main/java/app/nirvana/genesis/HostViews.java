@@ -21,6 +21,8 @@ import android.widget.ImageButton;
 import android.widget.PopupMenu;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.widget.ProgressBar;
+import android.net.Uri;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -36,11 +38,18 @@ final class HostViews {
     private final ScrollView cover;
     private final TextView coverTitle, coverMessage;
     private final LinearLayout recovery;
+    private final LinearLayout siteRecovery;
     private final ImageButton floatingMenu;
+    private final LinearLayout readerBar;
+    private final TextView readerOrigin;
+    private final Button readerBack, readerForward;
+    private final ProgressBar pageProgress;
+    private String readerUrl = "";
     private PopupMenu activeMenu;
     private JSONArray actions = new JSONArray();
     private String presentationState = "loading", presentationMessage = "";
     private boolean fullscreen;
+    private boolean readerVisible;
 
     @SuppressWarnings("deprecation")
     HostViews(Activity activity, Events events) {
@@ -60,6 +69,28 @@ final class HostViews {
         });
         browserSlot = new FrameLayout(activity); content.addView(browserSlot, new FrameLayout.LayoutParams(-1, -1));
 
+        readerBar = new LinearLayout(activity); readerBar.setGravity(Gravity.CENTER_VERTICAL);
+        readerBar.setPadding(dp(8), 0, dp(8), 0); readerBar.setBackgroundColor(paper);
+        readerBack = button("‹", () -> events.send(event("back")));
+        readerBack.setContentDescription("Back"); readerBack.setMinWidth(dp(48));
+        readerForward = button("›", () -> events.send(event("forward")));
+        readerForward.setContentDescription("Forward"); readerForward.setMinWidth(dp(48));
+        Button close = button("×", () -> events.send(event("readerClose")));
+        close.setContentDescription("Close reader"); close.setMinWidth(dp(48));
+        readerOrigin = text("", 14); readerOrigin.setSingleLine(true); readerOrigin.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        readerBar.addView(readerBack, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        readerBar.addView(readerForward, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        readerBar.addView(readerOrigin, new LinearLayout.LayoutParams(0, -2, 1));
+        readerBar.addView(close, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        Button more = button("⋮", () -> readerMenu()); more.setContentDescription("Reader options");
+        readerBar.addView(more, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        readerBar.setVisibility(View.GONE);
+        content.addView(readerBar, new FrameLayout.LayoutParams(-1, dp(52), Gravity.TOP));
+        pageProgress = new ProgressBar(activity, null, android.R.attr.progressBarStyleHorizontal);
+        pageProgress.setMax(100); pageProgress.setIndeterminate(true); pageProgress.setVisibility(View.GONE);
+        FrameLayout.LayoutParams progressLayout = new FrameLayout.LayoutParams(-1, dp(3), Gravity.TOP);
+        content.addView(pageProgress, progressLayout);
+
         LinearLayout notice = new LinearLayout(activity); notice.setOrientation(LinearLayout.VERTICAL);
         notice.setGravity(Gravity.CENTER); notice.setPadding(dp(28), dp(28), dp(28), dp(88));
         coverTitle = text("", 24); coverTitle.setTypeface(null, Typeface.BOLD); coverTitle.setGravity(Gravity.CENTER);
@@ -71,6 +102,11 @@ final class HostViews {
         recovery.addView(button("Open ordinary site", () -> events.send(event("ordinary"))));
         recovery.addView(button("Return to Apps", () -> events.send(event("home"))));
         notice.addView(recovery);
+        siteRecovery = new LinearLayout(activity); siteRecovery.setOrientation(LinearLayout.VERTICAL);
+        siteRecovery.addView(button("Retry page", () -> events.send(event("reload"))));
+        siteRecovery.addView(button("Back", () -> events.send(event("back"))));
+        siteRecovery.addView(button("Open in browser", () -> events.send(event("openBrowser"))));
+        notice.addView(siteRecovery); siteRecovery.setVisibility(View.GONE);
         cover = new ScrollView(activity); cover.setFillViewport(true); cover.setBackgroundColor(paper);
         cover.addView(notice, new ScrollView.LayoutParams(-1, -2)); cover.setVisibility(View.GONE);
         content.addView(cover, new FrameLayout.LayoutParams(-1, -1));
@@ -92,7 +128,8 @@ final class HostViews {
     }
 
     void launcher(JSONArray entries, String message) throws JSONException {
-        dismissMenu(); fullscreen = false;
+        dismissMenu(); fullscreen = false; readerVisible = false;
+        readerBar.setVisibility(View.GONE); pageProgress.setVisibility(View.GONE); browserSlot.setPadding(0, 0, 0, 0);
         cover.setVisibility(View.GONE); floatingMenu.setVisibility(View.GONE); actions = new JSONArray();
         browserSlot.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);
         browserSlot.removeAllViews();
@@ -117,19 +154,23 @@ final class HostViews {
 
     void presentation(JSONObject command) throws JSONException {
         presentationState = command.getString("state"); presentationMessage = command.getString("message"); actions = command.getJSONArray("actions");
+        boolean siteError = "siteError".equals(presentationState);
         boolean failed = "failed".equals(presentationState) || "unsupported".equals(presentationState);
         boolean loading = "loading".equals(presentationState);
-        coverTitle.setText(failed ? "Customization unavailable" : "Opening app"); coverMessage.setText(presentationMessage);
-        recovery.setVisibility(failed ? View.VISIBLE : View.GONE); cover.setVisibility(failed || loading ? View.VISIBLE : View.GONE);
+        coverTitle.setText(siteError ? "Page unavailable" : failed ? "Customization unavailable" : "Opening app"); coverMessage.setText(presentationMessage);
+        recovery.setVisibility(failed ? View.VISIBLE : View.GONE);
+        siteRecovery.setVisibility(siteError ? View.VISIBLE : View.GONE);
+        boolean blocking = failed || siteError || loading;
+        cover.setVisibility(blocking ? View.VISIBLE : View.GONE);
         // Hide the underlying document from accessibility while a blocking notice is visible.
-        browserSlot.setImportantForAccessibility(failed || loading ? View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS : View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);
-        floatingMenu.setVisibility(fullscreen ? View.GONE : View.VISIBLE); floatingMenu.bringToFront();
+        browserSlot.setImportantForAccessibility(blocking ? View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS : View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);
+        floatingMenu.setVisibility(fullscreen || readerVisible ? View.GONE : View.VISIBLE); floatingMenu.bringToFront();
     }
     void fullscreen(View view) {
         dismissMenu(); fullscreen = true; floatingMenu.setVisibility(View.GONE);
         content.addView(view, new FrameLayout.LayoutParams(-1, -1));
     }
-    void exitFullscreen(View view) { content.removeView(view); fullscreen = false; floatingMenu.setVisibility(View.VISIBLE); floatingMenu.bringToFront(); }
+    void exitFullscreen(View view) { content.removeView(view); fullscreen = false; floatingMenu.setVisibility(readerVisible ? View.GONE : View.VISIBLE); floatingMenu.bringToFront(); }
     void diagnostics(String value) {
         TextView body = text(value, 16); body.setTextIsSelectable(true); body.setPadding(dp(24), dp(16), dp(24), dp(16));
         ScrollView scroll = new ScrollView(activity); scroll.addView(body);
@@ -137,6 +178,43 @@ final class HostViews {
     }
     void error(String message) { new AlertDialog.Builder(activity).setTitle("Genesis").setMessage(message).setPositiveButton("Close", null).show(); }
     void dispose() { dismissMenu(); }
+    void navigation(String url, boolean reader, boolean canBack, boolean canForward) {
+        readerUrl = url;
+        readerVisible = reader;
+        readerBack.setEnabled(canBack); readerForward.setEnabled(canForward);
+        if (reader) {
+            Uri parsed = Uri.parse(url);
+            readerOrigin.setText(("https".equals(parsed.getScheme()) ? "🔒 " : "") + (parsed.getHost() == null ? "Web page" : parsed.getHost()));
+        }
+        readerBar.setVisibility(reader ? View.VISIBLE : View.GONE);
+        browserSlot.setPadding(0, reader ? dp(52) : 0, 0, 0);
+        floatingMenu.setVisibility(fullscreen || reader ? View.GONE : View.VISIBLE);
+        readerBar.bringToFront(); pageProgress.bringToFront(); floatingMenu.bringToFront();
+    }
+    void pageLoading(int progress) {
+        pageProgress.setVisibility(progress >= 100 ? View.GONE : View.VISIBLE);
+        pageProgress.setIndeterminate(progress <= 0);
+        if (progress > 0) pageProgress.setProgress(progress);
+    }
+    void pageStarting() {
+        coverTitle.setText("Loading page");
+        coverMessage.setText("Preparing this Hacker News page…");
+        recovery.setVisibility(View.GONE);
+        siteRecovery.setVisibility(View.GONE);
+        cover.setVisibility(View.VISIBLE);
+        browserSlot.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
+    }
+    void websiteFailure(String message) { pageLoading(100); error(message); }
+    private void readerMenu() {
+        PopupMenu popup = new PopupMenu(activity, readerBar, Gravity.END);
+        popup.getMenu().add("Reload").setOnMenuItemClickListener(item -> { events.send(event("reload")); return true; });
+        popup.getMenu().add("Copy link").setOnMenuItemClickListener(item -> { events.send(event("copyLink")); return true; });
+        popup.getMenu().add("Share link").setOnMenuItemClickListener(item -> { events.send(event("shareLink")); return true; });
+        popup.getMenu().add("Open in browser").setOnMenuItemClickListener(item -> { events.send(event("openBrowser")); return true; });
+        popup.getMenu().add("Return to Apps").setOnMenuItemClickListener(item -> { events.send(event("home")); return true; });
+        popup.getMenu().add("Service connections").setOnMenuItemClickListener(item -> { events.send(event("configureServices")); return true; });
+        popup.show();
+    }
     private void dismissMenu() { if (activeMenu != null) { activeMenu.dismiss(); activeMenu = null; } }
     private void menu() {
         dismissMenu(); PopupMenu popup = new PopupMenu(activity, floatingMenu, Gravity.END); activeMenu = popup;

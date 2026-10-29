@@ -41,6 +41,12 @@ fn origin(url: &str) -> Option<String> {
         .ok()
         .map(|u| u.origin().ascii_serialization())
 }
+fn is_home_url(url: &str, source: &Source) -> bool {
+    Url::parse(url).ok().is_some_and(|parsed| {
+        source.origins.contains(&parsed.origin().ascii_serialization())
+            && source.home_paths.iter().any(|path| path == parsed.path())
+    })
+}
 
 fn trace(events: &mut VecDeque<&'static str>, label: &'static str) {
     if events.len() == 48 {
@@ -175,6 +181,12 @@ impl HostState {
                     .and_then(|v| v.document.as_ref())
                     .is_some_and(|d| d.id == document_id) =>
             {
+                let temporary_url = url.as_ref().is_some_and(|value| self.instances
+                    .get(&instance_id(&selection.applet_id))
+                    .and_then(|i| i.sources.get(&selection.source_id))
+                    .is_some_and(|source| !is_home_url(value, &source.definition)));
+                let previous_url = self.instances.get(&instance_id(&selection.applet_id))
+                    .and_then(|i| i.sources.get(&selection.source_id)).map(|source| source.last_url.clone());
                 if let Some(url) = url {
                     let source = self
                         .instances
@@ -183,7 +195,15 @@ impl HostState {
                         .ok_or("Unknown source")?;
                     source.last_url = url;
                 }
-                self.open(selection, &mut commands)?;
+                self.open(selection.clone(), &mut commands)?;
+                if temporary_url {
+                    if let Some(previous) = previous_url {
+                        if let Some(source) = self.instances.get_mut(&instance_id(&selection.applet_id))
+                            .and_then(|i| i.sources.get_mut(&selection.source_id)) {
+                            source.last_url = previous;
+                        }
+                    }
+                }
             }
             E::ModalDeadline {
                 generation,
@@ -228,20 +248,25 @@ impl HostState {
                         commands.push(C::ExitFullscreen {
                             generation: view.context.generation.0,
                         });
-                    } else if view.selection.page_id.is_some() {
-                        let mut selection = view.selection.clone();
-                        selection.page_id = None;
-                        self.open(selection, &mut commands)?;
                     } else if can_go_back {
                         commands.push(C::GoBack {
                             generation: view.context.generation.0,
                         });
+                    } else if view.selection.page_id.is_some() {
+                        let mut selection = view.selection.clone();
+                        selection.page_id = None;
+                        self.open(selection, &mut commands)?;
                     } else {
                         self.retire(&mut commands);
                         commands.push(self.launcher());
                     }
                 } else {
                     commands.push(C::FinishActivity);
+                }
+            }
+            E::Forward => {
+                if let Some(view) = &self.active {
+                    commands.push(C::GoForward { generation: view.context.generation.0 });
                 }
             }
             E::Reload => {
@@ -317,11 +342,11 @@ impl HostState {
                 let view = self.active.as_mut().expect("view");
                 view.url = url.clone();
                 if view.selection.page_id.is_none()
-                    && Self::safe_website_url(&url)
                     && let Some(source) = self
                         .instances
                         .get_mut(&view.context.instance_id)
                         .and_then(|i| i.sources.get_mut(&view.selection.source_id))
+                    && is_home_url(&url, &source.definition)
                 {
                     source.last_url = url;
                 }
@@ -370,6 +395,9 @@ impl HostState {
                 generation,
                 message,
             } if self.current(generation) => self.failure(&message, &mut commands),
+            E::SiteFailed { generation, message } if self.current(generation) => {
+                self.present("siteError", &message, &mut commands);
+            }
             E::RendererUnresponsive { generation } if self.current(generation) => {
                 self.disable_active();
                 self.qualification = None;

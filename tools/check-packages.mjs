@@ -34,6 +34,7 @@ export async function readPackages() {
       requireValue(identifier.test(source.id) && !sourceIds.has(source.id), `${directory}: duplicate or invalid source ID`);
       sourceIds.add(source.id);
       requireValue(Array.isArray(source.navigationRules ?? []), `${directory}: navigation rules must be an array`);
+      requireValue(Array.isArray(source.homePaths ?? []) && (source.homePaths ?? []).every(p => typeof p === "string" && p.startsWith("/") && !p.includes("?")), `${directory}: invalid home paths`);
       const ruleIds = new Set();
       for (const rule of source.navigationRules ?? []) {
         const fallback = new URL(rule.fallbackUrl);
