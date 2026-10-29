@@ -4,12 +4,13 @@ export class PageScope {
   private readonly host = document.createElement("div");
   private readonly container = document.createElement("div");
 
-  constructor(css: string) {
+  constructor(css: string, localPage = false) {
     if (!document.body) throw new Error("Document body is not ready");
     if (document.querySelector("[data-genesis-owned='qualification']")) throw new Error("Duplicate qualification host");
     this.style.dataset.genesisStyle = "qualification";
     this.style.textContent = css;
     this.host.dataset.genesisOwned = "qualification";
+    this.host.dataset.genesisLayout = localPage ? "page" : "source";
     this.host.attachShadow({ mode: "open" }).append(this.container);
     try {
       document.body.append(this.style, this.host);
