@@ -430,7 +430,16 @@ final class BrowserAdapter {
         child.setWebViewClient(new WebViewClient() {
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 String scheme = request.getUrl().getScheme();
-                if ("https".equals(scheme) || "http".equals(scheme)) return false;
+                if ("https".equals(scheme) || "http".equals(scheme)) {
+                    String destination = request.getUrl().toString();
+                    if (request.isForMainFrame() && "GET".equals(request.getMethod()) && !"ordinary".equals(classify(destination))) {
+                        closeReader();
+                        if (sourceOrigins.contains(originOf(request.getUrl()))) webView.loadUrl(destination);
+                        else openCustomized(destination);
+                        return true;
+                    }
+                    return false;
+                }
                 if (request.isForMainFrame()) openHandler(request.getUrl()); return true;
             }
             @Override public void onPageStarted(WebView view, String destination, android.graphics.Bitmap icon) {
@@ -459,6 +468,19 @@ final class BrowserAdapter {
         child.setDownloadListener((destination, agent, disposition, mime, size) -> openHandler(Uri.parse(destination)));
         views.browserSlot.addView(child, new android.widget.FrameLayout.LayoutParams(-1, -1));
         child.loadUrl(url);
+    }
+    private void openCustomized(String url) {
+        try {
+            JSONObject manifest = creation.getJSONObject("package").getJSONObject("manifest");
+            JSONArray sources = manifest.getJSONArray("sources");
+            for (int i = 0; i < sources.length(); i++) {
+                JSONObject source = sources.getJSONObject(i); JSONArray origins = source.getJSONArray("origins");
+                for (int j = 0; j < origins.length(); j++) if (origins.getString(j).equals(originOf(Uri.parse(url)))) {
+                    JSONObject event = HostViews.event("open").put("appletId", manifest.getString("id")).put("sourceId", source.getString("id")).put("url", url);
+                    events.send(event); return;
+                }
+            }
+        } catch (JSONException error) { views.websiteFailure("This link could not be opened."); }
     }
     private void readerFailure(String message) {
         try { views.presentation(new JSONObject().put("state", "siteError").put("message", message).put("actions", new JSONArray())); }
