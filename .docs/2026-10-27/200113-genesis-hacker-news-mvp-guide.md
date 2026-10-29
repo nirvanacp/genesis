@@ -1,177 +1,39 @@
-# Genesis Hacker News prototype continuation guide
+# Genesis HN backend operations
 
-Scope: the single public Hacker News bookmarking prototype. This replaces the earlier YouTube/X continuation prompts. The five current plans under `.plans/2026-10-27/` are authoritative; this guide divides their existing stages into bounded implementation tasks.
+Updated 29 October 2026. The HN customization now uses a separately run backend. Read [architecture](../../.architecture/README.md) before extending it. Earlier offline/local SQLite reports describe the previous data path.
 
-## Current state
+## Start the backend
 
-MVP-01 through MVP-06 passed emulator acceptance. MVP-07 functional integration is also verified. The [emulator handoff report](../../.reports/2026-10-29/112349-genesis-mvp07-emulator-handoff-report.md) records the current build, acceptance evidence, measurements and usage steps. Only hn-bookmarks is bundled; inactive X/YouTube code remains preserved.
-
-The supported emulator uses Google System WebView 156.0.8078.47. HN runs the approved TypeScript isolated runtime and React customization; native Rust owns contracts/controller/SQLite. The [HN runtime report](../../.reports/2026-10-28/174427-genesis-hn-typescript-qualification-report.md) records 20/20 fresh-document qualification. Public HN bookmarking requires no login. Website cookies stay in the normal persistent WebView profile and are separate from local bookmarks.
-
-The user's 29 October instruction makes the working emulator the current deliverable. Physical-device repetition and device-specific performance checks are deferred to pre-release. No further feature implementation is required for this prototype. Sections 1 through 6 below preserve the completed stage scopes for reference; do not rerun them as new work.
-
-| Plan | Read for |
-| --- | --- |
-| [MVP architecture](../../.plans/2026-10-27/150238-genesis-mvp-implementation-plan.md) | Scope, ownership, browser/session contract |
-| [Android/build](../../.plans/2026-10-27/150238-genesis-android-build-plan.md) | Existing host/build/toolchain and recovery |
-| [Runtime/SDK](../../.plans/2026-10-27/150238-genesis-runtime-sdk-plan.md) | DOM API, identities, RPC and generic persistence |
-| [HN applet](../../.plans/2026-10-27/150238-genesis-hacker-news-applet-plan.md) | Extraction, item records, category algorithms and UI |
-| [Delivery](../../.plans/2026-10-27/150238-genesis-delivery-verification-plan.md) | Acceptance gates and stage dependencies |
-
-The [retargeting verification report](../../.reports/2026-10-27/200924-genesis-hacker-news-retargeting-report.md) records the code/build/launcher checks and pending device gates.
-
-## Working rules for every prompt
-
-Read root/nested `AGENTS.md`, Git status, these five plans and current evidence first. Preserve unrelated work and the inactive applet directories. Reuse the existing host, package build, handshake and local-page loader. Keep Android/native code under `android/`, shared Rust under `crates/`, SDK under `packages/sdk/` and HN-specific code under `applets/news.ycombinator.com/`.
-
-Do not collect credentials, require a website account, rebuild HN from an API feed, or change engines/execution worlds/origin restrictions to get past a failed gate. Keep original HN DOM/navigation intact. Do not create or modify automated test files without separate authorization; run existing applicable tests and build/manual checks. Commit verified components using `feat/(component): message` and the configured author email.
-
-Each prompt ends with changes/reused files, commands/results, acceptance status, exact blockers and the next eligible step. Save a dated verification report when requested. A substep does not verify the whole parent stage; do not start the next stage until required acceptance passes.
-
-Run appropriate checks from the repository root:
+Use pinned Node 24.15.0. From the repository root, set HN_BACKEND_TOKEN through your shell or secret manager to at least 32 printable ASCII characters, and set HN_BACKEND_DB to an absolute persistent database filename. Never commit the token or database. Then run:
 
 ```sh
-npm run typecheck
-npm run check:packages
-node --check tools/build.mjs
-node --check tools/check-packages.mjs
-cargo fmt --all -- --check
-cargo check -p genesis-contracts --locked
-cargo clippy -p genesis-android --locked -- -D warnings
+npm run backend --workspace @genesis/applet-hacker-news
 ```
 
-From `android/`, with the pinned tools configured as in the [setup guide](161510-genesis-android-setup.md):
+The server defaults to 127.0.0.1:8787. HN_BACKEND_HOST and HN_BACKEND_PORT override the bind address and port. Use a trusted HTTPS reverse proxy with a stable origin that forwards /v1/documents to this process, with request-size limits and an appropriate timeout. The phone must reach that origin and trust its certificate. The server's loopback HTTP listener alone is not a phone connection and is not an Internet deployment. Protect the private listener and database file. Each process/token/database is one user's backend.
+
+Configure Android only after the HTTPS endpoint is running. Open HN or its library, then native Menu > Service connections > bookmarks. Enter the HTTPS origin and matching backend token, save, and reload. Endpoint paths/queries and redirects are unsupported. Blank tokens preserve an existing token only for the same origin. Disconnect removes saved configuration; revoke the server token to prevent existing requests from using it.
+
+## Use the app
+
+Browse public HN and use Save, categories and the packaged library. HN itself needs no login. Backend authentication is independent. The library's assets are local but its records require server access. Unavailable or unconfigured servers show errors rather than falling back to another database. Use Reload library after edits from another client. Search applies to loaded stories only.
+
+Keep application ID/signing and install APK updates without clearing data. Existing device bookmarks remain in files/genesis.sqlite3. The new server starts separately and receives none of that data automatically.
+
+## Import existing device data
+
+Obtain a consistent, operator-controlled copy of the legacy database while database access is stopped or through SQLite backup. Do not copy an actively changing database incompletely or discard its WAL. Do not clear/uninstall the Android app. Stop the backend before importing. From the repository root:
 
 ```sh
-./gradlew :app:assembleDebug :app:lintDebug --console=plain
+node applets/news.ycombinator.com/backend/import-legacy.mjs /absolute/legacy-copy.sqlite3 /absolute/new-backend.sqlite3
 ```
 
-Build the self-contained TS bundles and both native ABIs; use target-specific native Clippy when its cross-compilation environment is available. Install as an update without uninstalling or clearing data. Compilation and public desktop HTML inspection do not replace actual Android browser/device results.
+The destination must be empty, and should then be selected through HN_BACKEND_DB. The tool reads the source copy without modifying it, imports only HN documents and preserves revisions/timestamps. A populated destination is refused. Keep the original data until real-device reads are confirmed. Automatic on-phone export and remote merging are not implemented.
 
-## 1. Finish MVP-02 on Hacker News
+## Verify and operate
 
-This stage passed on the emulator. Retain this prompt for physical-device repetition and future provider changes.
+Run npm run typecheck, npm run check:packages, node --check for backend scripts, cargo fmt --all -- --check, and cargo clippy -p genesis-android --locked -- -D warnings. From android/, run ./gradlew :app:assembleDebug :app:lintDebug with the pinned JDK and SDK. Build success does not establish phone-to-server acceptance.
 
-```text
-Finish MVP-02 qualification only for the Hacker News prototype. Read all five current plans under .plans/2026-10-27/ and follow the working rules in the HN continuation guide.
+Use a temporary database and token for backend checks. Exercise missing/incorrect token, bounded requests, get/list/commit, stale revision rollback, persistence after restart and import refusal on populated data. On Android, exercise connection setup, real saves, pagination, errors, native recovery and late completion after navigation. Never print production tokens to logs or use the user's real server for destructive fixtures.
 
-1. Inspect Git status and available Android devices/providers. Reuse the HN package and existing debug inspector. Record actual required feature flags. If world-aware injection or navigation APIs are missing, report the precise compatibility blocker and stop; do not request a login or bypass isolation.
-2. On a supported provider, load public HN home/news, newest, Ask, Show and a story discussion. Qualify the nonce challenge, TypeScript runtime, creator execution, computed style and owned mount separately. Run 20/20 fresh-document cycles for the HN source and verify stale bindings are rejected.
-3. Activate the packaged library qualification page without a development server. Verify an external story title link uses ordinary browsing without the source bridge and Back rebinds HN correctly.
-4. Verify unsupported-provider handling, Retry/Open ordinary site, creator failure and renderer-loss recovery. Use emulator results for the implementation gate under the 28 October authorization; repeat the required checks on physical hardware at pre-release.
-5. Fix only MVP-02 defects, run appropriate checks, commit verified components and save a dated HN qualification report. Mark the stage verified only when its required gates pass. Stop before MVP-03.
-```
-
-## 2. MVP-03 managed observation and effects
-
-Build the reusable DOM lifecycle used by HN's future Save buttons.
-
-```text
-Implement only the observation/effects portion of MVP-03 after recorded HN MVP-02 verification. Read all five current plans and follow the HN continuation guide's working rules.
-
-1. Reuse contracts, the qualified bootstrap and existing PageScope. Add focused TypeScript modules under packages/sdk for targets, observation, effects and scope ownership. Keep native controller and shared Rust contracts in their current locations.
-2. Implement watchElements, one MutationObserver, coalesced frame work, bounded bindings, separate element/content identity, managed styles and owned mountAt hosts. Exclude Genesis-owned UI from source discovery.
-3. Handle absent/replaced targets, changed/recycled row identities, duplicate mounts, callback reentry and creator cleanup exceptions. Suspend effects after repeated page removal instead of remounting indefinitely.
-4. Verify zero duplicate owned roots, stale bindings or retained managed resources after disposal. Distinguish HN's ordinary document replacement from synthetic recycled-node stress checks.
-5. Run appropriate type/package/native Rust/Android checks, commit this component and report remaining MVP-03 work. Do not implement storage or HN Save behavior yet.
-```
-
-## 3. Complete MVP-03 navigation, modal and lifecycle
-
-Finish the reusable runtime before adding durable applet data.
-
-```text
-Complete MVP-03 after its observation/effects component is verified. Read all five current plans and follow the HN continuation guide's working rules.
-
-1. Finish route/lifecycle tracking, typed bound sources.open/pages.open and URL validation. Preserve exact HN injection origins and ordinary external publisher browsing. HN needs no content-blocking or dynamic query-value deny rules.
-2. Implement the one-modal lifecycle, accessible focus handling, native modal state and 300 ms Back dismissal timeout. Preserve native recovery and existing fullscreen handling without adding media acceptance requirements.
-3. Complete BFCache/resume/Activity rebinding and stale callback/reply rejection. Verify explicit source-ID selection structurally without shipping another applet or concurrent views.
-4. Verify all MVP-03 lifecycle cases, including route changes during pending work, Back/Forward, background/resume, repeated host removal, creator exceptions and renderer nonresponse.
-5. Run required checks, commit by component and save the stage results. Mark MVP-03 verified only when its full acceptance passes. Stop before storage.
-```
-
-## 4. MVP-04 generic durable storage
-
-This supplies persistence for HN without website account access.
-
-```text
-Implement MVP-04 only after MVP-03 is verified. Read all five current plans and follow the HN continuation guide's working rules.
-
-1. Add the private SQLite namespace/document schema and one native database worker with a bounded 64-job queue and generation-safe main-thread completions.
-2. Implement get/list/commit, payload limits, CAS checks, full rollback, fresh namespace revisions, typed errors and storage.changed notifications. Derive profile/applet identity from the verified host binding; keep SQL independent of HN fields and categories.
-3. Expose thin SDK storage calls to both source and local-page contexts through the existing loader/transitions. Preserve browser data and all other applet namespaces.
-4. Verify CRUD/pagination, stale CAS conflicts, atomic rollback, deletion/recreation revisions, queue/message limits, retired-context replies, process restart, install-as-update and offline local-page reopening. Acknowledge writes only after commit; reread uncertain writes rather than retrying automatically.
-5. Run required checks, commit verified components and save acceptance evidence. Stop before applet-specific extraction or Save controls.
-```
-
-## 5. MVP-05 HN extraction and story Save
-
-Implement the first end-to-end feature using public pages and the verified storage layer.
-
-```text
-Implement MVP-05 only after MVP-04 is verified. Read all five current plans and follow the HN continuation guide's working rules.
-
-1. Qualify story and immediately associated metadata rows on public home/news, newest, Ask, Show, pagination and item discussion pages. Implement item-url.ts and extract-item.ts in the HN applet, separating submission rows from comments and jobs.
-2. Use opaque positive decimal item IDs and canonical HN discussion URLs. Capture bounded title, optional submitter and optional safe article URL; never guess identity from a nested comment or publisher URL.
-3. Implement validated BookmarkV1 records and atomic bookmark/order-index save, explicit refresh/edit/remove and uncertain-write handling. Use the final categoryIds field, initially empty, so the next stage needs no destructive migration.
-4. Add one owned plain-DOM Save control per supported story and one React save/edit dialog. Capture immutable identity, clean up changed/replaced rows, update duplicate story instances and preserve original HN links/actions.
-5. Verify real public-page saves, external-link/self-post cases, list/detail identity, ambiguous/missing metadata, cancellation, conflicts, failure states and no account action. Run checks, commit by component and save MVP-05 evidence. Stop before category management and the complete library UI.
-```
-
-## 6. MVP-06 categories and offline library
-
-This stage passed emulator acceptance. The prompt below records its scope; do not repeat completed implementation.
-
-```text
-Implement MVP-06 only after MVP-05 is verified. Read all five current plans and follow the HN continuation guide's working rules.
-
-1. Implement category normalization, reserved names, the 50-active-category limit, CAS uniqueness, rename and tombstone deletion in applet TypeScript. Deleting a category preserves bookmarks.
-2. Extend the one React save/edit dialog for zero/one/multiple categories and explicit independently committed category creation. Preserve selections on errors and handle stale edits honestly.
-3. Complete the packaged React library with All/Uncategorized/category filters, progress/cancellation, correct consumed-key pagination, Edit/Remove and Open discussion through sources.open.
-4. Add manifest-driven library access from the native launcher as well as the source menu. It must open offline without first loading HN. Keep the host generic and the website-specific UI/data under the HN applet.
-5. Verify the complete category/library matrix, sparse pagination, notifications, offline reopen, restart, install-as-update and correct source return. Explain local storage scope in the UI. Run checks, commit components and save results. Stop before final integration.
-```
-
-## 7. Use the completed emulator prototype
-
-This stage is complete for the supported emulator. Open android/ in Android Studio and run app on the existing emulator. Native Home exposes Hacker News and the packaged bookmark library. Save a story, choose/create categories, then use Menu > Genesis bookmarks to filter, edit/remove or open its discussion. Previously saved metadata works offline. Keep the application ID/signing key and install updates without clearing data.
-
-The [setup guide](161510-genesis-android-setup.md) contains the pinned toolchain. The final handoff report above records current checks and explicit limits. No login, physical device or new implementation prompt is needed to use this build.
-
-## 8. Pre-release hardware workflow
-
-Run this prompt when physical-device testing is desired. It does not block current emulator use.
-
-```text
-Qualify the existing Genesis HN prototype on a connected physical Android device. Do not add features or repeat completed implementation. Read AGENTS.md, Git status, all five current plans and the MVP-07 emulator handoff report.
-
-1. Record device, Android, ABI, WebView provider, locale and required feature flags. Install as an update with the same app ID/signing key, preserving existing data.
-2. Repeat public HN isolated-runtime qualification and 20 fresh-document cycles. Verify story Save/edit/remove, multiple categories, category rename/delete, library filters/pagination and source return.
-3. Verify direct offline library opening, restart/update persistence, rotation, background/resume and native creator/renderer recovery. Preserve original HN links and account controls; no website login is required.
-4. Fix only observed defects, run relevant checks and commit each verified component. Save a dated report separating passed, failed and unverified gates. Do not claim release readiness or start performance work until required functional checks pass.
-```
-
-## 9. Pre-release performance qualification
-
-Run after physical functional qualification passes.
-
-```text
-Measure the existing Genesis HN prototype against the delivery plan's pre-release performance matrix on the named physical device. Read current plans and qualification reports. Do not add features or change thresholds to obtain a pass.
-
-1. Measure 100 observations of managed update/UI response, managed batch time and 100 durable-save acknowledgements. Separate network time and painted-frame claims from DOM acknowledgements.
-2. Measure warm first-page and sparse-category scans over 500 bookmark records. Count scan work and verify pagination correctness, cancellation and cleanup.
-3. Measure host plus renderer PSS for ordinary HN, customized HN and a populated local library, counting each process once. Verify 20/20 timed native recovery runs on a controlled local route.
-4. Profile and fix observed regressions, verify the fixes and commit by component. Save exact methods, versions, samples, p95/worst cases and every threshold result. Report remaining failures without declaring release readiness.
-```
-
-## 10. Pre-release readiness review
-
-Run after physical functional and performance gates pass.
-
-```text
-Prepare the existing Genesis HN prototype for a release decision. Read AGENTS.md, Git status, the five plans and all current emulator/physical qualification reports. Do not add product features, publish, deploy or change signing keys.
-
-1. Reconcile every acceptance gate with actual evidence. Preserve deferred/failed status where evidence is missing; verify the supported provider/device limits and local-data semantics.
-2. Run the relevant pinned-toolchain checks, build/lint both native ABIs and confirm the candidate installs as an update over populated data.
-3. Update setup and handoff documentation with supported routes, exact artifact/version, limitations and remaining release blockers. Commit verified changes by component and provide a concrete release-readiness result. Stop before distribution.
-```
+Operator responsibilities include HTTPS termination, token rotation, database backups and restore checks, process supervision and disk monitoring. This personal-server prototype has no user registration, per-user tenancy, automatic sync, OAuth flow or offline cache. Those require applet/backend work and their own verification.

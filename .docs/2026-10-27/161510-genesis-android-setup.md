@@ -1,12 +1,6 @@
-# Genesis Android setup and build evidence
+# Genesis Android setup
 
-Updated 28 October: the active browser runtime is TypeScript/JavaScript. Android builds require Node and native Rust/cargo-ndk, with no wasm-bindgen CLI or Wasm target requirement. Historical MVP-01 Wasm observations below remain historical. MVP-04 stores generic applet documents in private `files/genesis.sqlite3`, independently of website cookies. Preserve this file and the default WebView profile by installing updates with the same app ID/signing key; do not uninstall or clear app data for routine verification.
-
-The active prototype now bundles Hacker News only. Follow the [HN continuation guide](200113-genesis-hacker-news-mvp-guide.md) for current stages; the MVP-01 results below are historical build evidence. The existing toolchain/setup commands still apply.
-
-Status: the working emulator MVP is ready. MVP-01 through MVP-06 passed emulator acceptance; MVP-07 functional integration is verified in the [handoff report](../../.reports/2026-10-29/112349-genesis-mvp07-emulator-handoff-report.md). Physical-device repetition and device-performance qualification are deferred to pre-release. Run app on the existing supported emulator to use the current build.
-
-Scope: current setup/build instructions followed by historical MVP-01 evidence. The current app has managed TypeScript customization, generic SQLite storage and the HN bookmarking library.
+Updated 29 October 2026. Current ownership is defined in [architecture](../../.architecture/README.md). HN persistence uses an independent server; configure it using the [operations guide](200113-genesis-hacker-news-mvp-guide.md). Existing device SQLite is preserved as legacy data and optional platform storage. Earlier emulator reports do not qualify this new network path.
 
 ## Project and preserved work
 
@@ -14,7 +8,7 @@ Open `android/` in Android Studio and select the `app` run configuration. Androi
 
 The existing Gradle wrapper scripts/JAR, settings/repositories, manifest structure, icons, XML theme, backup resources and test files were reused or retained. The starter Kotlin Activity and Compose theme remain untouched under `android/app/src/main/java/com/example/nirvanagenesis/`. The active Java source set is `src/main/java/app/nirvana/genesis`. Kotlin/Compose are disabled. Opening preserved Kotlin files in the IDE will show unresolved starter dependencies; they are not part of the application build. Existing Kotlin example tests are preserved, not executable coverage of the new Java/Rust host. No test files were added or modified.
 
-The starter's AGP 9.4.1, Gradle 9.6.0, Java 25, minSdk 24, Compose entry point and application ID conflicted with the approved plan. The active project now uses the planned matrix below. The new ID installs alongside an old `com.example.nirvanagenesis` starter APK; data does not migrate between those IDs. The five pre-existing plan edits were left untouched.
+The starter's AGP 9.4.1, Gradle 9.6.0, Java 25, minSdk 24, Compose entry point and application ID conflicted with the approved plan. The active project now uses the planned matrix below. The new ID installs alongside an old `com.example.nirvanagenesis` starter APK; data does not migrate between those IDs. Earlier plans are archived and are not current instructions.
 
 ## One-time tools
 
@@ -78,37 +72,4 @@ The build task `genesisBuildDebug` or `genesisBuildRelease` runs type checking, 
 
 Generated assets and libraries live under `android/app/build/generated/genesis/<variant>/assets` and `jniLibs`. Intermediates live under `target/genesis/<variant>/`. AGP generated-source registration makes asset and JNI merges depend on the producer. Source and lockfile inputs invalidate the task. Sync only configures tasks; it does not execute the generator. Debug and Release have separate output and Cargo target directories.
 
-The package checker verifies bundled schemas, identities, source origins, entry containment and action/page references. The runtime exposes managed DOM observation, modal lifecycle, bound source/page navigation and generic storage. HN extraction, categories and library UI stay in the applet.
-
-## Historical MVP-01 workstation qualification
-
-Actual paths used on this workstation, with the home directory expressed portably:
-
-| Tool | Selected path |
-| --- | --- |
-| Node 24.15.0 / npm 11.14.1 | `$HOME/.nvm/versions/node/v24.15.0/bin/` |
-| Cargo / Rust | `$HOME/.cargo/bin/cargo`, toolchain `1.94.0-aarch64-apple-darwin` |
-| wasm-bindgen / cargo-ndk | `$HOME/.cargo/bin/wasm-bindgen`, `$HOME/.cargo/bin/cargo-ndk` |
-| JDK | Temurin 17.0.21+9 at `$HOME/Library/Java/JavaVirtualMachines/genesis-temurin-17.jdk/Contents/Home` |
-| Gradle invocation JDK | `/tmp/genesis-jdk17/Contents/Home`, a symlink to that registered JDK |
-| SDK / platform | `$HOME/Library/Android/sdk`, `platforms/android-37.0` |
-| NDK | `$HOME/Library/Android/sdk/ndk/28.2.13676358` |
-
-Full NDK extraction failed with `No space left on device`. Its 952495160-byte official archive passed SHA-1 `fc20a6bf15a30fb3428c9b60a7308793a362dc6d`. To finish the supported checks without deleting unrelated files, only the genuine r28c compiler/linker, headers, builtins, unwind libraries and API 26 libraries needed for these two ABIs were extracted. This is a reduced local tool installation, not the full SDK Manager installation. Normal setup should install the complete pinned NDK after freeing space. The temporary archives were removed. Native outputs were compiled from Rust, never fabricated or checked in. This local reduction does not change the tracked build design or NDK version.
-
-The emulator was `emulator-5554`, Medium Phone API 37.0, Android 17, arm64-v8a. Its provider was `com.google.android.webview` 145.0.7632.218. No physical-device compatibility or authentication qualification is claimed by MVP-01.
-
-## Verification evidence
-
-- `npm ci` resolved the exact npm graph. `npm run typecheck` and `npm run check:packages` passed.
-- `cargo check -p genesis-contracts --locked`, the Wasm target check, and `cargo fmt --all -- --check` passed.
-- Clippy with `-D warnings` passed for contracts/native on the host, the page runtime on wasm32, and native on both Android targets.
-- The selected `cargo ndk -t arm64-v8a -t x86_64 --platform 26 ... build --locked -p genesis-android` produced both libraries through Gradle.
-- `./gradlew :app:assembleDebug :app:lintDebug` passed. Final lint has no errors. Remaining warnings concern preserved starter resources and version-update suggestions. The pinned AGP also warns that its built-in Kotlin opt-out is deprecated; it remains necessary to preserve the inactive starter sources with a Java-only application. A narrow Back lint suppression documents the actual API 33+ callback registration.
-- APK ZIP inspection verified every declared asset SHA-256 and real Wasm magic. ELF machine IDs are AArch64 183 and x86-64 62; both APK libraries export `Java_app_nirvana_genesis_NativeBridge_dispatch`.
-- Both source bundles executed in Node and initialized their embedded Wasm export. This checks compilation/loading of bytes only, not the isolated WebView realm or CSP.
-- An unchanged second build completed with 45 tasks up to date and `genesisBuildDebug UP-TO-DATE`.
-- A temporary YouTube entry edit reran the generator and changed its package revision. Restoring the exact entry restored revision `48a89e74b22a0ca2c8a381879ff9da05f184996a79229fd6cd4ff6171ad3a8c9`. The probe was removed.
-- Android Studio sync completed and Run installed the app successfully. The emulator displayed the Rust-supplied launcher and ordinary YouTube home and X sign-in pages. X sign-in was not attempted.
-
-An isolated Android Studio sync left generated index and both JNI library modification timestamps unchanged. Native Reload completed ordinary X browsing, native Back returned to the Rust launcher, and native Home returned from YouTube to the launcher. All required MVP-01 acceptance checks passed on this emulator; no required MVP-01 device check remains unverified. Those results allowed MVP-02 implementation to begin. Its remaining injection/provider, media and physical-device gates are recorded separately in the MVP-02 report. Dedicated authentication and session-retention verification is now user-deferred and nonblocking under the [browser/session contract](../../.plans/2026-10-27/150238-genesis-mvp-implementation-plan.md#9-browser-and-session-contract).
+The package checker verifies bundled schemas, identities, source origins, entry containment and action/page references. The runtime exposes managed DOM observation, modal lifecycle, bound source/page navigation optional generic storage and service requests. HN extraction, categories and library UI stay in the applet.
