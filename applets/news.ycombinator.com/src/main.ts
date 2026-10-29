@@ -7,21 +7,27 @@ import { extractItem, STORY_SELECTOR } from "./extract-item";
 import { CategoryRepository } from "./categories";
 import { BookmarkRepository, bookmarkKey } from "./repository";
 import { openStoryDialog } from "./components/story-dialog";
-import { mountSourceNavigation } from "./components/navigation";
+import { bindDiscussionTile } from "./story-interaction";
 import { mountAccountHub } from "./me";
 import { preservePostDraft } from "./post";
 interface Control { anchor: Element; binding: ElementBinding; button: HTMLButtonElement; dispose: Dispose; active: boolean; revision: number }
 export default defineApplet({
   activate(ctx) {
+    synchronizeAccount(ctx);
     ctx.styles.add("hn-editorial", theme + sourceCss);
     const section = ctx.sourceId === "post" ? "post" : ctx.sourceId === "me" ? "me" : "home";
-    const topLevel = section === "home" ? location.pathname === "/" || feedOptions.some(option => option.path === location.pathname)
-      : section === "post" ? location.pathname === "/submit" || location.pathname === "/login" && new URLSearchParams(location.search).get("goto") === "submit"
-      : ["/", "/news"].includes(location.pathname);
-    if (topLevel) mountSourceNavigation(ctx, section);
-    if (section === "home") mountFeedSelector(ctx);
+    document.documentElement.classList.add("genesis-hn");
+    ctx.onDispose(() => document.documentElement.classList.remove("genesis-hn"));
     if (section === "me" && ["/", "/news"].includes(location.pathname)) mountAccountHub(ctx);
     if (section === "post") preservePostDraft(ctx);
+    if (location.pathname === "/item") {
+      const row = document.querySelector(STORY_SELECTOR), item = row && extractItem(row);
+      const anchor = row?.querySelector(".titleline");
+      if (item?.articleUrl && anchor) {
+        const visit = document.createElement("a"); visit.href = item.articleUrl; visit.textContent = "Visit website ↗"; visit.className = "visit-website";
+        anchor.append(visit); ctx.onDispose(() => visit.remove());
+      }
+    }
     const repository = new BookmarkRepository(backendStorage(ctx)), controls = new Map<string, Control>(), queue = new Set<Control>();
     let running = 0, categoryRead = 0;
     let categoryNames = new Map<string, string>();
@@ -38,7 +44,7 @@ export default defineApplet({
             control.button.setAttribute("aria-label", saved ? "Edit Genesis bookmark" : "Save story to Genesis");
 
           }
-        }).catch(error => { if (control.active) control.button.title = `Saved state unavailable: ${error.message ?? error}`; })
+        }).catch(error => { if (control.active) control.button.title = "Saved stories are temporarily unavailable. Tap to retry."; })
           .finally(() => { running--; pump(); });
       }
     };
@@ -52,6 +58,7 @@ export default defineApplet({
       }).catch(() => { /* Bookmark controls remain usable when category labels cannot be read. */ });
     };
     reloadCategories();
+    ctx.onFocus(reloadCategories);
     const remove = (binding: ElementBinding) => {
       const control = controls.get(binding.id); if (!control) return;
       control.active = false; queue.delete(control); control.dispose(); controls.delete(binding.id);
@@ -66,9 +73,13 @@ export default defineApplet({
         const snapshot = extractItem(binding.element);
         if (snapshot?.itemId === binding.contentKey && binding.element.isConnected && !ctx.signal.aborted) openStoryDialog(ctx, snapshot);
       });
-      const dispose = ctx.ui.mountAt(`story:${binding.id}`, anchor, { position: "append",
+      const disposeMount = ctx.ui.mountAt(`story:${binding.id}`, anchor, { position: "append",
         css: theme + ":host{position:absolute;right:0;top:0;display:block}button{display:flex;align-items:center;justify-content:center;color:var(--accent);background:transparent;border:0;border-radius:8px;padding:10px;min-width:44px;min-height:44px;cursor:pointer}button[aria-pressed=true] svg{fill:currentColor}",
         render: container => { container.append(button); } });
+      const disposeTile = location.pathname !== "/item" ? bindDiscussionTile(binding.element, () => extractItem(binding.element)?.discussionUrl ?? null) : () => {};
+      const metadata = binding.element.nextElementSibling;
+      const disposeMeta = location.pathname !== "/item" && metadata ? bindDiscussionTile(metadata, () => extractItem(binding.element)?.discussionUrl ?? null) : () => {};
+      const dispose = () => { disposeTile(); disposeMeta(); disposeMount(); };
       const control = { anchor, binding, button, dispose, active: true, revision: 0 }; controls.set(binding.id, control); refresh(control);
     };
     ctx.watchElements("hn-stories", { selector: STORY_SELECTOR, attributes: ["id", "class", "href"], text: true, limit: 200,
@@ -89,31 +100,18 @@ export default defineApplet({
   }, inspect: inspectTargets,
 });
 
-const feedOptions = [
-  { label: "Top", path: "/news" }, { label: "New", path: "/newest" },
-  { label: "Past", path: "/front" }, { label: "Comments", path: "/newcomments" },
-  { label: "Ask", path: "/ask" }, { label: "Show", path: "/show" },
-  { label: "Jobs", path: "/jobs" },
-];
-function mountFeedSelector(ctx: AppletContext): void {
-  const header = document.querySelector("#hnmain > tbody > tr:first-child > td");
+/** Website cookies stay in WebView. Only public account identity coordinates retained views. */
+function synchronizeAccount(context: AppletContext): void {
+  const header = document.querySelector(".pagetop"), profile = document.querySelector(".pagetop a[href^='user?id=']");
   if (!header) return;
-  const selected = feedOptions.find(option => option.path === (location.pathname === "/" ? "/news" : location.pathname));
-  if (!selected) return;
-  sessionStorage.setItem("genesis.hn.feed", selected.path);
-  ctx.ui.mountAt("feed-selector", header, { position: "append", css: theme + `
-    :host{display:block;font:14px Verdana,Geneva,sans-serif}.feed-choice{margin:4px 0 12px;position:relative}.feed-choice summary{list-style:none;display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:8px 12px;border-radius:10px;background:var(--wash);font-weight:700;cursor:pointer}.feed-choice summary::-webkit-details-marker{display:none}.feed-choice .options{position:absolute;top:48px;left:0;z-index:100;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 24px #0002;min-width:170px;padding:5px}.feed-choice button{display:block;width:100%;text-align:left;background:transparent;border:0;border-radius:8px;min-height:42px;padding:7px 12px;color:var(--ink);font:inherit}.feed-choice button[aria-current]{color:var(--accent);font-weight:700}`,
-    render(container) {
-      const details = document.createElement("details"); details.className = "feed-choice";
-      const summary = document.createElement("summary"); summary.textContent = `${selected.label} stories  ▾`;
-      const options = document.createElement("div"); options.className = "options";
-      for (const option of feedOptions) {
-        const button = document.createElement("button"); button.type = "button"; button.textContent = option.label;
-        if (option.path === selected?.path) button.setAttribute("aria-current", "page");
-        button.onclick = () => { sessionStorage.setItem("genesis.hn.feed", option.path); void ctx.sources.open("primary", `https://news.ycombinator.com${option.path}`); };
-        options.append(button);
-      }
-      details.append(summary, options); container.append(details);
-    },
+  const identity = profile?.textContent?.trim() ?? "";
+  void context.storage.get<{ identity: string }>("session", "hn-account").then(({ document }) => {
+    if (context.signal.aborted || document?.value.identity === identity) return;
+    return context.storage.commit({ checks: [], puts: [{ collection: "session", key: "hn-account", value: { identity } }], deletes: [] });
+  }).catch(() => {});
+  context.onFocus(() => {
+    void context.storage.get<{ identity: string }>("session", "hn-account").then(({ document }) => {
+      if (!context.signal.aborted && document && document.value.identity !== identity) location.reload();
+    }).catch(() => {});
   });
 }
