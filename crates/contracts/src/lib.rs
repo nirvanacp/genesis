@@ -29,6 +29,8 @@ pub struct Asset {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Manifest {
+    #[serde(default)]
+    pub shell: Option<AppShell>,
     pub schema_version: u32,
     pub id: String,
     pub name: String,
@@ -44,6 +46,8 @@ pub struct Manifest {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Source {
+    #[serde(default)]
+    pub customized_paths: Option<Vec<String>>,
     pub id: String,
     pub start_url: String,
     pub origins: Vec<String>,
@@ -76,6 +80,30 @@ pub struct Action {
     pub id: String,
     pub label: String,
     pub page_id: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AppShell {
+    pub title: String,
+    pub brand_asset: String,
+    pub sections: Vec<ShellSection>,
+    #[serde(default)]
+    pub choices: Vec<ShellChoice>,
+}
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ShellSection {
+    pub id: String,
+    pub label: String,
+    pub source_id: String,
+    pub page_id: Option<String>,
+}
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ShellChoice {
+    pub label: String,
+    pub url: String,
 }
 
 // Host-issued identities never come from a website's claimed applet ID.
@@ -153,6 +181,8 @@ pub enum HostEvent {
         restore: Option<SessionSnapshot>,
     },
     Open {
+        #[serde(default)]
+        url: Option<String>,
         #[serde(rename = "appletId")]
         applet_id: String,
         #[serde(rename = "sourceId")]
@@ -285,6 +315,10 @@ pub enum HostCommand {
     },
     Presentation {
         generation: u64,
+        epoch: u64,
+        document_id: Option<DocumentId>,
+        route_kind: String,
+        detail: bool,
         state: String,
         message: String,
         actions: Vec<Action>,

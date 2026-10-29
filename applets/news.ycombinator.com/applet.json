@@ -11,24 +11,141 @@
         "https://news.ycombinator.com"
       ],
       "entry": "src/main.ts",
-      "homePaths": ["/", "/news", "/newest", "/front", "/newcomments", "/ask", "/show", "/jobs"],
-      "navigationRules": []
+      "homePaths": [
+        "/",
+        "/news",
+        "/newest",
+        "/front",
+        "/newcomments",
+        "/ask",
+        "/show",
+        "/jobs"
+      ],
+      "navigationRules": [],
+      "customizedPaths": [
+        "/",
+        "/news",
+        "/newest",
+        "/front",
+        "/newcomments",
+        "/ask",
+        "/show",
+        "/shownew",
+        "/asknew",
+        "/jobs",
+        "/item",
+        "/reply",
+        "/user",
+        "/submitted",
+        "/threads",
+        "/favorites",
+        "/hidden",
+        "/upvoted",
+        "/login",
+        "/logout",
+        "/forgot",
+        "/changepw",
+        "/submit",
+        "/formatdoc",
+        "/newsfaq.html",
+        "/newsguidelines.html",
+        "/lists",
+        "/best",
+        "/active",
+        "/leaders",
+        "/from"
+      ]
     },
     {
       "id": "post",
       "startUrl": "https://news.ycombinator.com/submit",
-      "origins": ["https://news.ycombinator.com"],
+      "origins": [
+        "https://news.ycombinator.com"
+      ],
       "entry": "src/main.ts",
-      "homePaths": ["/submit"],
-      "navigationRules": []
+      "homePaths": [
+        "/submit"
+      ],
+      "navigationRules": [],
+      "customizedPaths": [
+        "/",
+        "/news",
+        "/newest",
+        "/front",
+        "/newcomments",
+        "/ask",
+        "/show",
+        "/shownew",
+        "/asknew",
+        "/jobs",
+        "/item",
+        "/reply",
+        "/user",
+        "/submitted",
+        "/threads",
+        "/favorites",
+        "/hidden",
+        "/upvoted",
+        "/login",
+        "/logout",
+        "/forgot",
+        "/changepw",
+        "/submit",
+        "/formatdoc",
+        "/newsfaq.html",
+        "/newsguidelines.html",
+        "/lists",
+        "/best",
+        "/active",
+        "/leaders",
+        "/from"
+      ]
     },
     {
       "id": "me",
       "startUrl": "https://news.ycombinator.com/news",
-      "origins": ["https://news.ycombinator.com"],
+      "origins": [
+        "https://news.ycombinator.com"
+      ],
       "entry": "src/main.ts",
-      "homePaths": ["/", "/news"],
-      "navigationRules": []
+      "homePaths": [
+        "/",
+        "/news"
+      ],
+      "navigationRules": [],
+      "customizedPaths": [
+        "/",
+        "/news",
+        "/newest",
+        "/front",
+        "/newcomments",
+        "/ask",
+        "/show",
+        "/shownew",
+        "/asknew",
+        "/jobs",
+        "/item",
+        "/reply",
+        "/user",
+        "/submitted",
+        "/threads",
+        "/favorites",
+        "/hidden",
+        "/upvoted",
+        "/login",
+        "/logout",
+        "/forgot",
+        "/changepw",
+        "/submit",
+        "/formatdoc",
+        "/newsfaq.html",
+        "/newsguidelines.html",
+        "/lists",
+        "/best",
+        "/active",
+        "/leaders",
+        "/from"
+      ]
     }
   ],
   "pages": [
@@ -50,9 +167,73 @@
   ],
   "capabilities": [
     "dom",
-    "services"
+    "services",
+    "storage"
   ],
   "services": [
     "bookmarks"
-  ]
+  ],
+  "shell": {
+    "title": "Hacker News",
+    "brandAsset": "assets/yc.png",
+    "sections": [
+      {
+        "id": "home",
+        "label": "Home",
+        "sourceId": "primary"
+      },
+      {
+        "id": "search",
+        "label": "Search",
+        "sourceId": "primary",
+        "pageId": "search"
+      },
+      {
+        "id": "post",
+        "label": "Post",
+        "sourceId": "post"
+      },
+      {
+        "id": "saved",
+        "label": "Saved",
+        "sourceId": "primary",
+        "pageId": "library"
+      },
+      {
+        "id": "me",
+        "label": "Me",
+        "sourceId": "me"
+      }
+    ],
+    "choices": [
+      {
+        "label": "Top",
+        "url": "https://news.ycombinator.com/news"
+      },
+      {
+        "label": "New",
+        "url": "https://news.ycombinator.com/newest"
+      },
+      {
+        "label": "Past",
+        "url": "https://news.ycombinator.com/front"
+      },
+      {
+        "label": "Comments",
+        "url": "https://news.ycombinator.com/newcomments"
+      },
+      {
+        "label": "Ask",
+        "url": "https://news.ycombinator.com/ask"
+      },
+      {
+        "label": "Show",
+        "url": "https://news.ycombinator.com/show"
+      },
+      {
+        "label": "Jobs",
+        "url": "https://news.ycombinator.com/jobs"
+      }
+    ]
+  }
 }
