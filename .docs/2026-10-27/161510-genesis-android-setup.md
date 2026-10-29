@@ -4,7 +4,7 @@ Updated 28 October: the active browser runtime is TypeScript/JavaScript. Android
 
 The active prototype now bundles Hacker News only. Follow the [HN continuation guide](200113-genesis-hacker-news-mvp-guide.md) for current stages; the MVP-01 results below are historical build evidence. The existing toolchain/setup commands still apply.
 
-Status: MVP-01 through MVP-06 passed emulator acceptance. See the [category/library verification report](../../.reports/2026-10-29/110545-genesis-mvp06-library-verification-report.md). Physical-device qualification remains required before release.
+Status: the working emulator MVP is ready. MVP-01 through MVP-06 passed emulator acceptance; MVP-07 functional integration is verified in the [handoff report](../../.reports/2026-10-29/112349-genesis-mvp07-emulator-handoff-report.md). Physical-device repetition and device-performance qualification are deferred to pre-release. Run app on the existing supported emulator to use the current build.
 
 Scope: current setup/build instructions followed by historical MVP-01 evidence. The current app has managed TypeScript customization, generic SQLite storage and the HN bookmarking library.
 

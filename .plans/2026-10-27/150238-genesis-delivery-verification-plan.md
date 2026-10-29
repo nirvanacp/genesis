@@ -1,8 +1,8 @@
 # Genesis delivery and verification plan
 
-Architecture revision approved 28 October: all browser customization and the managed DOM runtime use TypeScript/JavaScript under `packages/sdk/` and `applets/`, with React for custom dialogs and local pages. Native Rust retains the controller, contracts and SQLite services. HN refuses Wasm compilation in its source realm, as recorded in the [historical qualification report](../../.reports/2026-10-28/162112-genesis-hn-wasm-qualification-report.md). The TS runtime passed [MVP-02 emulator qualification](../../.reports/2026-10-28/174427-genesis-hn-typescript-qualification-report.md); MVP-03 passed emulator verification. MVP-04 storage passed [Android emulator verification](../../.reports/2026-10-28/183914-genesis-mvp04-android-storage-verification-report.md); MVP-05 passed [Android Save verification](../../.reports/2026-10-29/095635-genesis-mvp05-android-save-verification-report.md); MVP-06 passed [category/library emulator verification](../../.reports/2026-10-29/110545-genesis-mvp06-library-verification-report.md). Physical hardware remains required before release in MVP-07.
+Architecture revision approved 28 October: all browser customization and the managed DOM runtime use TypeScript/JavaScript under `packages/sdk/` and `applets/`, with React for custom dialogs and local pages. Native Rust retains the controller, contracts and SQLite services. HN refuses Wasm compilation in its source realm, as recorded in the [historical qualification report](../../.reports/2026-10-28/162112-genesis-hn-wasm-qualification-report.md). The TS runtime passed [MVP-02 emulator qualification](../../.reports/2026-10-28/174427-genesis-hn-typescript-qualification-report.md); MVP-03 passed emulator verification. MVP-04 storage passed [Android emulator verification](../../.reports/2026-10-28/183914-genesis-mvp04-android-storage-verification-report.md); MVP-05 passed [Android Save verification](../../.reports/2026-10-29/095635-genesis-mvp05-android-save-verification-report.md); MVP-06 passed [category/library emulator verification](../../.reports/2026-10-29/110545-genesis-mvp06-library-verification-report.md). The working emulator prototype is the current delivery target. Physical-device qualification and device-specific performance gates are deferred to pre-release under the user's 29 October instruction; they do not block the emulator handoff.
 
-Created 27 October 2026, Asia/Kolkata. Scope: the single Hacker News bookmarking prototype in the [Genesis MVP implementation plan](150238-genesis-mvp-implementation-plan.md). MVP-01 is verified on the emulator. MVP-01 through MVP-06 passed emulator acceptance; MVP-07 integration remains in progress. Numerical gates require actual evidence, not inferred success.
+Created 27 October 2026, Asia/Kolkata. Scope: the single Hacker News bookmarking prototype in the [Genesis MVP implementation plan](150238-genesis-mvp-implementation-plan.md). MVP-01 is verified on the emulator. MVP-01 through MVP-06 passed emulator acceptance. MVP-07 functional integration and the emulator handoff are verified in the [final report](../../.reports/2026-10-29/112349-genesis-mvp07-emulator-handoff-report.md). Physical performance and device repetition remain deferred to pre-release. Numerical gates require actual evidence, not inferred success.
 
 ## 1. Execution rules
 
@@ -53,7 +53,7 @@ Bundle only `hn-bookmarks` with source `primary`, its qualification inspector an
 | Unsupported provider | Explicit native unsupported state with usable ordinary-site recovery and no false ready |
 | Creator/renderer failure | Scope retires; native disable/retry or ordinary recovery remains usable |
 
-On 28 October the user authorized completing this stage on a supported emulator and proceeding to MVP-03 through MVP-06. Record device/ABI/provider/locale and actual HN variant. Repeat the real-site qualification on physical hardware before MVP-07 can declare release readiness; emulator evidence alone does not satisfy that final requirement. Inspect story versus comment targets through the debug-only structural inspector; no credentials or page-text dumps.
+On 28 October the user authorized completing this stage on a supported emulator and proceeding to MVP-03 through MVP-06. Record device/ABI/provider/locale and actual HN variant. Repeat the real-site qualification on physical hardware at pre-release; emulator evidence alone does not establish release readiness. Inspect story versus comment targets through the debug-only structural inspector; no credentials or page-text dumps.
 
 Stop if required world/navigation APIs are missing or isolated startup fails. The earlier provider lacked `JS_INJECTION_IN_FRAME_AND_WORLD` and `NAVIGATION_LISTENER`; the current provider supports them, and the approved TypeScript runtime must now pass source-realm qualification. Do not fall back to page-world injection, a different engine or static HTML to call this gate passed. Login and media are outside the revised prototype and are not MVP-02 gates. Do not start MVP-03 until required HN qualification passes.
 
@@ -117,11 +117,11 @@ Exit: save, categorize, manage, browse, remove and Open discussion work together
 
 ## 8. MVP-07: Integration, device quality and handoff
 
-Dependencies: all earlier stages.
+Dependencies: all earlier stages. The 29 October user instruction makes the working emulator prototype the current handoff. Status: emulator integration verified in the final report linked above. Physical-device repetition, the physical performance matrix and release qualification are deferred to pre-release; they do not block emulator completion.
 
 Alternate HN source and library; open the library from the launcher while offline; return to the source; rotate; background/resume; recover from creator failure; and install an updated APK over a populated database. Ensure applet settings and saved data do not leak between namespaces.
 
-Proposed performance checks on the named physical device:
+Pre-release performance checks on the named physical device. Emulator measurements are provisional and do not pass these physical gates:
 
 | Check | Definition and threshold |
 | --- | --- |
@@ -157,6 +157,6 @@ Final handoff must include the setup guide, actual build commands, exact tool/pr
 
 ## 9. Continuation and historical evidence
 
-Use the [HN continuation guide](../../.docs/2026-10-27/200113-genesis-hacker-news-mvp-guide.md) for ordered prompts. Apply the [browser/session contract](150238-genesis-mvp-implementation-plan.md#9-browser-and-session-contract). Login is outside the prototype; public HN feature evidence and physical-device isolation/recovery remain required.
+Use the [HN continuation guide](../../.docs/2026-10-27/200113-genesis-hacker-news-mvp-guide.md) for ordered prompts. Apply the [browser/session contract](150238-genesis-mvp-implementation-plan.md#9-browser-and-session-contract). Login is outside the prototype; public HN feature evidence is verified on the emulator; physical-device isolation/recovery remains required at pre-release.
 
 The [earlier MVP-02 report](../../.reports/2026-10-27/182114-genesis-mvp02-qualification-report.md) records the last provider flags and prior-site results. Preserve those observations without transferring their pass status to HN. The [HN retargeting report](../../.reports/2026-10-27/200924-genesis-hacker-news-retargeting-report.md) records code/build/launcher checks separately. Missing provider APIs still stop progression to MVP-03.

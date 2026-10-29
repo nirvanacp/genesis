@@ -4,11 +4,11 @@ Scope: the single public Hacker News bookmarking prototype. This replaces the ea
 
 ## Current state
 
-MVP-01, MVP-02 and MVP-03 passed emulator verification. MVP-04 native storage and SDK passed Android persistence and offline gates. See the [current report](../../.reports/2026-10-28/183914-genesis-mvp04-android-storage-verification-report.md). The build bundles only `hn-bookmarks`. The HN source now includes Save/edit/remove controls and a validated bookmark repository. MVP-05 passed [Android Save verification](../../.reports/2026-10-29/095635-genesis-mvp05-android-save-verification-report.md); MVP-06 also passed [category/library emulator acceptance](../../.reports/2026-10-29/110545-genesis-mvp06-library-verification-report.md). Continue with MVP-07. YouTube/X applet source remains intact and excluded from the APK package index.
+MVP-01 through MVP-06 passed emulator acceptance. MVP-07 functional integration is also verified. The [emulator handoff report](../../.reports/2026-10-29/112349-genesis-mvp07-emulator-handoff-report.md) records the current build, acceptance evidence, measurements and usage steps. Only hn-bookmarks is bundled; inactive X/YouTube code remains preserved.
 
-HN provides public story pages, so login is not a prerequisite. The [28 October qualification report](../../.reports/2026-10-28/162112-genesis-hn-wasm-qualification-report.md) supersedes the earlier missing-API diagnosis. The official provider update to 156.0.8078.47 resolved that problem. The packaged local page passes Wasm startup and twenty reloads; HN source startup refuses Wasm compilation in its realm. The user approved a TypeScript/JavaScript managed runtime and React customization. Keep native Rust contracts/controller/storage and TS qualification passed on the emulator as recorded in the [current HN report](../../.reports/2026-10-28/174427-genesis-hn-typescript-qualification-report.md). Proceed with MVP-05; retain the ordered prompts below for reference.
+The supported emulator uses Google System WebView 156.0.8078.47. HN runs the approved TypeScript isolated runtime and React customization; native Rust owns contracts/controller/SQLite. The [HN runtime report](../../.reports/2026-10-28/174427-genesis-hn-typescript-qualification-report.md) records 20/20 fresh-document qualification. Public HN bookmarking requires no login. Website cookies stay in the normal persistent WebView profile and are separate from local bookmarks.
 
-The user authorized implementation to advance after emulator qualification on 28 October. Physical-device repetition remains required before final MVP-07 release, rather than before MVP-03. This does not waive required source-realm runtime success.
+The user's 29 October instruction makes the working emulator the current deliverable. Physical-device repetition and device-specific performance checks are deferred to pre-release. No further feature implementation is required for this prototype. Sections 1 through 6 below preserve the completed stage scopes for reference; do not rerun them as new work.
 
 | Plan | Read for |
 | --- | --- |
@@ -58,7 +58,7 @@ Finish MVP-02 qualification only for the Hacker News prototype. Read all five cu
 1. Inspect Git status and available Android devices/providers. Reuse the HN package and existing debug inspector. Record actual required feature flags. If world-aware injection or navigation APIs are missing, report the precise compatibility blocker and stop; do not request a login or bypass isolation.
 2. On a supported provider, load public HN home/news, newest, Ask, Show and a story discussion. Qualify the nonce challenge, TypeScript runtime, creator execution, computed style and owned mount separately. Run 20/20 fresh-document cycles for the HN source and verify stale bindings are rejected.
 3. Activate the packaged library qualification page without a development server. Verify an external story title link uses ordinary browsing without the source bridge and Back rebinds HN correctly.
-4. Verify unsupported-provider handling, Retry/Open ordinary site, creator failure and renderer-loss recovery. Use emulator results for the implementation gate under the 28 October authorization; repeat the required checks on physical hardware before final MVP-07 release.
+4. Verify unsupported-provider handling, Retry/Open ordinary site, creator failure and renderer-loss recovery. Use emulator results for the implementation gate under the 28 October authorization; repeat the required checks on physical hardware at pre-release.
 5. Fix only MVP-02 defects, run appropriate checks, commit verified components and save a dated HN qualification report. Mark the stage verified only when its required gates pass. Stop before MVP-03.
 ```
 
@@ -132,16 +132,46 @@ Implement MVP-06 only after MVP-05 is verified. Read all five current plans and 
 5. Verify the complete category/library matrix, sparse pagination, notifications, offline reopen, restart, install-as-update and correct source return. Explain local storage scope in the UI. Run checks, commit components and save results. Stop before final integration.
 ```
 
-## 7. MVP-07 integration and prototype handoff
+## 7. Use the completed emulator prototype
 
-Finish emulator integration, then repeat qualification on physical hardware before release. On 29 October the user requested finishing emulator checks while keeping release blocked on hardware.
+This stage is complete for the supported emulator. Open android/ in Android Studio and run app on the existing emulator. Native Home exposes Hacker News and the packaged bookmark library. Save a story, choose/create categories, then use Menu > Genesis bookmarks to filter, edit/remove or open its discussion. Previously saved metadata works offline. Keep the application ID/signing key and install updates without clearing data.
+
+The [setup guide](161510-genesis-android-setup.md) contains the pinned toolchain. The final handoff report above records current checks and explicit limits. No login, physical device or new implementation prompt is needed to use this build.
+
+## 8. Pre-release hardware workflow
+
+Run this prompt when physical-device testing is desired. It does not block current emulator use.
 
 ```text
-Complete MVP-07 only after all earlier required stage gates pass. Read all five current plans and follow the HN continuation guide's working rules.
+Qualify the existing Genesis HN prototype on a connected physical Android device. Do not add features or repeat completed implementation. Read AGENTS.md, Git status, all five current plans and the MVP-07 emulator handoff report.
 
-1. On a named physical Android device, alternate HN and the library, use the library offline from the launcher, return to discussions, paginate, rotate, background/resume and recover from creator/renderer failure. Install an updated APK over populated data without uninstalling.
-2. Measure the delivery plan's 100-observation runtime/UI latency, 100-save persistence latency, 500-bookmark library cases, memory and 20/20 controlled recovery threshold. Report network time separately and avoid claims about painted frames without measurements.
-3. Fix observed integration defects in the selected architecture. Verify original HN navigation remains usable and the single-view resource budget is respected. Preserve the inactive applets and data.
-4. Run the complete relevant verification, commit fixes by component and save a final dated report with exact tool/provider/device versions, APK path, commands/results, supported HN routes, persistence semantics, performance and gate status. Update setup instructions.
-5. Declare the prototype ready only when every required gate passes. Authentication, HN account actions, comment bookmarking, media playback and the retired applet features are outside scope. Do not deploy or add extra features.
+1. Record device, Android, ABI, WebView provider, locale and required feature flags. Install as an update with the same app ID/signing key, preserving existing data.
+2. Repeat public HN isolated-runtime qualification and 20 fresh-document cycles. Verify story Save/edit/remove, multiple categories, category rename/delete, library filters/pagination and source return.
+3. Verify direct offline library opening, restart/update persistence, rotation, background/resume and native creator/renderer recovery. Preserve original HN links and account controls; no website login is required.
+4. Fix only observed defects, run relevant checks and commit each verified component. Save a dated report separating passed, failed and unverified gates. Do not claim release readiness or start performance work until required functional checks pass.
+```
+
+## 9. Pre-release performance qualification
+
+Run after physical functional qualification passes.
+
+```text
+Measure the existing Genesis HN prototype against the delivery plan's pre-release performance matrix on the named physical device. Read current plans and qualification reports. Do not add features or change thresholds to obtain a pass.
+
+1. Measure 100 observations of managed update/UI response, managed batch time and 100 durable-save acknowledgements. Separate network time and painted-frame claims from DOM acknowledgements.
+2. Measure warm first-page and sparse-category scans over 500 bookmark records. Count scan work and verify pagination correctness, cancellation and cleanup.
+3. Measure host plus renderer PSS for ordinary HN, customized HN and a populated local library, counting each process once. Verify 20/20 timed native recovery runs on a controlled local route.
+4. Profile and fix observed regressions, verify the fixes and commit by component. Save exact methods, versions, samples, p95/worst cases and every threshold result. Report remaining failures without declaring release readiness.
+```
+
+## 10. Pre-release readiness review
+
+Run after physical functional and performance gates pass.
+
+```text
+Prepare the existing Genesis HN prototype for a release decision. Read AGENTS.md, Git status, the five plans and all current emulator/physical qualification reports. Do not add product features, publish, deploy or change signing keys.
+
+1. Reconcile every acceptance gate with actual evidence. Preserve deferred/failed status where evidence is missing; verify the supported provider/device limits and local-data semantics.
+2. Run the relevant pinned-toolchain checks, build/lint both native ABIs and confirm the candidate installs as an update over populated data.
+3. Update setup and handoff documentation with supported routes, exact artifact/version, limitations and remaining release blockers. Commit verified changes by component and provide a concrete release-readiness result. Stop before distribution.
 ```
