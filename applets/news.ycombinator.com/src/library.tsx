@@ -82,7 +82,7 @@ function Library({ context }: { context: AppletContext }) {
   return <><style>{theme}{sharedCss}{libraryCss}</style><main className="library">
     <header><h1>{section === "categories" ? "Categories" : filter === "all" ? "Saved" : filter === "uncategorized" ? "Uncategorized" : categories?.categories.find(c => c.value.id === filter)?.value.name ?? "Saved"}</h1>
       <button className="manage-link" onClick={() => setSection(section === "saved" ? "categories" : "saved")}>{section === "saved" ? "Manage categories" : "Back to saved"}</button>
-      <p className="muted">Your reading list. Saved on this device, available offline.</p></header>
+      <p className="muted">Saved on this device · Available offline</p></header>
     {section === "saved" && <label className="search"><Icon name="search" /><input type="search" aria-label="Filter loaded stories" placeholder="Filter loaded stories" value={query} onChange={event => setQuery(event.target.value)} /></label>}
     {section === "saved" && <div className="folder-grid" aria-label="Categories">
       {sortedCategories.map(record => <button className="folder-card" key={record.value.id} onClick={() => { selectFilter(record.value.id); setSection("saved"); setQuery(""); }}>
@@ -105,8 +105,7 @@ function Library({ context }: { context: AppletContext }) {
       return <li key={value.itemId} className="story-card"><h2><button className="story-link" onClick={() => { void openDiscussion(value.discussionUrl); }}>{value.title}</button></h2>
         <div className="story-meta">{memberships.map(id => <span className="tag" key={id}>{categories?.categories.find(category => category.value.id === id)?.value.name}</span>)}
           <span>{value.articleUrl ? new URL(value.articleUrl).hostname : "news.ycombinator.com"}</span><span>Saved {new Date(value.savedAtMs).toLocaleDateString()}</span></div>
-        <div className="row-actions"><button className="primary" onClick={() => { void openDiscussion(value.discussionUrl); }}>Open discussion</button>
-          <button onClick={() => openStoryDialog(context, value)}>Edit / remove</button></div>
+        <div className="row-actions"><button onClick={() => openStoryDialog(context, value)}>Edit / remove</button></div>
       </li>;
     })}</ol>
     <div className="actions">{loading ? <button onClick={cancel}>Cancel scan</button> : !done && categories && <button className="primary" onClick={more}>Load more</button>}

@@ -37,10 +37,10 @@ export default defineApplet({
         void repository.get(control.binding.contentKey).then(saved => {
           if (control.active && revision === control.revision && !ctx.signal.aborted) {
             const names = saved?.value.categoryIds.map(id => categoryNames.get(id)).filter(Boolean) ?? [];
-            control.button.textContent = saved ? `Saved · ${names.length ? names.join(", ") : "Change"}` : "Save story";
+            control.button.title = saved ? `Saved${names.length ? ` in ${names.join(", ")}` : ""}. Change bookmark` : "Save story";
             control.button.setAttribute("aria-pressed", String(!!saved));
             control.button.setAttribute("aria-label", saved ? "Edit Genesis bookmark" : "Save story to Genesis");
-            control.button.title = "";
+
           }
         }).catch(error => { if (control.active) control.button.title = `Saved state unavailable: ${error.message ?? error}`; })
           .finally(() => { running--; pump(); });
@@ -62,7 +62,8 @@ export default defineApplet({
     };
     const mount = (binding: ElementBinding) => {
       const anchor = binding.element.querySelector(".titleline > a:first-child")?.closest("td"); if (!anchor) return;
-      const button = document.createElement("button"); button.type = "button"; button.textContent = "Save to Genesis";
+      const button = document.createElement("button"); button.type = "button";
+      button.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v19l-6-4-6 4z"/></svg>';
       button.setAttribute("aria-label", "Save story to Genesis");
       button.addEventListener("click", event => {
         event.preventDefault(); event.stopPropagation();
@@ -70,7 +71,7 @@ export default defineApplet({
         if (snapshot?.itemId === binding.contentKey && binding.element.isConnected && !ctx.signal.aborted) openStoryDialog(ctx, snapshot);
       });
       const dispose = ctx.ui.mountAt(`story:${binding.id}`, anchor, { position: "append",
-        css: theme + ":host{display:block;margin:12px 0 2px}button{font:600 14px system-ui;color:var(--accent);background:var(--wash);border:1px solid transparent;border-radius:10px;padding:10px 14px;min-height:44px;cursor:pointer}button[aria-pressed=true]{border-color:var(--line)}",
+        css: theme + ":host{position:absolute;right:0;top:0;display:block}button{display:flex;align-items:center;justify-content:center;color:var(--accent);background:transparent;border:0;border-radius:8px;padding:10px;min-width:44px;min-height:44px;cursor:pointer}button[aria-pressed=true] svg{fill:currentColor}",
         render: container => { container.append(button); } });
       const control = { anchor, binding, button, dispose, active: true, revision: 0 }; controls.set(binding.id, control); refresh(control);
     };

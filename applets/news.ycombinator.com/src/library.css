@@ -7,16 +7,16 @@
 .library {
   max-width:760px;
   margin:auto;
-  padding:28px 20px 110px;
+  padding:14px 16px 86px;
   font:1rem/1.5 system-ui,sans-serif;
 }
 h1 {
-  font:700 2.25rem/1.15 Georgia,serif;
+  font:700 1.75rem/1.15 Georgia,serif;
   letter-spacing:-.035em;
-  margin:0 0 14px;
+  margin:0 0 6px;
 }
 header {
-  margin-bottom:20px;
+  margin-bottom:10px;
 }
 .search {
   display:flex;
@@ -25,7 +25,7 @@ header {
   background:var(--wash);
   border-radius:14px;
   padding:0 14px;
-  margin:20px 0;
+  margin:10px 0;
 }
 .search input {
   background:transparent!important;
@@ -35,8 +35,8 @@ header {
 .folder-grid {
   display:grid;
   grid-template-columns:repeat(2,minmax(0,1fr));
-  gap:12px;
-  margin:16px 0 28px;
+  gap:8px;
+  margin:10px 0 12px;
 }
 .folder-card {
   display:flex;
@@ -44,17 +44,17 @@ header {
   align-items:start;
   justify-content:space-between;
   text-align:left;
-  min-height:124px;
-  padding:16px;
+  min-height:80px;
+  padding:10px;
   background:var(--card);
-  border-radius:18px;
+  border-radius:12px;
 }
 .folder-card svg {
   color:var(--accent);
-  margin-bottom:16px;
+  margin-bottom:6px;
 }
 .folder-card strong {
-  font:700 1.15rem Georgia,serif;
+  font:700 1rem Georgia,serif;
 }
 .folder-card span {
   font-weight:400;
@@ -84,7 +84,7 @@ header {
   border:1px solid var(--line);
   border-radius:16px;
   background:var(--card);
-  padding:16px;
+  padding:10px;
   margin:18px 0;
 }
 summary {
@@ -105,7 +105,7 @@ summary {
   gap:8px;
 }
 .library-status {
-  margin:24px 0 8px;
+  margin:12px 0 6px;
   color:var(--muted);
   font-size:.75rem;
   text-transform:uppercase;
@@ -117,11 +117,11 @@ summary {
   list-style:none;
 }
 .story-card {
-  padding:18px 0;
+  padding:10px 0;
   border-top:1px solid var(--line);
 }
 .story-card h2 {
-  font:600 1.1rem/1.4 system-ui;
+  font:600 1rem/1.35 system-ui;
   margin:0 0 8px;
 }
 .story-link {
@@ -161,7 +161,7 @@ summary {
   padding:28px 16px;
   border:1px dashed var(--line);
   border-radius:16px;
-  margin:20px 0;
+  margin:10px 0;
 }
 .empty h2 {
   font-size:1.5rem;
@@ -205,7 +205,7 @@ summary {
     grid-template-columns:repeat(3,minmax(0,1fr));
   }
   .library {
-    padding-top:40px;
+    padding-top:18px;
   }
 }
 @media(max-width:340px) {
@@ -230,3 +230,18 @@ summary {
   display:block;
   clear:both;
 }
+.story-card .row-actions button {
+  color: var(--ink);
+}
+.library {
+  background: var(--paper);
+  color: var(--ink);
+  min-height: 100vh;
+}
+.manage-link {
+  float: none;
+  display: block;
+  margin: 0 0 8px;
+}
+
+.library header .muted{font-size:.8125rem;margin:4px 0}.folder-card span{font-size:.75rem}.folder-card svg{width:18px;height:18px}.bottom-nav button{min-height:48px}.library header .manage-link{font-size:.8125rem;min-height:36px;padding:6px 0}.library .stories .story-link{min-height:36px}
