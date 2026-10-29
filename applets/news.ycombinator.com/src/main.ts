@@ -1,5 +1,5 @@
 import { backendStorage } from "./backend";
-import { defineApplet, type ElementBinding, type Dispose } from "@genesis/sdk";
+import { defineApplet, type AppletContext, type ElementBinding, type Dispose } from "@genesis/sdk";
 import theme from "./theme.css";
 import sourceCss from "./source.css";
 import { inspectTargets } from "./targets";
@@ -7,26 +7,21 @@ import { extractItem, STORY_SELECTOR } from "./extract-item";
 import { CategoryRepository } from "./categories";
 import { BookmarkRepository, bookmarkKey } from "./repository";
 import { openStoryDialog } from "./components/story-dialog";
+import { mountSourceNavigation } from "./components/navigation";
+import { mountAccountHub } from "./me";
+import { preservePostDraft } from "./post";
 interface Control { anchor: Element; binding: ElementBinding; button: HTMLButtonElement; dispose: Dispose; active: boolean; revision: number }
 export default defineApplet({
   activate(ctx) {
     ctx.styles.add("hn-editorial", theme + sourceCss);
-    ctx.ui.mountAt("hn-navigation", document.body, { position: "append", css: theme + `:host{font:14px system-ui}.nav{position:fixed;bottom:0;left:0;right:0;z-index:10000;background:var(--card);border-top:1px solid var(--line);display:flex;padding:6px 12px calc(6px + env(safe-area-inset-bottom))}.nav button{flex:1;border:0;background:transparent;color:var(--muted);font:600 13px system-ui;min-height:58px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:4px}.nav button[aria-current]{color:var(--accent)}.error{position:fixed;bottom:80px;background:var(--paper);color:var(--ink);padding:12px}`,
-      render(container) {
-        const nav = document.createElement("nav"); nav.className = "nav"; nav.setAttribute("aria-label", "Main navigation");
-        const feedback = document.createElement("div"); feedback.setAttribute("role", "status");
-        for (const [name, path, action] of [
-          ["Feed", "M3 10 12 3l9 7v11h-6v-7H9v7H3z", () => ctx.sources.open("primary")],
-          ["Saved", "M6 3h12v19l-6-4-6 4z", () => ctx.pages.open("library")],
-        ] as const) {
-          const button = document.createElement("button"); button.type = "button";
-          button.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${path}"/></svg>`; button.append(name);
-          if (name === "Feed") button.setAttribute("aria-current", "page");
-          button.onclick = () => { void action().catch(error => { feedback.className = "error"; feedback.textContent = error.message; }); };
-          nav.append(button);
-        }
-        container.append(nav, feedback);
-      } });
+    const section = ctx.sourceId === "post" ? "post" : ctx.sourceId === "me" ? "me" : "home";
+    const topLevel = section === "home" ? location.pathname === "/" || feedOptions.some(option => option.path === location.pathname)
+      : section === "post" ? location.pathname === "/submit" || location.pathname === "/login" && new URLSearchParams(location.search).get("goto") === "submit"
+      : ["/", "/news"].includes(location.pathname);
+    if (topLevel) mountSourceNavigation(ctx, section);
+    if (section === "home") mountFeedSelector(ctx);
+    if (section === "me" && ["/", "/news"].includes(location.pathname)) mountAccountHub(ctx);
+    if (section === "post") preservePostDraft(ctx);
     const repository = new BookmarkRepository(backendStorage(ctx)), controls = new Map<string, Control>(), queue = new Set<Control>();
     let running = 0, categoryRead = 0;
     let categoryNames = new Map<string, string>();
@@ -93,3 +88,32 @@ export default defineApplet({
     ctx.onDispose(() => { for (const control of controls.values()) { control.active = false; control.dispose(); } controls.clear(); queue.clear(); });
   }, inspect: inspectTargets,
 });
+
+const feedOptions = [
+  { label: "Top", path: "/news" }, { label: "New", path: "/newest" },
+  { label: "Past", path: "/front" }, { label: "Comments", path: "/newcomments" },
+  { label: "Ask", path: "/ask" }, { label: "Show", path: "/show" },
+  { label: "Jobs", path: "/jobs" },
+];
+function mountFeedSelector(ctx: AppletContext): void {
+  const header = document.querySelector("#hnmain > tbody > tr:first-child > td");
+  if (!header) return;
+  const selected = feedOptions.find(option => option.path === (location.pathname === "/" ? "/news" : location.pathname));
+  if (!selected) return;
+  sessionStorage.setItem("genesis.hn.feed", selected.path);
+  ctx.ui.mountAt("feed-selector", header, { position: "append", css: theme + `
+    :host{display:block;font:14px Verdana,Geneva,sans-serif}.feed-choice{margin:4px 0 12px;position:relative}.feed-choice summary{list-style:none;display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:8px 12px;border-radius:10px;background:var(--wash);font-weight:700;cursor:pointer}.feed-choice summary::-webkit-details-marker{display:none}.feed-choice .options{position:absolute;top:48px;left:0;z-index:100;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 24px #0002;min-width:170px;padding:5px}.feed-choice button{display:block;width:100%;text-align:left;background:transparent;border:0;border-radius:8px;min-height:42px;padding:7px 12px;color:var(--ink);font:inherit}.feed-choice button[aria-current]{color:var(--accent);font-weight:700}`,
+    render(container) {
+      const details = document.createElement("details"); details.className = "feed-choice";
+      const summary = document.createElement("summary"); summary.textContent = `${selected.label} stories  ▾`;
+      const options = document.createElement("div"); options.className = "options";
+      for (const option of feedOptions) {
+        const button = document.createElement("button"); button.type = "button"; button.textContent = option.label;
+        if (option.path === selected?.path) button.setAttribute("aria-current", "page");
+        button.onclick = () => { sessionStorage.setItem("genesis.hn.feed", option.path); void ctx.sources.open("primary", `https://news.ycombinator.com${option.path}`); };
+        options.append(button);
+      }
+      details.append(summary, options); container.append(details);
+    },
+  });
+}
