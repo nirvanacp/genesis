@@ -107,6 +107,7 @@ final class HostViews {
                 return true;
             });
         }
+        popup.getMenu().add("Service connections").setOnMenuItemClickListener(item -> { events.send(event("configureServices")); return true; });
         popup.getMenu().add("Retry customization").setOnMenuItemClickListener(item -> { events.send(event("retry")); return true; });
         popup.getMenu().add("Open ordinary site").setOnMenuItemClickListener(item -> { events.send(event("ordinary")); return true; });
         if ((activity.getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0) {

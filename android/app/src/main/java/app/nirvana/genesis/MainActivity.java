@@ -17,6 +17,7 @@ import org.json.JSONObject;
 public final class MainActivity extends Activity implements NativeBridge.StorageResults {
     private HostViews views;
     private BrowserAdapter browser;
+    private ServiceClient services;
     private boolean attached;
     private String retainedSession;
 
@@ -24,6 +25,7 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
         super.onCreate(savedInstanceState);
         android.webkit.WebView.setWebContentsDebuggingEnabled(false);
         views = new HostViews(this, this::send);
+        services = new ServiceClient(this);
         browser = new BrowserAdapter(this, views, this::send);
         if (Build.VERSION.SDK_INT >= 33) {
             getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
@@ -56,7 +58,7 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
             JSONObject event = HostViews.event("storageCompleted"); event.put("completion", new JSONObject(result)); send(event);
         } catch (JSONException error) { views.error("Storage completion encoding failed"); }
     }
-    private void send(JSONObject event) {
+    void send(JSONObject event) {
         if (Looper.myLooper() != Looper.getMainLooper()) throw new IllegalStateException("UI thread required");
         try {
             if ("back".equals(event.getString("type"))) event.put("canGoBack", browser.canGoBack());
@@ -67,6 +69,8 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
 
     private void execute(JSONObject command) throws Exception {
         switch (command.getString("type")) {
+            case "serviceRequest": services.request(command.getJSONObject("job")); break;
+            case "configureServices": services.configure(command); break;
             case "storageJob": {
                 JSONObject job = command.getJSONObject("job");
                 if (!NativeBridge.enqueueStorage(job.toString())) {
@@ -113,6 +117,7 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
     @Override protected void onPause() { if (attached) send(HostViews.event("suspended")); if (browser != null) browser.pause(); super.onPause(); }
     @Override protected void onResume() { super.onResume(); if (browser != null) browser.resume(); if (attached) send(HostViews.event("resumed")); }
     @Override protected void onDestroy() {
+        if (services != null) services.close();
         NativeBridge.detach(this);
         if (attached) send(HostViews.event("detach"));
         if (browser != null) browser.destroy();

@@ -42,6 +42,7 @@ export interface AppletContext {
   navigation: { onChange(callback: (url: string) => void): Dispose };
   sources: { open(sourceId: string, url?: string): Promise<void> };
   pages: { open(pageId: string): Promise<void> };
+  services: { request<T = unknown>(serviceId: string, request: { path: string; method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"; body?: unknown }): Promise<T> };
   storage: AppletStorage;
   onDispose(callback: Dispose): void;
 }
@@ -100,6 +101,7 @@ export class ManagedRuntime {
       } },
       sources: { open: (sourceId, url) => this.call<void>("sources.open", { sourceId, ...(url ? { url } : {}) }) },
       pages: { open: pageId => this.call<void>("pages.open", { pageId }) },
+      services: { request: (serviceId, request) => this.call("services.request", { serviceId, ...request }) },
       storage: storageApi(call, callback => {
         this.assertActive(); this.storageListeners.add(callback);
         return this.track(() => this.storageListeners.delete(callback));

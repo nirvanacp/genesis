@@ -37,6 +37,8 @@ pub struct Manifest {
     pub pages: Vec<Page>,
     pub actions: Vec<Action>,
     pub capabilities: Vec<String>,
+    #[serde(default)]
+    pub services: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -188,6 +190,10 @@ pub enum HostEvent {
     StorageCompleted {
         completion: StorageCompletion,
     },
+    ConfigureServices,
+    ServiceCompleted {
+        completion: ServiceCompletion,
+    },
     SaveSession,
     Suspended,
     Resumed,
@@ -313,6 +319,15 @@ pub enum HostCommand {
     StorageJob {
         job: StorageJob,
     },
+    ServiceRequest {
+        job: ServiceJob,
+    },
+    ConfigureServices {
+        generation: u64,
+        #[serde(rename = "appletId")]
+        applet_id: String,
+        services: Vec<String>,
+    },
     Diagnostics {
         text: String,
     },
@@ -408,4 +423,27 @@ pub struct StorageCompletion {
     pub applet_id: String,
     pub response: serde_json::Value,
     pub changed: Vec<StorageKey>,
+}
+
+// Opaque service bodies belong to the applet. The host only validates transport.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceJob {
+    pub generation: u64,
+    pub document_id: DocumentId,
+    pub channel: u64,
+    pub request_id: String,
+    pub applet_id: String,
+    pub service_id: String,
+    pub path: String,
+    pub method: String,
+    pub body: Option<serde_json::Value>,
+}
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceCompletion {
+    pub generation: u64,
+    pub document_id: DocumentId,
+    pub channel: u64,
+    pub response: serde_json::Value,
 }
