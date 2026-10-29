@@ -1,3 +1,4 @@
+import { backendStorage } from "./backend";
 import { defineApplet, type ElementBinding, type Dispose } from "@genesis/sdk";
 import theme from "./theme.css";
 import sourceCss from "./source.css";
@@ -26,7 +27,7 @@ export default defineApplet({
         }
         container.append(nav, feedback);
       } });
-    const repository = new BookmarkRepository(ctx.storage), controls = new Map<string, Control>(), queue = new Set<Control>();
+    const repository = new BookmarkRepository(backendStorage(ctx)), controls = new Map<string, Control>(), queue = new Set<Control>();
     let running = 0, categoryRead = 0;
     let categoryNames = new Map<string, string>();
     const pump = () => {
@@ -49,7 +50,7 @@ export default defineApplet({
     const refresh = (control: Control) => { control.revision++; queue.add(control); pump(); };
     const reloadCategories = () => {
       const version = ++categoryRead;
-      void new CategoryRepository(ctx.storage).read().then(snapshot => {
+      void new CategoryRepository(backendStorage(ctx)).read().then(snapshot => {
         if (ctx.signal.aborted || version !== categoryRead) return;
         categoryNames = new Map(snapshot.categories.map(category => [category.value.id, category.value.name]));
         for (const control of controls.values()) refresh(control);
@@ -85,7 +86,7 @@ export default defineApplet({
         else if (control) refresh(control);
       }, leave: remove,
     });
-    ctx.storage.onChanged(change => {
+    backendStorage(ctx).onChanged(change => {
       if (change.changes.some(c => c.collection === "categories")) reloadCategories();
       for (const control of controls.values()) if (change.changes.some(c => c.collection === "bookmarks" && c.key === bookmarkKey(control.binding.contentKey))) refresh(control);
     });

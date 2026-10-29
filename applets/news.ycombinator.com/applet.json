@@ -3,14 +3,35 @@
   "id": "hn-bookmarks",
   "name": "Hacker News with Genesis bookmarks",
   "dataSchemaVersion": 1,
-  "sources": [{
-    "id": "primary",
-    "startUrl": "https://news.ycombinator.com/",
-    "origins": ["https://news.ycombinator.com"],
-    "entry": "src/main.ts",
-    "navigationRules": []
-  }],
-  "pages": [{ "id": "library", "entry": "src/library.tsx" }],
-  "actions": [{ "id": "library", "label": "Genesis bookmarks", "pageId": "library" }],
-  "capabilities": ["dom", "storage"]
+  "sources": [
+    {
+      "id": "primary",
+      "startUrl": "https://news.ycombinator.com/",
+      "origins": [
+        "https://news.ycombinator.com"
+      ],
+      "entry": "src/main.ts",
+      "navigationRules": []
+    }
+  ],
+  "pages": [
+    {
+      "id": "library",
+      "entry": "src/library.tsx"
+    }
+  ],
+  "actions": [
+    {
+      "id": "library",
+      "label": "Genesis bookmarks",
+      "pageId": "library"
+    }
+  ],
+  "capabilities": [
+    "dom",
+    "services"
+  ],
+  "services": [
+    "bookmarks"
+  ]
 }

@@ -1,3 +1,4 @@
+import { backendStorage } from "./backend";
 import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { definePage, type AppletContext, type StoredDocument } from "@genesis/sdk";
@@ -31,7 +32,7 @@ function Library({ context }: { context: AppletContext }) {
   const load = async (snapshot: CategorySnapshot, after: string | undefined, replace: boolean, id: number, controller: AbortController) => {
     setLoading(true); setScanned(0); setMessage("");
     try {
-      const page = await readBookmarkPage(context.storage, snapshot, filter, after, controller.signal,
+      const page = await readBookmarkPage(backendStorage(context), snapshot, filter, after, controller.signal,
         count => { if (current(id, controller)) setScanned(count); });
       if (!current(id, controller)) return;
       setRows(previous => replace ? page.entries : [...previous, ...page.entries]);
@@ -42,7 +43,7 @@ function Library({ context }: { context: AppletContext }) {
       else setMessage((error as Error).message);
     } finally { if (current(id, controller)) setLoading(false); }
   };
-  useEffect(() => context.storage.onChanged(change => {
+  useEffect(() => backendStorage(context).onChanged(change => {
     if (change.changes.some(item => ["bookmarks", "bookmark-order", "categories", "category-meta", "category-names"].includes(item.collection))) {
       active.current?.abort(); request.current++; setVersion(value => value + 1);
     }
@@ -51,7 +52,7 @@ function Library({ context }: { context: AppletContext }) {
     active.current?.abort(); const controller = new AbortController(); active.current = controller;
     const id = ++request.current;
     setRows([]); setCursor(undefined); setDone(false); setScanned(0); setMissing(0); setLoading(true); setMessage("");
-    void new CategoryRepository(context.storage).read().then(async snapshot => {
+    void new CategoryRepository(backendStorage(context)).read().then(async snapshot => {
       if (!current(id, controller)) return;
       setCategories(snapshot);
       if (filter !== "all" && filter !== "uncategorized" && !snapshot.categories.some(category => category.value.id === filter)) {
@@ -82,7 +83,7 @@ function Library({ context }: { context: AppletContext }) {
   return <><style>{theme}{sharedCss}{libraryCss}</style><main className="library">
     <header><h1>{section === "categories" ? "Categories" : filter === "all" ? "Saved" : filter === "uncategorized" ? "Uncategorized" : categories?.categories.find(c => c.value.id === filter)?.value.name ?? "Saved"}</h1>
       <button className="manage-link" onClick={() => setSection(section === "saved" ? "categories" : "saved")}>{section === "saved" ? "Manage categories" : "Back to saved"}</button>
-      <p className="muted">Saved on this device · Available offline</p></header>
+      <p className="muted">Saved on your connected backend · Network required</p></header>
     {section === "saved" && <label className="search"><Icon name="search" /><input type="search" aria-label="Filter loaded stories" placeholder="Filter loaded stories" value={query} onChange={event => setQuery(event.target.value)} /></label>}
     {section === "saved" && <div className="folder-grid" aria-label="Categories">
       {sortedCategories.map(record => <button className="folder-card" key={record.value.id} onClick={() => { selectFilter(record.value.id); setSection("saved"); setQuery(""); }}>
