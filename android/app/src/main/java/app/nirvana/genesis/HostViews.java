@@ -32,7 +32,7 @@ final class HostViews {
     interface Events { void send(JSONObject event); }
     final FrameLayout browserSlot;
     private final Activity activity;
-    private final int paper, ink, wash;
+    private final int paper, ink, wash, accent;
     private final Events events;
     private final FrameLayout content;
     private final ScrollView cover;
@@ -63,6 +63,7 @@ final class HostViews {
         this.activity = activity; this.events = events;
         boolean dark = (activity.getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES;
         paper = Color.parseColor(dark ? "#1d1b18" : "#faf7f2");
+        accent = Color.parseColor(dark ? "#ff995f" : "#b93800");
         ink = Color.parseColor(dark ? "#f5eee4" : "#24211c");
         wash = Color.parseColor(dark ? "#363027" : "#f3e9dc");
         content = new FrameLayout(activity); content.setBackgroundColor(paper);
@@ -173,13 +174,29 @@ final class HostViews {
         for (int i = 0; i < entries.length(); i++) {
             JSONObject entry = entries.getJSONObject(i);
             Button tab = button(entry.getString("label"), () -> events.send(open(entry.optString("sourceId"), entry.isNull("pageId") ? null : entry.optString("pageId"), null)));
-            tab.setTextSize(12); tab.setPadding(0, 0, 0, 0); tab.setElevation(0);
+            tab.setTextSize(11); tab.setPadding(0, dp(4), 0, dp(4)); tab.setGravity(Gravity.CENTER); tab.setElevation(0);
             tab.setBackgroundTintList(null); tab.setBackgroundColor(paper);
             boolean selected = pageId.isEmpty() ? (entry.isNull("pageId") || entry.optString("pageId").isEmpty()) && sourceId.equals(entry.optString("sourceId")) : pageId.equals(entry.optString("pageId"));
-            tab.setSelected(selected); tab.setTextColor(selected ? Color.rgb(185,56,0) : ink); tab.setTypeface(null, selected ? Typeface.BOLD : Typeface.NORMAL); tab.setContentDescription(entry.getString("label") + (selected ? ", selected" : ""));
+            tab.setSelected(selected); tab.setTextColor(selected ? accent : ink); tab.setTypeface(null, selected ? Typeface.BOLD : Typeface.NORMAL); tab.setContentDescription(entry.getString("label") + (selected ? ", selected" : ""));
+            int iconResource = sectionIcon(entry.optString("icon"));
+            if (iconResource != 0) {
+                android.graphics.drawable.Drawable icon = activity.getDrawable(iconResource).mutate();
+                icon.setTint(selected ? accent : ink); icon.setBounds(0, 0, dp(22), dp(22));
+                tab.setCompoundDrawables(null, icon, null, null); tab.setCompoundDrawablePadding(dp(3));
+            }
             sections.addView(tab, new LinearLayout.LayoutParams(0, dp(56), 1));
         }
         content.addView(sections, new FrameLayout.LayoutParams(-1, dp(56), Gravity.BOTTOM));
+    }
+    private int sectionIcon(String name) {
+        switch (name) {
+            case "home": return R.drawable.ic_section_home;
+            case "search": return R.drawable.ic_section_search;
+            case "post": return R.drawable.ic_section_post;
+            case "bookmark": return R.drawable.ic_section_bookmark;
+            case "person": return R.drawable.ic_section_person;
+            default: return 0;
+        }
     }
     private JSONObject open(String source, String page, String url) {
         JSONObject event = event("open");

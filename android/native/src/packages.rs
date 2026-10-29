@@ -128,6 +128,9 @@ pub fn validate(index: &PackageIndex) -> Result<(), String> {
                     !identifier(&s.id)
                         || !sections.insert(&s.id)
                         || s.label.is_empty()
+                        || s.icon.as_ref().is_some_and(|i| {
+                            !["home", "search", "post", "bookmark", "person"].contains(&i.as_str())
+                        })
                         || !sources.contains(&s.source_id)
                         || s.page_id.as_ref().is_some_and(|p| !pages.contains(p))
                 })
