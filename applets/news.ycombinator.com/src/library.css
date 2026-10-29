@@ -60,7 +60,7 @@ header {
 summary {
   cursor:pointer;
   font-weight:600;
-  min-height:44px;
+  min-height:48px;
   display:flex;
   align-items:center;
 }
@@ -95,6 +95,9 @@ summary {
   margin:0 0 8px;
 }
 .story-link {
+  display:block;
+  color:var(--ink);
+  text-decoration:none;
   border:0;
   padding:0;
   background:transparent;
@@ -132,11 +135,11 @@ summary {
   border-radius:12px;
   font-size:.8125rem;
 }
-.remove-prompt button { min-height:44px; }
+.remove-prompt button { min-height:48px; }
 .remove-prompt button:first-of-type { color:var(--danger); }
 .story-card .row-actions button {
   font-size:.8125rem;
-  min-height:44px;
+  min-height:48px;
   padding:8px 12px;
   background:transparent;
 }
@@ -149,51 +152,6 @@ summary {
 .empty h2 {
   font-size:1.5rem;
 }
-.bottom-nav {
-  position:fixed;
-  z-index:20;
-  bottom:0;
-  left:0;
-  right:0;
-  display:flex;
-  justify-content:space-around;
-  background:var(--card);
-  border-top:1px solid var(--line);
-  padding:6px 12px calc(6px + env(safe-area-inset-bottom));
-  gap:8px;
-}
-.bottom-nav button {
-  display:flex;
-  flex:1;
-  max-width:180px;
-  flex-direction:column;
-  align-items:center;
-  justify-content:center;
-  gap:4px;
-  min-height:56px;
-  background:transparent;
-  border:0;
-  color:var(--muted);
-  font:600 .6875rem Verdana,Geneva,sans-serif;
-  padding:4px;
-}
-.bottom-nav button[aria-current=page] {
-  color:var(--accent);
-}
-.bottom-nav button[aria-current=page] svg {
-  fill:var(--wash);
-}
-@media(min-width:650px) {
-  .library {
-    padding-top:18px;
-  }
-}
-@media(max-width:340px) {
-  .library {
-    padding-left:12px;
-    padding-right:12px;
-  }
-}
 .manage-link {
   background:transparent;
   border:0;
@@ -201,7 +159,7 @@ summary {
   display:block;
   margin:0 0 8px;
   font-size:.8125rem;
-  min-height:36px;
+  min-height:48px;
   padding:6px 0;
 }
 .story-card .row-actions button {
@@ -212,7 +170,9 @@ summary {
   color: var(--ink);
   min-height: 100vh;
 }
-.library header .muted{font-size:.8125rem;margin:4px 0}.library .stories .story-link{min-height:36px}
+.library header .muted{font-size:.8125rem;margin:4px 0}.library .stories .story-link{min-height:48px}
 .filter-note{font-size:.75rem;color:var(--muted);margin:0 0 8px}
 
 @media(max-width:359px){.library{padding:12px}}
+
+.story-link:hover{text-decoration:underline}.story-card{cursor:pointer}

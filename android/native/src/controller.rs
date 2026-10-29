@@ -180,6 +180,12 @@ impl HostState {
                 page_id,
             } => {
                 self.qualification = None;
+                if url.is_some()
+                    && let Some(view) = &self.active
+                    && view.selection.page_id.is_some()
+                {
+                    self.pending_opener = Some(view.selection.clone());
+                }
                 self.open(
                     Selection {
                         applet_id: AppletId(applet_id),
