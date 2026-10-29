@@ -29,6 +29,9 @@ import org.json.JSONObject;
 
 /** Native Apps launcher and floating host controls, independent of creator UI. */
 final class HostViews {
+    private static final int APP_HEADER_HEIGHT = 68;
+    private static final int SECTION_BAR_HEIGHT = 64;
+    private static final int READER_BAR_HEIGHT = 56;
     interface Events { void send(JSONObject event); }
     final FrameLayout browserSlot;
     private final Activity activity;
@@ -42,7 +45,7 @@ final class HostViews {
     private final ImageButton floatingMenu;
     private final LinearLayout readerBar;
     private final TextView readerOrigin;
-    private final Button readerBack, readerForward;
+    private final ImageButton readerBack, readerForward;
     private final ProgressBar pageProgress;
     private String readerUrl = "";
     private PopupMenu activeMenu;
@@ -50,11 +53,13 @@ final class HostViews {
     private String presentationState = "loading", presentationMessage = "";
     private boolean fullscreen;
     private boolean readerVisible;
+    private boolean appletActive;
     private JSONObject shell;
     private String appletId, sourceId, pageId;
     private LinearLayout appHeader, sections;
     private TextView brand;
-    private Button appBack, choices;
+    private ImageButton appBack;
+    private Button choices;
     private boolean customizedRoute, detailRoute;
 
 
@@ -67,6 +72,7 @@ final class HostViews {
         ink = Color.parseColor(dark ? "#f5eee4" : "#24211c");
         wash = Color.parseColor(dark ? "#363027" : "#f3e9dc");
         content = new FrameLayout(activity); content.setBackgroundColor(paper);
+        content.addOnLayoutChangeListener((v, l, t, r, b, oldL, oldT, oldR, oldB) -> alignHeaderInsets());
         content.setSystemUiVisibility(dark ? 0 : View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
         content.setOnApplyWindowInsetsListener((view, insets) -> {
             if (Build.VERSION.SDK_INT >= 30) {
@@ -79,21 +85,18 @@ final class HostViews {
 
         readerBar = new LinearLayout(activity); readerBar.setGravity(Gravity.CENTER_VERTICAL);
         readerBar.setPadding(dp(8), 0, dp(8), 0); readerBar.setBackgroundColor(paper);
-        readerBack = button("‹", () -> events.send(event("back")));
-        readerBack.setContentDescription("Back"); readerBack.setMinWidth(dp(48));
-        readerForward = button("›", () -> events.send(event("forward")));
-        readerForward.setContentDescription("Forward"); readerForward.setMinWidth(dp(48));
-        Button close = button("×", () -> events.send(event("readerClose")));
-        close.setContentDescription("Close reader"); close.setMinWidth(dp(48));
+        readerBack = iconButton(R.drawable.ic_nav_back, "Back", () -> events.send(event("back")));
+        readerForward = iconButton(R.drawable.ic_nav_forward, "Forward", () -> events.send(event("forward")));
+        ImageButton close = iconButton(R.drawable.ic_nav_close, "Close reader", () -> events.send(event("readerClose")));
         readerOrigin = text("", 14); readerOrigin.setSingleLine(true); readerOrigin.setEllipsize(android.text.TextUtils.TruncateAt.END);
         readerBar.addView(readerBack, new LinearLayout.LayoutParams(dp(48), dp(48)));
         readerBar.addView(readerForward, new LinearLayout.LayoutParams(dp(48), dp(48)));
         readerBar.addView(readerOrigin, new LinearLayout.LayoutParams(0, -2, 1));
         readerBar.addView(close, new LinearLayout.LayoutParams(dp(48), dp(48)));
-        Button more = button("⋮", () -> readerMenu()); more.setContentDescription("Reader options");
+        ImageButton more = iconButton(R.drawable.ic_nav_more, "Reader options", () -> readerMenu());
         readerBar.addView(more, new LinearLayout.LayoutParams(dp(48), dp(48)));
         readerBar.setVisibility(View.GONE);
-        content.addView(readerBar, new FrameLayout.LayoutParams(-1, dp(52), Gravity.TOP));
+        content.addView(readerBar, new FrameLayout.LayoutParams(-1, dp(READER_BAR_HEIGHT), Gravity.TOP));
         pageProgress = new ProgressBar(activity, null, android.R.attr.progressBarStyleHorizontal);
         pageProgress.setMax(100); pageProgress.setIndeterminate(true); pageProgress.setVisibility(View.GONE);
         FrameLayout.LayoutParams progressLayout = new FrameLayout.LayoutParams(-1, dp(3), Gravity.TOP);
@@ -109,7 +112,7 @@ final class HostViews {
         recovery.addView(button("Retry", () -> events.send(event("retry"))));
         recovery.addView(button("Back", () -> events.send(event("back"))));
         recovery.addView(button("View original page", () -> events.send(event("ordinary"))));
-        recovery.addView(button("Return to Apps", () -> events.send(event("home"))));
+        recovery.addView(button("Return to Genesis", () -> events.send(event("home"))));
         notice.addView(recovery);
         siteRecovery = new LinearLayout(activity); siteRecovery.setOrientation(LinearLayout.VERTICAL);
         siteRecovery.addView(button("Retry page", () -> events.send(event("reload"))));
@@ -130,13 +133,13 @@ final class HostViews {
         floatingMenu.setBackground(new RippleDrawable(ColorStateList.valueOf(0x40ffffff), circle, null));
         floatingMenu.setOnClickListener(view -> menu());
         FrameLayout.LayoutParams floating = new FrameLayout.LayoutParams(dp(56), dp(56), Gravity.BOTTOM | Gravity.RIGHT);
-        // Keep the temporary host control above app bottom navigation.
-        floating.setMargins(dp(16), dp(16), dp(16), dp(104));
+        floating.setMargins(dp(16), dp(16), dp(16), dp(16));
         content.addView(floatingMenu, floating); floatingMenu.setVisibility(View.GONE);
         activity.setContentView(content);
     }
 
     void configureShell(JSONObject command, PackageAssets assets) throws Exception {
+        appletActive = true;
         JSONObject manifest = command.getJSONObject("package").getJSONObject("manifest");
         shell = manifest.optJSONObject("shell"); appletId = manifest.getString("id");
         JSONObject binding = command.getJSONObject("context").getJSONObject("binding");
@@ -147,46 +150,59 @@ final class HostViews {
         if (sections != null) content.removeView(sections);
         if (shell == null) return;
         appHeader = new LinearLayout(activity); appHeader.setGravity(Gravity.CENTER_VERTICAL); appHeader.setBackgroundColor(paper);
-        appHeader.setPadding(dp(8), 0, dp(8), 0);
-        appBack = button("‹", () -> events.send(event("back"))); appBack.setContentDescription("Back");
-        appHeader.addView(appBack, new LinearLayout.LayoutParams(dp(48), dp(52)));
+        appBack = iconButton(R.drawable.ic_nav_back, "Back", () -> events.send(event("back")));
+        LinearLayout.LayoutParams backLayout = new LinearLayout.LayoutParams(dp(48), dp(48));
+        backLayout.setMarginEnd(dp(4)); appHeader.addView(appBack, backLayout);
         android.widget.ImageView logo = new android.widget.ImageView(activity);
         byte[] bytes = assets.bytes(shell.getString("brandAsset"));
         logo.setImageBitmap(android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.length));
         logo.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         appHeader.addView(logo, new LinearLayout.LayoutParams(dp(28), dp(28)));
-        brand = text(shell.getString("title"), 17); brand.setTypeface(null, Typeface.BOLD); brand.setPadding(dp(8), 0, 0, 0);
+        brand = text(shell.getString("title"), 17); brand.setTypeface(null, Typeface.BOLD); brand.setPadding(dp(10), 0, dp(8), 0);
+        brand.setSingleLine(true); brand.setEllipsize(android.text.TextUtils.TruncateAt.END);
         brand.setOnLongClickListener(v -> { menu(); return true; });
         appHeader.addView(brand, new LinearLayout.LayoutParams(0, -2, 1));
-        choices = button("Top ▾", () -> {
+        choices = button("Top", () -> {
             PopupMenu popup = new PopupMenu(activity, choices, Gravity.END);
             JSONArray items = shell.optJSONArray("choices");
             if (items != null) for (int i = 0; i < items.length(); i++) {
                 JSONObject choice = items.optJSONObject(i);
-                popup.getMenu().add(choice.optString("label")).setOnMenuItemClickListener(item -> { events.send(open(sourceId, null, choice.optString("url"))); return true; });
+                String label = choice.optString("label");
+                popup.getMenu().add(0, i, i, label).setCheckable(true).setChecked(label.contentEquals(choices.getText()))
+                    .setOnMenuItemClickListener(item -> { events.send(open(sourceId, null, choice.optString("url"))); return true; });
             }
+            popup.getMenu().setGroupCheckable(0, true, true);
             popup.show();
         });
-        appHeader.addView(choices, new LinearLayout.LayoutParams(-2, dp(52)));
-        content.addView(appHeader, new FrameLayout.LayoutParams(-1, dp(56), Gravity.TOP));
+        choices.setTextSize(13); choices.setTypeface(null, Typeface.BOLD); choices.setSingleLine(true);
+        choices.setPadding(dp(14), 0, dp(12), 0); choices.setCompoundDrawablePadding(dp(6));
+        android.graphics.drawable.Drawable chevron = activity.getDrawable(R.drawable.ic_nav_expand).mutate();
+        chevron.setTint(ink); chevron.setBounds(0, 0, dp(18), dp(18));
+        choices.setCompoundDrawablesRelative(null, null, chevron, null);
+        styleChromeControl(choices, wash, 24);
+        appHeader.addView(choices, new LinearLayout.LayoutParams(-2, dp(48)));
+        content.addView(appHeader, new FrameLayout.LayoutParams(-1, dp(APP_HEADER_HEIGHT), Gravity.TOP));
+        alignHeaderInsets();
         sections = new LinearLayout(activity); sections.setBackgroundColor(paper);
+        sections.setPadding(dp(8), dp(4), dp(8), dp(4));
         JSONArray entries = shell.optJSONArray("sections");
         for (int i = 0; i < entries.length(); i++) {
             JSONObject entry = entries.getJSONObject(i);
             Button tab = button(entry.getString("label"), () -> events.send(open(entry.optString("sourceId"), entry.isNull("pageId") ? null : entry.optString("pageId"), null)));
-            tab.setTextSize(11); tab.setPadding(0, dp(4), 0, dp(4)); tab.setGravity(Gravity.CENTER); tab.setElevation(0);
-            tab.setBackgroundTintList(null); tab.setBackgroundColor(paper);
+            tab.setTextSize(11); tab.setPadding(0, dp(4), 0, dp(4)); tab.setGravity(Gravity.CENTER); tab.setSingleLine(true);
             boolean selected = pageId.isEmpty() ? (entry.isNull("pageId") || entry.optString("pageId").isEmpty()) && sourceId.equals(entry.optString("sourceId")) : pageId.equals(entry.optString("pageId"));
             tab.setSelected(selected); tab.setTextColor(selected ? accent : ink); tab.setTypeface(null, selected ? Typeface.BOLD : Typeface.NORMAL); tab.setContentDescription(entry.getString("label") + (selected ? ", selected" : ""));
+            styleChromeControl(tab, selected ? wash : Color.TRANSPARENT, 16);
             int iconResource = sectionIcon(entry.optString("icon"));
             if (iconResource != 0) {
                 android.graphics.drawable.Drawable icon = activity.getDrawable(iconResource).mutate();
                 icon.setTint(selected ? accent : ink); icon.setBounds(0, 0, dp(22), dp(22));
                 tab.setCompoundDrawables(null, icon, null, null); tab.setCompoundDrawablePadding(dp(3));
             }
-            sections.addView(tab, new LinearLayout.LayoutParams(0, dp(56), 1));
+            LinearLayout.LayoutParams tabLayout = new LinearLayout.LayoutParams(0, -1, 1);
+            tabLayout.setMargins(dp(2), 0, dp(2), 0); sections.addView(tab, tabLayout);
         }
-        content.addView(sections, new FrameLayout.LayoutParams(-1, dp(56), Gravity.BOTTOM));
+        content.addView(sections, new FrameLayout.LayoutParams(-1, dp(SECTION_BAR_HEIGHT), Gravity.BOTTOM));
     }
     private int sectionIcon(String name) {
         switch (name) {
@@ -205,13 +221,17 @@ final class HostViews {
         return event;
     }
     void route(boolean customized, boolean detail) { customizedRoute = customized; detailRoute = detail; }
-    void modal(boolean open) { if (sections != null) for (int i = 0; i < sections.getChildCount(); i++) sections.getChildAt(i).setEnabled(!open); }
+    void modal(boolean open) {
+        floatingMenu.setEnabled(!open);
+        if (sections != null) for (int i = 0; i < sections.getChildCount(); i++) sections.getChildAt(i).setEnabled(!open);
+    }
     void reveal() {
         cover.setVisibility(View.GONE);
         browserSlot.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);
     }
     void launcher(JSONArray entries, String message) throws JSONException {
-        dismissMenu(); fullscreen = false; readerVisible = false;
+        dismissMenu(); fullscreen = false; readerVisible = false; appletActive = false;
+        floatingMenu.setEnabled(true);
         if (appHeader != null) appHeader.setVisibility(View.GONE);
         if (sections != null) sections.setVisibility(View.GONE);
         readerBar.setVisibility(View.GONE); pageProgress.setVisibility(View.GONE); browserSlot.setPadding(0, 0, 0, 0);
@@ -249,13 +269,13 @@ final class HostViews {
         if (blocking) cover.setVisibility(View.VISIBLE);
         // Hide the underlying document from accessibility while a blocking notice is visible.
         browserSlot.setImportantForAccessibility(blocking ? View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS : View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);
-        floatingMenu.setVisibility(fullscreen || readerVisible || shell != null ? View.GONE : View.VISIBLE); floatingMenu.bringToFront();
+        updateFloatingMenu();
     }
     void fullscreen(View view) {
         dismissMenu(); fullscreen = true; floatingMenu.setVisibility(View.GONE);
         content.addView(view, new FrameLayout.LayoutParams(-1, -1));
     }
-    void exitFullscreen(View view) { content.removeView(view); fullscreen = false; floatingMenu.setVisibility(readerVisible || shell != null ? View.GONE : View.VISIBLE); floatingMenu.bringToFront(); }
+    void exitFullscreen(View view) { content.removeView(view); fullscreen = false; updateFloatingMenu(); }
     void diagnostics(String value) {
         TextView body = text(value, 16); body.setTextIsSelectable(true); body.setPadding(dp(24), dp(16), dp(24), dp(16));
         ScrollView scroll = new ScrollView(activity); scroll.addView(body);
@@ -278,12 +298,28 @@ final class HostViews {
         if (app && choices != null) {
             choices.setVisibility(!detailRoute && pageId.isEmpty() && sourceId.equals(shell.optJSONArray("sections").optJSONObject(0).optString("sourceId")) ? View.VISIBLE : View.GONE);
             JSONArray items = shell.optJSONArray("choices");
-            if (items != null) for (int i = 0; i < items.length(); i++) { JSONObject item = items.optJSONObject(i); if (Uri.parse(item.optString("url")).getPath().equals(Uri.parse(url).getPath())) choices.setText(item.optString("label") + " ▾"); }
+            if (items != null) for (int i = 0; i < items.length(); i++) { JSONObject item = items.optJSONObject(i); if (Uri.parse(item.optString("url")).getPath().equals(Uri.parse(url).getPath())) {
+                choices.setText(item.optString("label")); choices.setContentDescription("Feed: " + item.optString("label") + ". Choose feed");
+            } }
         }
-        browserSlot.setPadding(0, app ? dp(56) : reader ? dp(52) : 0, 0, app ? dp(56) : 0);
-        FrameLayout.LayoutParams bounds = (FrameLayout.LayoutParams) cover.getLayoutParams(); bounds.topMargin = app ? dp(56) : reader ? dp(52) : 0; bounds.bottomMargin = app ? dp(56) : 0; cover.setLayoutParams(bounds);
-        floatingMenu.setVisibility(fullscreen || reader || shell != null ? View.GONE : View.VISIBLE);
-        readerBar.bringToFront(); pageProgress.bringToFront(); floatingMenu.bringToFront();
+        browserSlot.setPadding(0, app ? dp(APP_HEADER_HEIGHT) : reader ? dp(READER_BAR_HEIGHT) : 0, 0, app ? dp(SECTION_BAR_HEIGHT) : 0);
+        FrameLayout.LayoutParams bounds = (FrameLayout.LayoutParams) cover.getLayoutParams(); bounds.topMargin = app ? dp(APP_HEADER_HEIGHT) : reader ? dp(READER_BAR_HEIGHT) : 0; bounds.bottomMargin = app ? dp(SECTION_BAR_HEIGHT) : 0; cover.setLayoutParams(bounds);
+        readerBar.bringToFront(); pageProgress.bringToFront(); updateFloatingMenu();
+    }
+    private void alignHeaderInsets() {
+        if (appHeader == null) return;
+        int available = content.getWidth() - content.getPaddingLeft() - content.getPaddingRight();
+        int gutter = available > 0 && available < dp(360) ? dp(12) : dp(16);
+        // Align with the applet's centered 760dp reading column and 16dp page gutter.
+        int inset = Math.max(gutter, (available - dp(760)) / 2);
+        if (appHeader.getPaddingLeft() != inset) appHeader.setPadding(inset, 0, inset, 0);
+    }
+    private void updateFloatingMenu() {
+        floatingMenu.setVisibility(!appletActive || fullscreen || readerVisible ? View.GONE : View.VISIBLE);
+        FrameLayout.LayoutParams bounds = (FrameLayout.LayoutParams) floatingMenu.getLayoutParams();
+        int bottom = dp(shell != null && !readerVisible ? SECTION_BAR_HEIGHT + 16 : 16);
+        if (bounds.bottomMargin != bottom) { bounds.bottomMargin = bottom; floatingMenu.setLayoutParams(bounds); }
+        floatingMenu.bringToFront();
     }
     void pageLoading(int progress) {
         pageProgress.setVisibility(progress >= 100 ? View.GONE : View.VISIBLE);
@@ -305,7 +341,7 @@ final class HostViews {
         popup.getMenu().add("Copy link").setOnMenuItemClickListener(item -> { events.send(event("copyLink")); return true; });
         popup.getMenu().add("Share link").setOnMenuItemClickListener(item -> { events.send(event("shareLink")); return true; });
         popup.getMenu().add("Open in browser").setOnMenuItemClickListener(item -> { events.send(event("openBrowser")); return true; });
-        popup.getMenu().add("Return to Apps").setOnMenuItemClickListener(item -> { events.send(event("home")); return true; });
+        popup.getMenu().add("Return to Genesis").setOnMenuItemClickListener(item -> { events.send(event("home")); return true; });
         popup.show();
     }
     private void dismissMenu() { if (activeMenu != null) { activeMenu.dismiss(); activeMenu = null; } }
@@ -313,7 +349,7 @@ final class HostViews {
         dismissMenu(); PopupMenu popup = new PopupMenu(activity, floatingMenu, Gravity.END); activeMenu = popup;
         popup.setOnDismissListener(value -> { if (activeMenu == popup) activeMenu = null; });
         Menu menu = popup.getMenu();
-        menu.add("Return to Apps").setOnMenuItemClickListener(item -> { events.send(event("home")); return true; });
+        menu.add("Return to Genesis").setOnMenuItemClickListener(item -> { events.send(event("home")); return true; });
         menu.add("Back").setOnMenuItemClickListener(item -> { events.send(event("back")); return true; });
         menu.add("Reload").setOnMenuItemClickListener(item -> { events.send(event("reload")); return true; });
         if (actions.length() > 0) {
@@ -341,6 +377,19 @@ final class HostViews {
         popup.show();
     }
     private int dp(int value) { return Math.round(value * activity.getResources().getDisplayMetrics().density); }
+    private void styleChromeControl(View view, int fill, int radius) {
+        view.setElevation(0); view.setStateListAnimator(null); view.setBackgroundTintList(null);
+        GradientDrawable shape = new GradientDrawable(); shape.setColor(fill); shape.setCornerRadius(dp(radius));
+        GradientDrawable mask = new GradientDrawable(); mask.setColor(Color.WHITE); mask.setCornerRadius(dp(radius));
+        view.setBackground(new RippleDrawable(ColorStateList.valueOf((accent & 0x00ffffff) | 0x20000000), shape, mask));
+    }
+    private ImageButton iconButton(int resource, String label, Runnable action) {
+        ImageButton button = new ImageButton(activity); button.setImageResource(resource);
+        button.setContentDescription(label); button.setTooltipText(label); button.setPadding(dp(12), dp(12), dp(12), dp(12));
+        button.setImageTintList(new ColorStateList(new int[][] {new int[] {-android.R.attr.state_enabled}, new int[] {}},
+            new int[] {(ink & 0x00ffffff) | 0x60000000, ink}));
+        styleChromeControl(button, Color.TRANSPARENT, 24); button.setOnClickListener(view -> action.run()); return button;
+    }
     private TextView text(String value, int size) { TextView text = new TextView(activity); text.setText(value); text.setTextSize(size); text.setTextColor(ink); return text; }
     private Button button(String label, Runnable action) {
         Button button = new Button(activity); button.setText(label); button.setAllCaps(false); button.setTextSize(16);
