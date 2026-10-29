@@ -23,6 +23,7 @@ final class HostViews {
     interface Events { void send(JSONObject event); }
     final FrameLayout browserSlot;
     private final Activity activity;
+    private final int paper, ink, wash;
     private final Events events;
     private final TextView status;
     private final TextView cover;
@@ -33,7 +34,12 @@ final class HostViews {
     @SuppressWarnings("deprecation")
     HostViews(Activity activity, Events events) {
         this.activity = activity; this.events = events;
-        LinearLayout root = new LinearLayout(activity); root.setOrientation(LinearLayout.VERTICAL); root.setBackgroundColor(Color.WHITE);
+        boolean dark = (activity.getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES;
+        paper = Color.parseColor(dark ? "#1d1b18" : "#faf7f2");
+        ink = Color.parseColor(dark ? "#f5eee4" : "#24211c");
+        wash = Color.parseColor(dark ? "#363027" : "#f3e9dc");
+        LinearLayout root = new LinearLayout(activity); root.setOrientation(LinearLayout.VERTICAL); root.setBackgroundColor(paper);
+        root.setSystemUiVisibility(dark ? 0 : View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
         root.setOnApplyWindowInsetsListener((view, insets) -> {
             if (Build.VERSION.SDK_INT >= 30) {
                 android.graphics.Insets bars = insets.getInsets(WindowInsets.Type.systemBars()); view.setPadding(bars.left, bars.top, bars.right, bars.bottom);
@@ -45,8 +51,12 @@ final class HostViews {
         toolbar.addView(button("Back", () -> events.send(event("back"))));
         toolbar.addView(button("Reload", () -> events.send(event("reload"))));
         Button menu = button("Menu", () -> {}); menu.setOnClickListener(view -> menu(menu)); toolbar.addView(menu);
+        toolbar.setPadding(8, 4, 8, 4);
+        for (int i = 0; i < toolbar.getChildCount(); i++) {
+            toolbar.getChildAt(i).setLayoutParams(new LinearLayout.LayoutParams(0, -2, 1));
+        }
         root.addView(toolbar);
-        status = new TextView(activity); status.setPadding(16, 8, 16, 8); status.setTextColor(Color.DKGRAY); root.addView(status);
+        status = new TextView(activity); status.setPadding(16, 8, 16, 8); status.setTextColor(ink); root.addView(status);
         recovery = new LinearLayout(activity);
         recovery.addView(button("Retry", () -> events.send(event("retry"))));
         recovery.addView(button("Open ordinary site", () -> events.send(event("ordinary"))));
@@ -54,13 +64,13 @@ final class HostViews {
         content = new FrameLayout(activity);
         browserSlot = new FrameLayout(activity); content.addView(browserSlot, new FrameLayout.LayoutParams(-1, -1));
         cover = new TextView(activity); cover.setGravity(Gravity.CENTER); cover.setPadding(24, 24, 24, 24);
-        cover.setTextColor(Color.DKGRAY); cover.setBackgroundColor(Color.WHITE); cover.setClickable(true); cover.setVisibility(View.GONE);
+        cover.setTextColor(ink); cover.setBackgroundColor(paper); cover.setClickable(true); cover.setVisibility(View.GONE);
         content.addView(cover, new FrameLayout.LayoutParams(-1, -1));
         root.addView(content, new LinearLayout.LayoutParams(-1, 0, 1)); activity.setContentView(root);
     }
     void launcher(JSONArray entries, String message) throws JSONException {
         cover.setVisibility(View.GONE); recovery.setVisibility(View.GONE); actions = new JSONArray();
-        browserSlot.removeAllViews(); status.setText(message);
+        browserSlot.removeAllViews(); status.setVisibility(View.VISIBLE); status.setText(message);
         LinearLayout list = new LinearLayout(activity); list.setOrientation(LinearLayout.VERTICAL);
         for (int i = 0; i < entries.length(); i++) {
             JSONObject entry = entries.getJSONObject(i); JSONObject open = event("open");
@@ -72,7 +82,7 @@ final class HostViews {
     }
     void presentation(JSONObject command) throws JSONException {
         String state = command.getString("state"); String message = command.getString("message");
-        status.setText(message); actions = command.getJSONArray("actions");
+        status.setText(message); status.setVisibility("ready".equals(state) ? View.GONE : View.VISIBLE); actions = command.getJSONArray("actions");
         boolean failed = "failed".equals(state) || "unsupported".equals(state);
         recovery.setVisibility(failed ? View.VISIBLE : View.GONE);
         boolean covering = failed || "loading".equals(state);
@@ -85,7 +95,7 @@ final class HostViews {
         ScrollView scroll = new ScrollView(activity); scroll.addView(body);
         new AlertDialog.Builder(activity).setTitle("Genesis debug inspector").setView(scroll).setPositiveButton("Close", null).show();
     }
-    void error(String message) { status.setText(message); }
+    void error(String message) { status.setVisibility(View.VISIBLE); status.setText(message); }
     private void menu(Button anchor) {
         PopupMenu popup = new PopupMenu(activity, anchor);
         for (int i = 0; i < actions.length(); i++) {
@@ -106,7 +116,12 @@ final class HostViews {
         popup.show();
     }
     private Button button(String label, Runnable action) {
-        Button button = new Button(activity); button.setText(label); button.setOnClickListener(view -> action.run()); return button;
+        Button button = new Button(activity); button.setText(label); button.setAllCaps(false); button.setTextSize(14);
+        button.setMinWidth(0); button.setMinimumWidth(0);
+        button.setMinHeight((int) (48 * activity.getResources().getDisplayMetrics().density));
+        button.setTextColor(ink);
+        button.setBackgroundTintList(android.content.res.ColorStateList.valueOf(wash));
+        button.setOnClickListener(view -> action.run()); return button;
     }
     static JSONObject event(String type) {
         JSONObject event = new JSONObject();
