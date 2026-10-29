@@ -673,7 +673,7 @@ impl HostState {
             } else if view.ready {
                 self.present(
                     "ready",
-                    "MVP-04 · Runtime ready; storage calls available. HN bookmark UI remains incomplete.",
+                    "MVP-05 · Applet ready. Local library work remains.",
                     commands,
                 );
             } else {
@@ -765,7 +765,7 @@ impl HostState {
                     })
                 })
                 .collect(),
-            status: "MVP-04 · Durable storage. HN bookmark UI remains incomplete.".into(),
+            status: "MVP-05 · Source bookmarks. Local library work remains.".into(),
         }
     }
 

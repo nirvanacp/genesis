@@ -1,7 +1,7 @@
 //! Shared package, host, and document qualification contracts. Shared host, managed runtime/navigation and generic storage contracts.
 use serde::{Deserialize, Serialize};
 
-pub const IMPLEMENTATION_STAGE: &str = "MVP-04";
+pub const IMPLEMENTATION_STAGE: &str = "MVP-05";
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
