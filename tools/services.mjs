@@ -21,7 +21,7 @@ async function provision(origin, token, certificate = '') {
   if (token.length < 32 || token.length > 4096 || /[^\x21-\x7e]/.test(token)) throw new Error('Invalid service token');
   const envelope = { version: 1, appletId: manifest.id, serviceId: declaration.serviceId, origin, token, certificate, healthPath: declaration.healthPath };
   device(['shell', 'run-as', application, 'rm', '-f', 'files/genesis-service-ready']);
-  run(adb, ['-s', serial, 'shell', 'run-as', application, 'sh', '-c', '"umask 077; cat > files/genesis-service-import.json"'], JSON.stringify(envelope));
+  run(adb, ['-s', serial, 'shell', 'run-as', application, 'sh', '-c', '"umask 077; mkdir -p files; cat > files/genesis-service-import.json"'], JSON.stringify(envelope));
   device(['shell', 'am', 'force-stop', application]);
   device(['shell', 'am', 'start', '-n', `${application}/.MainActivity`]);
   let imported = false;
