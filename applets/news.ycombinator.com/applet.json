@@ -180,29 +180,34 @@
       {
         "id": "home",
         "label": "Home",
-        "sourceId": "primary"
+        "sourceId": "primary",
+        "icon": "home"
       },
       {
         "id": "search",
         "label": "Search",
         "sourceId": "primary",
-        "pageId": "search"
+        "pageId": "search",
+        "icon": "search"
       },
       {
         "id": "post",
         "label": "Post",
-        "sourceId": "post"
+        "sourceId": "post",
+        "icon": "post"
       },
       {
         "id": "saved",
         "label": "Saved",
         "sourceId": "primary",
-        "pageId": "library"
+        "pageId": "library",
+        "icon": "bookmark"
       },
       {
         "id": "me",
         "label": "Me",
-        "sourceId": "me"
+        "sourceId": "me",
+        "icon": "person"
       }
     ],
     "choices": [

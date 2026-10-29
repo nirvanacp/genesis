@@ -75,6 +75,7 @@ export async function readPackages() {
       const sections = new Set();
       for (const section of shell.sections) {
         requireValue(identifier.test(section.id) && !sections.has(section.id) && typeof section.label === "string" && section.label.length > 0 && sourceIds.has(section.sourceId) && (!section.pageId || pageIds.has(section.pageId)), `${directory}: invalid shell destination`);
+        requireValue(section.icon === undefined || ["home", "search", "post", "bookmark", "person"].includes(section.icon), `${directory}: unsupported section icon`);
         sections.add(section.id);
       }
       requireValue(typeof shell.brandAsset === "string" && !path.isAbsolute(shell.brandAsset) && !shell.brandAsset.includes("\\") && !shell.brandAsset.split("/").some(p => p === ".." || p === "." || !p), `${directory}: unsafe brand asset`);

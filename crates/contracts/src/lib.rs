@@ -94,6 +94,8 @@ pub struct AppShell {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ShellSection {
+    #[serde(default)]
+    pub icon: Option<String>,
     pub id: String,
     pub label: String,
     pub source_id: String,
