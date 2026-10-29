@@ -15,6 +15,7 @@ export function CategoryManager({ context, snapshot, changed }: { context: Apple
   const repository = new CategoryRepository(context.storage);
   return <details className="category-manager"><summary>Manage categories</summary>
     <p className="muted">Categories are saved immediately. Deleting one keeps its bookmarks.</p>
+    {message && <p role="status" className="notice">{message}</p>}
     <form onSubmit={event => { event.preventDefault(); void run(async () => { await repository.create(name); if (alive.current) setName(""); }); }}>
       <label className="stack">New category<input aria-label="New library category name" value={name} onChange={event => setName(event.target.value)} disabled={busy} /></label>
       <button disabled={busy || !name.trim()}>Create category</button>
@@ -22,7 +23,6 @@ export function CategoryManager({ context, snapshot, changed }: { context: Apple
     <p className="muted">{snapshot.categories.length} of 50 active categories</p>
     {snapshot.categories.map(record => <CategoryRow key={record.value.id} record={record} busy={busy}
       rename={value => { void run(() => repository.rename(record, value)); }} remove={() => { void run(() => repository.remove(record)); }} />)}
-    {message && <p role="status" className="notice">{message}</p>}
   </details>;
 }
 function CategoryRow({ record, busy, rename, remove }: { record: StoredDocument<CategoryV1>; busy: boolean; rename(value: string): void; remove(): void }) {
