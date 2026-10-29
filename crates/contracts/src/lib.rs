@@ -49,6 +49,8 @@ pub struct Source {
     pub origins: Vec<String>,
     pub entry: String,
     #[serde(default)]
+    pub home_paths: Vec<String>,
+    #[serde(default)]
     pub navigation_rules: Vec<NavigationRule>,
 }
 
@@ -180,6 +182,7 @@ pub enum HostEvent {
         #[serde(rename = "canGoBack")]
         can_go_back: bool,
     },
+    Forward,
     Reload,
     Retry,
     Ordinary,
@@ -234,6 +237,10 @@ pub enum HostEvent {
         generation: u64,
         message: String,
     },
+    SiteFailed {
+        generation: u64,
+        message: String,
+    },
     RendererGone {
         generation: u64,
     },
@@ -268,6 +275,9 @@ pub enum HostCommand {
         url: String,
     },
     GoBack {
+        generation: u64,
+    },
+    GoForward {
         generation: u64,
     },
     Reload {

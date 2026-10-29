@@ -27,6 +27,7 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
         views = new HostViews(this, this::send);
         services = new ServiceClient(this);
         browser = new BrowserAdapter(this, views, this::send);
+        browser.restoreStates(savedInstanceState);
         if (Build.VERSION.SDK_INT >= 33) {
             getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
                 OnBackInvokedDispatcher.PRIORITY_DEFAULT, () -> send(HostViews.event("back")));
@@ -61,6 +62,11 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
     void send(JSONObject event) {
         if (Looper.myLooper() != Looper.getMainLooper()) throw new IllegalStateException("UI thread required");
         try {
+            String type = event.getString("type");
+            if ("readerClose".equals(type)) { browser.closeReader(); return; }
+            if ("copyLink".equals(type) || "shareLink".equals(type) || "openBrowser".equals(type)) {
+                browser.readerAction(type); return;
+            }
             if ("back".equals(event.getString("type"))) event.put("canGoBack", browser.canGoBack());
             JSONArray commands = new JSONArray(NativeBridge.dispatch(event.toString()));
             for (int i = 0; i < commands.length(); i++) execute(commands.getJSONObject(i));
@@ -87,12 +93,16 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
             case "showLauncher": views.launcher(command.getJSONArray("entries"), command.getString("status")); break;
             case "showError": views.error(command.getString("message")); break;
             case "createView": browser.create(command); break;
-            case "presentation": if (browser.matches(command.getLong("generation"))) views.presentation(command); break;
+            case "presentation": if (browser.matches(command.getLong("generation"))) {
+                views.presentation(command);
+                browser.onPresentation(command.getString("state"));
+            } break;
             case "diagnostics": views.diagnostics(command.getString("text")); break;
             case "retainSession": retainedSession = command.getJSONObject("snapshot").toString(); break;
             case "destroyView":
             case "loadUrl":
             case "goBack":
+            case "goForward":
             case "reload":
             case "challenge":
             case "replyToPage":
@@ -112,6 +122,7 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
     @Override public void onBackPressed() { send(HostViews.event("back")); }
     @Override protected void onSaveInstanceState(Bundle out) {
         if (attached) { send(HostViews.event("saveSession")); out.putString("genesis.session", retainedSession); }
+        if (browser != null) browser.saveStates(out);
         super.onSaveInstanceState(out);
     }
     @Override protected void onPause() { if (attached) send(HostViews.event("suspended")); if (browser != null) browser.pause(); super.onPause(); }

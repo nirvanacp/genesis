@@ -2,11 +2,18 @@ package app.nirvana.genesis;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.pm.PackageInfo;
 import android.content.pm.ApplicationInfo;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.Bundle;
+import android.content.Intent;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
+import android.net.Uri;
 import android.view.View;
 import android.webkit.CookieManager;
 import android.webkit.PermissionRequest;
@@ -17,6 +24,8 @@ import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebView;
+import android.webkit.WebBackForwardList;
+import android.webkit.WebHistoryItem;
 import android.webkit.WebViewClient;
 import androidx.webkit.JavaScriptExecutionWorld;
 import androidx.webkit.JavaScriptReplyProxy;
@@ -54,6 +63,14 @@ final class BrowserAdapter {
     private NavigationListener navigation;
     private View customView;
     private WebChromeClient.CustomViewCallback customCallback;
+    private final Map<String, Bundle> histories = new LinkedHashMap<>();
+    private final Map<String, Integer> scrollPositions = new LinkedHashMap<>();
+    private String sessionKey;
+    private boolean restoredHistory;
+    private String pendingScrollUrl;
+    private String visibleUrl;
+    private Set<String> sourceOrigins = new HashSet<>();
+    private final Set<String> homePaths = new HashSet<>();
 
     BrowserAdapter(Activity activity, HostViews views, HostViews.Events events) {
         this.activity = activity; this.views = views; this.events = events;
@@ -63,49 +80,92 @@ final class BrowserAdapter {
     void create(JSONObject command) throws Exception {
         if (webView != null) throw new IllegalStateException("Previous browser was not retired");
         long current = command.getLong("generation"); generation = current;
+        JSONObject binding = command.getJSONObject("context").getJSONObject("binding");
+        sessionKey = binding.getString("kind") + ":" + binding.optString("sourceId", binding.optString("pageId"));
+        scrollPositions.clear(); pendingScrollUrl = null; visibleUrl = null;
+        sourceOrigins = new HashSet<>();
+        homePaths.clear();
+        JSONArray declared = command.getJSONArray("origins");
+        if ("source".equals(binding.getString("kind"))) for (int i = 0; i < declared.length(); i++) sourceOrigins.add(declared.getString(i));
+        if ("source".equals(binding.getString("kind"))) {
+            JSONArray sources = command.getJSONObject("package").getJSONObject("manifest").getJSONArray("sources");
+            for (int i = 0; i < sources.length(); i++) {
+                JSONObject source = sources.getJSONObject(i);
+                if (!binding.getString("sourceId").equals(source.getString("id"))) continue;
+                JSONArray paths = source.optJSONArray("homePaths");
+                if (paths != null) for (int j = 0; j < paths.length(); j++) homePaths.add(paths.getString(j));
+                if (homePaths.isEmpty()) homePaths.add(Uri.parse(source.getString("startUrl")).getPath());
+                break;
+            }
+        }
         PackageAssets assets = new PackageAssets(activity.getAssets(), command);
         WebView browser = new WebView(activity); webView = browser;
         browser.getSettings().setJavaScriptEnabled(true);
         browser.getSettings().setDomStorageEnabled(true);
         browser.getSettings().setAllowFileAccess(false);
         browser.getSettings().setAllowContentAccess(false);
-        browser.getSettings().setSupportMultipleWindows(false);
+        browser.getSettings().setSupportMultipleWindows(true);
         CookieManager.getInstance().setAcceptCookie(true);
         browser.setWebViewClient(new WebViewClient() {
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                recordScroll(view);
                 String scheme = request.getUrl().getScheme();
                 if ("https".equals(scheme) || "http".equals(scheme)) {
                     if ("appassets.androidplatform.net".equals(request.getUrl().getHost())) {
-                        return !assets.allowsLocalPath(request.getUrl().getPath());
+                        return !"https://appassets.androidplatform.net".equals(originOf(request.getUrl()))
+                            || !assets.allowsLocalPath(request.getUrl().getPath());
                     }
                     return false;
                 }
-                if (request.isForMainFrame()) failure(current, "Unsupported navigation scheme: " + scheme);
+                if (request.isForMainFrame()) {
+                    if ("mailto".equals(scheme) || "tel".equals(scheme) || "sms".equals(scheme)
+                        || "geo".equals(scheme) || "intent".equals(scheme)) openHandler(request.getUrl());
+                    else views.websiteFailure("No app can open this type of link.");
+                }
                 return true;
             }
             @Override public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
                 if ("appassets.androidplatform.net".equals(request.getUrl().getHost())) {
+                    if (!"https://appassets.androidplatform.net".equals(originOf(request.getUrl()))) return PackageAssets.notFound();
                     WebResourceResponse response = assets.loader.shouldInterceptRequest(request.getUrl());
                     return response == null ? PackageAssets.notFound() : response;
                 }
                 return null;
             }
-            @Override public void onPageCommitVisible(WebView view, String url) { emitUrl("navigated", current, url, false); }
+            @Override public void onPageStarted(WebView view, String url, android.graphics.Bitmap icon) {
+                if (matches(current)) {
+                    recordScroll(view); views.pageLoading(0);
+                    Uri starting = Uri.parse(url);
+                    if (world != null && sourceOrigins.contains(originOf(starting)))
+                        views.pageStarting();
+                    updateNavigation(url);
+                }
+            }
+            @Override public void onPageCommitVisible(WebView view, String url) {
+                updateNavigation(url); emitUrl("navigated", current, url, false);
+            }
             @Override public void doUpdateVisitedHistory(WebView view, String url, boolean reload) {
                 // Also retain ordinary-browsing URLs on providers without NavigationListener.
+                updateNavigation(url);
                 emitUrl("navigated", current, url, false);
             }
+            @Override public void onPageFinished(WebView view, String url) {
+                if (matches(current)) { views.pageLoading(100); updateNavigation(url); if (!isFeed(url)) restoreScroll(view, url); }
+            }
             @Override public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
-                if (request.isForMainFrame()) failure(current, error.getDescription().toString());
+                if (request.isForMainFrame() && matches(current)) siteFailure(current, error.getDescription().toString());
             }
             @Override public void onReceivedHttpError(WebView view, WebResourceRequest request, WebResourceResponse response) {
-                if (request.isForMainFrame()) failure(current, "Website returned HTTP " + response.getStatusCode());
+                if (request.isForMainFrame() && matches(current)) siteFailure(current, "Website returned HTTP " + response.getStatusCode());
             }
             @Override public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail detail) {
                 emit(HostViews.event("rendererGone"), current); return true;
             }
         });
         browser.setWebChromeClient(new WebChromeClient() {
+            @Override public void onProgressChanged(WebView view, int progress) {
+                if (matches(current)) views.pageLoading(progress);
+            }
             @Override public void onShowCustomView(View view, CustomViewCallback callback) {
                 if (!matches(current)) { callback.onCustomViewHidden(); return; }
                 if (customView != null) { callback.onCustomViewHidden(); return; }
@@ -123,12 +183,41 @@ final class BrowserAdapter {
                 return true;
             }
             @Override public boolean onCreateWindow(WebView view, boolean dialog, boolean gesture, android.os.Message result) {
-                if (matches(current)) views.error("New-window browsing is unsupported in this MVP.");
-                return false;
+                if (!matches(current)) return false;
+                if (!gesture) { views.websiteFailure("A website popup was blocked. Tap its link to open it."); return false; }
+                WebView popup = new WebView(activity);
+                final boolean[] handled = { false };
+                java.util.function.Consumer<Uri> route = uri -> {
+                    if (handled[0]) return;
+                    handled[0] = true;
+                    String scheme = uri.getScheme();
+                    if ("https".equals(scheme) || "http".equals(scheme)) browser.loadUrl(uri.toString());
+                    else if ("mailto".equals(scheme) || "tel".equals(scheme) || "sms".equals(scheme)
+                        || "geo".equals(scheme) || "intent".equals(scheme)) openHandler(uri);
+                    else views.websiteFailure("No app can open this type of link.");
+                    main.post(popup::destroy);
+                };
+                popup.setWebViewClient(new WebViewClient() {
+                    @Override public boolean shouldOverrideUrlLoading(WebView ignored, WebResourceRequest request) {
+                        route.accept(request.getUrl()); return true;
+                    }
+                    @Override public void onPageStarted(WebView ignored, String url, android.graphics.Bitmap icon) { route.accept(Uri.parse(url)); }
+                });
+                ((WebView.WebViewTransport) result.obj).setWebView(popup); result.sendToTarget();
+                return true;
             }
         });
         browser.setDownloadListener((url, agent, disposition, mime, length) -> {
-            if (matches(current)) views.error("Downloads are unsupported in this MVP.");
+            if (matches(current)) new AlertDialog.Builder(activity)
+                .setTitle("Download link")
+                .setMessage("Open this download in another app?")
+                .setNegativeButton("Stay here", null)
+                .setPositiveButton("Open", (dialog, which) -> openHandler(Uri.parse(url)))
+                .show();
+        });
+        browser.setOnScrollChangeListener((view, x, y, oldX, oldY) -> {
+            if (visibleUrl != null && isFeed(visibleUrl) && !visibleUrl.equals(pendingScrollUrl))
+                scrollPositions.put(visibleUrl, y);
         });
         JSONObject flags = new JSONObject();
         boolean supported = true;
@@ -188,14 +277,41 @@ final class BrowserAdapter {
         // The launcher and browser share one slot; do not retain the launcher underneath.
         views.browserSlot.removeAllViews();
         views.browserSlot.addView(browser, new android.widget.FrameLayout.LayoutParams(-1, -1));
+        Bundle saved = histories.remove(sessionKey);
+        if (saved != null) {
+            Bundle positions = saved.getBundle("genesis.scrollPositions");
+            if (positions != null) for (String url : positions.keySet()) scrollPositions.put(url, positions.getInt(url));
+        }
+        restoredHistory = saved != null && browser.restoreState(saved) != null;
+        if (restoredHistory) pendingScrollUrl = browser.getUrl();
     }
 
     void execute(JSONObject command) throws Exception {
         long expected = command.getLong("generation");
         if (!matches(expected)) return;
         switch (command.getString("type")) {
-            case "loadUrl": webView.loadUrl(command.getString("url")); break;
+            case "loadUrl": {
+                String url = command.getString("url");
+                if (restoredHistory) {
+                    pendingScrollUrl = url;
+                    if (url.equals(webView.getUrl())) {
+                        restoredHistory = false; updateNavigation(url); if (!isFeed(url)) restoreScroll(webView, url); break;
+                    }
+                    WebBackForwardList list = webView.copyBackForwardList();
+                    for (int i = list.getCurrentIndex() - 1; i >= 0; i--) {
+                        WebHistoryItem item = list.getItemAtIndex(i);
+                        if (item != null && url.equals(item.getUrl())) {
+                            restoredHistory = false;
+                            webView.goBackOrForward(i - list.getCurrentIndex());
+                            break;
+                        }
+                    }
+                    if (!restoredHistory) break;
+                }
+                restoredHistory = false; webView.loadUrl(url); break;
+            }
             case "goBack": webView.goBack(); break;
+            case "goForward": webView.goForward(); break;
             case "reload": webView.reload(); break;
             case "destroyView": destroy(); break;
             case "deferNavigation": {
@@ -245,6 +361,51 @@ final class BrowserAdapter {
 
     boolean matches(long expected) { return webView != null && generation == expected; }
     boolean canGoBack() { return webView != null && webView.canGoBack(); }
+    void closeReader() {
+        if (webView == null) return;
+        android.webkit.WebBackForwardList list = webView.copyBackForwardList();
+        for (int i = list.getCurrentIndex() - 1; i >= 0; i--) {
+            android.webkit.WebHistoryItem item = list.getItemAtIndex(i);
+            if (item != null && isFeed(item.getUrl())) {
+                webView.goBackOrForward(i - list.getCurrentIndex()); return;
+            }
+        }
+        if (webView.canGoBack()) webView.goBack();
+    }
+    void readerAction(String action) {
+        String url = webView == null ? null : webView.getUrl();
+        if (url == null || !(url.startsWith("https://") || url.startsWith("http://"))) return;
+        switch (action) {
+            case "copyLink": {
+                ClipboardManager manager = (ClipboardManager) activity.getSystemService(Context.CLIPBOARD_SERVICE);
+                manager.setPrimaryClip(ClipData.newPlainText("Link", url)); break;
+            }
+            case "shareLink": {
+                Intent send = new Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, url);
+                activity.startActivity(Intent.createChooser(send, "Share link")); break;
+            }
+            case "openBrowser": openHandler(Uri.parse(url)); break;
+        }
+    }
+    void saveStates(Bundle out) {
+        Bundle all = new Bundle();
+        histories.forEach(all::putBundle);
+        if (webView != null && sessionKey != null) {
+            all.putBundle(sessionKey, saveHistory(webView));
+        }
+        out.putBundle("genesis.browserHistory", all);
+    }
+    void onPresentation(String state) {
+        if (webView != null && ("ready".equals(state) || "ordinary".equals(state)))
+            restoreScroll(webView, webView.getUrl());
+    }
+    void restoreStates(Bundle state) {
+        if (state == null) return;
+        Bundle all = state.getBundle("genesis.browserHistory");
+        if (all != null) for (String key : all.keySet()) {
+            Bundle history = all.getBundle(key); if (history != null) histories.put(key, history);
+        }
+    }
     void pause() { if (webView != null) webView.onPause(); CookieManager.getInstance().flush(); }
     void resume() { if (webView != null) webView.onResume(); }
     void exitFullscreen() {
@@ -259,6 +420,9 @@ final class BrowserAdapter {
     void destroy() {
         exitFullscreen();
         WebView retired = webView; webView = null;
+        if (retired != null && sessionKey != null) {
+            histories.put(sessionKey, saveHistory(retired));
+        }
         main.removeCallbacksAndMessages(null);
         channels.clear(); channelIds.clear();
         if (retired != null) {
@@ -277,9 +441,65 @@ final class BrowserAdapter {
             JSONObject event = HostViews.event(type); event.put("url", url); event.put("sameDocument", sameDocument); emit(event, current);
         } catch (JSONException error) { failure(current, "Navigation transport error"); }
     }
+    private boolean isFeed(String url) {
+        Uri uri = Uri.parse(url);
+        if (!sourceOrigins.contains(originOf(uri))) return false;
+        String path = uri.getPath();
+        return homePaths.contains(path == null ? "/" : path);
+    }
+    private String originOf(Uri uri) {
+        String scheme = uri.getScheme(), host = uri.getHost();
+        if (scheme == null || host == null) return "";
+        int port = uri.getPort();
+        boolean standardPort = port < 0 || "https".equals(scheme) && port == 443 || "http".equals(scheme) && port == 80;
+        return scheme + "://" + host + (standardPort ? "" : ":" + port);
+    }
+    private void updateNavigation(String url) {
+        if (webView == null || url == null) return;
+        visibleUrl = url;
+        boolean source = !sourceOrigins.isEmpty();
+        boolean localPage = sessionKey != null && sessionKey.startsWith("page:");
+        boolean reader = source && !isFeed(url) || localPage && !"https://appassets.androidplatform.net".equals(originOf(Uri.parse(url)));
+        views.navigation(url, reader, webView.canGoBack(), webView.canGoForward());
+    }
+    private void recordScroll(WebView view) {
+        if (visibleUrl != null && isFeed(visibleUrl) && !visibleUrl.equals(pendingScrollUrl))
+            scrollPositions.put(visibleUrl, view.getScrollY());
+    }
+    private Bundle saveHistory(WebView view) {
+        recordScroll(view);
+        Bundle history = new Bundle(); view.saveState(history);
+        Bundle positions = new Bundle();
+        scrollPositions.forEach(positions::putInt);
+        history.putBundle("genesis.scrollPositions", positions);
+        return history;
+    }
+    private void restoreScroll(WebView view, String url) {
+        if (!url.equals(pendingScrollUrl)) return;
+        pendingScrollUrl = null;
+        Integer position = scrollPositions.get(url);
+        if (position != null && position > 0) view.post(() -> view.scrollTo(0, position));
+    }
+    private void openHandler(Uri uri) {
+        try {
+            Intent intent;
+            if ("intent".equals(uri.getScheme())) {
+                intent = Intent.parseUri(uri.toString(), Intent.URI_INTENT_SCHEME);
+                intent.addCategory(Intent.CATEGORY_BROWSABLE);
+                intent.setComponent(null); intent.setSelector(null);
+            } else intent = new Intent(Intent.ACTION_VIEW, uri);
+            activity.startActivity(intent);
+        }
+        catch (Exception error) { views.websiteFailure("No app can open this link."); }
+    }
     private void failure(long current, String message) {
         try { JSONObject event = HostViews.event("loadFailed"); event.put("message", message); emit(event, current); }
         catch (JSONException error) { views.error("Browser failure"); }
+    }
+    private void siteFailure(long current, String message) {
+        views.pageLoading(100);
+        try { JSONObject event = HostViews.event("siteFailed"); event.put("message", message); emit(event, current); }
+        catch (JSONException error) { views.websiteFailure("Page unavailable"); }
     }
     private void emit(JSONObject event, long current) {
         main.post(() -> {
