@@ -1,0 +1,16 @@
+:host { color-scheme: light; }
+* { box-sizing: border-box; }
+.genesis-dialog { font: 15px/1.5 system-ui,sans-serif; color: #212c27; }
+h2 { font-size: 24px; line-height: 1.2; margin: 8px 0 20px; }
+.eyebrow { color: #385b49; font-size: 11px; font-weight: 700; letter-spacing: .1em; margin: 0; }
+.story-title { font-weight: 600; overflow-wrap: anywhere; }
+.muted { color: #58645d; font-size: 13px; }
+label { display: flex; align-items: start; gap: 8px; padding: 10px 0; }
+input[type=checkbox] { width: 18px; height: 18px; flex: none; accent-color: #21583d; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 24px; }
+button { border: 1px solid #b6c5bc; border-radius: 7px; background: #fff; color: #263d30; font: 600 14px system-ui; min-height: 42px; padding: 8px 14px; cursor: pointer; }
+button.primary { background: #21583d; color: #fff; border-color: #21583d; }
+button.danger { color: #9b2925; }
+button:disabled { opacity: .55; cursor: default; }
+button:focus-visible, input:focus-visible { outline: 3px solid #558a65; outline-offset: 3px; }
+.error { color: #a22d24; background: #fff0ed; padding: 10px; border-radius: 5px; }
