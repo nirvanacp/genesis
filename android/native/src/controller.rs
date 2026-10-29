@@ -10,6 +10,7 @@ pub struct HostState {
     instances: HashMap<InstanceId, AppletInstance>,
     pub(crate) active: Option<LiveView>,
     disabled: HashSet<AppletId>,
+    retained: VecDeque<LiveView>,
     generation: u64,
     serial: u64,
     debug: bool,
@@ -43,7 +44,9 @@ fn origin(url: &str) -> Option<String> {
 }
 fn is_home_url(url: &str, source: &Source) -> bool {
     Url::parse(url).ok().is_some_and(|parsed| {
-        source.origins.contains(&parsed.origin().ascii_serialization())
+        source
+            .origins
+            .contains(&parsed.origin().ascii_serialization())
             && source.home_paths.iter().any(|path| path == parsed.path())
     })
 }
@@ -71,6 +74,14 @@ impl HostState {
             }
         }
         match event {
+            E::ClassifyUrl { url } => {
+                let kind = self
+                    .active
+                    .as_ref()
+                    .map(|v| Self::classify_url(v, &url))
+                    .unwrap_or("ordinary");
+                commands.push(C::ClassifiedUrl { kind: kind.into() });
+            }
             E::Attach {
                 index,
                 debug,
@@ -147,6 +158,7 @@ impl HostState {
                 }
             }
             E::Open {
+                url,
                 applet_id,
                 source_id,
                 page_id,
@@ -160,6 +172,19 @@ impl HostState {
                     },
                     &mut commands,
                 )?;
+                if let Some(url) = url {
+                    if !Self::safe_website_url(&url) {
+                        return Err("Unsafe destination".into());
+                    }
+                    if let Some(view) = self.active.as_mut() {
+                        view.url = url.clone();
+                        commands.retain(|c| !matches!(c, C::LoadUrl { .. }));
+                        commands.push(C::LoadUrl {
+                            generation: view.context.generation.0,
+                            url,
+                        });
+                    }
+                }
             }
             E::OpenPage { page_id } => {
                 if let Some(view) = &self.active {
@@ -181,12 +206,18 @@ impl HostState {
                     .and_then(|v| v.document.as_ref())
                     .is_some_and(|d| d.id == document_id) =>
             {
-                let temporary_url = url.as_ref().is_some_and(|value| self.instances
+                let temporary_url = url.as_ref().is_some_and(|value| {
+                    self.instances
+                        .get(&instance_id(&selection.applet_id))
+                        .and_then(|i| i.sources.get(&selection.source_id))
+                        .is_some_and(|source| !is_home_url(value, &source.definition))
+                });
+                let previous_url = self
+                    .instances
                     .get(&instance_id(&selection.applet_id))
                     .and_then(|i| i.sources.get(&selection.source_id))
-                    .is_some_and(|source| !is_home_url(value, &source.definition)));
-                let previous_url = self.instances.get(&instance_id(&selection.applet_id))
-                    .and_then(|i| i.sources.get(&selection.source_id)).map(|source| source.last_url.clone());
+                    .map(|source| source.last_url.clone());
+                let requested_url = url.clone();
                 if let Some(url) = url {
                     let source = self
                         .instances
@@ -196,13 +227,24 @@ impl HostState {
                     source.last_url = url;
                 }
                 self.open(selection.clone(), &mut commands)?;
-                if temporary_url {
-                    if let Some(previous) = previous_url {
-                        if let Some(source) = self.instances.get_mut(&instance_id(&selection.applet_id))
-                            .and_then(|i| i.sources.get_mut(&selection.source_id)) {
-                            source.last_url = previous;
-                        }
-                    }
+                if let Some(url) = requested_url
+                    && let Some(view) = self.active.as_mut()
+                {
+                    view.url = url.clone();
+                    commands.retain(|c| !matches!(c, C::LoadUrl { .. }));
+                    commands.push(C::LoadUrl {
+                        generation: view.context.generation.0,
+                        url,
+                    });
+                }
+                if temporary_url
+                    && let Some(previous) = previous_url
+                    && let Some(source) = self
+                        .instances
+                        .get_mut(&instance_id(&selection.applet_id))
+                        .and_then(|i| i.sources.get_mut(&selection.source_id))
+                {
+                    source.last_url = previous;
                 }
             }
             E::ModalDeadline {
@@ -266,7 +308,9 @@ impl HostState {
             }
             E::Forward => {
                 if let Some(view) = &self.active {
-                    commands.push(C::GoForward { generation: view.context.generation.0 });
+                    commands.push(C::GoForward {
+                        generation: view.context.generation.0,
+                    });
                 }
             }
             E::Reload => {
@@ -395,7 +439,10 @@ impl HostState {
                 generation,
                 message,
             } if self.current(generation) => self.failure(&message, &mut commands),
-            E::SiteFailed { generation, message } if self.current(generation) => {
+            E::SiteFailed {
+                generation,
+                message,
+            } if self.current(generation) => {
                 self.present("siteError", &message, &mut commands);
             }
             E::RendererUnresponsive { generation } if self.current(generation) => {
@@ -451,8 +498,15 @@ impl HostState {
                 }
             }
             E::ServiceCompleted { completion } => {
-                if let Some(view) = &self.active
-                    && view.context.generation.0 == completion.generation
+                if let Some(view) = self
+                    .active
+                    .as_ref()
+                    .filter(|v| v.context.generation.0 == completion.generation)
+                    .or_else(|| {
+                        self.retained
+                            .iter()
+                            .find(|v| v.context.generation.0 == completion.generation)
+                    })
                     && let Some(doc) = &view.document
                     && doc.id == completion.document_id
                     && doc.channel == completion.channel
@@ -503,6 +557,11 @@ impl HostState {
                 }
             }
             E::Detach => {
+                for view in self.retained.drain(..) {
+                    commands.push(C::DestroyView {
+                        generation: view.context.generation.0,
+                    });
+                }
                 self.retire(&mut commands);
             }
             _ => {}
@@ -569,6 +628,15 @@ impl HostState {
         })
     }
     fn open(&mut self, selection: Selection, commands: &mut Vec<C>) -> Result<(), String> {
+        if self.active.as_ref().is_some_and(|v| {
+            v.selection.applet_id == selection.applet_id
+                && v.selection.source_id == selection.source_id
+                && v.selection.page_id == selection.page_id
+                && !v.failed
+                && v.customized
+        }) {
+            return Ok(());
+        }
         let package = self
             .index
             .as_ref()
@@ -628,7 +696,45 @@ impl HostState {
                 Vec::new(),
             )
         };
-        self.retire(commands);
+        let target = self.retained.iter().position(|v| {
+            v.selection.applet_id == selection.applet_id
+                && v.selection.source_id == selection.source_id
+                && v.selection.page_id == selection.page_id
+                && v.customized
+        });
+        // Retained documents keep their own generation, channels and history.
+        let resumed = target.and_then(|i| self.retained.remove(i));
+        if let Some(view) = self.active.take() {
+            if view.package.manifest.shell.is_some()
+                && view.customized
+                && view.ready
+                && !view.failed
+            {
+                commands.push(C::ParkView {
+                    generation: view.context.generation.0,
+                });
+                self.retained.push_back(view);
+            } else {
+                self.active = Some(view);
+                self.retire(commands);
+            }
+        }
+        while self.retained.len() > 2 {
+            if let Some(view) = self.retained.pop_front() {
+                commands.push(C::DestroyView {
+                    generation: view.context.generation.0,
+                });
+            }
+        }
+        if let Some(view) = resumed {
+            commands.push(C::ResumeView {
+                generation: view.context.generation.0,
+            });
+            self.active = Some(view);
+            self.notify("host.focused", commands);
+            self.navigation_presentation(commands);
+            return Ok(());
+        }
         let generation = increment(&mut self.generation)?;
         let context = ExecutionContext {
             instance_id: instance_id(&selection.applet_id),
@@ -710,6 +816,32 @@ impl HostState {
             s.status = status;
         }
     }
+    fn route_kind(view: &LiveView) -> &'static str {
+        Self::classify_url(view, &view.url)
+    }
+    fn classify_url(view: &LiveView, destination: &str) -> &'static str {
+        if !view.customized {
+            return "ordinary";
+        }
+        if matches!(view.context.binding, ContextKind::Page { .. })
+            && origin(destination).is_some_and(|o| view.origins.contains(&o))
+        {
+            return "page";
+        }
+        let Ok(url) = Url::parse(destination) else {
+            return "ordinary";
+        };
+        if view.package.manifest.sources.iter().any(|s| {
+            s.origins.contains(&url.origin().ascii_serialization())
+                && s.customized_paths
+                    .as_ref()
+                    .is_none_or(|paths| paths.iter().any(|p| p == url.path()))
+        }) {
+            "source"
+        } else {
+            "ordinary"
+        }
+    }
     fn navigation_presentation(&self, commands: &mut Vec<C>) {
         if let Some(view) = &self.active {
             if !view.customized {
@@ -720,7 +852,7 @@ impl HostState {
                 );
             } else if view.supported == Some(false) || view.failed {
                 // Preserve the explicit unsupported/failure presentation until recovery.
-            } else if !Self::eligible(view) {
+            } else if Self::route_kind(view) == "ordinary" {
                 self.present("ordinary", "Ordinary external/authentication page. No Genesis bridge is registered for this origin.", commands);
             } else if view.ready {
                 self.present("ready", "Genesis · Customization ready.", commands);
@@ -737,6 +869,18 @@ impl HostState {
         if let Some(view) = &self.active {
             commands.push(C::Presentation {
                 generation: view.context.generation.0,
+                epoch: view.epoch,
+                document_id: view.document.as_ref().map(|d| d.id.clone()),
+                route_kind: Self::route_kind(view).into(),
+                detail: view
+                    .package
+                    .manifest
+                    .sources
+                    .iter()
+                    .find(|s| s.id == view.selection.source_id.0)
+                    .is_some_and(|s| {
+                        view.selection.page_id.is_none() && !is_home_url(&view.url, s)
+                    }),
                 state: state.into(),
                 message: message.into(),
                 actions: view.package.manifest.actions.clone(),
@@ -992,6 +1136,7 @@ impl HostState {
                     }
                     Some("ui.modalState") if message["params"]["open"].is_boolean() => {
                         self.modal_open = message["params"]["open"]==true;
+                        commands.push(C::ModalState { open: self.modal_open });
                         commands.push(C::ReplyToPage { generation,channel,message:json!({"v":1,"documentId":doc.id,"requestId":request,"ok":true,"result":null}) });
                     }
                     Some("sources.open") | Some("pages.open") => {

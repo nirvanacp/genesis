@@ -48,6 +48,7 @@ final class PackageAssets {
         }).build();
     }
 
+    byte[] bytes(String entry) throws Exception { return readVerified(prefix + entry); }
     String script(String entry) throws Exception { return new String(readVerified(prefix + entry), StandardCharsets.UTF_8); }
     boolean allowsLocalPath(String path) { return path.startsWith("/genesis/") && local.containsKey(path.substring(9)); }
 

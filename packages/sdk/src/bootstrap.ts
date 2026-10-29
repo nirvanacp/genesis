@@ -3,7 +3,7 @@ import { PageScope } from "./scope";
 import { ManagedRuntime } from "./runtime";
 import { RpcClient } from "./rpc";
 import type { StorageChange } from "./storage";
-import type { AppletEntry } from "./index";
+import { initialLayout, type AppletEntry } from "./index";
 import qualificationCss from "./qualification.css";
 
 interface Bridge { postMessage(message: string): void; onmessage: ((event: MessageEvent<string>) => void) | null }
@@ -67,10 +67,13 @@ export function bootstrap(config: BootstrapConfig, entry: AppletEntry): void {
       phases.mount = scope.root().isConnected;
       client = new RpcClient(acceptedDocument!, message => bridge.postMessage(message));
       runtime = new ManagedRuntime(binding, scope.root(), client.call, fail);
-      const disposer = entry.activate(runtime.context);
+      const disposer = await entry.activate(runtime.context);
       if (typeof disposer === "function") runtime.context.onDispose(disposer);
       runtime.flushInitial();
       if (activation.signal.aborted || failed) return;
+      await initialLayout();
+      if (activation.signal.aborted || failed || documentId !== acceptedDocument) return;
+      phases.mount = scope.root().isConnected;
       phases.creator = true;
       if (!phases.mount) throw new Error("Owned UI mount is detached");
       rpc("runtime.ready", { phases, runtime: "typescript" });
@@ -88,6 +91,7 @@ export function bootstrap(config: BootstrapConfig, entry: AppletEntry): void {
         client?.receive(message);
         if (message.type === "storage.changed") runtime?.storageChanged(message as unknown as StorageChange);
         if (message.type === "route.changed") runtime?.route();
+        if (message.type === "host.focused") runtime?.focused();
         if (message.type === "ui.dismissModal") runtime?.dismissModal();
         if (message.type === "host.suspended") cleanup();
         if (message.type === "host.resumed" && abort?.signal.aborted) hello();

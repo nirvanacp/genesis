@@ -44,6 +44,7 @@ export interface AppletContext {
   pages: { open(pageId: string): Promise<void> };
   services: { request<T = unknown>(serviceId: string, request: { path: string; method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"; body?: unknown }): Promise<T> };
   storage: AppletStorage;
+  onFocus(callback: () => void): Dispose;
   onDispose(callback: Dispose): void;
 }
 interface Watcher {
@@ -74,6 +75,7 @@ export class ManagedRuntime {
   private readonly effects = new Map<string, Effect>();
   private readonly disposers = new Set<Dispose>();
   private readonly storageListeners = new Set<(change: StorageChange) => void>();
+  private readonly focusListeners = new Set<() => void>();
   private readonly routes = new Set<(url: string) => void>();
   private readonly observer: MutationObserver;
   private modal: Dispose | undefined;
@@ -89,6 +91,7 @@ export class ManagedRuntime {
   constructor(binding: ExecutionContext, root: HTMLElement, private readonly call: HostCall,
     private readonly fatal: (error: unknown) => void) {
     this.context = {
+      onFocus: callback => { this.focusListeners.add(callback); return this.track(() => this.focusListeners.delete(callback)); },
       binding, root, signal: this.abort.signal,
       sourceId: binding.binding.kind === "source" ? binding.binding.sourceId : null,
       styles: { add: (key, css) => this.style(key, css) },
@@ -291,6 +294,7 @@ export class ManagedRuntime {
   storageChanged(change: StorageChange): void {
     if (!this.disposed) for (const callback of [...this.storageListeners]) this.invoke(() => callback(change));
   }
+  focused(): void { if (!this.disposed) for (const callback of this.focusListeners) this.invoke(callback); }
   dismissModal(): void { this.modal?.(); }
   diagnostics() {
     return { watchers: this.watchers.size, bindings: [...this.watchers.values()].reduce((n, w) => n + w.bindings.size, 0),
