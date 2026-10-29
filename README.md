@@ -1,12 +1,12 @@
 # Project Nirvana
 
-The current Genesis prototype adds local categorized bookmarks to public [Hacker News](https://news.ycombinator.com/) pages and provides a packaged library. It preserves the original website and needs no login. Browser customization uses TypeScript/JavaScript and React; native Rust owns the controller and SQLite services.
+Genesis is an Android browser customization platform. Creator JS/TS and optional React code modify live websites. Creators own their application data and optional backends. Rust owns generic host policy and lifecycle; Android owns WebView and native integration.
 
-The working emulator MVP is ready. MVP-01 through MVP-06 passed emulator acceptance, and MVP-07 functional integration is verified in the [handoff report](.reports/2026-10-29/112349-genesis-mvp07-emulator-handoff-report.md). Physical-device and device-performance qualification are deferred to pre-release. Only `hn-bookmarks` is bundled; earlier YouTube/X source directories remain preserved and inactive.
+Start with [architecture](.architecture/README.md), [research](.research/README.md), [product intent](.notes/README.md), [Android setup](.docs/2026-10-27/161510-genesis-android-setup.md) and [HN backend operations](.docs/2026-10-27/200113-genesis-hacker-news-mvp-guide.md). Plans ending in .archive.md are historical and must not guide new implementation.
 
-Open `android/` in Android Studio using the [setup guide](.docs/2026-10-27/161510-genesis-android-setup.md). Read the [MVP architecture](.plans/2026-10-27/150238-genesis-mvp-implementation-plan.md), [HN specification](.plans/2026-10-27/150238-genesis-hacker-news-applet-plan.md) and [usage and pre-release prompts](.docs/2026-10-27/200113-genesis-hacker-news-mvp-guide.md). Keep the app ID/signing key and install APK updates without uninstalling or clearing data. Bookmarks are local to this installation and separate from website cookies.
+Only HN is bundled. Its frontend is under applets/news.ycombinator.com/src and its separately operated Node/SQLite backend is under applets/news.ycombinator.com/backend. Configure the backend through native Menu > Service connections. Server records require connectivity. Existing device bookmarks are preserved but not automatically uploaded. Generic Genesis local storage remains optional infrastructure.
 
-The [HN runtime qualification report](.reports/2026-10-28/174427-genesis-hn-typescript-qualification-report.md) records the supported WebView provider and approved TypeScript runtime. Earlier Wasm and retired-applet reports remain historical evidence. Background architecture research remains under [.research](.research/live-dom-customization/README.md).
+The previous local-storage emulator MVP passed its recorded checks. The new backend path requires separate Android HTTPS workflow qualification; prior reports do not establish it. X/YouTube and the earlier Wasm page runtime remain preserved and inactive. Independent applet installation and on-phone backend execution remain future capabilities.
 
 We're building a daily-driver on steroids. This project is trying to solve the following problems:
 

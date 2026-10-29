@@ -84,6 +84,10 @@ When the user asks you to implement a plan, commit the resulting changes as part
   - 🟢: The fix has been implemented and verified.
 - Regenerate the title from the current task context after context compaction and whenever a new conversation fork is created.
 
+## Archived documents
+
+Ignore files whose names contain `.archive.` when reading `.plans`, `.docs`, `.research`, `.architecture`, `.notes`, `notes`, or other generated-document directories for current requirements or implementation guidance. These files are historical records. Read or modify them only when the user explicitly asks for historical investigation or changes to those archives. Current architectural guidance lives in `.architecture/`; current operating instructions live in `.docs/`.
+
 ## Generated documents
 
 > When working inside Cursor, skip the document-storage rules in this section.
