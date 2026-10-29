@@ -80,10 +80,11 @@ async function assets(packages) {
         }
         files.set(entry.entry, result.outputFiles[0].contents);
         if (kind === "pages") {
-          files.set(`pages/${entry.id}/index.html`, Buffer.from(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${entry.id}</title></head><body><noscript>Genesis requires JavaScript for this local page.</noscript></body></html>`));
+          files.set(`pages/${entry.id}/index.html`, Buffer.from(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${entry.id}</title><style>html,body{margin:0;padding:0}</style></head><body><noscript>Genesis requires JavaScript for this local page.</noscript></body></html>`));
         }
       }
     }
+    if (manifest.shell) files.set(manifest.shell.brandAsset, await readFile(path.join(base, manifest.shell.brandAsset)));
     const assets = [...files].map(([name, bytes]) => ({ path: name, sha256: sha256(bytes) }));
     const revision = sha256(JSON.stringify({ manifest, assets }));
     const directory = path.join(output, "packages", manifest.id, revision);

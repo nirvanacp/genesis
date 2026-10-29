@@ -35,6 +35,7 @@ export async function readPackages() {
       sourceIds.add(source.id);
       requireValue(Array.isArray(source.navigationRules ?? []), `${directory}: navigation rules must be an array`);
       requireValue(Array.isArray(source.homePaths ?? []) && (source.homePaths ?? []).every(p => typeof p === "string" && p.startsWith("/") && !p.includes("?")), `${directory}: invalid home paths`);
+      requireValue(source.customizedPaths === undefined || Array.isArray(source.customizedPaths) && source.customizedPaths.every(p => /^\/[a-zA-Z0-9/.\-]*$/.test(p) && !p.includes("..")), `${directory}: invalid exact customized paths`);
       const ruleIds = new Set();
       for (const rule of source.navigationRules ?? []) {
         const fallback = new URL(rule.fallbackUrl);
@@ -66,6 +67,19 @@ export async function readPackages() {
         && !entry.entry.split("/").includes(".."), `${directory}: unsafe entry path`);
       const resolved = await realpath(path.join(base, entry.entry));
       requireValue(resolved.startsWith(`${await realpath(base)}${path.sep}`) && (await stat(resolved)).isFile(), `${directory}: entry escapes package`);
+    }
+    if (manifest.shell) {
+      const shell = manifest.shell;
+      requireValue(typeof shell.title === "string" && shell.title.length > 0 && shell.title.length < 80, `${directory}: invalid shell title`);
+      requireValue(Array.isArray(shell.sections) && shell.sections.length > 0 && shell.sections.length <= 5, `${directory}: invalid shell sections`);
+      const sections = new Set();
+      for (const section of shell.sections) {
+        requireValue(identifier.test(section.id) && !sections.has(section.id) && typeof section.label === "string" && section.label.length > 0 && sourceIds.has(section.sourceId) && (!section.pageId || pageIds.has(section.pageId)), `${directory}: invalid shell destination`);
+        sections.add(section.id);
+      }
+      requireValue(typeof shell.brandAsset === "string" && !path.isAbsolute(shell.brandAsset) && !shell.brandAsset.includes("\\") && !shell.brandAsset.split("/").some(p => p === ".." || p === "." || !p), `${directory}: unsafe brand asset`);
+      requireValue((await realpath(path.join(base, shell.brandAsset))).startsWith(`${await realpath(base)}${path.sep}`), `${directory}: brand escapes package`);
+      for (const choice of shell.choices ?? []) requireValue(typeof choice.label === "string" && manifest.sources.some(source => source.origins.includes(new URL(choice.url).origin) && source.customizedPaths?.includes(new URL(choice.url).pathname)), `${directory}: invalid shell choice`);
     }
     packages.push({ base, manifest });
   }

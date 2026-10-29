@@ -72,6 +72,13 @@ pub fn validate(index: &PackageIndex) -> Result<(), String> {
             {
                 return Err("Invalid bundled source definition".into());
             }
+            if source.customized_paths.as_ref().is_some_and(|paths| {
+                paths.iter().any(|p| {
+                    !p.starts_with('/') || p.contains(['?', '#', '\\']) || p.contains("..")
+                })
+            }) {
+                return Err("Invalid customized paths".into());
+            }
             let mut rule_ids = HashSet::new();
             for rule in &source.navigation_rules {
                 let fallback = Url::parse(&rule.fallback_url).map_err(|e| e.to_string())?;
@@ -108,6 +115,39 @@ pub fn validate(index: &PackageIndex) -> Result<(), String> {
                 || !assets.contains(&format!("pages/{}/index.html", page.id))
             {
                 return Err("Invalid bundled local page".into());
+            }
+        }
+        if let Some(shell) = &manifest.shell {
+            let mut sections = HashSet::new();
+            if shell.title.is_empty()
+                || shell.title.len() > 80
+                || !assets.contains(&shell.brand_asset)
+                || shell.sections.is_empty()
+                || shell.sections.len() > 5
+                || shell.sections.iter().any(|s| {
+                    !identifier(&s.id)
+                        || !sections.insert(&s.id)
+                        || s.label.is_empty()
+                        || !sources.contains(&s.source_id)
+                        || s.page_id.as_ref().is_some_and(|p| !pages.contains(p))
+                })
+            {
+                return Err("Invalid app shell".into());
+            }
+            for choice in &shell.choices {
+                let url = Url::parse(&choice.url).map_err(|e| e.to_string())?;
+                if choice.label.is_empty()
+                    || !url.username().is_empty()
+                    || url.password().is_some()
+                    || !manifest.sources.iter().any(|s| {
+                        s.origins.contains(&url.origin().ascii_serialization())
+                            && s.customized_paths
+                                .as_ref()
+                                .is_some_and(|p| p.iter().any(|p| p == url.path()))
+                    })
+                {
+                    return Err("Invalid shell choice".into());
+                }
             }
         }
         let mut actions = HashSet::new();
