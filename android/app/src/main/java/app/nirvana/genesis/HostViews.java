@@ -17,6 +17,7 @@ import android.view.WindowInsets;
 import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
+import android.widget.ImageButton;
 import android.widget.PopupMenu;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -35,7 +36,7 @@ final class HostViews {
     private final ScrollView cover;
     private final TextView coverTitle, coverMessage;
     private final LinearLayout recovery;
-    private final Button floatingMenu;
+    private final ImageButton floatingMenu;
     private PopupMenu activeMenu;
     private JSONArray actions = new JSONArray();
     private String presentationState = "loading", presentationMessage = "";
@@ -74,15 +75,18 @@ final class HostViews {
         cover.addView(notice, new ScrollView.LayoutParams(-1, -2)); cover.setVisibility(View.GONE);
         content.addView(cover, new FrameLayout.LayoutParams(-1, -1));
 
-        floatingMenu = button("G", () -> {}); floatingMenu.setTextSize(20); floatingMenu.setTypeface(null, Typeface.BOLD);
+        floatingMenu = new ImageButton(activity);
+        floatingMenu.setImageResource(R.drawable.ic_genesis_plus);
+        floatingMenu.setScaleType(android.widget.ImageView.ScaleType.CENTER);
         floatingMenu.setContentDescription("Genesis menu"); floatingMenu.setTooltipText("Genesis menu");
-        floatingMenu.setPadding(0, 0, 0, 0); floatingMenu.setElevation(dp(6));
+        floatingMenu.setPadding(0, 0, 0, 0); floatingMenu.setElevation(dp(4));
         floatingMenu.setBackgroundTintList(null);
-        GradientDrawable circle = new GradientDrawable(); circle.setShape(GradientDrawable.OVAL); circle.setColor(ink);
-        floatingMenu.setBackground(new RippleDrawable(ColorStateList.valueOf(0x40808080), circle, null)); floatingMenu.setTextColor(paper);
+        GradientDrawable circle = new GradientDrawable(); circle.setShape(GradientDrawable.OVAL); circle.setColor(Color.rgb(140, 21, 21));
+        floatingMenu.setBackground(new RippleDrawable(ColorStateList.valueOf(0x40ffffff), circle, null));
         floatingMenu.setOnClickListener(view -> menu());
         FrameLayout.LayoutParams floating = new FrameLayout.LayoutParams(dp(56), dp(56), Gravity.BOTTOM | Gravity.RIGHT);
-        floating.setMargins(dp(16), dp(16), dp(16), dp(16));
+        // Keep the temporary host control above app bottom navigation.
+        floating.setMargins(dp(16), dp(16), dp(16), dp(104));
         content.addView(floatingMenu, floating); floatingMenu.setVisibility(View.GONE);
         activity.setContentView(content);
     }
