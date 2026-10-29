@@ -1,7 +1,7 @@
 //! Shared package, host, and document qualification contracts. Shared host, managed runtime/navigation and generic storage contracts.
 use serde::{Deserialize, Serialize};
 
-pub const IMPLEMENTATION_STAGE: &str = "MVP-05";
+pub const IMPLEMENTATION_STAGE: &str = "MVP-06";
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -153,6 +153,8 @@ pub enum HostEvent {
         applet_id: String,
         #[serde(rename = "sourceId")]
         source_id: String,
+        #[serde(default, rename = "pageId")]
+        page_id: Option<String>,
     },
     OpenPage {
         #[serde(rename = "pageId")]
@@ -336,6 +338,7 @@ pub struct LocalAsset {
 pub struct LauncherEntry {
     pub applet_id: String,
     pub source_id: String,
+    pub page_id: Option<String>,
     pub label: String,
 }
 

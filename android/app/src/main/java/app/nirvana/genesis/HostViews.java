@@ -65,6 +65,7 @@ final class HostViews {
         for (int i = 0; i < entries.length(); i++) {
             JSONObject entry = entries.getJSONObject(i); JSONObject open = event("open");
             open.put("appletId", entry.getString("appletId")); open.put("sourceId", entry.getString("sourceId"));
+            if (!entry.isNull("pageId")) open.put("pageId", entry.getString("pageId"));
             list.addView(button(entry.getString("label"), () -> events.send(open)));
         }
         ScrollView scroll = new ScrollView(activity); scroll.addView(list); browserSlot.addView(scroll);

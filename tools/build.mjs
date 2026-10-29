@@ -56,7 +56,7 @@ async function check() {
 
 async function assets(packages) {
   const { build } = await import("esbuild");
-  const index = { schemaVersion: 1, implementationStage: "MVP-05", packages: [] };
+  const index = { schemaVersion: 1, implementationStage: "MVP-06", packages: [] };
   const output = path.join(generated, "assets");
   await rm(output, { recursive: true, force: true });
   for (const { base, manifest: original } of packages) {
