@@ -104,15 +104,19 @@ export default defineApplet({
 /** Website cookies stay in WebView. Only public account identity coordinates retained views. */
 function synchronizeAccount(context: AppletContext): void {
   const header = document.querySelector(".pagetop"), profile = document.querySelector(".pagetop a[href^='user?id=']");
-  if (!header) return;
-  const identity = profile?.textContent?.trim() ?? "";
-  void context.storage.get<{ identity: string }>("session", "hn-account").then(({ document }) => {
-    if (context.signal.aborted || document?.value.identity === identity) return;
-    return writeLocal(context, "session", "hn-account", { identity });
-  }).catch(() => {});
+  // Headerless login forms must observe account changes without declaring a sign-out.
+  const identity = header ? profile?.textContent?.trim() ?? "" : null;
+  const initialIdentity = context.storage.get<{ identity: string }>("session", "hn-account").then(async ({ document }) => {
+    if (context.signal.aborted) return null;
+    if (identity !== null && document?.value.identity !== identity) {
+      await writeLocal(context, "session", "hn-account", { identity });
+    }
+    return identity ?? document?.value.identity ?? "";
+  }).catch(() => identity);
   context.onFocus(() => {
-    void context.storage.get<{ identity: string }>("session", "hn-account").then(({ document }) => {
-      if (!context.signal.aborted && document && document.value.identity !== identity) location.reload();
+    void initialIdentity.then(async baseline => {
+      const { document } = await context.storage.get<{ identity: string }>("session", "hn-account");
+      if (!context.signal.aborted && document && document.value.identity !== baseline) location.reload();
     }).catch(() => {});
   });
 }
