@@ -1,3 +1,4 @@
+import { writeLocal } from "./local-state";
 import { backendStorage } from "./backend";
 import { defineApplet, type AppletContext, type ElementBinding, type Dispose } from "@genesis/sdk";
 import theme from "./theme.css";
@@ -107,7 +108,7 @@ function synchronizeAccount(context: AppletContext): void {
   const identity = profile?.textContent?.trim() ?? "";
   void context.storage.get<{ identity: string }>("session", "hn-account").then(({ document }) => {
     if (context.signal.aborted || document?.value.identity === identity) return;
-    return context.storage.commit({ checks: [], puts: [{ collection: "session", key: "hn-account", value: { identity } }], deletes: [] });
+    return writeLocal(context, "session", "hn-account", { identity });
   }).catch(() => {});
   context.onFocus(() => {
     void context.storage.get<{ identity: string }>("session", "hn-account").then(({ document }) => {

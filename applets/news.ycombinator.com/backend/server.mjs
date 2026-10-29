@@ -24,6 +24,7 @@ const handler = async (request, response) => {
     send(code === 'CONFLICT' ? 409 : code === 'INVALID_ARGUMENT' ? 400 : 500, { error: { code, message: error instanceof ApiError ? error.message : 'Backend operation failed; reread before retrying' } });
   }
 };
+if (!!process.env.GENESIS_TLS_CERT !== !!process.env.GENESIS_TLS_KEY) throw new Error('Configure both TLS certificate and key');
 const server = process.env.GENESIS_TLS_CERT && process.env.GENESIS_TLS_KEY
   ? httpsServer({ cert: readFileSync(process.env.GENESIS_TLS_CERT), key: readFileSync(process.env.GENESIS_TLS_KEY) }, handler)
   : httpServer(handler);
