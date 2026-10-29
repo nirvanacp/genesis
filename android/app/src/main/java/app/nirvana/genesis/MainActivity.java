@@ -29,7 +29,7 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
         views = new HostViews(this, this::send);
         services = new ServiceClient(this);
         browser = new BrowserAdapter(this, views, this::send);
-        if (savedInstanceState != null) browserStates = savedInstanceState;
+        if (savedInstanceState != null) browserStates.putBundle("genesis.browserHistory", savedInstanceState.getBundle("genesis.browserHistory"));
         browser.restoreStates(browserStates);
         if (Build.VERSION.SDK_INT >= 33) {
             getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
@@ -141,7 +141,7 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
     @Override protected void onSaveInstanceState(Bundle out) {
         if (attached) { send(HostViews.event("saveSession")); out.putString("genesis.session", retainedSession); }
         for (BrowserAdapter session : sessions.values()) session.saveStates(browserStates);
-        out.putAll(browserStates);
+        out.putBundle("genesis.browserHistory", browserStates.getBundle("genesis.browserHistory"));
         super.onSaveInstanceState(out);
     }
     @Override protected void onPause() { if (attached) send(HostViews.event("suspended")); if (browser != null) browser.pause(); super.onPause(); }

@@ -158,6 +158,10 @@ pub struct ExecutionContext {
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionSnapshot {
+    #[serde(default)]
+    pub opener: Option<Selection>,
+    #[serde(default)]
+    pub current_url: Option<String>,
     pub selection: Option<Selection>,
     pub source_urls: std::collections::HashMap<String, String>,
     pub disabled: Vec<AppletId>,
@@ -297,6 +301,8 @@ pub enum HostCommand {
         status: String,
     },
     CreateView {
+        #[serde(rename = "ownerSelection")]
+        owner_selection: Option<Selection>,
         generation: u64,
         package: Box<Package>,
         context: ExecutionContext,

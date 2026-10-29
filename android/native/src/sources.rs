@@ -38,6 +38,7 @@ pub struct ChallengeBinding {
 }
 
 pub struct LiveView {
+    pub opener: Option<Selection>,
     pub context: ExecutionContext,
     pub package: Package,
     pub selection: Selection,

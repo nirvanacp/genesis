@@ -105,8 +105,9 @@ final class HostViews {
         coverMessage.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
         notice.addView(coverTitle); notice.addView(coverMessage);
         recovery = new LinearLayout(activity); recovery.setOrientation(LinearLayout.VERTICAL);
-        recovery.addView(button("Retry customization", () -> events.send(event("retry"))));
-        recovery.addView(button("Open ordinary site", () -> events.send(event("ordinary"))));
+        recovery.addView(button("Retry", () -> events.send(event("retry"))));
+        recovery.addView(button("Back", () -> events.send(event("back"))));
+        recovery.addView(button("View original page", () -> events.send(event("ordinary"))));
         recovery.addView(button("Return to Apps", () -> events.send(event("home"))));
         notice.addView(recovery);
         siteRecovery = new LinearLayout(activity); siteRecovery.setOrientation(LinearLayout.VERTICAL);
@@ -139,6 +140,8 @@ final class HostViews {
         shell = manifest.optJSONObject("shell"); appletId = manifest.getString("id");
         JSONObject binding = command.getJSONObject("context").getJSONObject("binding");
         sourceId = binding.optString("sourceId", "primary"); pageId = binding.optString("pageId", "");
+        JSONObject owner = command.optJSONObject("ownerSelection");
+        if (owner != null) { sourceId = owner.getString("sourceId"); pageId = owner.isNull("pageId") ? "" : owner.getString("pageId"); }
         if (appHeader != null) content.removeView(appHeader);
         if (sections != null) content.removeView(sections);
         if (shell == null) return;
@@ -222,7 +225,7 @@ final class HostViews {
         boolean siteError = "siteError".equals(presentationState);
         boolean failed = "failed".equals(presentationState) || "unsupported".equals(presentationState);
         boolean loading = "loading".equals(presentationState);
-        coverTitle.setText(siteError ? "Page unavailable" : failed ? "Customization unavailable" : "Opening app"); coverMessage.setText(presentationMessage);
+        coverTitle.setText(siteError ? "Page unavailable" : failed ? "Couldn’t prepare this page" : "Loading…"); coverMessage.setText(siteError ? "Check your connection and try again." : failed ? "Try again, go back, or view the original page." : "");
         recovery.setVisibility(failed ? View.VISIBLE : View.GONE);
         siteRecovery.setVisibility(siteError ? View.VISIBLE : View.GONE);
         boolean blocking = failed || siteError || loading;
@@ -235,7 +238,7 @@ final class HostViews {
         dismissMenu(); fullscreen = true; floatingMenu.setVisibility(View.GONE);
         content.addView(view, new FrameLayout.LayoutParams(-1, -1));
     }
-    void exitFullscreen(View view) { content.removeView(view); fullscreen = false; floatingMenu.setVisibility(readerVisible ? View.GONE : View.VISIBLE); floatingMenu.bringToFront(); }
+    void exitFullscreen(View view) { content.removeView(view); fullscreen = false; floatingMenu.setVisibility(readerVisible || shell != null ? View.GONE : View.VISIBLE); floatingMenu.bringToFront(); }
     void diagnostics(String value) {
         TextView body = text(value, 16); body.setTextIsSelectable(true); body.setPadding(dp(24), dp(16), dp(24), dp(16));
         ScrollView scroll = new ScrollView(activity); scroll.addView(body);
@@ -249,7 +252,7 @@ final class HostViews {
         readerBack.setEnabled(canBack); readerForward.setEnabled(canForward);
         if (reader) {
             Uri parsed = Uri.parse(url);
-            readerOrigin.setText(("https".equals(parsed.getScheme()) ? "🔒 " : "") + (parsed.getHost() == null ? "Web page" : parsed.getHost()));
+            readerOrigin.setText((parsed.getHost() == null ? "Web page" : parsed.getHost()) + (parsed.getPort() < 0 ? "" : ":" + parsed.getPort()));
         }
         readerBar.setVisibility(reader ? View.VISIBLE : View.GONE);
         boolean app = shell != null && !reader;
@@ -286,7 +289,6 @@ final class HostViews {
         popup.getMenu().add("Share link").setOnMenuItemClickListener(item -> { events.send(event("shareLink")); return true; });
         popup.getMenu().add("Open in browser").setOnMenuItemClickListener(item -> { events.send(event("openBrowser")); return true; });
         popup.getMenu().add("Return to Apps").setOnMenuItemClickListener(item -> { events.send(event("home")); return true; });
-        popup.getMenu().add("Service connections").setOnMenuItemClickListener(item -> { events.send(event("configureServices")); return true; });
         popup.show();
     }
     private void dismissMenu() { if (activeMenu != null) { activeMenu.dismiss(); activeMenu = null; } }

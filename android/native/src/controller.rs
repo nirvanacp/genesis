@@ -11,6 +11,7 @@ pub struct HostState {
     pub(crate) active: Option<LiveView>,
     disabled: HashSet<AppletId>,
     retained: VecDeque<LiveView>,
+    pending_opener: Option<Selection>,
     generation: u64,
     serial: u64,
     debug: bool,
@@ -115,6 +116,8 @@ impl HostState {
                 }
                 self.index = Some(index);
                 if let Some(snapshot) = restore {
+                    let restored_url = snapshot.current_url.clone();
+                    self.pending_opener = snapshot.opener.clone();
                     self.disabled.extend(snapshot.disabled);
                     for instance in self.instances.values_mut() {
                         for (id, source) in &mut instance.sources {
@@ -150,6 +153,19 @@ impl HostState {
                     });
                     if let Some(selection) = selection {
                         self.open(selection, &mut commands)?;
+                        if let Some(url) = restored_url
+                            && let Some(view) = self.active.as_mut()
+                            && view.selection.page_id.is_none()
+                            && Self::safe_website_url(&url)
+                            && origin(&url).is_some_and(|o| view.origins.contains(&o))
+                        {
+                            view.url = url.clone();
+                            commands.retain(|c| !matches!(c, C::LoadUrl { .. }));
+                            commands.push(C::LoadUrl {
+                                generation: view.context.generation.0,
+                                url,
+                            });
+                        }
                     } else {
                         commands.push(self.launcher());
                     }
@@ -226,6 +242,12 @@ impl HostState {
                         .ok_or("Unknown source")?;
                     source.last_url = url;
                 }
+                if temporary_url
+                    && let Some(view) = &self.active
+                    && view.selection.page_id.is_some()
+                {
+                    self.pending_opener = Some(view.selection.clone());
+                }
                 self.open(selection.clone(), &mut commands)?;
                 if let Some(url) = requested_url
                     && let Some(view) = self.active.as_mut()
@@ -294,6 +316,8 @@ impl HostState {
                         commands.push(C::GoBack {
                             generation: view.context.generation.0,
                         });
+                    } else if let Some(opener) = view.opener.clone() {
+                        self.open(opener, &mut commands)?;
                     } else if view.selection.page_id.is_some() {
                         let mut selection = view.selection.clone();
                         selection.page_id = None;
@@ -330,6 +354,7 @@ impl HostState {
                         self.disabled.remove(&selection.applet_id);
                     }
                     self.qualification = None;
+                    self.retire(&mut commands);
                     self.open(selection, &mut commands)?;
                 }
             }
@@ -628,13 +653,16 @@ impl HostState {
         })
     }
     fn open(&mut self, selection: Selection, commands: &mut Vec<C>) -> Result<(), String> {
-        if self.active.as_ref().is_some_and(|v| {
-            v.selection.applet_id == selection.applet_id
-                && v.selection.source_id == selection.source_id
-                && v.selection.page_id == selection.page_id
-                && !v.failed
-                && v.customized
-        }) {
+        if self.pending_opener.is_none()
+            && self.active.as_ref().is_some_and(|v| {
+                v.selection.applet_id == selection.applet_id
+                    && v.selection.source_id == selection.source_id
+                    && v.selection.page_id == selection.page_id
+                    && v.opener.is_none()
+                    && !v.failed
+                    && v.customized
+            })
+        {
             return Ok(());
         }
         let package = self
@@ -697,7 +725,9 @@ impl HostState {
             )
         };
         let target = self.retained.iter().position(|v| {
-            v.selection.applet_id == selection.applet_id
+            self.pending_opener.is_none()
+                && v.opener.is_none()
+                && v.selection.applet_id == selection.applet_id
                 && v.selection.source_id == selection.source_id
                 && v.selection.page_id == selection.page_id
                 && v.customized
@@ -708,6 +738,7 @@ impl HostState {
             if view.package.manifest.shell.is_some()
                 && view.customized
                 && view.ready
+                && view.opener.is_none()
                 && !view.failed
             {
                 commands.push(C::ParkView {
@@ -745,7 +776,9 @@ impl HostState {
         };
         let customized =
             selection.page_id.is_some() || !self.disabled.contains(&selection.applet_id);
+        let owner_selection = self.pending_opener.take();
         self.active = Some(LiveView {
+            opener: owner_selection.clone(),
             context: context.clone(),
             package: package.clone(),
             selection,
@@ -761,6 +794,7 @@ impl HostState {
         });
         self.source_status(SourceStatus::Loading);
         commands.push(C::CreateView {
+            owner_selection,
             generation,
             package: Box::new(package),
             context,
@@ -918,6 +952,8 @@ impl HostState {
     }
     fn snapshot(&self) -> SessionSnapshot {
         SessionSnapshot {
+            opener: self.active.as_ref().and_then(|v| v.opener.clone()),
+            current_url: self.active.as_ref().map(|v| v.url.clone()),
             selection: self.active.as_ref().map(|v| v.selection.clone()),
             disabled: self.disabled.iter().cloned().collect(),
             source_urls: self
