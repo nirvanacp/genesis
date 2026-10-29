@@ -37,9 +37,19 @@ pub fn validate(index: &PackageIndex) -> Result<(), String> {
             || manifest
                 .capabilities
                 .iter()
-                .any(|c| !["dom", "navigation-policy", "storage"].contains(&c.as_str()))
+                .any(|c| !["dom", "navigation-policy", "storage", "services"].contains(&c.as_str()))
         {
             return Err("Invalid bundled package identity, schema or capability".into());
+        }
+        let mut services = HashSet::new();
+        if manifest
+            .services
+            .iter()
+            .any(|id| !identifier(id) || !services.insert(id))
+            || (!manifest.services.is_empty()
+                && !manifest.capabilities.iter().any(|c| c == "services"))
+        {
+            return Err("Invalid service declaration".into());
         }
         let mut assets = HashSet::new();
         for asset in &package.assets {

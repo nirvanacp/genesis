@@ -25,7 +25,10 @@ export async function readPackages() {
     for (const field of ["pages", "actions", "capabilities"]) {
       requireValue(Array.isArray(manifest[field]), `${directory}: ${field} must be an array`);
     }
-    requireValue(manifest.capabilities.every(c => ["dom", "navigation-policy", "storage"].includes(c)), `${directory}: unsupported capability`);
+    requireValue(manifest.capabilities.every(c => ["dom", "navigation-policy", "storage", "services"].includes(c)), `${directory}: unsupported capability`);
+    requireValue(Array.isArray(manifest.services ?? []) && new Set(manifest.services ?? []).size === (manifest.services ?? []).length
+      && (manifest.services ?? []).every(id => identifier.test(id))
+      && (!(manifest.services ?? []).length || manifest.capabilities.includes("services")), `${directory}: invalid service declarations`);
     const sourceIds = new Set();
     for (const source of manifest.sources) {
       requireValue(identifier.test(source.id) && !sourceIds.has(source.id), `${directory}: duplicate or invalid source ID`);

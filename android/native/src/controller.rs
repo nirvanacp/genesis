@@ -413,6 +413,29 @@ impl HostState {
                     }
                 }
             }
+            E::ConfigureServices => {
+                if let Some(view) = &self.active {
+                    commands.push(C::ConfigureServices {
+                        generation: view.context.generation.0,
+                        applet_id: view.context.applet_id.0.clone(),
+                        services: view.package.manifest.services.clone(),
+                    });
+                }
+            }
+            E::ServiceCompleted { completion } => {
+                if let Some(view) = &self.active
+                    && view.context.generation.0 == completion.generation
+                    && let Some(doc) = &view.document
+                    && doc.id == completion.document_id
+                    && doc.channel == completion.channel
+                {
+                    commands.push(C::ReplyToPage {
+                        generation: completion.generation,
+                        channel: completion.channel,
+                        message: completion.response,
+                    });
+                }
+            }
             E::SaveSession => commands.push(C::RetainSession {
                 snapshot: self.snapshot(),
             }),
@@ -911,6 +934,25 @@ impl HostState {
                         if self.debug { trace(&mut self.startup_trace, "runtime error"); }
                         let reason=message["params"]["message"].as_str().unwrap_or("Unknown creator/runtime error");
                         let bounded:String=reason.chars().take(1024).collect();self.failure(&bounded,commands);
+                    }
+                    Some("services.request") => {
+                        let params = &message["params"];
+                        let service = params["serviceId"].as_str().unwrap_or("");
+                        let path = params["path"].as_str().unwrap_or("");
+                        let method = params["method"].as_str().unwrap_or("");
+                        if view.package.manifest.capabilities.iter().any(|c| c == "services")
+                            && view.package.manifest.services.iter().any(|s| s == service)
+                            && path.starts_with('/') && !path.starts_with("//") && path.len() <= 2048
+                            && !path.contains(['\\', '#', '\r', '\n'])
+                            && ["GET", "POST", "PUT", "PATCH", "DELETE"].contains(&method)
+                            && (method != "GET" || params["body"].is_null()) {
+                            commands.push(C::ServiceRequest { job: ServiceJob { generation, document_id: doc.id.clone(), channel,
+                                request_id: request.into(), applet_id: view.context.applet_id.0.clone(), service_id: service.into(),
+                                path: path.into(), method: method.into(), body: params.get("body").filter(|v| !v.is_null()).cloned() } });
+                        } else {
+                            commands.push(C::ReplyToPage { generation, channel, message: json!({"v":1,"documentId":doc.id,"requestId":request,"ok":false,
+                                "error":{"code":"INVALID_ARGUMENT","message":"Undeclared service or invalid request","retryable":false}}) });
+                        }
                     }
                     Some("storage.get") | Some("storage.list") | Some("storage.commit") => {
                         let operation=serde_json::from_value::<StorageOperation>(json!({"method":message["method"],"params":message["params"]}));

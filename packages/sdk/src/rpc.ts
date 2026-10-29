@@ -17,7 +17,7 @@ export class RpcClient {
     if (new TextEncoder().encode(encoded).length > 262144) return Promise.reject(new GenesisError("QUOTA_EXCEEDED", "Request exceeds 256 KiB"));
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => { this.pending.delete(requestId);
-        reject(new GenesisError("INTERNAL", "Request timed out. Reread before retrying a write.", true)); }, 5000);
+        reject(new GenesisError("INTERNAL", "Request timed out. Reread before retrying a write.", true)); }, 15000);
       this.pending.set(requestId, { resolve: value => resolve(value as T), reject, timer });
       try { this.send(encoded); } catch (error) { clearTimeout(timer); this.pending.delete(requestId); reject(error); }
     });
