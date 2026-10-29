@@ -106,6 +106,10 @@ Project skills live in `.skills/`. This directory can contain third-party skills
 
 Read a skill's `SKILL.md` before applying it. Resolve any relative file references from that skill's directory.
 
+### Apple design for custom apps
+
+When designing, building, or changing a custom app, always use the relevant Apple design skills in `.skills/` to guide design choices and app development. Read the applicable skill instructions and use their guidance for the app's platform and framework.
+
 Do not use skills installed outside the project's `.skills/` directory unless the user explicitly requests them. The `unslop` instruction below is an explicit exception.
 
 Use the `unslop` skill whenever you write an explanation in your response. Prefer a project copy if one is available; otherwise, use an installed copy.
