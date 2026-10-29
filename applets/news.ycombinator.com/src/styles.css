@@ -14,3 +14,8 @@ button.danger { color: #9b2925; }
 button:disabled { opacity: .55; cursor: default; }
 button:focus-visible, input:focus-visible { outline: 3px solid #558a65; outline-offset: 3px; }
 .error { color: #a22d24; background: #fff0ed; padding: 10px; border-radius: 5px; }
+fieldset { border: 1px solid #d9e1db; border-radius: 8px; margin: 20px 0; padding: 12px; min-width: 0; }
+legend { font-weight: 600; padding: 0 4px; }
+.stack { flex-direction: column; gap: 5px; }
+input:not([type=checkbox]) { font: inherit; border: 1px solid #b6c5bc; border-radius: 6px; padding: 9px; width: 100%; color: #212c27; background: white; }
+.notice { color: #583e22; background: #fff5e7; padding: 10px; border-radius: 5px; overflow-wrap: anywhere; }
