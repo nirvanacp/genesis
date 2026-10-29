@@ -27,7 +27,7 @@ Current package selection is build-time in tools/check-packages.mjs. assets are 
 
 Use generic capability contracts rather than adding host methods for application entities. Keep backend-specific routes, SQL and types under the applet. Generic platform local storage remains optional, and may support settings or an applet-defined cache. It is not the authoritative HN store after this migration.
 
-A future application context can coordinate pages outside a document lifetime. It must be restartable, resource-bounded and explicit about phone suspension. Arbitrary on-phone server execution, persistent background processing, multiple live sources and total network confinement are not implemented.
+A future application context can coordinate pages outside a document lifetime. It must be restartable, resource-bounded and explicit about phone suspension. Arbitrary on-phone server execution, persistent background processing, total network confinement is not implemented. A bounded native registry now retains customized section views; it does not run arbitrary backend programs on the phone.
 
 ## Agent constraints
 

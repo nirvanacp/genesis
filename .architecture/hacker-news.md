@@ -2,7 +2,7 @@
 
 ## Current split
 
-The HN frontend remains in applets/news.ycombinator.com/src. The independent server is in backend/server.mjs and backend/store.mjs. It uses Node's built-in HTTP and SQLite modules, so no new runtime package is required. Run/deploy it separately. The Android build bundles frontend assets only.
+The HN frontend remains in applets/news.ycombinator.com/src. The independent server is in backend/server.mjs and backend/store.mjs. It uses Node’s built-in HTTP/HTTPS and SQLite modules. tools/services.mjs starts and provisions the local development backend; production operators can run the same server behind trusted HTTPS. The Android build bundles frontend assets only.
 
 The applet declares service bookmarks and calls POST /v1/documents through the generic service broker. src/backend.ts implements the HN-specific {operation, params} protocol and adapts responses to the existing repository interfaces. Those TypeScript interfaces describe document operations; sharing a type with the SDK does not make Rust the authoritative database. Source controls, dialog and library use this adapter.
 
@@ -22,7 +22,13 @@ extract-item.ts validates supported HN story rows and metadata. main.ts mounts o
 
 library-data.ts scans order entries, reads documents in bounded groups and returns 20 matching bookmarks. Namespace revision changes invalidate an inconsistent scan. Sparse category filters may scan many records. Search filters loaded titles only. Cancellation stops further UI application and scanning, not an already committed backend write.
 
-src/backend.ts publishes same-document changes after acknowledged commits. There is no cross-device push or automatic cross-client invalidation. Reopening/reloading the library reads server state; concurrent reads detect revisions. The library requires connectivity to the configured backend even though its HTML is packaged locally. Full articles are not cached.
+src/backend.ts publishes same-document changes after acknowledged commits. There is no cross-device push or automatic cross-client invalidation. Restoring the library triggers a focus refresh while retaining filters and existing rows; concurrent reads detect revisions. The library requires connectivity to the configured backend even though its HTML is packaged locally. Full articles are not cached.
+
+## Navigation and local state
+
+The native manifest shell owns Home, Search, Post, Saved and Me. Source headers and both old applet tab renderers are retired. Home retains compact native table rows and separators, following the user’s preference over separate rounded cards; the native footer retains labeled section icons. Story blank areas open discussions; actual title links open the submitted destination. Shadow DOM controls, selected text and modified clicks preserve their actions. Discussion headers expose Visit website when a distinct safe article exists. Comments remain normal threaded content.
+
+Post stores title/URL/text in applet-scoped host documents with serialized, revision-checked writes. Authentication redirects and validation errors retain drafts. Discard explicitly clears the fields. Automatic success deletion remains conservative because no real post is submitted during verification. Public account identity coordinates reloads of retained source views; credentials and HN cookies are never copied into applet storage.
 
 ## Acceptance scope
 
