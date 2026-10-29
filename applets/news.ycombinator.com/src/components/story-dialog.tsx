@@ -1,3 +1,4 @@
+import { backendStorage } from "../backend";
 import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { GenesisError, type AppletContext, type StoredDocument } from "@genesis/sdk";
@@ -26,7 +27,7 @@ function StoryDialog({ context, snapshot, close }: { context: AppletContext; sna
   const alive = useRef(true), initialized = useRef(false);
   useEffect(() => {
     alive.current = true; setLoading(true); setReadFailed(false);
-    void Promise.all([new BookmarkRepository(context.storage).get(snapshot.itemId), new CategoryRepository(context.storage).read()])
+    void Promise.all([new BookmarkRepository(backendStorage(context)).get(snapshot.itemId), new CategoryRepository(backendStorage(context)).read()])
       .then(([record, current]) => {
         if (alive.current) {
           setPrevious(record); setCategories(current);
@@ -39,14 +40,14 @@ function StoryDialog({ context, snapshot, close }: { context: AppletContext; sna
   }, [context, snapshot.itemId, reload]);
   const reread = async () => {
     const [record, current] = await Promise.all([
-      new BookmarkRepository(context.storage).get(snapshot.itemId), new CategoryRepository(context.storage).read(),
+      new BookmarkRepository(backendStorage(context)).get(snapshot.itemId), new CategoryRepository(backendStorage(context)).read(),
     ]);
     if (alive.current) { setPrevious(record); setCategories(current); setReadFailed(false); }
   };
   const perform = async (remove: boolean) => {
     if (busy || loading || readFailed || !categories) return;
     setBusy(true); setMessage("");
-    const repository = new BookmarkRepository(context.storage);
+    const repository = new BookmarkRepository(backendStorage(context));
     try {
       if (remove && previous) await repository.remove(previous);
       else {
@@ -72,12 +73,12 @@ function StoryDialog({ context, snapshot, close }: { context: AppletContext; sna
     if (busy || loading || readFailed) return;
     setBusy(true); setMessage("");
     try {
-      const repository = new CategoryRepository(context.storage), id = await repository.create(name);
+      const repository = new CategoryRepository(backendStorage(context)), id = await repository.create(name);
       const current = await repository.read();
       if (alive.current) { setCategories(current); setSelected(ids => [...new Set([...ids, id])]); setName(""); setMessage("Category created. Save this bookmark to apply its selection."); }
     } catch (error) {
       try {
-        const current = await new CategoryRepository(context.storage).read();
+        const current = await new CategoryRepository(backendStorage(context)).read();
         if (alive.current) { setCategories(current); setMessage(`${(error as Error).message} Categories reloaded; review before retrying.`); }
       } catch { if (alive.current) { setReadFailed(true); setMessage("Category creation could not be confirmed. Reload saved state before retrying."); } }
     } finally { if (alive.current) setBusy(false); }

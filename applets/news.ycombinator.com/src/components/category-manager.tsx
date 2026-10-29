@@ -1,3 +1,4 @@
+import { backendStorage } from "../backend";
 import { useEffect, useRef, useState } from "react";
 import type { AppletContext, StoredDocument } from "@genesis/sdk";
 import { CategoryRepository, type CategorySnapshot, type CategoryV1 } from "../categories";
@@ -12,7 +13,7 @@ export function CategoryManager({ context, snapshot, changed }: { context: Apple
     catch (error) { if (alive.current) { setMessage(`${(error as Error).message} Reload and review before retrying.`); changed(); } }
     finally { if (alive.current) setBusy(false); }
   };
-  const repository = new CategoryRepository(context.storage);
+  const repository = new CategoryRepository(backendStorage(context));
   return <details className="category-manager" open><summary>Manage categories</summary>
     <p className="muted">Categories are saved immediately. Deleting one keeps its bookmarks.</p>
     {message && <p role="status" className="notice">{message}</p>}
