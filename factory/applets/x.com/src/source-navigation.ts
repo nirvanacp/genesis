@@ -34,10 +34,12 @@ export function sourceNavigation(context:AppletContext):void{
   context.navigation.onChange(render);
   context.watchElements("x-source-layout",{selector:'[data-testid="primaryColumn"],[data-testid="AppTabBar_Profile_Link"]',attributes:["href"],text:false,limit:4,contentKey:element=>element.getAttribute("data-testid")},{enter:render,leave:render,update:render});
   const updateGuard=()=>{
-    const composer=!!document.querySelector('[role="dialog"] [data-testid^="tweetTextarea"]');
+    const composer=!!document.querySelector('[role="dialog"] [data-testid^="tweetTextarea"]')||[...document.querySelectorAll('[data-testid^="tweetTextarea"][contenteditable="true"]')].some(element=>!!element.textContent?.trim());
     if(composer!==guard){guard=composer;void context.navigation.setLeaveGuard(composer?{message:"Your post may have unsaved changes. Close it in X to keep a draft, or leave this page."}:null).catch(()=>{});}
   };
-  context.watchElements("x-composer",{selector:'[data-testid^="tweetTextarea"]',attributes:["data-testid"],text:false,limit:5,contentKey:()=>"composer"},{enter:updateGuard,leave:updateGuard,update:updateGuard});
+  const composerListeners=new Map<string,()=>void>();
+  context.watchElements("x-composer",{selector:'[data-testid^="tweetTextarea"][contenteditable="true"]',attributes:["data-testid"],text:false,limit:5,contentKey:()=>"composer"},{enter:binding=>{const listener=()=>updateGuard();binding.element.addEventListener("input",listener);composerListeners.set(binding.id,()=>binding.element.removeEventListener("input",listener));updateGuard();},leave:binding=>{composerListeners.get(binding.id)?.();composerListeners.delete(binding.id);updateGuard();},update:updateGuard});
+  context.onDispose(()=>{for(const dispose of composerListeners.values())dispose();composerListeners.clear();});
   context.navigation.onBack(()=>{
     const dialogs=[...document.querySelectorAll<HTMLElement>('[role="dialog"]')].filter(d=>d.getClientRects().length&&!d.closest("[data-genesis-owned]"));
     const active=dialogs.at(-1);
