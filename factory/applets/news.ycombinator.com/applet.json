@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "hn-bookmarks",
-  "name": "Hacker News with Genesis bookmarks",
+  "name": "Hacker News",
   "dataSchemaVersion": 1,
   "sources": [
     {
