@@ -316,6 +316,7 @@ pub enum HostCommand {
         status: String,
     },
     CreateView {
+        selection: Selection,
         #[serde(rename = "ownerSelection")]
         owner_selection: Option<Selection>,
         generation: u64,
