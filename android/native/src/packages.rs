@@ -163,6 +163,15 @@ pub fn validate(index: &PackageIndex) -> Result<(), String> {
         }
         if let Some(shell) = &manifest.shell {
             let mut sections = HashSet::new();
+            if package.runtime_api_version < 2
+                && (shell.color_scheme.is_some()
+                    || shell
+                        .sections
+                        .iter()
+                        .any(|s| s.icon.as_deref() == Some("notifications")))
+            {
+                return Err("Shell additions require API 2".into());
+            }
             if shell
                 .color_scheme
                 .as_ref()

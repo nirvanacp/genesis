@@ -1,0 +1,6 @@
+# Genesis neutral shell and modal accessibility
+
+- Goal: Give X neutral native chrome and coherent animated navigation while preserving HN's default appearance.
+- Changes: Added the notification icon and neutral shell palette, suppressed the redundant floating creator button for shell-enabled applets, and animated prepared screen/reader/section reveals with an interruptible 180 ms ease-out. SDK modals now suppress and restore sibling accessibility state, including new body siblings. Source views remain behind the existing readiness cover.
+- Decisions: The user asked for visual quality matching X and mobile-quality navigation. Keep live X content as the baseline and use motion only when a prepared screen enters; system animation disablement skips it. Documented this later requirement in the product plan. Neutral styling is a reusable preset rather than X-specific host code. HN retains its default palette.
+- Verification: TypeScript, strict Rust clippy and Android assembleDebug/lintDebug passed. Neutral text contrast is 18.51:1 in light mode and 17.24:1 in dark mode; proposed owned muted/accent tokens exceed 4.5:1. Android visual/TalkBack/IME checks remain part of integration verification. No tests were added.

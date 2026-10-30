@@ -35,7 +35,7 @@ final class HostViews {
     interface Events { void send(JSONObject event); }
     final FrameLayout browserSlot;
     private final Activity activity;
-    private final int paper, ink, wash, accent;
+    private int paper, ink, wash, accent;
     private final Events events;
     private final FrameLayout content;
     private final ScrollView cover;
@@ -142,6 +142,7 @@ final class HostViews {
         appletActive = true;
         JSONObject manifest = command.getJSONObject("package").getJSONObject("manifest");
         shell = manifest.optJSONObject("shell"); appletId = manifest.getString("id");
+        palette(shell != null && "neutral".equals(shell.optString("colorScheme")));
         JSONObject selection = command.getJSONObject("selection");
         sectionId = selection.optString("sectionId", "");
         sourceId = selection.getString("sourceId"); pageId = selection.isNull("pageId") ? "" : selection.optString("pageId");
@@ -205,6 +206,16 @@ final class HostViews {
         }
         content.addView(sections, new FrameLayout.LayoutParams(-1, dp(SECTION_BAR_HEIGHT), Gravity.BOTTOM));
     }
+    private void palette(boolean neutral) {
+        boolean dark = (activity.getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES;
+        paper = Color.parseColor(neutral ? dark ? "#000000" : "#ffffff" : dark ? "#1d1b18" : "#faf7f2");
+        ink = Color.parseColor(neutral ? dark ? "#e7e9ea" : "#0f1419" : dark ? "#f5eee4" : "#24211c");
+        accent = Color.parseColor(neutral ? dark ? "#e7e9ea" : "#0f1419" : dark ? "#ff995f" : "#b93800");
+        wash = Color.parseColor(neutral ? dark ? "#16181c" : "#eff3f4" : dark ? "#363027" : "#f3e9dc");
+        content.setBackgroundColor(paper); cover.setBackgroundColor(paper); readerBar.setBackgroundColor(paper);
+        coverTitle.setTextColor(ink); coverMessage.setTextColor(ink); readerOrigin.setTextColor(ink);
+        readerBack.setColorFilter(ink); readerForward.setColorFilter(ink);
+    }
     private JSONObject openSection(JSONObject entry) {
         JSONObject event = open(entry.optString("sourceId"), entry.isNull("pageId") ? null : entry.optString("pageId"), null);
         try { event.put("sectionId", entry.getString("id")); } catch (JSONException error) { throw new IllegalArgumentException(error); }
@@ -217,6 +228,7 @@ final class HostViews {
             case "post": return R.drawable.ic_section_post;
             case "bookmark": return R.drawable.ic_section_bookmark;
             case "person": return R.drawable.ic_section_person;
+            case "notifications": return R.drawable.ic_section_notifications;
             default: return 0;
         }
     }
@@ -232,8 +244,14 @@ final class HostViews {
         if (sections != null) for (int i = 0; i < sections.getChildCount(); i++) sections.getChildAt(i).setEnabled(!open);
     }
     void reveal() {
+        boolean entering = cover.getVisibility() == View.VISIBLE;
         cover.setVisibility(View.GONE);
         browserSlot.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);
+        if (entering && android.animation.ValueAnimator.areAnimatorsEnabled()) {
+            browserSlot.animate().cancel(); browserSlot.setAlpha(0f); browserSlot.setTranslationY(dp(8));
+            browserSlot.animate().alpha(1f).translationY(0).setDuration(180)
+                .setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
+        }
     }
     void launcher(JSONArray entries, String message) throws JSONException {
         dismissMenu(); fullscreen = false; readerVisible = false; appletActive = false;
@@ -326,7 +344,7 @@ final class HostViews {
         if (appHeader.getPaddingLeft() != inset) appHeader.setPadding(inset, 0, inset, 0);
     }
     private void updateFloatingMenu() {
-        floatingMenu.setVisibility(!appletActive || fullscreen || readerVisible ? View.GONE : View.VISIBLE);
+        floatingMenu.setVisibility(!appletActive || fullscreen || readerVisible || shell != null ? View.GONE : View.VISIBLE);
         FrameLayout.LayoutParams bounds = (FrameLayout.LayoutParams) floatingMenu.getLayoutParams();
         int bottom = dp(shell != null && !readerVisible ? SECTION_BAR_HEIGHT + 16 : 16);
         if (bounds.bottomMargin != bottom) { bounds.bottomMargin = bottom; floatingMenu.setLayoutParams(bounds); }
@@ -338,6 +356,7 @@ final class HostViews {
         if (progress > 0) pageProgress.setProgress(progress);
     }
     void pageStarting() {
+        browserSlot.animate().cancel(); browserSlot.setAlpha(1f); browserSlot.setTranslationY(0);
         coverTitle.setText("Loading page");
         coverMessage.setText("Preparing this page…");
         recovery.setVisibility(View.GONE);

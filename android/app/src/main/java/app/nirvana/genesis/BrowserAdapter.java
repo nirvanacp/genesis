@@ -409,7 +409,7 @@ final class BrowserAdapter {
 
     void detach() { attached = false; activity.cancelInvalidFiles(); if (webView != null) views.browserSlot.removeView(webView); }
     void attach() throws Exception {
-        attached = true;
+        attached = true; views.pageStarting();
         views.configureShell(creation, new PackageAssets(activity.packageStore, creation));
         views.browserSlot.removeAllViews();
         views.browserSlot.addView(webView, new android.widget.FrameLayout.LayoutParams(-1, -1));
@@ -428,6 +428,7 @@ final class BrowserAdapter {
     boolean hasReader() { return reader != null; }
     void closeReader() {
         if (reader == null) return;
+        views.pageStarting();
         WebView retired = reader; reader = null; readerEpoch++;
         views.browserSlot.removeView(retired); retired.stopLoading(); retired.destroy();
         webView.setVisibility(View.VISIBLE); webView.onResume();

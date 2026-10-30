@@ -66,6 +66,10 @@ The account hub reads only the current account's profile link and shows Profile,
 
 Do not mount an additional bottom tab bar. Genesis owns the header, section bar and insets. On qualified content routes hide only source navigation that duplicates the native shell, using inspected semantic/test-ID anchors. Keep the source search bar, feed tabs, conversation controls, action toolbars, dialogs and forms. Login, account security and unsupported routes use ordinary browsing with origin controls and retain the source's complete layout.
 
+## Implementation decision from the later user request
+
+The user authorized implementation after committing these plans, requested visual quality at least equal to the original X website, and asked for mobile-quality animated navigation. Keep the live source layout as the visual baseline, use a neutral native shell, and animate prepared screen/reader reveals with a brief 180 ms ease-out. Owned sheets use restrained entry motion. Respect system/reduced-motion settings and do not animate scrolling posts or delay navigation for a minimum animation duration. Android Studio emulator verification is authorized; a physical-device requirement remains an explicitly reported qualification gap if no phone is connected.
+
 ## Visual and interaction design
 
 The content remains recognizable as X. Use a continuous single-column timeline with separators, readable text and media. Owned saved rows use the same rhythm rather than a dashboard of large cards. System UI typography, a restrained accent for category actions, and explicit category labels distinguish applet data from X's bookmark glyph. This is a product choice, not an instruction to restyle every X component.
