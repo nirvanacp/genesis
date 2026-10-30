@@ -289,13 +289,21 @@ final class BrowserAdapter {
             });
             JSONObject config = new JSONObject(command.getJSONObject("context").toString());
             config.put("revision", command.getJSONObject("package").getString("revision"));
-            JSONArray paths = null;
+            JSONObject sourceDefinition = null;
             if ("source".equals(binding.getString("kind"))) {
                 JSONArray sources = command.getJSONObject("package").getJSONObject("manifest").getJSONArray("sources");
-                for (int i = 0; i < sources.length(); i++) { JSONObject source = sources.getJSONObject(i); if (source.getString("id").equals(binding.getString("sourceId"))) paths = source.optJSONArray("customizedPaths"); }
+                for (int i = 0; i < sources.length(); i++) {
+                    JSONObject source = sources.getJSONObject(i);
+                    if (source.getString("id").equals(binding.getString("sourceId"))) sourceDefinition = source;
+                }
             }
-            String condition = paths == null ? "true" : paths + ".includes(location.pathname)";
-            String injected = "if (" + condition + ") { const __GENESIS_BINDING__ = " + config + ";\n" + assets.script(command.getString("entry")) + "\n}";
+            JSONArray paths = sourceDefinition == null ? null : sourceDefinition.optJSONArray("customizedPaths");
+            boolean modern = config.optInt("runtimeApiVersion", 1) >= 2;
+            String condition = sourceDefinition == null ? "true" : modern
+                ? "customizedRoute(" + sourceDefinition + ", location.pathname)"
+                : paths == null ? "true" : paths + ".includes(location.pathname)";
+            String injected = (modern ? assets.script("runtime/routes.js") + "\n" : "")
+                + "if (" + condition + ") { const __GENESIS_BINDING__ = " + config + ";\n" + assets.script(command.getString("entry")) + "\n}";
             script = WebViewCompat.addJavaScriptOnEvent(browser, injected, WebViewCompat.INJECTION_EVENT_DOCUMENT_START, origins, world);
         }
         PackageInfo provider = WebViewCompat.getCurrentWebViewPackage(activity);
@@ -413,9 +421,10 @@ final class BrowserAdapter {
         WebView retired = reader; reader = null; readerEpoch++;
         views.browserSlot.removeView(retired); retired.stopLoading(); retired.destroy();
         webView.setVisibility(View.VISIBLE); webView.onResume();
-        views.route(!"ordinary".equals(routeKind), !isFeed(webView.getUrl()));
+        views.route(isCustomizedRoute(), !isFeed(webView.getUrl()));
         updateNavigation(webView.getUrl()); views.reveal(); webView.requestFocus();
     }
+    private boolean isCustomizedRoute() { return "source".equals(routeKind) || "page".equals(routeKind); }
     private String classify(String url) {
         try {
             JSONObject event = HostViews.event("classifyUrl"); event.put("url", url);
@@ -526,10 +535,10 @@ final class BrowserAdapter {
         if (epoch < hostEpoch) return;
         hostEpoch = epoch;
         String nextKind = command.getString("route_kind");
-        if (!"ordinary".equals(routeKind) && "ordinary".equals(nextKind) && webView != null)
+        if (isCustomizedRoute() && "ordinary".equals(nextKind) && webView != null)
             openerIndex = Math.max(0, webView.copyBackForwardList().getCurrentIndex() - (committed ? 1 : 0));
         routeKind = nextKind;
-        views.route(!"ordinary".equals(routeKind), command.getBoolean("detail"));
+        views.route(isCustomizedRoute(), command.getBoolean("detail"));
         String state = command.getString("state");
         if ("ready".equals(state) || "ordinary".equals(state)) {
             prepared = true; maybeReveal();
@@ -608,7 +617,7 @@ final class BrowserAdapter {
     private void updateNavigation(String url) {
         if (!attached || reader != null || webView == null || url == null) return;
         visibleUrl = url;
-        boolean reader = "ordinary".equals(routeKind);
+        boolean reader = !isCustomizedRoute();
         views.navigation(url, reader, webView.canGoBack(), webView.canGoForward());
     }
     private void recordScroll(WebView view) {

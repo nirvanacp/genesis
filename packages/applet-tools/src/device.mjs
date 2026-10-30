@@ -41,7 +41,7 @@ export class Device {
     let status;
     try { status = JSON.parse(this.privateRead('genesis-applet-status.json')); }
     catch { throw creatorError('UNSUPPORTED_HOST', 'Host development status is unavailable; launch a compatible debug Genesis build'); }
-    if (status.debug !== true || status.runtimeApiVersion !== 1 || !status.bundleFormatVersions?.includes(1) || !Array.isArray(status.applets)) throw creatorError('INCOMPATIBLE_HOST', 'Host does not support bundle/runtime API 1');
+    if (status.debug !== true || status.runtimeApiVersion !== 2 || !status.bundleFormatVersions?.includes(1) || !Array.isArray(status.applets)) throw creatorError('INCOMPATIBLE_HOST', 'Host does not support bundle/runtime API 2');
     return status;
   }
   async submit(request) {

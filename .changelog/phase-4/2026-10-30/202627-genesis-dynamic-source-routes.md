@@ -1,0 +1,6 @@
+# Genesis dynamic source routes
+
+- Goal: Support explicit dynamic website coverage without applying customization to account/security routes.
+- Changes: Added bounded segment patterns and exclusions, shared creator/injection matching, authoritative Rust matching, source-ordinary classification, route-bound broker eligibility, SPA retirement/reload, SDK/tools 0.3.0 and API-2 bundle negotiation. API-1 packages remain accepted. Updated portable reference and package dependencies without changing applet IDs or data schemas.
+- Decisions: The approved plan keeps same-origin ordinary pages in their source view, with ordinary origin controls. A controlled eligible GET reload establishes a fresh binding after an ordinary SPA return. API-2 source predicates are packaged as verified assets from the same matcher used by tooling. Protocol envelopes remain version 1. Shell preset/icon declarations are introduced in the compatibility release; rendering follows in the shell component.
+- Verification: Workspace TypeScript/package checks, route/exclusion/encoded-path checks, Rust check/clippy/existing tests and Android assembleDebug/lintDebug passed. HN built as an API-2 bundle. Existing Rust suites contain no tests; source/device behavior is still awaiting integration qualification. No test files were added.

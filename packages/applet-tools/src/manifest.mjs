@@ -1,7 +1,8 @@
 import { readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
+import { validRoutePattern, customizedRoute } from './routes.mjs';
 import { createHash } from 'node:crypto';
-export const RUNTIME_API_VERSION = 1;
+export const RUNTIME_API_VERSION = 2;
 export const FORMAT_VERSION = 1;
 export const MAX_ASSET_BYTES = 4 * 1024 * 1024;
 export const MAX_BUNDLE_BYTES = 8 * 1024 * 1024;
@@ -45,7 +46,7 @@ export function validateManifest(input) {
   requireValue(array(manifest.sources).length > 0, 'Sources required');
   unique(manifest.sources.map(s => s.id), 'source');
   for (const s of manifest.sources) {
-    object(s, ['id','startUrl','origins','entry','homePaths','customizedPaths','navigationRules'], ['id','startUrl','origins','entry']); id(s.id);
+    object(s, ['id','startUrl','origins','entry','homePaths','customizedPaths','customizedRoutes','ordinaryRoutes','navigationRules'], ['id','startUrl','origins','entry']); id(s.id);
     requireValue(safePath(s.entry), 'Unsafe source entry');
     requireValue(array(s.origins).length > 0, 'Exact HTTPS origins required'); unique(s.origins, 'origin');
     for (const origin of s.origins) requireValue(httpsUrl(origin).origin === origin, 'Use exact HTTPS origins');
@@ -53,6 +54,8 @@ export function validateManifest(input) {
     s.homePaths ??= []; s.navigationRules ??= [];
     requireValue(array(s.homePaths).every(route), 'Invalid home paths');
     requireValue(s.customizedPaths === undefined || array(s.customizedPaths).every(route), 'Invalid customized paths');
+    requireValue(!(s.customizedPaths !== undefined && s.customizedRoutes !== undefined), 'Choose exact paths or route patterns');
+    for (const patterns of [s.customizedRoutes, s.ordinaryRoutes]) if (patterns !== undefined) { requireValue(array(patterns).length <= 100 && patterns.every(validRoutePattern), 'Invalid route patterns'); unique(patterns, 'route pattern'); }
     unique(array(s.navigationRules).map(r => r.id), 'navigation rule');
     for (const r of s.navigationRules) {
       object(r, ['id','pathPrefix','action','fallbackUrl']); id(r.id);
@@ -66,20 +69,21 @@ export function validateManifest(input) {
   for (const a of manifest.actions) { object(a, ['id','label','pageId']); id(a.id); text(a.label); requireValue(manifest.pages.some(p => p.id === a.pageId), 'Unknown action page'); }
   if (manifest.shell !== undefined) {
     const s = manifest.shell;
-    object(s, ['title','brandAsset','sections','choices'], ['title','brandAsset','sections']); text(s.title);
+    object(s, ['title','brandAsset','sections','choices','colorScheme'], ['title','brandAsset','sections']); text(s.title);
     requireValue(Buffer.byteLength(s.title) < 80 && safePath(s.brandAsset), 'Invalid shell title/brand asset');
+    requireValue(s.colorScheme === undefined || ['default','neutral'].includes(s.colorScheme), 'Invalid shell color scheme');
     requireValue(array(s.sections).length > 0 && s.sections.length <= 5, 'Shell requires 1–5 sections'); unique(s.sections.map(e => e.id), 'section');
     for (const section of s.sections) {
       object(section, ['id','label','sourceId','pageId','icon'], ['id','label','sourceId']); id(section.id); text(section.label);
       requireValue(manifest.sources.some(src => src.id === section.sourceId) && (section.pageId == null || manifest.pages.some(p => p.id === section.pageId)), 'Unknown shell destination');
-      requireValue(section.icon === undefined || ['home','search','post','bookmark','person'].includes(section.icon), 'Unsupported section icon');
+      requireValue(section.icon === undefined || ['home','search','post','bookmark','person','notifications'].includes(section.icon), 'Unsupported section icon');
     }
     s.choices ??= [];
     for (const choice of array(s.choices)) {
       object(choice, ['label','url','sourceId'], ['label','url']); text(choice.label);
       choice.sourceId ??= s.sections[0].sourceId;
       const source = manifest.sources.find(src => src.id === choice.sourceId), url = httpsUrl(choice.url);
-      requireValue(source && source.origins.includes(url.origin) && source.customizedPaths?.includes(url.pathname), 'Choice outside declared source customization');
+      requireValue(source && source.origins.includes(url.origin) && customizedRoute(source, url.pathname), 'Choice outside declared source customization');
     }
   }
   return manifest;
@@ -113,10 +117,11 @@ export function bundleRevision(bundle) {
 }
 export function validateBundle(bundle) {
   object(bundle, ['formatVersion','runtimeApiVersion','sdkVersion','package']);
-  requireValue(bundle.formatVersion === FORMAT_VERSION && bundle.runtimeApiVersion === RUNTIME_API_VERSION, 'Unsupported bundle/runtime API version');
+  requireValue(bundle.formatVersion === FORMAT_VERSION && [1, RUNTIME_API_VERSION].includes(bundle.runtimeApiVersion), 'Unsupported bundle/runtime API version');
   requireValue(typeof bundle.sdkVersion === 'string' && /^\d+\.\d+\.\d+$/.test(bundle.sdkVersion), 'Invalid SDK version');
   object(bundle.package, ['manifest','revision','assets']);
   validateManifest(bundle.package.manifest);
+  requireValue(bundle.runtimeApiVersion >= 2 || !bundle.package.manifest.sources.some(s => s.customizedRoutes !== undefined || s.ordinaryRoutes !== undefined) && !bundle.package.manifest.shell?.colorScheme && !bundle.package.manifest.shell?.sections.some(s => s.icon === 'notifications'), 'These features require runtime API 2');
   const assets = array(bundle.package.assets);
   unique(assets.map(a => a.path), 'asset');
   for (const a of assets) { object(a, ['path','sha256']); requireValue(safePath(a.path) && /^[a-f0-9]{64}$/.test(a.sha256), 'Invalid asset/hash'); }

@@ -2,7 +2,11 @@
 use serde::{Deserialize, Serialize};
 
 pub const IMPLEMENTATION_STAGE: &str = "MVP-07";
-pub const RUNTIME_API_VERSION: u32 = 1;
+pub const RUNTIME_API_VERSION: u32 = 2;
+fn legacy_api() -> u32 {
+    1
+}
+
 pub const BUNDLE_FORMAT_VERSION: u32 = 1;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -25,6 +29,8 @@ pub struct PackageIndex {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Package {
+    #[serde(default = "legacy_api")]
+    pub runtime_api_version: u32,
     pub manifest: Manifest,
     pub revision: String,
     pub assets: Vec<Asset>,
@@ -57,6 +63,10 @@ pub struct Manifest {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Source {
+    #[serde(default)]
+    pub customized_routes: Option<Vec<String>>,
+    #[serde(default)]
+    pub ordinary_routes: Vec<String>,
     #[serde(default)]
     pub customized_paths: Option<Vec<String>>,
     pub id: String,
@@ -96,6 +106,8 @@ pub struct Action {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AppShell {
+    #[serde(default)]
+    pub color_scheme: Option<String>,
     pub title: String,
     pub brand_asset: String,
     pub sections: Vec<ShellSection>,
@@ -163,6 +175,8 @@ pub enum ContextKind {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExecutionContext {
+    #[serde(default = "legacy_api")]
+    pub runtime_api_version: u32,
     pub instance_id: InstanceId,
     pub applet_id: AppletId,
     pub view_id: ViewId,
