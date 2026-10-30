@@ -137,21 +137,22 @@ impl HostState {
                     // Restore only destinations still declared by the current package index.
                     let selection = snapshot.selection.filter(|selection| {
                         self.index.as_ref().is_some_and(|index| {
-                            index.packages.iter().any(|package| {
-                                package.manifest.id == selection.applet_id.0
-                                    && package
-                                        .manifest
-                                        .sources
-                                        .iter()
-                                        .any(|source| source.id == selection.source_id.0)
-                                    && selection.page_id.as_ref().is_none_or(|page_id| {
-                                        package
+                            !index.hidden_applet_ids.contains(&selection.applet_id.0)
+                                && index.packages.iter().any(|package| {
+                                    package.manifest.id == selection.applet_id.0
+                                        && package
                                             .manifest
-                                            .pages
+                                            .sources
                                             .iter()
-                                            .any(|page| &page.id == page_id)
-                                    })
-                            })
+                                            .any(|source| source.id == selection.source_id.0)
+                                        && selection.page_id.as_ref().is_none_or(|page_id| {
+                                            package
+                                                .manifest
+                                                .pages
+                                                .iter()
+                                                .any(|page| &page.id == page_id)
+                                        })
+                                })
                         })
                     });
                     if let Some(selection) = selection {
@@ -1155,7 +1156,11 @@ impl HostState {
             entries: self
                 .index
                 .iter()
-                .flat_map(|i| &i.packages)
+                .flat_map(|i| {
+                    i.packages
+                        .iter()
+                        .filter(|p| !i.hidden_applet_ids.contains(&p.manifest.id))
+                })
                 .filter_map(|p| {
                     p.manifest.sources.first().map(|source| LauncherEntry {
                         applet_id: p.manifest.id.clone(),

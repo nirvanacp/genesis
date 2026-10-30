@@ -21,6 +21,8 @@ pub struct AppletBundle {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PackageIndex {
+    #[serde(default)]
+    pub hidden_applet_ids: Vec<String>,
     pub schema_version: u32,
     pub implementation_stage: String,
     pub packages: Vec<Package>,

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { checkApplet } from './check.mjs';
 import { buildApplet } from './build.mjs';
-import { Device, installApplet, rollbackApplet } from './device.mjs';
+import { Device, installApplet, rollbackApplet, setAppletVisibility } from './device.mjs';
 import { manageService } from './services.mjs';
 import { createApplet } from './create.mjs';
 import { exportKit } from './kit.mjs';
@@ -26,6 +26,7 @@ const help = `Genesis applet tools
   build <directory> --out <directory> [--json]
   dev install <bundle-directory> --device <serial> [--replace] [--allow-permission-change] [--json]
   dev status --device <serial> [--json]
+  dev visibility <applet-id> --hidden true|false --device <serial> [--json]
   dev rollback <applet-id> --device <serial> [--json]
   service start|status|stop|provision <directory> --device <serial> [--json]
 Device commands also accept --application <host-id> and --adb <executable>.`;
@@ -47,11 +48,11 @@ try {
       else { if (!o.out) throw new UsageError('build requires --out'); const b = await buildApplet(p[0], o.out); result = { appletId: b.package.manifest.id, revision: b.package.revision, output: o.out }; }
     } else if (command === 'dev' || command === 'service') {
       const action = args[1]; command += ` ${action ?? ''}`;
-      const { positional: p, options: o } = parse(args.slice(2), ['json','device','application','adb', ...(args[0] === 'dev' && action === 'install' ? ['replace','allow-permission-change'] : [])]);
+      const { positional: p, options: o } = parse(args.slice(2), ['json','device','application','adb', ...(action === 'visibility' ? ['hidden'] : []), ...(args[0] === 'dev' && action === 'install' ? ['replace','allow-permission-change'] : [])]);
       if (!o.device) throw new UsageError('Select --device <serial>');
       if (args[0] === 'dev') {
         if (action === 'status') { if (p.length) throw new UsageError('dev status accepts no directory'); result = new Device(o).status(); }
-        else { if (p.length !== 1) throw new UsageError('Expected one bundle directory or applet ID'); if (action === 'install') result = await installApplet(p[0], o); else if (action === 'rollback') result = await rollbackApplet(p[0], o); else throw new UsageError('Unknown dev action'); }
+        else { if (p.length !== 1) throw new UsageError('Expected one bundle directory or applet ID'); if (action === 'install') result = await installApplet(p[0], o); else if (action === 'visibility') result = await setAppletVisibility(p[0], o); else if (action === 'rollback') result = await rollbackApplet(p[0], o); else throw new UsageError('Unknown dev action'); }
       } else { if (p.length !== 1 || !['start','status','stop','provision'].includes(action)) throw new UsageError('Expected service start|status|stop|provision <directory>'); result = await manageService(action, p[0], o); }
     } else throw new UsageError(`Unknown command ${command}`);
     console.log(json ? JSON.stringify({ ok: true, command, result }) : `${command} passed\n${JSON.stringify(result, null, 2)}`);
