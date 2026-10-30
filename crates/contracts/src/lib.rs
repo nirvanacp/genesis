@@ -2,6 +2,17 @@
 use serde::{Deserialize, Serialize};
 
 pub const IMPLEMENTATION_STAGE: &str = "MVP-07";
+pub const RUNTIME_API_VERSION: u32 = 1;
+pub const BUNDLE_FORMAT_VERSION: u32 = 1;
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AppletBundle {
+    pub format_version: u32,
+    pub runtime_api_version: u32,
+    pub sdk_version: String,
+    pub package: Package,
+}
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -104,6 +115,8 @@ pub struct ShellSection {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ShellChoice {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_id: Option<String>,
     pub label: String,
     pub url: String,
 }

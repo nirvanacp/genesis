@@ -1,0 +1,13 @@
+import { build } from 'esbuild';
+import { mkdir, rm } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
+import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+const cwd = fileURLToPath(new URL('.', import.meta.url));
+const require = createRequire(import.meta.url);
+await rm(new URL('dist/', import.meta.url), { recursive: true, force: true });
+await mkdir(new URL('dist/', import.meta.url));
+await build({ absWorkingDir: cwd, entryPoints: { index: 'src/index.ts', react: 'src/react.tsx', runtime: 'src/bootstrap.ts', manifest: 'src/manifest.ts' }, outdir: 'dist', bundle: true, format: 'esm', platform: 'browser', target: 'es2022', external: ['react', 'react-dom/client', 'react/jsx-runtime'], jsx: 'automatic', loader: { '.css': 'text' } });
+const result = spawnSync(process.execPath, [path.join(path.dirname(require.resolve('typescript/package.json')), 'lib/tsc.js'), '-p', 'tsconfig.json', '--noEmit', 'false', '--declaration', '--emitDeclarationOnly', '--outDir', 'dist/types', '--rootDir', 'src'], { cwd, stdio: 'inherit' });
+if (result.error || result.status !== 0) throw new Error('SDK declarations failed');

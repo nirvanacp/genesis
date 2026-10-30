@@ -1,0 +1,6 @@
+# Distributable SDK and bundle contract
+
+- Goal: make applet authoring independent of internal TypeScript source paths and define a versioned host contract.
+- Changes: SDK 0.2.0 now builds ESM and declarations for public root, React, manifest, and tooling-only runtime exports. Added manifest types, ServiceResponse, runtime API 1, strict semantic validation, JSON schema, and Rust envelope validation. Updated example dependencies and lock metadata.
+- Decisions: package hashes remain integrity identifiers. Android will verify canonical revision/asset bytes in the store step; Rust independently validates package shape. validateManifest is a pure semantic function, while readApplet handles contained filesystem paths, making consumer-side validation reusable without I/O. No Rust dependency was added for hashing.
+- Verification: workspace typechecks, strict Rust checks/clippy, and existing tests passed, with zero Rust test cases reported. Packed SDK contains only compiled code/types and package metadata; an outside consumer typechecked public imports. HN validates and malformed capabilities/actions/paths/unknown fields are rejected. Host-side parity qualification follows in the debug store step.
