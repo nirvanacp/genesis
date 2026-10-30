@@ -1,0 +1,6 @@
+# X verification lifecycle
+
+- Goal: Bound private-library account checks and preserve library reading position across navigation.
+- Changes: Replaced continuous half-second source storage polling with profile/storage/focus events and a single pending-ticket deadline. Expired tickets return a visible retry state instead of silently stalling. Library scroll preferences now persist on throttled scroll events as well as deliberate post navigation.
+- Decisions: Agent retained the plan's ten-second source verification deadline and one-use ticket ownership. No cross-WebView DOM access or persistent draft/credential capture was introduced. Idle source pages perform no ticket polling. Scroll preference writes remain non-authoritative and cannot block live navigation.
+- Verification: X TypeScript and reviewed bundle build passed. A disposable executable check verified ticket consumption, account mismatch, expiry and absence of idle polling. Final API-2 revision `4a26aca3272218f72e35eeb435ab0eee2e3fe0afc9b5d59f491efdf08526e1c5` was accepted by the emulator's debug importer. Authenticated X integration remains blocked by the upstream login limit; scroll restoration across authenticated source navigation still needs qualification.

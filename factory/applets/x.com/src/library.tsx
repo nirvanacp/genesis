@@ -42,7 +42,19 @@ function LibraryPage({context}:{context:AppletContext}){
   },[context]);
   useEffect(()=>{if(!library)return;const timer=setTimeout(()=>void load(),300);return()=>{clearTimeout(timer);sequence.current++;};},[library,filter,query]);
   useEffect(()=>repo.subscribe(()=>{if(verified.current)void load();}),[repo,filter,query]);
-  useEffect(()=>{if(!library)return;const timer=setTimeout(savePreferences,350);const scroll=()=>{preferences.current.scroll=window.scrollY;};window.addEventListener("scroll",scroll,{passive:true});return()=>{clearTimeout(timer);window.removeEventListener("scroll",scroll);};},[query,filter,library]);
+  useEffect(()=>{
+    if(!library)return;
+    let timer=setTimeout(()=>void savePreferences(),350),lastSaved=0;
+    const persist=()=>{lastSaved=Date.now();void savePreferences();};
+    const scroll=()=>{
+      preferences.current.scroll=window.scrollY;
+      clearTimeout(timer);
+      if(Date.now()-lastSaved>250)persist();
+      timer=setTimeout(persist,150);
+    };
+    window.addEventListener("scroll",scroll,{passive:true});
+    return()=>{clearTimeout(timer);window.removeEventListener("scroll",scroll);};
+  },[query,filter,library]);
   const openX=()=>{void savePreferences().then(()=>context.sources.open("saved","https://x.com/i/history")).catch(e=>setError(errorMessage(e)));};
   const openPost=(row:Bookmark)=>{void savePreferences().then(()=>context.sources.open("saved",row.url)).catch(e=>setError(errorMessage(e)));};
   const choose=(id:string|null)=>{setFilter(id);setManage(false);window.scrollTo(0,0);};
