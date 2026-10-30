@@ -1,0 +1,6 @@
+# Genesis section navigation and guarded exits
+
+- Goal: Preserve section context across source/page/detail navigation and handle source-owned transient Back actions without losing unsaved work.
+- Changes: Added host-owned section destinations and restored selection state, source/page section highlighting, SDK Back callbacks with correlated 300 ms deadlines, and document-bound native leave guards. Source history remains the fallback and existing SDK-modal/fullscreen priority is retained. Updated the portable SDK reference.
+- Decisions: The approved plan requires Saved source/library modes to share a section while keeping record permissions bound to source/page identity. Section restore avoids reloading an already retained destination; packaged page URLs are never treated as website URLs. Optional Back callback timeout falls through rather than terminating the renderer. Native Stay/Leave defaults to staying and does not claim to save website drafts.
+- Verification: Workspace TypeScript checks and Android assembleDebug/lintDebug passed. Rust check passed; strict clippy passed after reducing enum size and using a checked document binding. Live X navigation/dirty-composer qualification awaits the integrated applet. No new test files or account changes.

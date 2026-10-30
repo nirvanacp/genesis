@@ -18,6 +18,7 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
     PackageStore packageStore;
     private final java.util.Map<Long, BrowserAdapter> sessions = new java.util.HashMap<>();
     private boolean attached;
+    private boolean leavingApproved, leavePrompt;
     private Bundle browserStates = new Bundle();
     private String retainedSession;
 
@@ -64,6 +65,17 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
         if (Looper.myLooper() != Looper.getMainLooper()) throw new IllegalStateException("UI thread required");
         try {
             String type = event.getString("type");
+            if (!leavingApproved && browser != null && browser.leaveGuard() != null
+                && java.util.Arrays.asList("open","openPage","home","reload","retry","ordinary","activateDestination").contains(type)) {
+                if (!leavePrompt) {
+                    leavePrompt = true;
+                    new android.app.AlertDialog.Builder(this).setTitle("Leave this page?").setMessage(browser.leaveGuard())
+                        .setNegativeButton("Stay", (dialog, which) -> {}).setPositiveButton("Leave", (dialog, which) -> {
+                            leavingApproved = true; try { send(event); } finally { leavingApproved = false; }
+                        }).setOnDismissListener(dialog -> leavePrompt = false).show();
+                }
+                return;
+            }
             if ("readerClose".equals(type)) { browser.closeReader(); return; }
             if ("copyLink".equals(type) || "shareLink".equals(type) || "openBrowser".equals(type)) {
                 browser.readerAction(type); return;
@@ -121,6 +133,8 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
             case "reload":
             case "challenge":
             case "deferNavigation":
+            case "leaveGuard":
+            case "scheduleBackDeadline":
             case "scheduleModalDeadline":
             case "scheduleDeadline":
             case "terminateRenderer":

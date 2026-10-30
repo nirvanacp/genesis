@@ -61,6 +61,8 @@ final class BrowserAdapter {
     private long readerEpoch;
     private boolean readerCommitted;
 
+    private String leaveGuard;
+    String leaveGuard() { return leaveGuard; }
     private long generation;
     private JSONObject creation;
     private boolean attached = true;
@@ -360,6 +362,12 @@ final class BrowserAdapter {
                 // Acknowledgement is posted first; replacement runs on a later UI turn.
                 main.post(() -> emit(event, expected)); break;
             }
+            case "leaveGuard": leaveGuard = command.isNull("message") ? null : command.getString("message"); break;
+            case "scheduleBackDeadline": {
+                JSONObject event = HostViews.event("backDeadline");
+                event.put("documentId", command.getString("documentId")); event.put("token", command.getLong("token"));
+                main.postDelayed(() -> emit(event, expected), 300); break;
+            }
             case "scheduleModalDeadline": {
                 JSONObject event = HostViews.event("modalDeadline");
                 event.put("documentId", command.getString("documentId")); event.put("token", command.getLong("token"));
@@ -538,6 +546,7 @@ final class BrowserAdapter {
         if (isCustomizedRoute() && "ordinary".equals(nextKind) && webView != null)
             openerIndex = Math.max(0, webView.copyBackForwardList().getCurrentIndex() - (committed ? 1 : 0));
         routeKind = nextKind;
+        if (!isCustomizedRoute()) leaveGuard = null;
         views.route(isCustomizedRoute(), command.getBoolean("detail"));
         String state = command.getString("state");
         if ("ready".equals(state) || "ordinary".equals(state)) {

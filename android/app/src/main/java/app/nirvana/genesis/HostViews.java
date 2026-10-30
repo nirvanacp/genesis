@@ -55,7 +55,7 @@ final class HostViews {
     private boolean readerVisible;
     private boolean appletActive;
     private JSONObject shell;
-    private String appletId, sourceId, pageId;
+    private String appletId, sourceId, pageId, sectionId;
     private LinearLayout appHeader, sections;
     private TextView brand;
     private ImageButton appBack;
@@ -143,6 +143,7 @@ final class HostViews {
         JSONObject manifest = command.getJSONObject("package").getJSONObject("manifest");
         shell = manifest.optJSONObject("shell"); appletId = manifest.getString("id");
         JSONObject selection = command.getJSONObject("selection");
+        sectionId = selection.optString("sectionId", "");
         sourceId = selection.getString("sourceId"); pageId = selection.isNull("pageId") ? "" : selection.optString("pageId");
         JSONObject owner = command.optJSONObject("ownerSelection");
         if (owner != null) { sourceId = owner.getString("sourceId"); pageId = owner.isNull("pageId") ? "" : owner.getString("pageId"); }
@@ -188,9 +189,9 @@ final class HostViews {
         JSONArray entries = shell.optJSONArray("sections");
         for (int i = 0; i < entries.length(); i++) {
             JSONObject entry = entries.getJSONObject(i);
-            Button tab = button(entry.getString("label"), () -> events.send(open(entry.optString("sourceId"), entry.isNull("pageId") ? null : entry.optString("pageId"), null)));
+            Button tab = button(entry.getString("label"), () -> events.send(openSection(entry)));
             tab.setTextSize(11); tab.setPadding(0, dp(4), 0, dp(4)); tab.setGravity(Gravity.CENTER); tab.setSingleLine(true);
-            boolean selected = sourceId.equals(entry.optString("sourceId")) && pageId.equals(entry.isNull("pageId") ? "" : entry.optString("pageId"));
+            boolean selected = !sectionId.isEmpty() ? sectionId.equals(entry.optString("id")) : sourceId.equals(entry.optString("sourceId")) && pageId.equals(entry.isNull("pageId") ? "" : entry.optString("pageId"));
             tab.setSelected(selected); tab.setTextColor(selected ? accent : ink); tab.setTypeface(null, selected ? Typeface.BOLD : Typeface.NORMAL); tab.setContentDescription(entry.getString("label") + (selected ? ", selected" : ""));
             styleChromeControl(tab, selected ? wash : Color.TRANSPARENT, 16);
             int iconResource = sectionIcon(entry.optString("icon"));
@@ -203,6 +204,11 @@ final class HostViews {
             tabLayout.setMargins(dp(2), 0, dp(2), 0); sections.addView(tab, tabLayout);
         }
         content.addView(sections, new FrameLayout.LayoutParams(-1, dp(SECTION_BAR_HEIGHT), Gravity.BOTTOM));
+    }
+    private JSONObject openSection(JSONObject entry) {
+        JSONObject event = open(entry.optString("sourceId"), entry.isNull("pageId") ? null : entry.optString("pageId"), null);
+        try { event.put("sectionId", entry.getString("id")); } catch (JSONException error) { throw new IllegalArgumentException(error); }
+        return event;
     }
     private int sectionIcon(String name) {
         switch (name) {

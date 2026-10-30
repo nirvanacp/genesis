@@ -105,3 +105,11 @@ Sources may declare `customizedRoutes` instead of `customizedPaths`, plus option
 Same-origin excluded routes stay in the source view with ordinary browser controls and no active applet binding. Crossing there disposes source effects and rejects broker calls. An ordinary SPA route returning to customized coverage performs one controlled eligible GET reload to obtain a fresh document binding. This is lifecycle control, not isolation of previously evaluated code from its origin.
 
 Optional shell `colorScheme` accepts `default` or `neutral`; omission preserves the existing palette. The `notifications` section icon is also available in API 2.
+
+## Guarding source navigation
+
+API 2 exposes `context.navigation.onBack(callback): Dispose`. Return true only after consuming a source transient Back action; false falls through to browser history. The host allows 300 ms and ignores late or retired replies. SDK modals and fullscreen take priority. Do not await service requests or user decisions in this callback.
+
+`context.navigation.setLeaveGuard({message})` returns an acknowledgement promise. Passing null clears it. Native section/reload/launcher navigation presents Stay/Leave while a guard is active. Register before editing, clear when the editor closes, and retain the website's own close/draft flow. This does not persist website drafts across process death.
+
+Native sections carry a host-owned section identity across `pages.open` and `sources.open`. Section switches restore the last destination within the bounded retention budget. Source details opened from a packaged page retain that page as their opener. Source/page identity still determines permissions; section identity only controls navigation/presentation.
