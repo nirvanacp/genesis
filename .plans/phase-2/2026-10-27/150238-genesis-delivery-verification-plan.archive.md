@@ -1,8 +1,8 @@
 # Genesis delivery and verification plan
 
-Architecture revision approved 28 October: all browser customization and the managed DOM runtime use TypeScript/JavaScript under `packages/sdk/` and `applets/`, with React for custom dialogs and local pages. Native Rust retains the controller, contracts and SQLite services. HN refuses Wasm compilation in its source realm, as recorded in the [historical qualification report](../../.reports/2026-10-28/162112-genesis-hn-wasm-qualification-report.md). The TS runtime passed [MVP-02 emulator qualification](../../.reports/2026-10-28/174427-genesis-hn-typescript-qualification-report.md); MVP-03 passed emulator verification. MVP-04 storage passed [Android emulator verification](../../.reports/2026-10-28/183914-genesis-mvp04-android-storage-verification-report.md); MVP-05 passed [Android Save verification](../../.reports/2026-10-29/095635-genesis-mvp05-android-save-verification-report.md); MVP-06 passed [category/library emulator verification](../../.reports/2026-10-29/110545-genesis-mvp06-library-verification-report.md). The working emulator prototype is the current delivery target. Physical-device qualification and device-specific performance gates are deferred to pre-release under the user's 29 October instruction; they do not block the emulator handoff.
+Architecture revision approved 28 October: all browser customization and the managed DOM runtime use TypeScript/JavaScript under `packages/sdk/` and `applets/`, with React for custom dialogs and local pages. Native Rust retains the controller, contracts and SQLite services. HN refuses Wasm compilation in its source realm, as recorded in the [historical qualification report](../../../.reports/phase-2/2026-10-28/162112-genesis-hn-wasm-qualification-report.md). The TS runtime passed [MVP-02 emulator qualification](../../../.reports/phase-2/2026-10-28/174427-genesis-hn-typescript-qualification-report.md); MVP-03 passed emulator verification. MVP-04 storage passed [Android emulator verification](../../../.reports/phase-2/2026-10-28/183914-genesis-mvp04-android-storage-verification-report.md); MVP-05 passed [Android Save verification](../../../.reports/phase-2/2026-10-29/095635-genesis-mvp05-android-save-verification-report.md); MVP-06 passed [category/library emulator verification](../../../.reports/phase-2/2026-10-29/110545-genesis-mvp06-library-verification-report.md). The working emulator prototype is the current delivery target. Physical-device qualification and device-specific performance gates are deferred to pre-release under the user's 29 October instruction; they do not block the emulator handoff.
 
-Created 27 October 2026, Asia/Kolkata. Scope: the single Hacker News bookmarking prototype in the [Genesis MVP implementation plan](150238-genesis-mvp-implementation-plan.md). MVP-01 is verified on the emulator. MVP-01 through MVP-06 passed emulator acceptance. MVP-07 functional integration and the emulator handoff are verified in the [final report](../../.reports/2026-10-29/112349-genesis-mvp07-emulator-handoff-report.md). Physical performance and device repetition remain deferred to pre-release. Numerical gates require actual evidence, not inferred success.
+Created 27 October 2026, Asia/Kolkata. Scope: the single Hacker News bookmarking prototype in the [Genesis MVP implementation plan](150238-genesis-mvp-implementation-plan.md). MVP-01 is verified on the emulator. MVP-01 through MVP-06 passed emulator acceptance. MVP-07 functional integration and the emulator handoff are verified in the [final report](../../../.reports/phase-2/2026-10-29/112349-genesis-mvp07-emulator-handoff-report.md). Physical performance and device repetition remain deferred to pre-release. Numerical gates require actual evidence, not inferred success.
 
 ## 1. Execution rules
 
@@ -16,7 +16,7 @@ For each stage, record `pending`, `in_progress`, `blocked` or `verified`, with f
 
 ## 2. MVP-01: Android Studio and reproducible builds
 
-Status: verified on the emulator; retain the existing build. [Recorded evidence](../../.docs/2026-10-27/161510-genesis-android-setup.md).
+Status: verified on the emulator; retain the existing build. [Recorded evidence](../../../.docs/phase-2/2026-10-27/161510-genesis-android-setup.md).
 
 Dependencies: none.
 
@@ -39,7 +39,7 @@ Exit: launcher and ordinary browsing run on an emulator or device, native Back/R
 
 ## 3. MVP-02: Prove the public Hacker News browser contract
 
-Dependencies: MVP-01. Status: verified on the supported emulator, with [HN evidence](../../.reports/2026-10-28/174427-genesis-hn-typescript-qualification-report.md). Earlier YouTube/X evidence is historical and must not be relabeled HN success.
+Dependencies: MVP-01. Status: verified on the supported emulator, with [HN evidence](../../../.reports/phase-2/2026-10-28/174427-genesis-hn-typescript-qualification-report.md). Earlier YouTube/X evidence is historical and must not be relabeled HN success.
 
 Bundle only `hn-bookmarks` with source `primary`, its qualification inspector and packaged React library page. Preserve earlier applet source directories but omit their packages from the generated index. Reuse isolated-world registration, nonce challenge, bundled TypeScript runtime, managed style/mount, native cover and source/page identities.
 
@@ -59,7 +59,7 @@ Stop if required world/navigation APIs are missing or isolated startup fails. Th
 
 ## 4. MVP-03: Implement the reusable runtime and SDK
 
-Dependencies: MVP-02. Status: verified on the supported emulator. See the [MVP-03 report](../../.reports/2026-10-28/180813-genesis-mvp03-managed-runtime-report.md).
+Dependencies: MVP-02. Status: verified on the supported emulator. See the [MVP-03 report](../../../.reports/phase-2/2026-10-28/180813-genesis-mvp03-managed-runtime-report.md).
 
 Complete `genesis-contracts` and the TypeScript managed targets, observation, effects, scopes and route tracking in `packages/sdk/`. Implement `watchElements`, styles, mounting, modal lifecycle, source/page navigation and generic navigation policy. Add native recovery and stale-callback rejection.
 
@@ -73,7 +73,7 @@ Validate two-source manifest structure with package validation and route source 
 
 ## 5. MVP-04: Durable generic storage and local pages
 
-Dependencies: MVP-03. Status: verified on the supported emulator. See the [Android storage report](../../.reports/2026-10-28/183914-genesis-mvp04-android-storage-verification-report.md).
+Dependencies: MVP-03. Status: verified on the supported emulator. See the [Android storage report](../../../.reports/phase-2/2026-10-28/183914-genesis-mvp04-android-storage-verification-report.md).
 
 Implement SQLite schema initialization, generic get/list/commit, bounded worker queue, typed errors and storage notifications. Reuse the MVP-02 WebViewAssetLoader mapping and source/page transitions; expose generic storage to their bound contexts. Do not build a second local-page loader.
 
@@ -157,6 +157,6 @@ Final handoff must include the setup guide, actual build commands, exact tool/pr
 
 ## 9. Continuation and historical evidence
 
-Use the [HN continuation guide](../../.docs/2026-10-27/200113-genesis-hacker-news-mvp-guide.md) for ordered prompts. Apply the [browser/session contract](150238-genesis-mvp-implementation-plan.md#9-browser-and-session-contract). Login is outside the prototype; public HN feature evidence is verified on the emulator; physical-device isolation/recovery remains required at pre-release.
+Use the [HN continuation guide](../../../.docs/phase-2/2026-10-27/200113-genesis-hacker-news-mvp-guide.md) for ordered prompts. Apply the [browser/session contract](150238-genesis-mvp-implementation-plan.md#9-browser-and-session-contract). Login is outside the prototype; public HN feature evidence is verified on the emulator; physical-device isolation/recovery remains required at pre-release.
 
-The [earlier MVP-02 report](../../.reports/2026-10-27/182114-genesis-mvp02-qualification-report.md) records the last provider flags and prior-site results. Preserve those observations without transferring their pass status to HN. The [HN retargeting report](../../.reports/2026-10-27/200924-genesis-hacker-news-retargeting-report.md) records code/build/launcher checks separately. Missing provider APIs still stop progression to MVP-03.
+The [earlier MVP-02 report](../../../.reports/phase-2/2026-10-27/182114-genesis-mvp02-qualification-report.md) records the last provider flags and prior-site results. Preserve those observations without transferring their pass status to HN. The [HN retargeting report](../../../.reports/phase-2/2026-10-27/200924-genesis-hacker-news-retargeting-report.md) records code/build/launcher checks separately. Missing provider APIs still stop progression to MVP-03.

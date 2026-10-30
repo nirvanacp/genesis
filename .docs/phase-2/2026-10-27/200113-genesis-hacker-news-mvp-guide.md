@@ -1,6 +1,6 @@
 # Genesis HN backend operations
 
-Updated 29 October 2026. The HN customization now uses a separately run backend. Read [architecture](../../.architecture/README.md) before extending it. Earlier offline/local SQLite reports describe the previous data path.
+Updated 29 October 2026. The HN customization now uses a separately run backend. Read [architecture](../../../.architecture/README.md) before extending it. Earlier offline/local SQLite reports describe the previous data path.
 
 ## Start the backend
 

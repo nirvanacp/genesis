@@ -1,6 +1,6 @@
 # Genesis Android setup
 
-Updated 29 October 2026. Current ownership is defined in [architecture](../../.architecture/README.md). HN persistence uses an independent server; configure it using the [operations guide](200113-genesis-hacker-news-mvp-guide.md). Existing device SQLite is preserved as legacy data and optional platform storage. Earlier emulator reports do not qualify this new network path.
+Updated 29 October 2026. Current ownership is defined in [architecture](../../../.architecture/README.md). HN persistence uses an independent server; configure it using the [operations guide](200113-genesis-hacker-news-mvp-guide.md). Existing device SQLite is preserved as legacy data and optional platform storage. Earlier emulator reports do not qualify this new network path.
 
 ## Project and preserved work
 

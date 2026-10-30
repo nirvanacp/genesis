@@ -8,7 +8,7 @@ Every previous research file is listed below. Superseded files are removed from 
 
 | Previous file | Lines | Disposition |
 | --- | ---: | --- |
-| `.research/README.md` | 13 | Replaced navigation and supersession chains with one current reading guide. |
+| `.research/phase-2/README.md` | 13 | Replaced navigation and supersession chains with one current reading guide. |
 | `.research/live-dom-customization/05-implementation-roadmap.md` | 143 | Retained managed DOM effects and lifecycle reasoning; moved architecture into .architecture; replaced Wasm-first and pending-MVP assumptions with the current TS host and independent backend boundary. |
 | `.research/live-dom-customization/04-authoring-and-reliability.md` | 113 | Retained managed DOM effects and lifecycle reasoning; moved architecture into .architecture; replaced Wasm-first and pending-MVP assumptions with the current TS host and independent backend boundary. |
 | `.research/live-dom-customization/06-evidence-register.md` | 71 | Retained managed DOM effects and lifecycle reasoning; moved architecture into .architecture; replaced Wasm-first and pending-MVP assumptions with the current TS host and independent backend boundary. |

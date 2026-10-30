@@ -47,4 +47,4 @@ Attempting to click the embedded emulator through native UI automation returned 
 
 The last observed provider from earlier qualification was `com.google.android.webview` 145.0.7632.218 and lacked `JS_INJECTION_IN_FRAME_AND_WORLD` and `NAVIGATION_LISTENER`. Flags were not requalified in this task. HN removes the login dependency but not these requirements. A supported provider and the specified physical-device evidence are still needed to complete MVP-02. No MVP-03 through MVP-07 feature implementation was started.
 
-Follow the [HN continuation guide](../../.docs/2026-10-27/200113-genesis-hacker-news-mvp-guide.md). Begin with its MVP-02 qualification prompt, then the two runtime components, storage, story Save, categories/library and final integration. The public HN applet is now the only target for these stages.
+Follow the [HN continuation guide](../../../.docs/phase-2/2026-10-27/200113-genesis-hacker-news-mvp-guide.md). Begin with its MVP-02 qualification prompt, then the two runtime components, storage, story Save, categories/library and final integration. The public HN applet is now the only target for these stages.

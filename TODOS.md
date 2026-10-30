@@ -20,4 +20,4 @@ Samsung Galaxy M30s, Android 11 / API 30, arm64-v8a, Android System WebView 156.
 - [x] Simulated customization failure and Retry recovery; sampled native loading-cover recording.
 - [x] Final TypeScript/package checks, debug/release builds and lint, debug signing verification and APK alignment checks.
 
-Report: [223320-genesis-android-phone-verification.md](.reports/2026-10-29/223320-genesis-android-phone-verification.md).
+Report: [223320-genesis-android-phone-verification.md](.reports/phase-2/2026-10-29/223320-genesis-android-phone-verification.md).

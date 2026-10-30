@@ -8,4 +8,4 @@ Ordinary DOM/CSS customization and optional React UI are the current approach. A
 
 Performance, supported websites, isolation, distribution and offline behavior require specific evidence. Local execution alone does not guarantee browser-equivalent performance.
 
-Read [architecture](../.architecture/README.md) and [research](../.research/README.md). Earlier product brainstorming is available in the working history; this is the current product direction.
+Read [architecture](../.architecture/README.md) and [research](../.research/phase-2/README.md). Earlier product brainstorming is available in the working history; this is the current product direction.

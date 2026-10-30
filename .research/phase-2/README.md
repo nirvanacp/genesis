@@ -1,6 +1,6 @@
 # Genesis research
 
-Start with [current architecture](../.architecture/README.md). Research holds unresolved questions, comparisons and source provenance. It does not define another architecture.
+Start with [current architecture](../../.architecture/README.md). Research holds unresolved questions, comparisons and source provenance. It does not define another architecture.
 
 - [Current research questions](2026-10-29/162458-genesis-platform-research.md) covers rendering, isolation, services, execution lifetimes, portability and distribution.
 - [Source register](2026-10-29/162458-genesis-source-register.md) retains all external Markdown references from the previous corpus, with provenance and explicit verification limits.
