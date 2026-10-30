@@ -22,7 +22,7 @@ Example request to an agent:
 
 ## What is available today
 
-This kit matches SDK/tools `0.2.0`, runtime API `1`, and bundle format/manifest schema `1`. TypeScript, managed DOM effects, optional React pages, native manifest sections, applet-local documents, declared HTTPS services, and multiple sources are available.
+This kit matches SDK/tools `0.3.0`, runtime API `2`, and bundle format/manifest schema `1`. TypeScript, managed DOM effects, optional React pages, native manifest sections, applet-local documents, declared HTTPS services, and multiple sources are available.
 
 The standalone `genesis-applet` CLI creates, checks, and builds applets without Rust or Android compilers. A compatible prebuilt debug host accepts explicit development installation over authorized adb, including code updates and rollback. Applet code and data keep a stable ID. Release hosts load bundled packages only. Production publisher trust, public distribution, and coding-agent connectors remain future work.
 

@@ -1,6 +1,6 @@
 # Start an applet
 
-This guide covers the current SDK/tools `0.2.0` workflow. Follow [the factory instructions](../AGENTS.md). The user supplies an application idea; the coding agent supplies the technical implementation.
+This guide covers the current SDK/tools `0.3.0` workflow. Follow [the factory instructions](../AGENTS.md). The user supplies an application idea; the coding agent supplies the technical implementation.
 
 ## Choose the parts of the application
 
@@ -18,19 +18,19 @@ Write a short brief in the applet README: purpose, supported websites/routes, sc
 
 ## Independent creator setup
 
-Use Node `24.15.0` and npm `11.14.1`. Obtain `genesis-sdk-0.2.0.tgz`, `genesis-applet-tools-0.2.0.tgz`, and a compatible prebuilt Genesis debug APK from the platform maintainer. The archives include the executable framework, types, and matching agent kit. They are not currently published to the public npm registry.
+Use Node `24.15.0` and npm `11.14.1`. Obtain `genesis-sdk-0.3.0.tgz`, `genesis-applet-tools-0.3.0.tgz`, and a compatible prebuilt Genesis debug APK from the platform maintainer. The archives include the executable framework, types, and matching agent kit. They are not currently published to the public npm registry.
 
 Install the tools archive in a local tools directory or through your agent's package workflow. For example, from an empty tools directory:
 
 ```sh
-npm install /absolute/path/genesis-applet-tools-0.2.0.tgz
+npm install /absolute/path/genesis-applet-tools-0.3.0.tgz
 npx --no-install genesis-applet create /absolute/path/my-reader --id my-reader --name "My reader" --source https://example.com/ --react
 ```
 
 Then, from the created applet directory, install the exact SDK/tools archives and the generated React dependencies:
 
 ```sh
-npm install /absolute/path/genesis-sdk-0.2.0.tgz /absolute/path/genesis-applet-tools-0.2.0.tgz
+npm install /absolute/path/genesis-sdk-0.3.0.tgz /absolute/path/genesis-applet-tools-0.3.0.tgz
 npm run check
 npm run build
 ```
@@ -117,7 +117,7 @@ For real records, render an initial loading state and fetch after mount. Only di
 
 ## Load and update the application
 
-The host must already be installed, compatible with runtime API 1, and debuggable. Use an authorized Android device selected explicitly by serial. The creator needs adb, not native compilers or Genesis source. From the applet directory:
+The host must already be installed, compatible with runtime API 2, and debuggable. Use an authorized Android device selected explicitly by serial. The creator needs adb, not native compilers or Genesis source. From the applet directory:
 
 ```sh
 npx --no-install genesis-applet dev status --device emulator-5554 --json

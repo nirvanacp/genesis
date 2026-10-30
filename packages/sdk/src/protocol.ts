@@ -1,4 +1,5 @@
 export interface ExecutionContext {
+  runtimeApiVersion?: number;
   instanceId: string;
   appletId: string;
   viewId: string;

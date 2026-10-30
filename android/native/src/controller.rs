@@ -384,8 +384,15 @@ impl HostState {
                 if self.redirect_policy(&url, &mut commands) {
                     return Ok(commands);
                 }
+                let was_ordinary = self
+                    .active
+                    .as_ref()
+                    .is_some_and(|view| !Self::eligible(view));
+                let will_ordinary = self.active.as_ref().is_some_and(|view| {
+                    !matches!(Self::classify_url(view, &url), "source" | "page")
+                });
                 let view = self.active.as_mut().expect("view");
-                if !same_document {
+                if !same_document || will_ordinary {
                     increment(&mut view.epoch)?;
                     if let Some(doc) = &view.document {
                         commands.push(C::ReplyToPage {
@@ -407,7 +414,10 @@ impl HostState {
                         message: json!({"type":"route.changed","documentId":doc.id,"url":url}),
                     });
                 }
-                view.url = url;
+                view.url = url.clone();
+                if same_document && was_ordinary && !will_ordinary {
+                    commands.push(C::LoadUrl { generation, url });
+                }
                 self.navigation_presentation(&mut commands);
             }
             E::Navigated { generation, url } if self.current(generation) => {
@@ -660,6 +670,7 @@ impl HostState {
             view.context.generation.0 == generation
                 && !view.failed
                 && view.customized
+                && Self::eligible(view)
                 && applet_id.is_none_or(|id| view.context.applet_id.0 == id)
                 && view
                     .document
@@ -669,7 +680,7 @@ impl HostState {
     }
 
     fn eligible(view: &LiveView) -> bool {
-        origin(&view.url).is_some_and(|o| view.origins.contains(&o))
+        matches!(Self::route_kind(view), "source" | "page")
     }
     fn safe_website_url(url: &str) -> bool {
         Url::parse(url).is_ok_and(|u| {
@@ -795,6 +806,7 @@ impl HostState {
         }
         let generation = increment(&mut self.generation)?;
         let context = ExecutionContext {
+            runtime_api_version: package.runtime_api_version,
             instance_id: instance_id(&selection.applet_id),
             applet_id: selection.applet_id.clone(),
             view_id: ViewId(format!("view-{generation}")),
@@ -901,20 +913,19 @@ impl HostState {
                 "ordinary"
             };
         }
-        if view
+        if let Some(source) = view
             .package
             .manifest
             .sources
             .iter()
             .find(|s| s.id == view.selection.source_id.0)
-            .is_some_and(|s| {
-                s.origins.contains(&url.origin().ascii_serialization())
-                    && s.customized_paths
-                        .as_ref()
-                        .is_none_or(|paths| paths.iter().any(|p| p == url.path()))
-            })
+            && source.origins.contains(&url.origin().ascii_serialization())
         {
-            "source"
+            if crate::routes::customized(source, url.path()) {
+                "source"
+            } else {
+                "source-ordinary"
+            }
         } else {
             "ordinary"
         }
@@ -930,7 +941,7 @@ impl HostState {
                 );
             } else if view.supported == Some(false) || view.failed {
                 // Preserve the explicit unsupported/failure presentation until recovery.
-            } else if Self::route_kind(view) == "ordinary" {
+            } else if matches!(Self::route_kind(view), "ordinary" | "source-ordinary") {
                 self.present("ordinary", "Ordinary external/authentication page. No Genesis bridge is registered for this origin.", commands);
             } else if view.ready {
                 self.present("ready", "Genesis · Customization ready.", commands);
@@ -1056,6 +1067,7 @@ impl HostState {
             || raw.len() > 262_144
             || view.failed
             || !view.customized
+            || !Self::eligible(view)
             || view.supported != Some(true)
             || !view.origins.iter().any(|o| o == callback_origin)
             || origin(&view.url).as_deref() != Some(callback_origin)
