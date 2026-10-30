@@ -201,3 +201,5 @@ No implementation-blocking product choice remains for this scoped plan. Registry
 - Component 4 implemented and compiled; emulator update/launcher passed. Arbitrary-source runtime checks are combined with component 6/8 development-package qualification rather than temporarily changing the production bundle selection.
 
 - Component 5 completed: unified completion matching passed temporary reducer qualification for retained, wrong, and evicted documents, plus strict Rust and Android checks.
+
+- Component 6 implemented: debug store accepted external applets and passed emulator update/rollback/rejection/recovery checks. Both build variants compile/lint. The shared SDK build now locks and caches artifact generation to support parallel Gradle variants. Release runtime exclusion and multi-site UI qualification follow in final integration.

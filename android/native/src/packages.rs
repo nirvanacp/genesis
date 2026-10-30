@@ -202,7 +202,6 @@ fn route(path: &str) -> bool {
 }
 
 /// Validate the external shape before the Android store verifies bytes and canonical revision.
-#[allow(dead_code)]
 pub fn validate_bundle(bundle: &AppletBundle) -> Result<(), String> {
     if bundle.format_version != BUNDLE_FORMAT_VERSION
         || bundle.runtime_api_version != RUNTIME_API_VERSION
