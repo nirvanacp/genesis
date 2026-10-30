@@ -4,6 +4,8 @@
 
 This codebase is a monorepo. The directory containing this `AGENTS.md` is the workspace root, with separate projects or codebases maintained in subdirectories beneath it. A task may concern one project, several related projects, or shared files at the root.
 
+Genesis has two development layers. The Genesis platform owns the Android browser host, Rust lifecycle and capabilities, shared SDK, and platform tooling; maintain these under this file's instructions. Applets own website adapters, custom UI, application rules, data, and optional backends; for creating or customizing applets, also read and follow [factory/AGENTS.md](factory/AGENTS.md), including for applets currently stored under `applets/`. Factory guidance supplies the applet-specific workflow while this file retains repository-wide rules. For work spanning both layers, follow each layer's instructions for its files and keep platform capabilities independent of individual applet features.
+
 - Before making changes, identify which project directories the task concerns. Do not assume that the current working directory is the target project's root.
 - Read any applicable `AGENTS.md` files within the target project. Follow its existing structure, dependencies, tooling, and conventions. Projects may use different languages, frameworks, and verification commands.
 - Keep changes within the requested scope. Change shared files or sibling projects only when the task requires it, and account for any projects affected by a shared change.

@@ -6,7 +6,7 @@ MainActivity reads packages/index.json, configures optional local storage, and d
 
 The bundled SDK sends hello with a fresh nonce and package revision. The host issues a challenge through the message channel. An accepted acknowledgement binds a new document identity to that channel, view generation and origin. Requests carry protocol version, document ID, request ID, method and parameters. The host derives applet identity from its live context. Replies from retired documents must not update replacement UI.
 
-Rust exposes HostEvent to HostCommand reduction through JNI. Android performs view/network operations and returns asynchronous completions. No application-specific backend schema belongs in this reducer. ServiceCompleted is accepted only for the current generation, document and channel. MainActivity executes commands on the UI thread; service I/O runs on bounded worker threads.
+Rust exposes HostEvent to HostCommand reduction through JNI. Android performs view/network operations and returns asynchronous completions. No application-specific backend schema belongs in this reducer. ServiceCompleted matches a document's generation and channel in either the active or retained views. StorageCompleted currently replies only to the matching active document, with change notification to the active document of that applet. New page messages are active-view only. These differing completion rules are a known limitation, not a background execution contract. MainActivity executes commands on the UI thread; service I/O runs on bounded worker threads.
 
 ## DOM and UI ownership
 
@@ -34,3 +34,9 @@ RPC has a 256 KiB envelope cap, 32 pending calls and a 15-second response deadli
 Read android/native/src/controller.rs, sources.rs, packages.rs; crates/contracts/src/lib.rs; MainActivity.java, BrowserAdapter.java, PackageAssets.java, HostViews.java; packages/sdk/src/bootstrap.ts, runtime.ts, scope.ts and rpc.ts. These implement the active TS runtime. crates/page-runtime is historical Wasm code.
 
 The observed emulator table raster-cache defect is contained to emulator customized WebViews with software layers. Physical devices and external reader views retain acceleration. This is a rendering compatibility workaround, not a general performance claim.
+
+## Applet-facing boundary
+
+The [factory SDK reference](../factory/guides/sdk-reference.md) documents the supported creator interface. Applets import public SDK exports and let the packager perform bootstrap; bridge globals, JNI, HostEvent/HostCommand, and platform source imports are internal. Each source entry adapts its own running document. Applet-owned pages combine extracted records, not other WebViews' DOM trees.
+
+The current shell still defaults local bindings to `primary`, uses feed-specific choice wording, and classifies customized paths across all package sources. Those assumptions need correction before qualifying unrelated multi-site applications. The [phase-3 plan](../.plans/phase-3/2026-10-30/162034-genesis-platform-applet-separation-plan.md) covers explicit selection, source-safe presentation, and completion consistency while preserving native recovery and reveal gates.

@@ -1,5 +1,7 @@
 # Genesis services and application data
 
+This is the platform transport/data boundary. Applet authors use the portable [factory services guide](../factory/guides/services-and-data.md). HN record shapes and operations belong to the [HN reference applet](hacker-news.md), not the Genesis service API.
+
 ## Implemented capability
 
 A manifest may declare services as unique logical identifiers and the services capability. The TypeScript context exposes services.request(serviceId, {path, method, body}). The result is {status, body}; the applet interprets HTTP status and application JSON. The host does not interpret HN collections or server operations.
@@ -11,6 +13,8 @@ Creators provision development connections with tools/services.mjs and the apple
 Transport constructs a path relative to the configured origin and rechecks scheme and authority. Redirects are disabled. TLS uses platform trust for ordinary endpoints. A debug-only imported certificate can establish trust for exactly that applet/service connection; hostname verification remains enabled. Release builds reject the private debug import. Responses and request bodies are capped at 256 KiB. Two network workers share a queue of 32 jobs per Activity. Connect and read timeouts are three seconds; response-body reading also checks a four-second elapsed deadline. These are bounded-operation safeguards, not a proven strict wall-clock deadline for every transport phase. Service workers stop accepting jobs on Activity destruction; an already submitted request can still reach its server.
 
 Configuration edits affect future requests. Disconnecting removes saved configuration; it does not undo or guarantee cancellation of in-flight requests. Revocation-sensitive operations must also revoke the credential at the backend. Connection settings are currently scoped to bundled applet IDs; signed publisher/installation identity must be established before independent package installation.
+
+The runtime allows multiple service IDs, but the current creator helper reads one `backend/service.json` and starts one Node entrypoint per invocation. Provisioning restarts the debug host. Its ready receipt follows device-side health, but a failed health request does not roll back settings already committed. `status` checks the process rather than verifying end-to-end service readiness. Generic host error strings still contain Saved-stories wording; the separation plan removes that applet assumption.
 
 ## Trust and application semantics
 
