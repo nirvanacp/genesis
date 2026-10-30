@@ -18,7 +18,7 @@ Write a short brief in the applet README: purpose, supported websites/routes, sc
 
 ## Current repository setup
 
-Existing applets are under `applets/<directory>/`. The directory name is a convention, not a one-website restriction. A new hybrid app can use an application name instead of a domain. Its manifest ID must be unique and stable.
+Existing applets are under `factory/applets/<directory>/`. The directory name is a convention, not a one-website restriction. A new hybrid app can use an application name instead of a domain. Its manifest ID must be unique and stable.
 
 The repository pins Node `24.15.0`, npm `11.14.1`, TypeScript `7.0.2`, and esbuild `0.28.2`. Use the checked-in npm lockfile and installed dependencies. Existing workspace dependencies resolve `@genesis/sdk` locally. A typical applet has:
 
@@ -51,8 +51,8 @@ For a new applet in the current root `factory/applets/` directory, the following
 
 ```json
 {
-  "extends": "../../tsconfig.base.json",
-  "include": ["src", "../../packages/sdk/src/assets.d.ts"]
+  "extends": "../../../tsconfig.base.json",
+  "include": ["src", "../../../packages/sdk/src/assets.d.ts"]
 }
 ```
 

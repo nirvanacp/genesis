@@ -12,7 +12,7 @@ npm run check:packages
 git diff --check
 ```
 
-Use the target workspace name from its `package.json`. Root `npm run typecheck` checks the SDK and all registered applets when a shared change affects them. The package checker currently selects HN only; it does not prove a new unregistered applet is valid. For an unregistered directory, the existing compiler can check it with `node node_modules/typescript/lib/tsc.js -p applets/my-applet/tsconfig.json` if dependencies resolve, but host integration still needs separate verification.
+Use the target workspace name from its `package.json`. Root `npm run typecheck` checks the SDK and all registered applets when a shared change affects them. The package checker currently selects HN only; it does not prove a new unregistered applet is valid. For an unregistered directory, the existing compiler can check it with `node node_modules/typescript/lib/tsc.js -p factory/applets/my-applet/tsconfig.json` if dependencies resolve, but host integration still needs separate verification.
 
 Use `node --check <changed-file.mjs>` for a changed backend script. Frontend typechecks do not validate a backend protocol. Build only when the task needs a bundle/device update. The current asset command is `node tools/build.mjs --stage assets --variant debug`; despite producing only frontend assets it currently also checks Cargo availability. That coupling belongs to the platform separation plan.
 
