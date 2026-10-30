@@ -11,7 +11,7 @@ Project: Genesis. Phase `phase-3`, branch `proto/phase-3`. Created 30 October 20
 | Website selectors/forms, applet screens/design, application records/API/backend | Applet; [factory/AGENTS.md](../../../factory/AGENTS.md) plus repository rules |
 | A feature needing both | Separate a generic capability change from the applet that uses it; document the contract and verify each component |
 
-Root instructions remain unchanged except for the additive layer/routing paragraph. Applets currently live under `applets/`; their forwarding AGENTS routes agents into factory guidance. The [single architecture plan](../../../.plans/phase-3/2026-10-30/162034-genesis-platform-applet-separation-plan.md) proposes later moves, standalone packages, and debug loading. Do not use its future paths or commands before implementation.
+Root instructions remain unchanged except for the additive layer/routing paragraph. Applets currently live under `factory/applets/`; their forwarding AGENTS routes agents into factory guidance. The [single architecture plan](../../../.plans/phase-3/2026-10-30/162034-genesis-platform-applet-separation-plan.md) proposes later moves, standalone packages, and debug loading. Do not use its future paths or commands before implementation.
 
 ## Current runtime and tools
 

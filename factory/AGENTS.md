@@ -4,7 +4,7 @@ This is the applet authoring workflow for Genesis developers and users' coding a
 
 ## Scope and instruction routing
 
-- Work inside the selected applet. In this checkout applets live in `applets/`; this directory contains the portable authoring guidance. Future layout changes are not permission to move source now.
+- Work inside the selected applet. In this checkout applets live in `factory/applets/`; this directory contains the portable authoring guidance. Keep applet business logic inside its application directory.
 - Use the root `AGENTS.md` for repository-wide rules and Genesis platform changes. This file adds applet rules. In an exported creator workspace, use its own repository rules plus this file; an external user need not obtain the Genesis repository.
 - Android, Rust, `packages/sdk/`, and shared tooling are Genesis-owned. Do not add applet selectors, routes, database tables, or domain commands there to make a customization work.
 - If the SDK lacks a required capability, finish independent applet work and describe the missing capability, desired public contract, and a minimal reproduction. Do not invent an API or silently change platform code. A Genesis developer may explicitly take on that separate platform task.

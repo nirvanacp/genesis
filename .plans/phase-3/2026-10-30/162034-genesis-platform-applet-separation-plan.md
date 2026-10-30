@@ -1,6 +1,6 @@
 # Genesis platform and applet separation
 
-Created 30 October 2026, 16:20:34 Asia/Kolkata. Project: Genesis monorepo. Phase: `phase-3`, selected from branch `proto/phase-3`. Inspected baseline: `e6d96e3`. Status: proposed runtime/tooling work, not implemented. The companion instructions and factory guides are delivered separately in this documentation task.
+Created 30 October 2026, 16:20:34 Asia/Kolkata. Project: Genesis monorepo. Phase: `phase-3`, selected from branch `proto/phase-3`. Inspected baseline: `e6d96e3`. Status: implementation authorized and in progress. The companion instructions and factory guides are delivered separately in this documentation task.
 
 ## Outcome and scope
 
@@ -189,3 +189,7 @@ Use [platform ownership](../../../.architecture/platform.md), [browser runtime](
 Risks: duplicated JS/Rust manifest validation can drift; compare invalid and valid temporary inputs at the host gate. External package resolution may reveal hidden monorepo imports; inspect packed archives and build outside the repository. Development ID overrides reuse data identity by design; require explicit replacement and permission-change intent. File moves can break Gradle invalidation and backend PID ownership checks; stop/restart managed services deliberately and verify unchanged data locations. Website DOM and phone suspension remain variable, so source/retention qualification cannot be replaced by typechecking.
 
 No implementation-blocking product choice remains for this scoped plan. Registry publication credentials, production publisher identity, and actual connector APIs are deliberately outside it. If a later decision changes this scope or the contract, update the affected steps and changelog before implementing them.
+
+## Implementation progress
+
+- 30 October: user authorized all components and a commit at each significant step. Documentation checkpoint committed as `429cb4f`. Existing worktree relocation/configuration was preserved and verified as component 1.

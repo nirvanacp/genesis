@@ -21,7 +21,7 @@ The active applet is under factory/applets/news.ycombinator.com. Its backend run
 
 ## Directory boundaries
 
-android/app holds platform integration; android/native holds native controller and generic storage; crates/contracts holds transport types; packages/sdk holds applet runtime capabilities; applets/<application>/src holds frontend; applets/<application>/backend holds creator-owned server code. Existing directory names happen to be domains. tools validates and bundles the selected frontend. Backend code must not be imported into browser bundles. Factory contains portable creator instructions/skills; SDK and creator tooling implementation remain platform-owned even though applet authors consume them.
+android/app holds platform integration; android/native holds native controller and generic storage; crates/contracts holds transport types; packages/sdk holds applet runtime capabilities; factory/applets/<application>/src holds frontend; factory/applets/<application>/backend holds creator-owned server code. Existing directory names happen to be domains. tools validates and bundles the selected frontend. Backend code must not be imported into browser bundles. Factory contains portable creator instructions/skills; SDK and creator tooling implementation remain platform-owned even though applet authors consume them.
 
 Current package selection is build-time in tools/check-packages.mjs. assets are immutable and hashed. Independent package import, publisher signatures, permission review on update and rollback are future capabilities, not implemented installation guarantees.
 

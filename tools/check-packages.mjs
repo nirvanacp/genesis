@@ -4,7 +4,9 @@ import { fileURLToPath } from "node:url";
 
 export const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 // Only the current prototype is bundled. Earlier applet workspaces remain preserved.
-const directories = ["applets/news.ycombinator.com"];
+const selection = JSON.parse(await readFile(path.join(root, "genesis.packages.json"), "utf8"));
+if (selection.schemaVersion !== 1 || !Array.isArray(selection.applets) || new Set(selection.applets).size !== selection.applets.length) throw new Error("Invalid bundled package selection");
+const directories = selection.applets;
 const identifier = /^[a-z][a-z0-9-]{0,63}$/;
 
 function requireValue(condition, message) {
