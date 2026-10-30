@@ -243,13 +243,16 @@ final class HostViews {
         floatingMenu.setEnabled(!open);
         if (sections != null) for (int i = 0; i < sections.getChildCount(); i++) sections.getChildAt(i).setEnabled(!open);
     }
+    private int entryDirection;
+    void transitionDirection(int direction) { entryDirection = Integer.signum(direction); }
     void reveal() {
         boolean entering = cover.getVisibility() == View.VISIBLE;
         cover.setVisibility(View.GONE);
+        browserSlot.animate().cancel(); browserSlot.setAlpha(1f); browserSlot.setTranslationX(0); browserSlot.setTranslationY(0);
         browserSlot.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);
         if (entering && android.animation.ValueAnimator.areAnimatorsEnabled()) {
-            browserSlot.animate().cancel(); browserSlot.setAlpha(0f); browserSlot.setTranslationY(dp(8));
-            browserSlot.animate().alpha(1f).translationY(0).setDuration(180)
+            browserSlot.animate().cancel(); browserSlot.setAlpha(0f); browserSlot.setTranslationX(dp(24) * entryDirection);
+            browserSlot.animate().alpha(1f).translationX(0).setDuration(entryDirection == 0 ? 120 : 200)
                 .setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
         }
     }
@@ -356,7 +359,7 @@ final class HostViews {
         if (progress > 0) pageProgress.setProgress(progress);
     }
     void pageStarting() {
-        browserSlot.animate().cancel(); browserSlot.setAlpha(1f); browserSlot.setTranslationY(0);
+        browserSlot.animate().cancel(); browserSlot.setAlpha(1f); browserSlot.setTranslationY(0); browserSlot.setTranslationX(0);
         coverTitle.setText("Loading page");
         coverMessage.setText("Preparing this page…");
         recovery.setVisibility(View.GONE);

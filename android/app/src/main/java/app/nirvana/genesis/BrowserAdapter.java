@@ -352,8 +352,8 @@ final class BrowserAdapter {
                 }
                 restoredHistory = false; beginTransition(); webView.loadUrl(url); break;
             }
-            case "goBack": webView.goBack(); break;
-            case "goForward": webView.goForward(); break;
+            case "goBack": views.transitionDirection(-1); webView.goBack(); break;
+            case "goForward": views.transitionDirection(1); webView.goForward(); break;
             case "reload": webView.reload(); break;
             case "destroyView": destroy(); break;
             case "deferNavigation": {
@@ -409,7 +409,7 @@ final class BrowserAdapter {
 
     void detach() { attached = false; activity.cancelInvalidFiles(); if (webView != null) views.browserSlot.removeView(webView); }
     void attach() throws Exception {
-        attached = true; views.pageStarting();
+        attached = true; views.transitionDirection(0); views.pageStarting();
         views.configureShell(creation, new PackageAssets(activity.packageStore, creation));
         views.browserSlot.removeAllViews();
         views.browserSlot.addView(webView, new android.widget.FrameLayout.LayoutParams(-1, -1));
@@ -428,7 +428,7 @@ final class BrowserAdapter {
     boolean hasReader() { return reader != null; }
     void closeReader() {
         if (reader == null) return;
-        views.pageStarting();
+        views.transitionDirection(-1); views.pageStarting();
         WebView retired = reader; reader = null; readerEpoch++;
         views.browserSlot.removeView(retired); retired.stopLoading(); retired.destroy();
         webView.setVisibility(View.VISIBLE); webView.onResume();
@@ -446,7 +446,7 @@ final class BrowserAdapter {
     @SuppressLint("SetJavaScriptEnabled")
     private void openReader(String url) {
         if (reader != null) { reader.loadUrl(url); return; }
-        views.pageStarting(); views.route(false, false);
+        views.transitionDirection(1); views.pageStarting(); views.route(false, false);
         views.navigation(url, true, true, false);
         webView.onPause(); webView.setVisibility(View.INVISIBLE);
         WebView child = new WebView(activity); reader = child;
