@@ -2,7 +2,7 @@
 
 Genesis is an Android browser customization platform. Creator JS/TS and optional React code modify live websites. Creators own their application data and optional backends. Rust owns generic host policy and lifecycle; Android owns WebView and native integration.
 
-Start with [architecture](.architecture/README.md), [research](.research/README.md), [product intent](.notes/README.md), [Android setup](.docs/2026-10-27/161510-genesis-android-setup.md) and [HN backend operations](.docs/2026-10-27/200113-genesis-hacker-news-mvp-guide.md). Plans ending in .archive.md are historical and must not guide new implementation.
+Start with [architecture](.architecture/README.md), [research](.research/phase-2/README.md), [product intent](.notes/README.md), [Android setup](.docs/phase-2/2026-10-27/161510-genesis-android-setup.md) and [HN backend operations](.docs/phase-2/2026-10-27/200113-genesis-hacker-news-mvp-guide.md). Plans ending in .archive.md are historical and must not guide new implementation.
 
 Only HN is bundled. Its frontend is under applets/news.ycombinator.com/src and its separately operated Node/SQLite backend is under applets/news.ycombinator.com/backend. Configure the backend through native Menu > Service connections. Server records require connectivity. Existing device bookmarks are preserved but not automatically uploaded. Generic Genesis local storage remains optional infrastructure.
 
