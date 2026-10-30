@@ -48,10 +48,12 @@ All public JSON includes `version:1` where it represents a stored domain record.
 | Category | UUID `id`, display `name`, normalized unique `nameKey`, positive integer `revision`, server timestamps. Name 1–80 Unicode code points and at most 320 UTF-8 bytes after trim. At most 50 active categories. |
 | Saved post | Decimal string `postId`, canonical `https://x.com/<handle>/status/<id>`, `snapshot`, positive `revision`, server `savedAtMs` and `updatedAtMs`. Primary key is owner plus post ID, not username. |
 | Membership | Saved post ID plus category ID, unique per pair. Every saved post has 1–10 active categories at transaction commit. |
-| Snapshot | Bounded `authorHandle`, `authorName`, text excerpt, `capturedAtMs`, `textState` of `complete`, `excerpt` or `unavailable`, and media kind/count. Optional quoted post ID. No HTML, cookies, raw DOM, network payloads, private messages or neighboring posts. |
+| Snapshot | Bounded `authorHandle`, `authorName`, text excerpt, `capturedAtMs`, `textState` of `complete`, `excerpt` or `unavailable`, and media kind/count. Optional quoted post ID and up to eight validated text links, with the whole snapshot bounded to 32 KiB. No HTML, cookies, raw DOM, network payloads, private messages or neighboring posts. |
 | Operation receipt | UUID `operationId`, owner, canonical request hash, final status/result, server timestamp. Same operation ID plus a different payload is rejected. |
 
 Limit input post IDs to 1–25 decimal digits and treat them as strings everywhere. Handles match `[A-Za-z0-9_]{1,15}`; lower-case only for comparison. Canonical URLs must be parsed HTTPS URLs with exact host `x.com`, no credentials/port, and a matching status ID. Strip tracking query and fragment for saved identity, preserving an optional media context only as non-authoritative UI metadata. Validate again when opening returned links.
+
+Implementation clarification: retain validated visible text links in snapshots so the planned library can preserve ordinary link behavior without rendering HTML or fetching previews.
 
 Snapshot bounds: author name 200 code points, text 8,000 code points and at most 32 KiB UTF-8, canonical URL 256 bytes, media count at most 16. Reject excessive sizes instead of silently accepting unbounded JSON. The client may deliberately truncate text on a code-point boundary and mark `excerpt`. A media-only post is valid if its own canonical ID is present. Unexpanded long posts remain excerpts. Saving a translated visible excerpt does not claim to capture the original language. Missing text never permits collecting surrounding conversation content.
 

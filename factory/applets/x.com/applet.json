@@ -3,14 +3,41 @@
   "id": "x-bookmarks",
   "name": "X with Genesis bookmarks",
   "dataSchemaVersion": 1,
-  "sources": [{
-    "id": "primary",
-    "startUrl": "https://x.com/home",
-    "origins": ["https://x.com", "https://www.x.com", "https://mobile.x.com", "https://twitter.com", "https://www.twitter.com", "https://mobile.twitter.com"],
-    "entry": "src/main.tsx",
-    "navigationRules": []
-  }],
-  "pages": [{ "id": "library", "entry": "src/library.tsx" }],
-  "actions": [{ "id": "library", "label": "Genesis bookmarks", "pageId": "library" }],
-  "capabilities": ["dom", "storage"]
+  "sources": [
+    {
+      "id": "primary",
+      "startUrl": "https://x.com/home",
+      "origins": [
+        "https://x.com",
+        "https://www.x.com",
+        "https://mobile.x.com",
+        "https://twitter.com",
+        "https://www.twitter.com",
+        "https://mobile.twitter.com"
+      ],
+      "entry": "src/main.tsx",
+      "navigationRules": []
+    }
+  ],
+  "pages": [
+    {
+      "id": "library",
+      "entry": "src/library.tsx"
+    }
+  ],
+  "actions": [
+    {
+      "id": "library",
+      "label": "Genesis bookmarks",
+      "pageId": "library"
+    }
+  ],
+  "capabilities": [
+    "dom",
+    "storage",
+    "services"
+  ],
+  "services": [
+    "bookmarks"
+  ]
 }
