@@ -267,9 +267,29 @@ export class ManagedRuntime {
     dialog.setAttribute("aria-label", key); dialog.tabIndex = -1;
     dialog.style.cssText = "background:white;color:#202020;max-height:85vh;overflow:auto;width:min(100%,520px);padding:20px;border-radius:12px;box-sizing:border-box;font:16px system-ui";
     shadow.append(dialog);
+    const backgrounds = new Map<HTMLElement, {inert:boolean; hidden:string|null}>();
+    const hideBackground = () => {
+      for (const child of Array.from(document.body.children).slice(0, 200)) {
+        if (!(child instanceof HTMLElement) || child === host || backgrounds.has(child)) continue;
+        backgrounds.set(child, {inert:child.inert, hidden:child.getAttribute("aria-hidden")});
+        child.inert = true; child.setAttribute("aria-hidden", "true");
+      }
+    };
+    hideBackground();
+    const backgroundObserver = new MutationObserver(hideBackground);
+    backgroundObserver.observe(document.body, {childList:true});
     let creator: void | Dispose;
     const dispose = this.effect("modal", host, () => document.body.append(host), () => {
       this.modal = undefined;
+      backgroundObserver.disconnect();
+      for (const [element, previousState] of backgrounds) {
+        if (element.inert) element.inert = previousState.inert;
+        if (element.getAttribute("aria-hidden") === "true") {
+          if (previousState.hidden === null) element.removeAttribute("aria-hidden");
+          else element.setAttribute("aria-hidden", previousState.hidden);
+        }
+      }
+      backgrounds.clear();
       void this.call("ui.modalState", { open: false }).catch(() => {});
       try { creator?.(); } finally { if (previous instanceof HTMLElement && previous.isConnected) previous.focus(); }
     });
