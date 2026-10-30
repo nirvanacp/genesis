@@ -1,5 +1,9 @@
 # Genesis X development guide
 
+## Controlling product direction
+
+Follow the [two-app improvement plan](../../../.plans/phase-4/2026-10-30/214048-genesis-two-complete-applets-plan.md). The intended everyday launcher has exactly Hacker News and X. X is a complete website-backed client; its library, reader, account pages and source contexts are internal screens. Debug-only status below is a temporary qualification state. Synthetic preview packages belong on a QA device or must be hidden before handoff, preserving their records. The proposed visibility command in the new plan is not implemented yet; do not invent it or clear application data to remove launcher clutter.
+
 Scope: phase-4 Genesis platform plus `factory/applets/x.com`. SDK/tools 0.3.0, runtime API 2, manifest/data/bundle schema 1. X is debug-installed and its local category service is provisioned on `emulator-5554`. It is not enabled in the default APK selection because authenticated device qualification is incomplete. The [verification report](../../../.reports/phase-4/2026-10-30/211400-genesis-x-android-verification.md) separates observed behavior from remaining work.
 
 ## Build and install

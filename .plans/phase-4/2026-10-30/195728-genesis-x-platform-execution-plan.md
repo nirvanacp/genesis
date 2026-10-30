@@ -1,5 +1,7 @@
 # Genesis platform changes and X execution plan
 
+> Current product direction: [214048-genesis-two-complete-applets-plan.md](214048-genesis-two-complete-applets-plan.md) supersedes this document's product framing, implementation sequence and completion criteria following the user's clarification. Deliver exactly two everyday apps, Hacker News and one complete X app. Sources, pages, Categories, readers and backend services are internal parts of those apps. Retain compatible technical contracts below; previous development-only status and synthetic checks are interim evidence, not the intended deliverable.
+
 Project: Genesis platform and `factory/applets/x.com`. Phase `phase-4`, branch `proto/phase-4`. Created 30 October 2026 at 19:57:28 Asia/Kolkata. This plan completes [the product/navigation plan](195728-x-product-and-navigation-plan.md) and [the category backend plan](195728-x-category-backend-plan.md). Read all three before implementation. No application code, package selection, dependency, account setting or test file was changed during planning.
 
 ## Current baseline and adopted guidance

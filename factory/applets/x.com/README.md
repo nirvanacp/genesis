@@ -1,10 +1,12 @@
-# X with private categories
+# X applet
 
-This applet keeps the live X website and adds an independent private Categories library. X bookmarks stay in X. Saving or removing a category record never changes an upstream bookmark.
+This is the single X application inside Genesis, built over the live X website. Timelines, search, conversations, profiles, messages, media, authentication and private Categories belong to this one applet. Categories is an integrated feature whose data has a separate backend authority. X bookmarks stay in X. Saving or removing a category record never changes an upstream bookmark.
 
 The implementation is development-only pending authenticated Android qualification. X currently rate-limits login on the verification emulator; it is not included in the default APK package selection. See [the qualification report](../../../.reports/phase-4/2026-10-30/211400-genesis-x-android-verification.md).
 
-## Supported experience
+Follow the [two-app improvement plan](../../../.plans/phase-4/2026-10-30/214048-genesis-two-complete-applets-plan.md). Development-only availability is temporary. Do not deliver X UI preview, a separate library app or route-specific X apps to the everyday launcher. The descriptions below identify implemented components; the report limits what has actually been qualified.
+
+## Implemented experience awaiting full qualification
 
 Native Home, Explore, Alerts, Saved and Me sections use a neutral shell. Live feeds, search, profiles, conversations, photo/video routes, Lists and Communities retain source controls. A separate folder action captures the selected post into one or more categories. Saved switches between X History and the applet-owned Categories page with full-library search and category management. Login, settings, chat, calls, Grok and paid/creator routes retain ordinary source presentation. Source selectors can change independently.
 

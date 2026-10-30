@@ -1,5 +1,7 @@
 # X category backend implementation plan
 
+> Current product direction: [214048-genesis-two-complete-applets-plan.md](214048-genesis-two-complete-applets-plan.md) supersedes this document's product framing, implementation sequence and completion criteria following the user's clarification. Deliver exactly two everyday apps, Hacker News and one complete X app. Sources, pages, Categories, readers and backend services are internal parts of those apps. Retain compatible technical contracts below; previous development-only status and synthetic checks are interim evidence, not the intended deliverable.
+
 Project: Genesis X applet. Phase `phase-4`, branch `proto/phase-4`. Created 30 October 2026 at 19:57:28 Asia/Kolkata. Read [product/navigation](195728-x-product-and-navigation-plan.md) and [platform/execution](195728-genesis-x-platform-execution-plan.md). This document specifies proposed application contracts, not code that already exists.
 
 ## Ownership and scope

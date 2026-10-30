@@ -1,5 +1,9 @@
 # Genesis platform and ownership
 
+## Phase-4 product direction
+
+The user requires two complete everyday applets, Hacker News and one X client. Internal browser contexts, source routes, Categories, backend services and reader pages do not create additional apps. Preserve stable applet IDs and data. The [controlling improvement plan](../.plans/phase-4/2026-10-30/214048-genesis-two-complete-applets-plan.md) defines the corrective work and acceptance. The current HN-only bundle and X debug qualification described below are implementation status, not the final product. HN functionality is the preservation baseline; X requires integrated end-to-end qualification.
+
 ## Contract
 
 Genesis runs independently developed customizations over websites. Creators own their frontend, business logic, data model and optional backend. A new applet workflow or server route must not require a new feature-specific Rust command. New device capabilities may require a platform change.

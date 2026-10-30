@@ -1,5 +1,9 @@
 # Hacker News frontend and backend
 
+## Phase-4 product direction
+
+The user requires two complete everyday applets, Hacker News and one X client. Internal browser contexts, source routes, Categories, backend services and reader pages do not create additional apps. Preserve stable applet IDs and data. The [controlling improvement plan](../.plans/phase-4/2026-10-30/214048-genesis-two-complete-applets-plan.md) defines the corrective work and acceptance. The current HN-only bundle and X debug qualification described below are implementation status, not the final product. HN functionality is the preservation baseline; X requires integrated end-to-end qualification.
+
 This document describes one reference applet. HN collections, category limits, typography, and workflow decisions are applet-specific; they are not requirements for other applications. Use [factory instructions](../factory/AGENTS.md) when changing this applet. General creator guidance lives in [factory](../factory/README.md).
 
 ## Current split

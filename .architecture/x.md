@@ -1,5 +1,9 @@
 # X private Categories architecture
 
+## Phase-4 product direction
+
+The user requires two complete everyday applets, Hacker News and one X client. Internal browser contexts, source routes, Categories, backend services and reader pages do not create additional apps. Preserve stable applet IDs and data. The [controlling improvement plan](../.plans/phase-4/2026-10-30/214048-genesis-two-complete-applets-plan.md) defines the corrective work and acceptance. The current HN-only bundle and X debug qualification described below are implementation status, not the final product. HN functionality is the preservation baseline; X requires integrated end-to-end qualification.
+
 Phase-4 implementation lives in `factory/applets/x.com`. X remains a debug-installed applet pending authenticated device qualification; only HN is selected by `genesis.packages.json`. See [qualification evidence and remaining checks](../.reports/phase-4/2026-10-30/211400-genesis-x-android-verification.md).
 
 Five manifest sections select source contexts for Home, Explore, Alerts, Saved and Me. Runtime API 2 patterns adapt daily source routes, while auth/settings/chat/paid routes retain ordinary source presentation. Owned source effects provide shortcuts, a Me hub, Saved modes and per-post category actions. The source owns social actions, media, drafts and ordinary bookmarks. Folder controls never click X's bookmark action.

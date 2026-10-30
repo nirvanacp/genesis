@@ -14,7 +14,7 @@ This guide covers the current SDK/tools `0.3.0` workflow. Follow [the factory in
 
 There is no requirement to use React or a backend. A CSS adaptation can be a small `defineApplet` entry. React is useful for applet-owned pages or controls; it does not take ownership of the website's live React tree.
 
-Write a short brief in the applet README: purpose, supported websites/routes, screens/actions, where records live, and a few concrete acceptance flows. For example, “Save an article on either source, open Saved, and return to the article on its original source.” Do not ask a nontechnical user to choose a database or bridge protocol unless the choice changes their product constraints.
+Before mapping the parts, follow [product scope and clarification](product-scope.md). Write a short brief in the applet README with the intended app count/identity, complete requested journeys, existing behavior to preserve, data authority and delivery target. Record unresolved product decisions before dependent implementation. For example, "Open the app, browse either source, save an article, open Saved, and return to the article on its original source." Do not ask a nontechnical user to choose a database or bridge protocol unless the choice changes their product constraints. A complete-client request must not become only a Saved page.
 
 ## Independent creator setup
 
@@ -59,6 +59,8 @@ my-reader/
 ```
 
 The applet ID is stable application identity, even when several websites are sources. In Genesis's development monorepo, examples live under `factory/applets/`. Maintainers choose APK bundles in `genesis.packages.json`; external creators use development installation without changing that selection.
+
+Create one applet per intended application, not per route, feature or backend. A temporary diagnostic applet is not another delivered application. Plan its environment and supported cleanup before installing it on an everyday device. See [verification](verification.md) for how to separate diagnostic evidence from real acceptance.
 
 ## Minimal source adaptation
 

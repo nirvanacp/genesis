@@ -9,6 +9,7 @@ An applet can combine several websites. Each source runs in its own browser docu
 | Need | Read |
 | --- | --- |
 | Give a coding agent its instructions | [AGENTS.md](AGENTS.md) |
+| Preserve the intended app and resolve ambiguous requests | [Product scope and clarification](guides/product-scope.md) |
 | Start an applet or understand the current workflow | [Getting started](guides/getting-started.md) |
 | Choose a capability or check a signature | [SDK and manifest reference](guides/sdk-reference.md) |
 | Adapt a website, build React UI, or combine sources | [Implementation patterns](guides/patterns.md) |
@@ -20,13 +21,15 @@ Example request to an agent:
 
 > Read factory/AGENTS.md. Build a reading app that lets me collect articles from two websites and organize them in one Saved page. Keep each website's login flow. First inspect the available SDK and explain any host capability that is missing; keep the implementation inside my applet.
 
+Agents should work from an ordinary product request without requiring a technical specification from the user. One requested application keeps its sources, pages, custom features and services inside that application. Agents ask focused questions when unresolved intent would change what is delivered, and choose routine implementation details themselves. A compact app brief and real acceptance journeys keep incremental work aligned with the requested result. These instructions reduce avoidable mistakes; they do not guarantee that one prompt can overcome missing source access or host capabilities.
+
 ## What is available today
 
 This kit matches SDK/tools `0.3.0`, runtime API `2`, and bundle format/manifest schema `1`. TypeScript, managed DOM effects, optional React pages, native manifest sections, applet-local documents, declared HTTPS services, and multiple sources are available.
 
 The standalone `genesis-applet` CLI creates, checks, and builds applets without Rust or Android compilers. A compatible prebuilt debug host accepts explicit development installation over authorized adb, including code updates and rollback. Applet code and data keep a stable ID. Release hosts load bundled packages only. Production publisher trust, public distribution, and coding-agent connectors remain future work.
 
-Genesis maintainers supply packed SDK/tools archives and a compatible debug APK. These packages have not been published to a public registry. Example applets in this repository live under `factory/applets/`; HN is the only bundled example. X and YouTube remain inactive prototypes. See [getting started](guides/getting-started.md) for the independent workflow and [verification](guides/verification.md) for its limits.
+Genesis maintainers supply packed SDK/tools archives and a compatible debug APK. These packages have not been published to a public registry. Example applets in this repository live under `factory/applets/`; HN is currently bundled. X is implemented as one development applet but still needs integrated authenticated qualification; YouTube remains inactive. The phase-4 delivery target is two complete everyday apps, HN and X. Internal sources/pages and verification packages are not separate product apps. See [getting started](guides/getting-started.md) for the independent workflow and [verification](guides/verification.md) for its limits.
 
 ## Handing the kit to another coding agent
 
