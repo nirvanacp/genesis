@@ -1,0 +1,6 @@
+# Genesis website file selection
+
+- Goal: Allow ordinary website image/video attachment through Android's system picker.
+- Changes: Added a generic single/multiple document-picker owner, MIME filtering, content-URI validation, at-most-once callbacks and Activity result handling. Requests capture source instance, generation, URL and navigation epoch; stale, canceled, retired and inaccessible-provider results return cancellation. No broad storage/camera permission or file copying into applet records.
+- Decisions: Follow the approved source-form approach. The chosen files remain in the website's upload workflow. Unsupported chooser modes cancel safely. Replacement and invalidated requests release their callback, while process destruction does not promise attachment recovery.
+- Verification: Android assembleDebug and lintDebug passed, including cancellation/invalidation additions. System-picker interaction and source attachment preview remain part of integrated Android Studio verification. No real X post or media upload was submitted, and no test files were added.

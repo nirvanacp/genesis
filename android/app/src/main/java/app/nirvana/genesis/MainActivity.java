@@ -12,6 +12,7 @@ import org.json.JSONObject;
 
 /** Activity lifecycle, JSON transport, and command execution only. */
 public final class MainActivity extends Activity implements NativeBridge.StorageResults {
+    private FileSelection files;
     private HostViews views;
     private BrowserAdapter browser;
     private ServiceClient services;
@@ -25,6 +26,7 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
     @Override public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         android.webkit.WebView.setWebContentsDebuggingEnabled(false);
+        files = new FileSelection(this);
         views = new HostViews(this, this::send);
         services = new ServiceClient(this);
         browser = new BrowserAdapter(this, views, this::send);
@@ -145,6 +147,14 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
         }
     }
 
+    void cancelInvalidFiles() { if (files != null) files.cancelIfInvalid(); }
+    void chooseFiles(android.webkit.WebChromeClient.FileChooserParams params, android.webkit.ValueCallback<android.net.Uri[]> callback, java.util.function.BooleanSupplier valid) {
+        files.open(params, callback, valid);
+    }
+    @SuppressWarnings("deprecation")
+    @Override protected void onActivityResult(int requestCode, int resultCode, android.content.Intent data) {
+        if (!files.result(requestCode, resultCode, data)) super.onActivityResult(requestCode, resultCode, data);
+    }
     @SuppressWarnings("deprecation")
     @SuppressLint("GestureBackNavigation") // API 33+ uses the callback registered in onCreate.
     @Override public void onBackPressed() { send(HostViews.event("back")); }
@@ -157,6 +167,7 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
     @Override protected void onPause() { if (attached) send(HostViews.event("suspended")); if (browser != null) browser.pause(); super.onPause(); }
     @Override protected void onResume() { super.onResume(); if (browser != null) browser.resume(); if (attached) send(HostViews.event("resumed")); }
     @Override protected void onDestroy() {
+        if (files != null) files.cancel();
         if (views != null) views.dispose();
         if (services != null) services.close();
         NativeBridge.detach(this);
