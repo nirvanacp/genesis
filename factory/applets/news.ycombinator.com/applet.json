@@ -213,31 +213,38 @@
     "choices": [
       {
         "label": "Top",
-        "url": "https://news.ycombinator.com/news"
+        "url": "https://news.ycombinator.com/news",
+        "sourceId": "primary"
       },
       {
         "label": "New",
-        "url": "https://news.ycombinator.com/newest"
+        "url": "https://news.ycombinator.com/newest",
+        "sourceId": "primary"
       },
       {
         "label": "Past",
-        "url": "https://news.ycombinator.com/front"
+        "url": "https://news.ycombinator.com/front",
+        "sourceId": "primary"
       },
       {
         "label": "Comments",
-        "url": "https://news.ycombinator.com/newcomments"
+        "url": "https://news.ycombinator.com/newcomments",
+        "sourceId": "primary"
       },
       {
         "label": "Ask",
-        "url": "https://news.ycombinator.com/ask"
+        "url": "https://news.ycombinator.com/ask",
+        "sourceId": "primary"
       },
       {
         "label": "Show",
-        "url": "https://news.ycombinator.com/show"
+        "url": "https://news.ycombinator.com/show",
+        "sourceId": "primary"
       },
       {
         "label": "Jobs",
-        "url": "https://news.ycombinator.com/jobs"
+        "url": "https://news.ycombinator.com/jobs",
+        "sourceId": "primary"
       }
     ]
   }

@@ -137,7 +137,7 @@ final class ServiceClient {
     private void execute(JSONObject job, String origin, String sealed, String certificate) {
         HttpURLConnection connection = null;
         try {
-            if (origin.isEmpty() || sealed.isEmpty()) { complete(job, null, "CONFIGURATION_REQUIRED", "Saved stories are temporarily unavailable. Please try again later."); return; }
+            if (origin.isEmpty() || sealed.isEmpty()) { complete(job, null, "CONFIGURATION_REQUIRED", "This service is temporarily unavailable. Please try again later."); return; }
             URI base = endpoint(origin), destination = base.resolve(job.getString("path"));
             if (!base.getScheme().equals(destination.getScheme()) || !base.getRawAuthority().equals(destination.getRawAuthority()) || destination.getUserInfo() != null) throw new IllegalArgumentException("Service path changes origin");
             connection = (HttpURLConnection) destination.toURL().openConnection(); connection.setInstanceFollowRedirects(false);
@@ -153,7 +153,7 @@ final class ServiceClient {
                 try (java.io.OutputStream output = connection.getOutputStream()) { output.write(body); }
             }
             int status = connection.getResponseCode();
-            if (status == 401 || status == 403) { complete(job, null, "AUTHENTICATION_FAILED", "Saved stories are unavailable. Please try again later."); return; }
+            if (status == 401 || status == 403) { complete(job, null, "AUTHENTICATION_FAILED", "This service is unavailable. Please try again later."); return; }
             if (status >= 300 && status < 400) throw new IllegalArgumentException("Service redirects are disabled");
             InputStream stream = status >= 400 ? connection.getErrorStream() : connection.getInputStream();
             if (stream == null) throw new IllegalStateException("Service returned no JSON body");

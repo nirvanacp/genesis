@@ -787,7 +787,7 @@ impl HostState {
             opener: owner_selection.clone(),
             context: context.clone(),
             package: package.clone(),
-            selection,
+            selection: selection.clone(),
             url: url.clone(),
             origins: origins.clone(),
             customized,
@@ -800,6 +800,7 @@ impl HostState {
         });
         self.source_status(SourceStatus::Loading);
         commands.push(C::CreateView {
+            selection,
             owner_selection,
             generation,
             package: Box::new(package),
@@ -863,25 +864,41 @@ impl HostState {
         if !view.customized {
             return "ordinary";
         }
-        if matches!(view.context.binding, ContextKind::Page { .. })
-            && origin(destination).is_some_and(|o| view.origins.contains(&o))
-        {
-            return "page";
-        }
         let Ok(url) = Url::parse(destination) else {
             return "ordinary";
         };
-        if view.package.manifest.sources.iter().any(|s| {
-            s.origins.contains(&url.origin().ascii_serialization())
-                && s.customized_paths
-                    .as_ref()
-                    .is_none_or(|paths| paths.iter().any(|p| p == url.path()))
-        }) {
+        if let ContextKind::Page { page_id } = &view.context.binding {
+            let expected = format!(
+                "/genesis/{}/{}/{}/index.html",
+                view.package.manifest.id, view.package.revision, page_id
+            );
+            return if url.origin().ascii_serialization() == "https://appassets.androidplatform.net"
+                && url.path() == expected
+            {
+                "page"
+            } else {
+                "ordinary"
+            };
+        }
+        if view
+            .package
+            .manifest
+            .sources
+            .iter()
+            .find(|s| s.id == view.selection.source_id.0)
+            .is_some_and(|s| {
+                s.origins.contains(&url.origin().ascii_serialization())
+                    && s.customized_paths
+                        .as_ref()
+                        .is_none_or(|paths| paths.iter().any(|p| p == url.path()))
+            })
+        {
             "source"
         } else {
             "ordinary"
         }
     }
+
     fn navigation_presentation(&self, commands: &mut Vec<C>) {
         if let Some(view) = &self.active {
             if !view.customized {

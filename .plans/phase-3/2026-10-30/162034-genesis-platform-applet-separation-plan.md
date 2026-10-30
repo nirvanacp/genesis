@@ -197,3 +197,5 @@ No implementation-blocking product choice remains for this scoped plan. Registry
 - Component 2 completed: packed SDK 0.2.0 and runtime API 1 contract, with semantic validation separated from readApplet filesystem checks. Canonical hash verification is performed by the Android host store using MessageDigest; Rust remains the independent shape/policy validator.
 
 - Component 3 completed: standalone check/build/readBundle and shared APK bundling passed external DOM/React artifact qualification and Android build/lint.
+
+- Component 4 implemented and compiled; emulator update/launcher passed. Arbitrary-source runtime checks are combined with component 6/8 development-package qualification rather than temporarily changing the production bundle selection.
