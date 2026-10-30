@@ -67,6 +67,7 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
         if (Looper.myLooper() != Looper.getMainLooper()) throw new IllegalStateException("UI thread required");
         try {
             String type = event.getString("type");
+            if (java.util.Arrays.asList("open","openPage","home","activateDestination").contains(type)) views.transitionDirection(0);
             if (!leavingApproved && browser != null && browser.leaveGuard() != null
                 && java.util.Arrays.asList("open","openPage","home","reload","retry","ordinary","activateDestination").contains(type)) {
                 if (!leavePrompt) {
