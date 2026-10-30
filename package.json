@@ -4,6 +4,7 @@
   "private": true,
   "workspaces": [
     "packages/sdk",
+    "packages/applet-tools",
     "factory/applets/youtube.com",
     "factory/applets/x.com",
     "factory/applets/news.ycombinator.com"
@@ -14,7 +15,7 @@
   },
   "packageManager": "npm@11.14.1",
   "scripts": {
-    "typecheck": "npm run typecheck --workspaces",
+    "typecheck": "node packages/sdk/build.mjs && npm run typecheck --workspaces",
     "check:packages": "node tools/check-packages.mjs",
     "build": "node tools/build.mjs --stage all --variant debug"
   },

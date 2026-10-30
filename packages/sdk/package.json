@@ -1,14 +1,29 @@
 {
   "name": "@genesis/sdk",
-  "version": "0.1.0",
-  "private": true,
+  "version": "0.2.0",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts",
-    "./react": "./src/react.tsx"
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./react": {
+      "types": "./dist/types/react.d.ts",
+      "default": "./dist/react.js"
+    },
+    "./runtime": {
+      "types": "./dist/types/bootstrap.d.ts",
+      "default": "./dist/runtime.js"
+    },
+    "./manifest": {
+      "types": "./dist/types/manifest.d.ts",
+      "default": "./dist/manifest.js"
+    }
   },
   "scripts": {
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "build": "node build.mjs",
+    "prepack": "npm run build"
   },
   "peerDependencies": {
     "react": "^19.3.1",
@@ -21,5 +36,8 @@
     "react-dom": {
       "optional": true
     }
-  }
+  },
+  "files": [
+    "dist"
+  ]
 }
