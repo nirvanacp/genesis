@@ -1,0 +1,6 @@
+# X source navigation and account handling
+
+- Goal: Adapt everyday X routes to native sections while preserving the source website and ordinary authentication pages.
+- Changes: Declared Home/Explore/Alerts/Saved/Me, explicit source route coverage and account exclusions, neutral branding, source shortcuts, account hub, History mode entry, source transient Back and composer leave guards. Added public-account verification tickets for packaged library entry and focused post extraction. Source diagnostics retain only structural counts.
+- Decisions: Preserve X forms, source actions and timeline layout; hide only duplicate navigation. Account verification uses the current primary-navigation profile link, never the viewed author. The packaged library verifies through a visible source round trip, without reading another WebView's DOM. Backend metadata is a validated data-client dependency, implemented first.
+- Verification: Live authorized Browser DOM confirmed post/quote boundaries and profile navigation selectors. X TypeScript, manifest and bundle checks passed. Android Studio's emulator loads X through ordinary login presentation; X then rejects the username with a temporary login limit before a password form. No password was entered there and no bypass was attempted. Authenticated Android route checks remain blocked by that upstream restriction.

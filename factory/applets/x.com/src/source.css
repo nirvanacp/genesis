@@ -1,0 +1,8 @@
+html.genesis-x{background:Canvas;color-scheme:light dark}
+.genesis-x header[role=banner],.genesis-x [data-testid="sidebarColumn"],.genesis-x [data-testid="BottomBar"],.genesis-x [data-testid="AppTabBar"],.genesis-x [data-testid="SideNav_NewTweet_Button"]{display:none!important}
+.genesis-x main[role=main]{width:100%!important;align-items:center!important;flex-grow:1!important}
+.genesis-x #react-root>div{align-items:stretch!important}
+.genesis-x [data-testid="primaryColumn"]{width:100%!important;max-width:680px!important;min-width:0!important;border-left:0!important;border-right:0!important}
+.genesis-x [data-testid="tweet"]{transition:none!important}
+.genesis-x.genesis-x-hub [data-testid="primaryColumn"]{display:none!important}
+.genesis-x [data-genesis-owned]{flex-shrink:0}
