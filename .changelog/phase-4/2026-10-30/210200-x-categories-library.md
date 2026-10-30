@@ -1,0 +1,6 @@
+# X Categories library
+
+- Goal: Provide a readable private saved-post library beside native X bookmarks.
+- Changes: Replaced the placeholder page with a responsive library, full-library search, searchable category chooser, saved snapshots and validated links, category manager and source-post navigation. Added distinct loading/empty/error/stale states and pending-write recovery. Updated the applet README with ownership, setup and support limits.
+- Decisions: Saved modes remain separate authorities. Category deletion requires emptiness; snapshots show capture dates and live-post links. Library entry verifies the visible account through the source ticket flow, and filters/scroll use host-local preferences. Native shell owns navigation and insets. Synthetic preview records are outside the repository and use a separate applet identity.
+- Verification: X TypeScript, manifest and bundle checks passed. Android Studio displayed the actual library/editor components with synthetic records; multi-category updates showed the expected tags, and Android Back dismissed the chooser without leaving the page. Captured sanitized preview evidence. Authenticated X source/library integration remains unverified because X rate-limited the emulator's username step. No password was saved and no permanent tests were added.
