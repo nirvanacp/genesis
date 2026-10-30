@@ -199,3 +199,5 @@ No implementation-blocking product choice remains for this scoped plan. Registry
 - Component 3 completed: standalone check/build/readBundle and shared APK bundling passed external DOM/React artifact qualification and Android build/lint.
 
 - Component 4 implemented and compiled; emulator update/launcher passed. Arbitrary-source runtime checks are combined with component 6/8 development-package qualification rather than temporarily changing the production bundle selection.
+
+- Component 5 completed: unified completion matching passed temporary reducer qualification for retained, wrong, and evicted documents, plus strict Rust and Android checks.

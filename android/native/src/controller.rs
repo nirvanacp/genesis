@@ -498,27 +498,33 @@ impl HostState {
                 self.fullscreen = false
             }
             E::StorageCompleted { completion } => {
+                if self
+                    .completion_target(
+                        completion.generation,
+                        &completion.document_id,
+                        completion.channel,
+                        Some(&completion.applet_id),
+                    )
+                    .is_some()
+                {
+                    commands.push(C::ReplyToPage {
+                        generation: completion.generation,
+                        channel: completion.channel,
+                        message: completion.response.clone(),
+                    });
+                }
                 if let Some(view) = &self.active
+                    && !view.failed
                     && view.context.applet_id.0 == completion.applet_id
                     && let Some(doc) = &view.document
+                    && !completion.changed.is_empty()
                 {
-                    if view.context.generation.0 == completion.generation
-                        && doc.id == completion.document_id
-                        && doc.channel == completion.channel
-                    {
-                        commands.push(C::ReplyToPage {
-                            generation: completion.generation,
-                            channel: completion.channel,
-                            message: completion.response.clone(),
-                        });
-                    }
-                    if !completion.changed.is_empty() {
-                        commands.push(C::ReplyToPage { generation:view.context.generation.0,channel:doc.channel,
-                            message:json!({"type":"storage.changed","documentId":doc.id,"changes":completion.changed,
-                            "namespaceRevision":completion.response["result"]["namespaceRevision"]}) });
-                    }
+                    commands.push(C::ReplyToPage { generation:view.context.generation.0,channel:doc.channel,
+                        message:json!({"type":"storage.changed","documentId":doc.id,"changes":completion.changed,
+                        "namespaceRevision":completion.response["result"]["namespaceRevision"]}) });
                 }
             }
+
             E::ConfigureServices => {
                 if let Some(view) = &self.active {
                     commands.push(C::ConfigureServices {
@@ -529,18 +535,14 @@ impl HostState {
                 }
             }
             E::ServiceCompleted { completion } => {
-                if let Some(view) = self
-                    .active
-                    .as_ref()
-                    .filter(|v| v.context.generation.0 == completion.generation)
-                    .or_else(|| {
-                        self.retained
-                            .iter()
-                            .find(|v| v.context.generation.0 == completion.generation)
-                    })
-                    && let Some(doc) = &view.document
-                    && doc.id == completion.document_id
-                    && doc.channel == completion.channel
+                if self
+                    .completion_target(
+                        completion.generation,
+                        &completion.document_id,
+                        completion.channel,
+                        None,
+                    )
+                    .is_some()
                 {
                     commands.push(C::ReplyToPage {
                         generation: completion.generation,
@@ -647,6 +649,25 @@ impl HostState {
             false
         }
     }
+    fn completion_target(
+        &self,
+        generation: u64,
+        document_id: &DocumentId,
+        channel: u64,
+        applet_id: Option<&str>,
+    ) -> Option<&LiveView> {
+        self.active.iter().chain(self.retained.iter()).find(|view| {
+            view.context.generation.0 == generation
+                && !view.failed
+                && view.customized
+                && applet_id.is_none_or(|id| view.context.applet_id.0 == id)
+                && view
+                    .document
+                    .as_ref()
+                    .is_some_and(|doc| doc.id == *document_id && doc.channel == channel)
+        })
+    }
+
     fn eligible(view: &LiveView) -> bool {
         origin(&view.url).is_some_and(|o| view.origins.contains(&o))
     }
