@@ -1,0 +1,6 @@
+# X category save controls
+
+- Goal: Add category saving without altering X's existing bookmark behavior.
+- Changes: Wired source activation to managed post controls, added per-post folder actions with batched saved-state reads, and implemented an owned category editor with multi-selection, inline creation, explicit final-membership removal and pending-operation recovery. Existing X bookmark controls and handlers remain untouched.
+- Decisions: Use the post's own validated timestamp permalink and exclude linked quote-card content. Revalidate identity/account after asynchronous work. A packaged-page editor receives the library account already verified by that page; it does not attempt to inspect a different WebView. Keep each captured snapshot within the backend byte bound, including validated links.
+- Verification: X TypeScript and bundle checks passed. Live Browser structural evidence confirmed timestamp/text boundaries. Android Studio rendered the actual sheet against synthetic records in a separate preview applet; checked multi-selection, footer visibility and dismissal. X's Android login remains rate-limited, so source control placement and authenticated saves on the real X DOM are not yet device-qualified. No permanent tests or upstream bookmarks were changed.
