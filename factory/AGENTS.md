@@ -13,7 +13,15 @@ This is the applet authoring workflow for Genesis developers and users' coding a
 
 ## Start with the user's application
 
-Translate the request into observable behavior: websites, screens, actions, data to keep, and what success looks like. Inspect existing applet files before asking questions. Ask about product choices only when needed; choose selectors, lifecycle handling, and SDK calls yourself. The user does not need to understand Rust, WebView, bridge messages, or Genesis build history.
+Read [product scope and clarification](guides/product-scope.md) before planning or implementing an applet. Translate the request into observable behavior: the intended application, websites, screens, actions, data to keep, and what success looks like. Preserve the latest user requirements across component work and verification. A feature named in the prompt does not replace the surrounding application the user asked for.
+
+One requested application normally has one stable applet identity and one everyday launcher entry. Sources, pages, sections, services and external readers are internal parts of that application. Do not split them into independently delivered apps unless the user asks for that split. This rule applies to each requested app, not to every website in the platform. Several requested applications can coexist in Genesis.
+
+Write a compact product brief and acceptance-flow table in the applet README or governing plan. Include explicit requirements, the existing behavior to preserve, data authority, delivery target, material assumptions and unresolved decisions. A broad client request includes connected everyday browsing, detail, account, forms and return navigation; a narrow feature request preserves the rest of the existing app. Reuse another applet's patterns without copying its product limitations. Implement incrementally, but keep the full requested outcome as the completion criterion.
+
+Inspect existing files and available source context before asking for information they already contain. Ask a concise product question before making an unresolved choice that changes application count, core workflows, account/data behavior, delivery, or an exclusion the user has not accepted. Offer concrete options and explain their user-visible effect. Proceed with independent work while waiting; do not implement the dependent choice, interpret silence as agreement, or repeatedly ask about an answer already supplied. Choose reversible technical details such as selectors, file organization and SDK calls yourself.
+
+If authentication, a host capability or the environment blocks a requirement, keep it marked required and blocked. Explain the effect and ask about a materially different fallback when one is needed. Do not silently substitute a demo, synthetic backend, subset of screens or new applet identity. User authorization for platform work remains valid; otherwise provide a focused capability request under the scope rules above.
 
 Identify whether each requirement is a source-site adaptation, an applet-owned page, a cross-source workflow, local state, or a backend feature. Use existing native shell navigation. Keep upstream login, forms, hidden tokens, and account actions on their source websites. Do not submit posts, messages, purchases, or account changes merely to verify a UI.
 
@@ -35,5 +43,7 @@ Prefer focused modules for source extraction, source effects, application record
 ## Completion
 
 Run the available checks in [verification](guides/verification.md), scoped to the changed applet. Do not create or change test files unless the user asks for coverage. A TypeScript pass does not prove source selectors, native rendering, or backend behavior. Report device checks separately, with exact limitations when a device or credentials are unavailable.
+
+Verify the requested experience from its actual launcher entry through the source, owned feature, persistence and return path. Check the intended application count and preserve neighboring working applets. Synthetic previews validate only their stated components. Keep them off the everyday delivery device where possible; otherwise record and complete safe cleanup through supported tools. Do not delete user data to remove diagnostics. If cleanup or real verification is blocked, report the unfinished handoff explicitly. Distinguish implemented, verified, failed, blocked and user-approved deferred behavior. A blocked requirement is not a completed one.
 
 Update the applet's own README with supported sources/routes, setup, data ownership, and known limits. Record the technical change under the governing workspace's changelog rules. Summarize the user-visible result, files changed, checks run, and remaining platform gaps. Never claim independent installation, background execution, complete isolation, or cross-site DOM access that the host does not provide.

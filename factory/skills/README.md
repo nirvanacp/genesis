@@ -9,3 +9,5 @@ Read [../AGENTS.md](../AGENTS.md) first. These skills guide work on applets, not
 | [genesis-verify-applet](genesis-verify-applet/SKILL.md) | Checking a change, diagnosing lifecycle or data errors, or preparing a handoff. |
 
 Read only the guides needed by the task. All guides travel with this kit. The repository's current-phase plans and native implementation files are for platform maintainers; they are not prerequisites for ordinary applet work.
+
+All three skills use [product scope and clarification](../guides/product-scope.md). Build establishes the intended app and its journeys, customization preserves them while making the requested change, and verification checks the delivered experience against them. Ask before unresolved material product choices; do not require a routine approval gate or ask the user to design technical internals.

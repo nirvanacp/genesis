@@ -1,5 +1,7 @@
 # Applet services and data
 
+Resolve product data behavior through [product scope and clarification](product-scope.md) before choosing authority. An applet-owned backend is an internal provider for that application, not a reason to create another app. Preserve explicit user decisions about website versus applet records. If synchronization, removal effects, account scope or migration is unresolved and materially changes behavior, ask before defining schemas or writes. Never import a sample applet's personal-account limitation without checking the intended scope.
+
 Choose one authority for each record type. The website owns its account and upstream data. The applet owns extracted records, settings, drafts, and optional server data. Genesis transports/stores generic JSON without knowing what a bookmark, category, or order means.
 
 ## Local documents
