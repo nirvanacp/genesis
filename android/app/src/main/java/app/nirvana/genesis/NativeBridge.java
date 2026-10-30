@@ -25,6 +25,7 @@ public final class NativeBridge {
             });
         } catch (InterruptedException error) { Thread.currentThread().interrupt(); }
     }
+    public static native String validateBundle(String bundleJson);
     public static native String dispatch(String eventJson);
     public static native String configureStorage(String directory);
     public static native boolean enqueueStorage(String jobJson);

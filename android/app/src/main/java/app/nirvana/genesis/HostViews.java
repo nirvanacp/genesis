@@ -142,8 +142,8 @@ final class HostViews {
         appletActive = true;
         JSONObject manifest = command.getJSONObject("package").getJSONObject("manifest");
         shell = manifest.optJSONObject("shell"); appletId = manifest.getString("id");
-        JSONObject binding = command.getJSONObject("context").getJSONObject("binding");
-        sourceId = binding.optString("sourceId", "primary"); pageId = binding.optString("pageId", "");
+        JSONObject selection = command.getJSONObject("selection");
+        sourceId = selection.getString("sourceId"); pageId = selection.isNull("pageId") ? "" : selection.optString("pageId");
         JSONObject owner = command.optJSONObject("ownerSelection");
         if (owner != null) { sourceId = owner.getString("sourceId"); pageId = owner.isNull("pageId") ? "" : owner.getString("pageId"); }
         if (appHeader != null) content.removeView(appHeader);
@@ -162,14 +162,14 @@ final class HostViews {
         brand.setSingleLine(true); brand.setEllipsize(android.text.TextUtils.TruncateAt.END);
         brand.setOnLongClickListener(v -> { menu(); return true; });
         appHeader.addView(brand, new LinearLayout.LayoutParams(0, -2, 1));
-        choices = button("Top", () -> {
+        choices = button("View", () -> {
             PopupMenu popup = new PopupMenu(activity, choices, Gravity.END);
             JSONArray items = shell.optJSONArray("choices");
             if (items != null) for (int i = 0; i < items.length(); i++) {
                 JSONObject choice = items.optJSONObject(i);
                 String label = choice.optString("label");
                 popup.getMenu().add(0, i, i, label).setCheckable(true).setChecked(label.contentEquals(choices.getText()))
-                    .setOnMenuItemClickListener(item -> { events.send(open(sourceId, null, choice.optString("url"))); return true; });
+                    .setOnMenuItemClickListener(item -> { events.send(open(choice.optString("sourceId", shell.optJSONArray("sections").optJSONObject(0).optString("sourceId")), null, choice.optString("url"))); return true; });
             }
             popup.getMenu().setGroupCheckable(0, true, true);
             popup.show();
@@ -190,7 +190,7 @@ final class HostViews {
             JSONObject entry = entries.getJSONObject(i);
             Button tab = button(entry.getString("label"), () -> events.send(open(entry.optString("sourceId"), entry.isNull("pageId") ? null : entry.optString("pageId"), null)));
             tab.setTextSize(11); tab.setPadding(0, dp(4), 0, dp(4)); tab.setGravity(Gravity.CENTER); tab.setSingleLine(true);
-            boolean selected = pageId.isEmpty() ? (entry.isNull("pageId") || entry.optString("pageId").isEmpty()) && sourceId.equals(entry.optString("sourceId")) : pageId.equals(entry.optString("pageId"));
+            boolean selected = sourceId.equals(entry.optString("sourceId")) && pageId.equals(entry.isNull("pageId") ? "" : entry.optString("pageId"));
             tab.setSelected(selected); tab.setTextColor(selected ? accent : ink); tab.setTypeface(null, selected ? Typeface.BOLD : Typeface.NORMAL); tab.setContentDescription(entry.getString("label") + (selected ? ", selected" : ""));
             styleChromeControl(tab, selected ? wash : Color.TRANSPARENT, 16);
             int iconResource = sectionIcon(entry.optString("icon"));
@@ -296,11 +296,16 @@ final class HostViews {
         if (appHeader != null) { appHeader.setVisibility(app ? View.VISIBLE : View.GONE); appBack.setVisibility(detailRoute ? View.VISIBLE : View.GONE); }
         if (sections != null) sections.setVisibility(app ? View.VISIBLE : View.GONE);
         if (app && choices != null) {
-            choices.setVisibility(!detailRoute && pageId.isEmpty() && sourceId.equals(shell.optJSONArray("sections").optJSONObject(0).optString("sourceId")) ? View.VISIBLE : View.GONE);
             JSONArray items = shell.optJSONArray("choices");
-            if (items != null) for (int i = 0; i < items.length(); i++) { JSONObject item = items.optJSONObject(i); if (Uri.parse(item.optString("url")).getPath().equals(Uri.parse(url).getPath())) {
-                choices.setText(item.optString("label")); choices.setContentDescription("Feed: " + item.optString("label") + ". Choose feed");
-            } }
+            boolean available = items != null && items.length() > 0;
+            choices.setVisibility(available && !detailRoute && pageId.isEmpty() && sourceId.equals(shell.optJSONArray("sections").optJSONObject(0).optString("sourceId")) ? View.VISIBLE : View.GONE);
+            choices.setText(available ? items.optJSONObject(0).optString("label") : "View");
+            if (available) for (int i = 0; i < items.length(); i++) {
+                JSONObject item = items.optJSONObject(i);
+                Uri target = Uri.parse(item.optString("url")), current = Uri.parse(url == null ? "" : url);
+                if (java.util.Objects.equals(target.getScheme(), current.getScheme()) && java.util.Objects.equals(target.getAuthority(), current.getAuthority()) && java.util.Objects.equals(target.getPath(), current.getPath())) choices.setText(item.optString("label"));
+            }
+            choices.setContentDescription("View: " + choices.getText() + ". Choose view");
         }
         browserSlot.setPadding(0, app ? dp(APP_HEADER_HEIGHT) : reader ? dp(READER_BAR_HEIGHT) : 0, 0, app ? dp(SECTION_BAR_HEIGHT) : 0);
         FrameLayout.LayoutParams bounds = (FrameLayout.LayoutParams) cover.getLayoutParams(); bounds.topMargin = app ? dp(APP_HEADER_HEIGHT) : reader ? dp(READER_BAR_HEIGHT) : 0; bounds.bottomMargin = app ? dp(SECTION_BAR_HEIGHT) : 0; cover.setLayoutParams(bounds);

@@ -1,0 +1,6 @@
+# Development package store
+
+- Goal: load applets into a prebuilt debug host while preserving data and bundled recovery.
+- Changes: added a private immutable revision store with bounded byte decoding, Rust policy validation, canonical SHA-256 identities, atomic registry/receipts, explicit replacement and permission intent, previous-code rollback, and corrupt-revision recovery. PackageAssets reads selected APK/private revisions through the same verified reader. Release builds ignore private imports. Shared SDK artifact builds now serialize and reuse unchanged output after concurrent Gradle variants exposed a build race.
+- Decisions: use app-private files over authorized adb rather than exported installation APIs. Rollback changes code only. Registry identity remains the applet ID; records and service settings are never deleted by package cleanup. Hashes establish integrity, not publisher trust.
+- Verification: debug/release assembly and lint, strict Rust checks, and emulator install/update/rollback passed. Host rejected hash corruption, duplicate files, unsupported API, stale revision, missing replacement intent, and permission changes without intent. Corrupted current code recovered to previous code. Release runtime exclusion and multi-site navigation are qualified in final integration. No test files were added.

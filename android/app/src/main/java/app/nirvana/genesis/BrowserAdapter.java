@@ -49,7 +49,7 @@ import org.json.JSONObject;
 
 /** Platform plumbing. Rust decides bindings, presentation, recovery, and source/page selection. */
 final class BrowserAdapter {
-    private final Activity activity;
+    private final MainActivity activity;
     private final HostViews views;
     private final HostViews.Events events;
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -83,7 +83,7 @@ final class BrowserAdapter {
     private Set<String> sourceOrigins = new HashSet<>();
     private final Set<String> homePaths = new HashSet<>();
 
-    BrowserAdapter(Activity activity, HostViews views, HostViews.Events events) {
+    BrowserAdapter(MainActivity activity, HostViews views, HostViews.Events events) {
         this.activity = activity; this.views = views; this.events = events;
     }
 
@@ -112,7 +112,7 @@ final class BrowserAdapter {
                 break;
             }
         }
-        PackageAssets assets = new PackageAssets(activity.getAssets(), command);
+        PackageAssets assets = new PackageAssets(activity.packageStore, command);
         views.configureShell(command, assets);
         WebView browser = new WebView(activity); webView = browser;
         // Emulator GPU raster caches can reuse stale table tiles after DOM customization.
@@ -392,7 +392,7 @@ final class BrowserAdapter {
     void detach() { attached = false; if (webView != null) views.browserSlot.removeView(webView); }
     void attach() throws Exception {
         attached = true;
-        views.configureShell(creation, new PackageAssets(activity.getAssets(), creation));
+        views.configureShell(creation, new PackageAssets(activity.packageStore, creation));
         views.browserSlot.removeAllViews();
         views.browserSlot.addView(webView, new android.widget.FrameLayout.LayoutParams(-1, -1));
         visualPending = false;

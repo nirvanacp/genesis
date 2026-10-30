@@ -1,0 +1,251 @@
+{
+  "schemaVersion": 1,
+  "id": "hn-bookmarks",
+  "name": "Hacker News with Genesis bookmarks",
+  "dataSchemaVersion": 1,
+  "sources": [
+    {
+      "id": "primary",
+      "startUrl": "https://news.ycombinator.com/",
+      "origins": [
+        "https://news.ycombinator.com"
+      ],
+      "entry": "src/main.ts",
+      "homePaths": [
+        "/",
+        "/news",
+        "/newest",
+        "/front",
+        "/newcomments",
+        "/ask",
+        "/show",
+        "/jobs"
+      ],
+      "navigationRules": [],
+      "customizedPaths": [
+        "/",
+        "/news",
+        "/newest",
+        "/front",
+        "/newcomments",
+        "/ask",
+        "/show",
+        "/shownew",
+        "/asknew",
+        "/jobs",
+        "/item",
+        "/reply",
+        "/user",
+        "/submitted",
+        "/threads",
+        "/favorites",
+        "/hidden",
+        "/upvoted",
+        "/login",
+        "/logout",
+        "/forgot",
+        "/changepw",
+        "/submit",
+        "/formatdoc",
+        "/newsfaq.html",
+        "/newsguidelines.html",
+        "/lists",
+        "/best",
+        "/active",
+        "/leaders",
+        "/from"
+      ]
+    },
+    {
+      "id": "post",
+      "startUrl": "https://news.ycombinator.com/submit",
+      "origins": [
+        "https://news.ycombinator.com"
+      ],
+      "entry": "src/main.ts",
+      "homePaths": [
+        "/submit"
+      ],
+      "navigationRules": [],
+      "customizedPaths": [
+        "/",
+        "/news",
+        "/newest",
+        "/front",
+        "/newcomments",
+        "/ask",
+        "/show",
+        "/shownew",
+        "/asknew",
+        "/jobs",
+        "/item",
+        "/reply",
+        "/user",
+        "/submitted",
+        "/threads",
+        "/favorites",
+        "/hidden",
+        "/upvoted",
+        "/login",
+        "/logout",
+        "/forgot",
+        "/changepw",
+        "/submit",
+        "/formatdoc",
+        "/newsfaq.html",
+        "/newsguidelines.html",
+        "/lists",
+        "/best",
+        "/active",
+        "/leaders",
+        "/from"
+      ]
+    },
+    {
+      "id": "me",
+      "startUrl": "https://news.ycombinator.com/news",
+      "origins": [
+        "https://news.ycombinator.com"
+      ],
+      "entry": "src/main.ts",
+      "homePaths": [
+        "/",
+        "/news"
+      ],
+      "navigationRules": [],
+      "customizedPaths": [
+        "/",
+        "/news",
+        "/newest",
+        "/front",
+        "/newcomments",
+        "/ask",
+        "/show",
+        "/shownew",
+        "/asknew",
+        "/jobs",
+        "/item",
+        "/reply",
+        "/user",
+        "/submitted",
+        "/threads",
+        "/favorites",
+        "/hidden",
+        "/upvoted",
+        "/login",
+        "/logout",
+        "/forgot",
+        "/changepw",
+        "/submit",
+        "/formatdoc",
+        "/newsfaq.html",
+        "/newsguidelines.html",
+        "/lists",
+        "/best",
+        "/active",
+        "/leaders",
+        "/from"
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "id": "library",
+      "entry": "src/library.tsx"
+    },
+    {
+      "id": "search",
+      "entry": "src/search.tsx"
+    }
+  ],
+  "actions": [
+    {
+      "id": "library",
+      "label": "Genesis bookmarks",
+      "pageId": "library"
+    }
+  ],
+  "capabilities": [
+    "dom",
+    "services",
+    "storage"
+  ],
+  "services": [
+    "bookmarks"
+  ],
+  "shell": {
+    "title": "Hacker News",
+    "brandAsset": "assets/yc.png",
+    "sections": [
+      {
+        "id": "home",
+        "label": "Home",
+        "sourceId": "primary",
+        "icon": "home"
+      },
+      {
+        "id": "search",
+        "label": "Search",
+        "sourceId": "primary",
+        "pageId": "search",
+        "icon": "search"
+      },
+      {
+        "id": "post",
+        "label": "Post",
+        "sourceId": "post",
+        "icon": "post"
+      },
+      {
+        "id": "saved",
+        "label": "Saved",
+        "sourceId": "primary",
+        "pageId": "library",
+        "icon": "bookmark"
+      },
+      {
+        "id": "me",
+        "label": "Me",
+        "sourceId": "me",
+        "icon": "person"
+      }
+    ],
+    "choices": [
+      {
+        "label": "Top",
+        "url": "https://news.ycombinator.com/news",
+        "sourceId": "primary"
+      },
+      {
+        "label": "New",
+        "url": "https://news.ycombinator.com/newest",
+        "sourceId": "primary"
+      },
+      {
+        "label": "Past",
+        "url": "https://news.ycombinator.com/front",
+        "sourceId": "primary"
+      },
+      {
+        "label": "Comments",
+        "url": "https://news.ycombinator.com/newcomments",
+        "sourceId": "primary"
+      },
+      {
+        "label": "Ask",
+        "url": "https://news.ycombinator.com/ask",
+        "sourceId": "primary"
+      },
+      {
+        "label": "Show",
+        "url": "https://news.ycombinator.com/show",
+        "sourceId": "primary"
+      },
+      {
+        "label": "Jobs",
+        "url": "https://news.ycombinator.com/jobs",
+        "sourceId": "primary"
+      }
+    ]
+  }
+}

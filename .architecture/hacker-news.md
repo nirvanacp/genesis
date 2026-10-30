@@ -1,8 +1,10 @@
 # Hacker News frontend and backend
 
+This document describes one reference applet. HN collections, category limits, typography, and workflow decisions are applet-specific; they are not requirements for other applications. Use [factory instructions](../factory/AGENTS.md) when changing this applet. General creator guidance lives in [factory](../factory/README.md).
+
 ## Current split
 
-The HN frontend remains in applets/news.ycombinator.com/src. The independent server is in backend/server.mjs and backend/store.mjs. It uses Node’s built-in HTTP/HTTPS and SQLite modules. tools/services.mjs starts and provisions the local development backend; production operators can run the same server behind trusted HTTPS. The Android build bundles frontend assets only.
+The HN frontend remains in factory/applets/news.ycombinator.com/src. The independent server is in backend/server.mjs and backend/store.mjs. It uses Node’s built-in HTTP/HTTPS and SQLite modules. tools/services.mjs starts and provisions the local development backend; production operators can run the same server behind trusted HTTPS. The Android build bundles frontend assets only.
 
 The applet declares service bookmarks and calls POST /v1/documents through the generic service broker. src/backend.ts implements the HN-specific {operation, params} protocol and adapts responses to the existing repository interfaces. Those TypeScript interfaces describe document operations; sharing a type with the SDK does not make Rust the authoritative database. Source controls, dialog and library use this adapter.
 
@@ -32,4 +34,4 @@ Post stores title/URL/text in applet-scoped host documents with serialized, revi
 
 ## Acceptance scope
 
-Compilation and local backend integration are separate from Android end-to-end qualification. Existing local SQLite emulator reports remain historical. Before claiming the remote workflow ready, verify native connection setup, HTTPS/authentication, real HN save/edit/remove, categories, pagination, server restart durability, stale document completions, unavailable backend and migration on the supported provider. Physical-device/performance evidence remains separate.
+Compilation and local backend integration are separate from Android end-to-end qualification. The [seamless implementation report](../.reports/phase-2/2026-10-29/202706-genesis-seamless-implementation-verification.md) and [phone report](../.reports/phase-2/2026-10-29/223320-genesis-android-phone-verification.md) record specific successful HN save/read/edit/remove, navigation, backend interruption, and account/draft checks. The phone used a Mac-hosted HTTPS backend over USB adb reverse. These reports do not qualify production hosting, every provider, all accessibility/failure cases, or applet distribution. Older local SQLite reports remain historical, and this documentation task did not rerun device checks.

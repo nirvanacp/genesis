@@ -22,3 +22,7 @@ export function serviceMessage(error: unknown): string {
     return "This feature is temporarily unavailable. Try again in a moment.";
   return error instanceof Error ? error.message : "Something went wrong. Please try again.";
 }
+
+export { RUNTIME_API_VERSION } from "./manifest";
+export type { Manifest, Source, AppletBundle } from "./manifest";
+export interface ServiceResponse<T = unknown> { status: number; body: T }

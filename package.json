@@ -4,9 +4,10 @@
   "private": true,
   "workspaces": [
     "packages/sdk",
-    "applets/youtube.com",
-    "applets/x.com",
-    "applets/news.ycombinator.com"
+    "packages/applet-tools",
+    "factory/applets/youtube.com",
+    "factory/applets/x.com",
+    "factory/applets/news.ycombinator.com"
   ],
   "engines": {
     "node": "24.15.0",
@@ -14,7 +15,7 @@
   },
   "packageManager": "npm@11.14.1",
   "scripts": {
-    "typecheck": "npm run typecheck --workspaces",
+    "typecheck": "node packages/sdk/build.mjs && npm run typecheck --workspaces",
     "check:packages": "node tools/check-packages.mjs",
     "build": "node tools/build.mjs --stage all --variant debug"
   },

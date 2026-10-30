@@ -1,6 +1,5 @@
 package app.nirvana.genesis;
 
-import android.content.res.AssetManager;
 import android.webkit.WebResourceResponse;
 import androidx.webkit.WebViewAssetLoader;
 import java.io.ByteArrayInputStream;
@@ -18,13 +17,13 @@ import org.json.JSONObject;
 
 /** Reads only host-declared immutable assets, with no network fallback for local URLs. */
 final class PackageAssets {
-    private final AssetManager assets;
+    private final PackageStore assets;
     private final String prefix;
     private final Map<String, String> hashes = new HashMap<>();
     private final Map<String, byte[]> local = new HashMap<>();
     final WebViewAssetLoader loader;
 
-    PackageAssets(AssetManager assets, JSONObject command) throws Exception {
+    PackageAssets(PackageStore assets, JSONObject command) throws Exception {
         this.assets = assets;
         JSONObject pack = command.getJSONObject("package");
         prefix = "packages/" + pack.getJSONObject("manifest").getString("id") + "/" + pack.getString("revision") + "/";
