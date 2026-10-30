@@ -12,5 +12,7 @@ export function extractPost(article:Element):Post|null{
   const photos=[...article.querySelectorAll('[data-testid="tweetPhoto"]')].filter(e=>own(e,article)).length;
   const videos=[...article.querySelectorAll('[data-testid="videoPlayer"]')].filter(e=>own(e,article)).length;
   const sourceLinks=[...textNode?.querySelectorAll<HTMLAnchorElement>('a[href]')??[]].map(a=>({text:[...(a.textContent??"")].slice(0,300).join(""),href:safeLink(a.href)})).filter((v):v is {text:string;href:string}=>!!v.href&&!!v.text).slice(0,8);
-  return {postId:identity.postId,url:identity.url,snapshot:{authorHandle:identity.handle.toLowerCase(),authorName,text,textState:!text?"unavailable":text.length<full.length||!!article.querySelector('[data-testid="tweet-text-show-more-link"]')?"excerpt":"complete",capturedAtMs:Date.now(),media:{kind:photos&&videos?"mixed":videos?"video":photos?"photo":"none",count:Math.min(16,photos+videos)},links:sourceLinks}};
+  const post:Post={postId:identity.postId,url:identity.url,snapshot:{authorHandle:identity.handle.toLowerCase(),authorName,text,textState:!text?"unavailable":text.length<full.length||!!article.querySelector('[data-testid="tweet-text-show-more-link"]')?"excerpt":"complete",capturedAtMs:Date.now(),media:{kind:photos&&videos?"mixed":videos?"video":photos?"photo":"none",count:Math.min(16,photos+videos)},links:sourceLinks}};
+  while(new TextEncoder().encode(JSON.stringify(post.snapshot)).length>32768&&post.snapshot.links.length)post.snapshot.links.pop();
+  return post;
 }

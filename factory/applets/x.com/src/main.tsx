@@ -1,8 +1,9 @@
 import { defineApplet } from "@genesis/sdk";
 import { inspectTargets } from "./targets";
+import { postControls } from "./post-controls";
+import { sourceNavigation } from "./source-navigation";
 
-// MVP-02 preserves the original site. Save controls and storage arrive later.
 export default defineApplet({
-  activate({ root }) { root.textContent = "Genesis · X qualification"; },
+  activate(context) { sourceNavigation(context); postControls(context); },
   inspect: inspectTargets,
 });
