@@ -203,3 +203,5 @@ No implementation-blocking product choice remains for this scoped plan. Registry
 - Component 5 completed: unified completion matching passed temporary reducer qualification for retained, wrong, and evicted documents, plus strict Rust and Android checks.
 
 - Component 6 implemented: debug store accepted external applets and passed emulator update/rollback/rejection/recovery checks. Both build variants compile/lint. The shared SDK build now locks and caches artifact generation to support parallel Gradle variants. Release runtime exclusion and multi-site UI qualification follow in final integration.
+
+- Component 7 completed: creator dev operations and extracted service commands passed emulator update/rollback and local HTTPS start/stop/device-health checks.

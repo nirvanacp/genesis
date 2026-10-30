@@ -1,0 +1,6 @@
+# Creator device and service commands
+
+- Goal: let external applet tooling update a prebuilt host and manage declared services through a stable connector-ready interface.
+- Changes: added explicit-device dev install/status/rollback commands, request-correlated receipts, version/status checks, permission diffs, bounded adb operations, and structured JSON output. Extracted service management into the packable tools library; the old services script is a compatibility wrapper. Backend execution occurs only for service start.
+- Decisions: status exposes manifest permissions and revisions only. Replacement and rollback preserve records. Provisioning keeps private tokens out of stdout and uses device-side HTTPS health. Source-path/process identity must match before stopping a managed backend. GENESIS_SERVICE_STATE_ROOT allows isolated development state while preserving the default location.
+- Verification: emulator CLI status/update/rollback passed with the temporary external applet; explicit permission and replacement checks remain host-enforced. Service status, stop/start, and authenticated Android health passed for HN. Invalid-device errors are distinct from non-debuggable hosts. Script syntax, existing type/package checks, and diff checks passed. Actual agent connectors remain outside scope.
