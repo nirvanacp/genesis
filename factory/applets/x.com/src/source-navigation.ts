@@ -4,15 +4,19 @@ import theme from "./theme.css";
 import sourceCss from "./source.css";
 export function sourceNavigation(context:AppletContext):void{
   context.styles.add("x-source",sourceCss);
-  document.documentElement.classList.add("genesis-x");
-  context.onDispose(()=>document.documentElement.classList.remove("genesis-x","genesis-x-hub"));
+  let state:"detecting"|"ready"|"unsupported"|"retired"="detecting";
+  let statusNode:HTMLElement|null=null;
+  context.onDispose(()=>{state="retired";document.documentElement.classList.remove("genesis-x","genesis-x-hub");});
   let routeEffects:Dispose[]=[],guard=false;
-  const report=(error:unknown)=>{const status=document.querySelector<HTMLElement>('[data-genesis-owned="x-navigation-status"]');if(status)status.textContent=error instanceof Error?error.message:"This action is temporarily unavailable.";};
+  const report=(error:unknown)=>{if(statusNode)statusNode.textContent=error instanceof Error?error.message:"This action is temporarily unavailable.";};
   const link=(label:string,path:string)=>{const a=document.createElement("a");a.textContent=label;a.href=new URL(path,"https://x.com").href;return a;};
   const render=()=>{
     for(const dispose of routeEffects)dispose();routeEffects=[];document.documentElement.classList.remove("genesis-x-hub");
-    if(!currentHandle())return;
-    const primary=document.querySelector('[data-testid="primaryColumn"]');if(!primary)return;
+    document.documentElement.classList.remove("genesis-x");statusNode=null;
+    if(state==="retired")return;
+    const primary=document.querySelector('[data-testid="primaryColumn"]');
+    if(!currentHandle()||!primary){state="unsupported";return;}
+    routeEffects.push(context.ui.mountAt("x-navigation-status",primary,{position:"before",css:theme+":host{display:block}p:empty{display:none}p{padding:12px 16px;color:var(--danger)}",render:container=>{statusNode=document.createElement("p");statusNode.setAttribute("role","status");statusNode.setAttribute("aria-live","polite");container.append(statusNode);return()=>{statusNode=null;};}}));
     if(context.sourceId==="account"&&location.pathname==="/home"){
       const handle=currentHandle()!;
       routeEffects.push(context.ui.mountAt("x-account",primary,{position:"before",css:theme+":host{display:block;width:100%;max-width:680px;background:var(--paper)}.hub{padding:24px 20px}.hub header{padding:4px 0 24px}.hub nav{display:grid}.hub nav a,.hub nav button{display:flex;align-items:center;text-align:start;min-height:56px;border-radius:0;border-bottom:1px solid var(--line);padding:12px 4px;color:var(--ink);font-weight:600}.hub nav a:after{content:'›';margin-inline-start:auto;color:var(--muted)}.handle{margin-top:6px;color:var(--muted)}",render:container=>{
@@ -30,6 +34,7 @@ export function sourceNavigation(context:AppletContext):void{
         for(const label of["X bookmarks","Categories"]){const b=document.createElement("button");b.textContent=label;b.setAttribute("role","tab");b.setAttribute("aria-selected",String(label==="X bookmarks"));if(label==="Categories")b.onclick=()=>void openLibrary(context).catch(report);nav.append(b);}container.append(nav);
       }}));
     }
+    state="ready";document.documentElement.classList.add("genesis-x");
   };
   context.navigation.onChange(render);
   context.watchElements("x-source-layout",{selector:'[data-testid="primaryColumn"],[data-testid="AppTabBar_Profile_Link"]',attributes:["href"],text:false,limit:4,contentKey:element=>element.getAttribute("data-testid")},{enter:render,leave:render,update:render});
