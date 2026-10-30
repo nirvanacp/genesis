@@ -2,21 +2,23 @@
 
 Start with the requested behavior and the selected applet, not the entire platform. Record SDK/package version, source routes, host build, and device/provider for live checks. Follow [factory instructions](../AGENTS.md); do not create or modify test files without a coverage request.
 
-## Static checks available now
+## Static and development checks
 
-From the Genesis repository root:
+From the standalone applet directory with its installed SDK/tools:
 
 ```sh
-npm run typecheck --workspace @genesis/applet-hacker-news
-npm run check:packages
+npx --no-install genesis-applet check . --json
+npx --no-install genesis-applet build . --out dist --json
+npx --no-install genesis-applet dev status --device emulator-5554 --json
+npx --no-install genesis-applet dev install dist --device emulator-5554 --replace --json
 git diff --check
 ```
 
-Use the target workspace name from its `package.json`. Root `npm run typecheck` checks the SDK and all registered applets when a shared change affects them. The package checker currently selects HN only; it does not prove a new unregistered applet is valid. For an unregistered directory, the existing compiler can check it with `node node_modules/typescript/lib/tsc.js -p factory/applets/my-applet/tsconfig.json` if dependencies resolve, but host integration still needs separate verification.
+Omit `--replace` for first installation. `check` validates the manifest, file containment, optional service declaration, and TypeScript. `build` emits bounded hashed assets plus `bundle.json`, rejects backend imports and undeclared bundle files, and invokes no native compiler, device, or backend. Output replacement is permitted only for its recognized generated directory. Rebuild after source changes; edit the applet rather than generated bundle bytes.
 
-Use `node --check <changed-file.mjs>` for a changed backend script. Frontend typechecks do not validate a backend protocol. Build only when the task needs a bundle/device update. The current asset command is `node tools/build.mjs --stage assets --variant debug`; despite producing only frontend assets it currently also checks Cargo availability. That coupling belongs to the platform separation plan.
+Use `node --check <changed-file.mjs>` for backend scripts. Frontend checks do not validate a server protocol or prove website behavior. Device status reports package acceptance/revisions, not source loading or backend availability. A timeout after install is an unknown outcome; inspect status before retrying. Rollback preserves current records.
 
-Genesis maintainers build from `android/` with `./gradlew :app:assembleDebug :app:lintDebug` using configured toolchains. Install as an update to preserve data, never uninstall merely to resolve a build issue. Applet-only authors should receive a host/build from its maintainer; they should not need to maintain Android or Rust source.
+For Genesis monorepo examples, maintainers can also run root workspace typechecks and selected-bundle checks. `genesis.packages.json` selects only HN by default. Native host work uses the platform's own maintenance instructions; external applet work does not require them. Frontend-only platform stages no longer need Cargo.
 
 ## Live acceptance checklist
 
@@ -39,7 +41,7 @@ Capture only authorized evidence, excluding passwords, account settings, private
 
 | Symptom | First place to inspect |
 | --- | --- |
-| New applet missing from launcher | Current bundle selection, manifest validation, installed build revision; platform integration. |
+| New applet missing from launcher | dev status, applet ID/revision, compatible debug host, and matching install receipt; do not assume an accepted package has loaded its source. |
 | Controls missing/attached to wrong item | Source extraction, selector, content key, route coverage; applet. |
 | Page never becomes ready | Default export, activation rejection or network wait, owned root, React initial commit; then host diagnostics. |
 | Only local page loses styles | CSS placement inside its Shadow DOM; applet. |

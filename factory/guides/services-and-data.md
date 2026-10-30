@@ -52,13 +52,15 @@ Validate input and returned JSON, enforce application authorization on the serve
 
 ## Current development commands
 
-Run from the Genesis repository root with Node `24.15.0` and an already installed debug host. Replace `emulator-5554` with the authorized device ID. These commands are for the bundled HN example; use another applet path only after it is integrated into the host.
+From an applet directory with SDK/tools `0.2.0`, use the declared service and an authorized compatible debug host:
 
 ```sh
-node tools/services.mjs start factory/applets/news.ycombinator.com emulator-5554
-node tools/services.mjs status factory/applets/news.ycombinator.com emulator-5554
-node tools/services.mjs stop factory/applets/news.ycombinator.com emulator-5554
+npx --no-install genesis-applet service start . --device emulator-5554 --json
+npx --no-install genesis-applet service status . --device emulator-5554 --json
+npx --no-install genesis-applet service stop . --device emulator-5554 --json
 ```
+
+The applet must first be installed in the host and declare that service. Genesis maintainers may still use `node tools/services.mjs <action> factory/applets/news.ycombinator.com <device>` as a compatibility wrapper. The standalone commands require no platform repository.
 
 `start` can create/reuse private local state, start the declared process, check HTTPS health, establish adb reverse, and import the connection. Provisioning force-stops and relaunches Genesis, so save unsaved work first. `status` checks the recorded process, not end-to-end readiness. `stop` preserves data and credentials. Default adb location is the macOS Android SDK path; set `GENESIS_ADB` to the actual executable when needed. OpenSSL and an authorized adb device are prerequisites for local start.
 
@@ -69,7 +71,7 @@ For an existing trusted HTTPS server, provide a private credential file outside 
 ```sh
 GENESIS_SERVICE_ORIGIN=https://service.example \
 GENESIS_SERVICE_TOKEN_FILE=/absolute/private/token-file \
-node tools/services.mjs provision factory/applets/news.ycombinator.com emulator-5554
+npx --no-install genesis-applet service provision . --device emulator-5554 --json
 ```
 
 This is still debug provisioning, not a release installer. It imports settings and waits for device health; failed health does not currently guarantee rollback of imported settings. The HTTPS endpoint must be reachable from the phone. Android's creator Service connections UI remains a troubleshooting path. Changing the endpoint requires a credential for the new endpoint. Never disable certificate checks.

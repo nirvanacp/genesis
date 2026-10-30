@@ -22,14 +22,14 @@ Example request to an agent:
 
 ## What is available today
 
-This kit documents SDK `0.1.0`, manifest schema `1`, and the current bundled Android runtime, checked against source on 30 October 2026. TypeScript, managed DOM effects, optional React pages, native manifest sections, applet-scoped local documents, and declared HTTPS services exist. Sources are an array and `sources.open` can switch between them. A multi-website applet has not been qualified by this documentation task.
+This kit matches SDK/tools `0.2.0`, runtime API `1`, and bundle format/manifest schema `1`. TypeScript, managed DOM effects, optional React pages, native manifest sections, applet-local documents, declared HTTPS services, and multiple sources are available.
 
-In this repository, applet source still lives in `factory/applets/`. HN is the only selected bundle. X and YouTube are inactive prototypes, not complete starter templates. The SDK is private, exported as TypeScript source, and resolved through the npm workspace. There is no released standalone creator CLI, downloadable authoring kit, independent applet installer, or coding-agent connector yet. A new applet can be authored now, but deploying it currently requires Genesis developer integration and an APK build.
+The standalone `genesis-applet` CLI creates, checks, and builds applets without Rust or Android compilers. A compatible prebuilt debug host accepts explicit development installation over authorized adb, including code updates and rollback. Applet code and data keep a stable ID. Release hosts load bundled packages only. Production publisher trust, public distribution, and coding-agent connectors remain future work.
 
-The [phase-3 architecture plan](../.plans/phase-3/2026-10-30/162034-genesis-platform-applet-separation-plan.md) specifies the transition. It is maintainer context, not required reading for an applet author and not evidence that its commands exist.
+Genesis maintainers supply packed SDK/tools archives and a compatible debug APK. These packages have not been published to a public registry. Example applets in this repository live under `factory/applets/`; HN is the only bundled example. X and YouTube remain inactive prototypes. See [getting started](guides/getting-started.md) for the independent workflow and [verification](guides/verification.md) for its limits.
 
 ## Handing the kit to another coding agent
 
 Copy this entire `factory/` guidance tree, including `AGENTS.md`, `guides/`, and `skills/`, alongside the applet. Give the agent the path to `AGENTS.md`; do not assume a sibling `AGENTS.md` is auto-discovered. An agent that does not support skills can read the selected `SKILL.md` as instructions. A skill's guide links require the whole tree, so do not distribute an isolated skill file without its referenced guides.
 
-The recipient also needs a compatible SDK dependency, their applet source, and a compatible Genesis host/build supplied by its maintainer. Documentation alone is not an executable framework distribution. Once the planned standalone packages are implemented, distribute their built artifacts with the matching version of this kit; public registry publication is a separate release action.
+Run `genesis-applet kit export --out <new-directory>` to export the matching guidance and `kit.json` version metadata. `create` includes it automatically under the new project's `factory/`. The recipient needs the compatible SDK/tools dependencies and a prebuilt host supplied by its maintainer. No Genesis repository, Rust compiler, or native source is required for ordinary applet creation, build, and development updates.
