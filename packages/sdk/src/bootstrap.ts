@@ -93,6 +93,7 @@ export function bootstrap(config: BootstrapConfig, entry: AppletEntry): void {
         if (message.type === "storage.changed") runtime?.storageChanged(message as unknown as StorageChange);
         if (message.type === "route.changed") runtime?.route();
         if (message.type === "host.focused") runtime?.focused();
+        if (message.type === "navigation.back" && typeof message.token === "number") void runtime?.handleBack(message.token);
         if (message.type === "ui.dismissModal") runtime?.dismissModal();
         if (message.type === "host.suspended") cleanup();
         if (message.type === "host.resumed" && abort?.signal.aborted) hello();

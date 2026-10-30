@@ -7,6 +7,8 @@ use url::Url;
 #[derive(Default)]
 pub struct HostState {
     index: Option<PackageIndex>,
+    section_destinations: HashMap<String, SectionDestination>,
+    pending_back: Option<(u64, u64, bool)>,
     instances: HashMap<InstanceId, AppletInstance>,
     pub(crate) active: Option<LiveView>,
     disabled: HashSet<AppletId>,
@@ -117,6 +119,7 @@ impl HostState {
                 self.index = Some(index);
                 if let Some(snapshot) = restore {
                     let restored_url = snapshot.current_url.clone();
+                    self.section_destinations = snapshot.section_destinations.clone();
                     self.pending_opener = snapshot.opener.clone();
                     self.disabled.extend(snapshot.disabled);
                     for instance in self.instances.values_mut() {
@@ -178,9 +181,55 @@ impl HostState {
                 applet_id,
                 source_id,
                 page_id,
+                section_id,
             } => {
+                self.remember_section();
+                let section_id = section_id.or_else(|| {
+                    self.index
+                        .as_ref()
+                        .and_then(|index| {
+                            index.packages.iter().find(|p| p.manifest.id == applet_id)
+                        })
+                        .and_then(|p| p.manifest.shell.as_ref())
+                        .and_then(|shell| {
+                            shell
+                                .sections
+                                .iter()
+                                .find(|s| s.source_id == source_id && s.page_id == page_id)
+                        })
+                        .map(|s| s.id.clone())
+                });
+                if url.is_none()
+                    && section_id.is_some()
+                    && self.active.as_ref().is_some_and(|v| {
+                        v.selection.applet_id.0 == applet_id && v.selection.section_id == section_id
+                    })
+                {
+                    return Ok(commands);
+                }
+                let remembered = section_id
+                    .as_ref()
+                    .and_then(|section| {
+                        self.section_destinations
+                            .get(&format!("{applet_id}/{section}"))
+                    })
+                    .cloned()
+                    .filter(|_| url.is_none());
+                let restoring_section = remembered.is_some();
+                let (source_id, page_id, url) = if let Some(saved) = remembered {
+                    self.pending_opener = saved.opener;
+                    let source_url = saved.selection.page_id.is_none().then_some(saved.url);
+                    (
+                        saved.selection.source_id.0,
+                        saved.selection.page_id,
+                        source_url,
+                    )
+                } else {
+                    (source_id, page_id, url)
+                };
                 self.qualification = None;
-                if url.is_some()
+                if !restoring_section
+                    && url.is_some()
                     && let Some(view) = &self.active
                     && view.selection.page_id.is_some()
                 {
@@ -188,6 +237,7 @@ impl HostState {
                 }
                 self.open(
                     Selection {
+                        section_id,
                         applet_id: AppletId(applet_id),
                         source_id: SourceId(source_id),
                         page_id,
@@ -198,7 +248,9 @@ impl HostState {
                     if !Self::safe_website_url(&url) {
                         return Err("Unsafe destination".into());
                     }
-                    if let Some(view) = self.active.as_mut() {
+                    if let Some(view) = self.active.as_mut()
+                        && view.url != url
+                    {
                         view.url = url.clone();
                         commands.retain(|c| !matches!(c, C::LoadUrl { .. }));
                         commands.push(C::LoadUrl {
@@ -296,6 +348,7 @@ impl HostState {
                 commands.push(C::TerminateRenderer { generation });
             }
             E::Home => {
+                self.remember_section();
                 self.qualification = None;
                 self.retire(&mut commands);
                 commands.push(self.launcher());
@@ -318,23 +371,40 @@ impl HostState {
                         commands.push(C::ExitFullscreen {
                             generation: view.context.generation.0,
                         });
-                    } else if can_go_back {
-                        commands.push(C::GoBack {
-                            generation: view.context.generation.0,
-                        });
-                    } else if let Some(opener) = view.opener.clone() {
-                        self.open(opener, &mut commands)?;
-                    } else if view.selection.page_id.is_some() {
-                        let mut selection = view.selection.clone();
-                        selection.page_id = None;
-                        self.open(selection, &mut commands)?;
+                    } else if view.back_handler
+                        && let Some(doc) = &view.document
+                    {
+                        if self.pending_back.is_none() {
+                            let token = increment(&mut self.serial)?;
+                            self.pending_back = Some((token, doc.route_revision.0, can_go_back));
+                            commands.push(C::ReplyToPage { generation:view.context.generation.0, channel:doc.channel, message:json!({"type":"navigation.back","documentId":doc.id,"token":token}) });
+                            commands.push(C::ScheduleBackDeadline {
+                                generation: view.context.generation.0,
+                                document_id: doc.id.clone(),
+                                token,
+                            });
+                        }
                     } else {
-                        self.retire(&mut commands);
-                        commands.push(self.launcher());
+                        self.back_navigation(can_go_back, &mut commands)?;
                     }
                 } else {
                     commands.push(C::FinishActivity);
                 }
+            }
+            E::BackDeadline {
+                generation,
+                document_id,
+                token,
+            } if self.current(generation)
+                && self
+                    .active
+                    .as_ref()
+                    .and_then(|v| v.document.as_ref())
+                    .is_some_and(|d| d.id == document_id)
+                && self.pending_back.is_some_and(|p| p.0 == token) =>
+            {
+                let (_, _, can_go_back) = self.pending_back.take().expect("pending Back");
+                self.back_navigation(can_go_back, &mut commands)?;
             }
             E::Forward => {
                 if let Some(view) = &self.active {
@@ -406,6 +476,13 @@ impl HostState {
                     view.ready = false;
                     view.failed = false;
                     self.modal_open = false;
+                    self.pending_back = None;
+                    view.back_handler = false;
+                    view.leave_guard = None;
+                    commands.push(C::LeaveGuard {
+                        generation,
+                        message: None,
+                    });
                 } else if let Some(doc) = &mut view.document {
                     increment(&mut doc.route_revision.0)?;
                     commands.push(C::ReplyToPage {
@@ -690,7 +767,42 @@ impl HostState {
                 && u.password().is_none()
         })
     }
+    fn back_navigation(&mut self, can_go_back: bool, commands: &mut Vec<C>) -> Result<(), String> {
+        if let Some(view) = &self.active {
+            if can_go_back {
+                commands.push(C::GoBack {
+                    generation: view.context.generation.0,
+                });
+            } else if let Some(opener) = view.opener.clone() {
+                self.open(opener, commands)?;
+            } else if view.selection.page_id.is_some() {
+                let mut selection = view.selection.clone();
+                selection.page_id = None;
+                self.open(selection, commands)?;
+            } else {
+                self.remember_section();
+                self.retire(commands);
+                commands.push(self.launcher());
+            }
+        }
+        Ok(())
+    }
+    fn remember_section(&mut self) {
+        if let Some(view) = &self.active
+            && let Some(section) = &view.selection.section_id
+        {
+            self.section_destinations.insert(
+                format!("{}/{}", view.selection.applet_id.0, section),
+                SectionDestination {
+                    selection: view.selection.clone(),
+                    url: view.url.clone(),
+                    opener: view.opener.clone(),
+                },
+            );
+        }
+    }
     fn open(&mut self, selection: Selection, commands: &mut Vec<C>) -> Result<(), String> {
+        self.remember_section();
         if self.pending_opener.is_none()
             && self.active.as_ref().is_some_and(|v| {
                 v.selection.applet_id == selection.applet_id
@@ -817,6 +929,8 @@ impl HostState {
             selection.page_id.is_some() || !self.disabled.contains(&selection.applet_id);
         let owner_selection = self.pending_opener.take();
         self.active = Some(LiveView {
+            back_handler: false,
+            leave_guard: None,
             opener: owner_selection.clone(),
             context: context.clone(),
             package: package.clone(),
@@ -856,6 +970,7 @@ impl HostState {
         Ok(())
     }
     fn retire(&mut self, commands: &mut Vec<C>) {
+        self.pending_back = None;
         self.modal_open = false;
         self.source_status(SourceStatus::Closed);
         if let Some(view) = self.active.take() {
@@ -1007,6 +1122,7 @@ impl HostState {
     }
     fn snapshot(&self) -> SessionSnapshot {
         SessionSnapshot {
+            section_destinations: self.section_destinations.clone(),
             opener: self.active.as_ref().and_then(|v| v.opener.clone()),
             current_url: self.active.as_ref().map(|v| v.url.clone()),
             selection: self.active.as_ref().map(|v| v.selection.clone()),
@@ -1230,6 +1346,23 @@ impl HostState {
                         self.modal_open = message["params"]["open"]==true;
                         commands.push(C::ModalState { open: self.modal_open });
                         commands.push(C::ReplyToPage { generation,channel,message:json!({"v":1,"documentId":doc.id,"requestId":request,"ok":true,"result":null}) });
+                    }
+                    Some("navigation.backHandler") if view.context.runtime_api_version >= 2 => {
+                        view.back_handler = message["params"]["enabled"] == true;
+                        commands.push(C::ReplyToPage {generation,channel,message:json!({"v":1,"documentId":doc.id,"requestId":request,"ok":true,"result":null})});
+                    }
+                    Some("navigation.leaveGuard") if view.context.runtime_api_version >= 2 => {
+                        view.leave_guard = message["params"]["message"].as_str().map(|s| s.chars().take(160).collect::<String>()).filter(|s| !s.trim().is_empty());
+                        commands.push(C::LeaveGuard {generation,message:view.leave_guard.clone()});
+                        commands.push(C::ReplyToPage {generation,channel,message:json!({"v":1,"documentId":doc.id,"requestId":request,"ok":true,"result":null})});
+                    }
+                    Some("navigation.backResult") if view.context.runtime_api_version >= 2 => {
+                        let pending = self.pending_back.filter(|p| Some(p.0) == message["params"]["token"].as_u64());
+                        commands.push(C::ReplyToPage {generation,channel,message:json!({"v":1,"documentId":doc.id,"requestId":request,"ok":true,"result":null})});
+                        if let Some((_, route_revision, can_go_back)) = pending {
+                            self.pending_back = None;
+                            if route_revision == doc.route_revision.0 && message["params"]["consumed"] != true { self.back_navigation(can_go_back, commands)?; }
+                        }
                     }
                     Some("sources.open") | Some("pages.open") => {
                         let mut selection = view.selection.clone();

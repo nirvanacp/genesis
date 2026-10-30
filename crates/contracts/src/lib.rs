@@ -188,6 +188,8 @@ pub struct ExecutionContext {
 #[serde(rename_all = "camelCase")]
 pub struct SessionSnapshot {
     #[serde(default)]
+    pub section_destinations: std::collections::HashMap<String, SectionDestination>,
+    #[serde(default)]
     pub opener: Option<Selection>,
     #[serde(default)]
     pub current_url: Option<String>,
@@ -198,7 +200,17 @@ pub struct SessionSnapshot {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct SectionDestination {
+    pub selection: Selection,
+    pub url: String,
+    pub opener: Option<Selection>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Selection {
+    #[serde(default)]
+    pub section_id: Option<String>,
     pub applet_id: AppletId,
     pub source_id: SourceId,
     pub page_id: Option<String>,
@@ -211,9 +223,11 @@ pub enum HostEvent {
         index: PackageIndex,
         #[serde(default)]
         debug: bool,
-        restore: Option<SessionSnapshot>,
+        restore: Option<Box<SessionSnapshot>>,
     },
     Open {
+        #[serde(default, rename = "sectionId")]
+        section_id: Option<String>,
         #[serde(default)]
         url: Option<String>,
         #[serde(rename = "appletId")]
@@ -235,6 +249,12 @@ pub enum HostEvent {
         url: Option<String>,
     },
     ModalDeadline {
+        generation: u64,
+        #[serde(rename = "documentId")]
+        document_id: DocumentId,
+        token: u64,
+    },
+    BackDeadline {
         generation: u64,
         #[serde(rename = "documentId")]
         document_id: DocumentId,
@@ -319,6 +339,16 @@ pub enum HostEvent {
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum HostCommand {
+    LeaveGuard {
+        generation: u64,
+        message: Option<String>,
+    },
+    ScheduleBackDeadline {
+        generation: u64,
+        #[serde(rename = "documentId")]
+        document_id: DocumentId,
+        token: u64,
+    },
     ModalState {
         open: bool,
     },

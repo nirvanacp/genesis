@@ -38,6 +38,8 @@ pub struct ChallengeBinding {
 }
 
 pub struct LiveView {
+    pub back_handler: bool,
+    pub leave_guard: Option<String>,
     pub opener: Option<Selection>,
     pub context: ExecutionContext,
     pub package: Package,
