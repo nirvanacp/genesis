@@ -1,6 +1,6 @@
 # Genesis platform and applet separation
 
-Created 30 October 2026, 16:20:34 Asia/Kolkata. Project: Genesis monorepo. Phase: `phase-3`, selected from branch `proto/phase-3`. Inspected baseline: `e6d96e3`. Status: implementation authorized and in progress. The companion instructions and factory guides are delivered separately in this documentation task.
+Created 30 October 2026, 16:20:34 Asia/Kolkata. Project: Genesis monorepo. Phase: `phase-3`, selected from branch `proto/phase-3`. Inspected baseline: `e6d96e3`. Status: all eight components implemented; qualified scope and remaining limits are recorded in the final report. The companion instructions and factory guides are delivered separately in this documentation task.
 
 ## Outcome and scope
 
@@ -205,3 +205,5 @@ No implementation-blocking product choice remains for this scoped plan. Registry
 - Component 6 implemented: debug store accepted external applets and passed emulator update/rollback/rejection/recovery checks. Both build variants compile/lint. The shared SDK build now locks and caches artifact generation to support parallel Gradle variants. Release runtime exclusion and multi-site UI qualification follow in final integration.
 
 - Component 7 completed: creator dev operations and extracted service commands passed emulator update/rollback and local HTTPS start/stop/device-health checks.
+
+- Component 8 completed: independent create/build/export, two-source live capture, data/identity isolation, reader return, release exclusion, and HN regression checks passed. See [the final verification report](../../../.reports/phase-3/2026-10-30/173440-genesis-applet-framework-verification.md) for actual coverage, artifacts, and remaining qualification limits.

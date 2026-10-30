@@ -7,7 +7,7 @@ description: Verify or diagnose a Genesis applet with package checks, TypeScript
 
 Read [factory instructions](../../AGENTS.md) and [verification](../../guides/verification.md). Use [SDK reference](../../guides/sdk-reference.md) to confirm expected behavior.
 
-1. Identify the exact applet revision, selected build, SDK version, and device/provider when available. Establish a reproducible symptom or acceptance flow. Package selection matters: the current root checker validates HN only.
+1. Identify the exact applet revision, selected build, SDK version, and device/provider when available. Establish a reproducible symptom or acceptance flow. Use the standalone checker for this applet; the Genesis root checker covers only the APK selection, HN by default.
 2. Run existing static checks appropriate to the change. Inspect their output and separate pre-existing failures. Do not add test files or install unrelated tooling as a substitute for the existing workflow.
 3. Verify source extraction, duplicate mounts, content-key changes, cleanup, route changes, and stale async results. Check source, local page, reader, Back, and return-to-section behavior as relevant.
 4. For stateful features, distinguish no records from failed reads. Check conflicts and uncertain writes with disposable applet data only. Never retry an ambiguous write blindly, change the authoritative store silently, or expose credentials in evidence.

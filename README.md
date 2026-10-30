@@ -16,7 +16,8 @@ A Genesis developer may work in either layer. Follow the instructions for the la
 - `android/app/`: active Java WebView/native integration under `app/nirvana/genesis`; preserved Kotlin starter code is inactive.
 - `android/native/`: Rust controller, package validation, generic local documents, and JNI.
 - `crates/contracts/`: host transport and package types. `crates/page-runtime/` is preserved inactive Wasm work.
-- `packages/sdk/`: platform-owned TypeScript managed runtime and optional React helper used by applets.
+- `packages/sdk/`: platform-owned SDK with built JavaScript/types and optional React helper.
+- `packages/applet-tools/`: standalone creator CLI, manifest validation, bundling, development installation, templates, and kit export.
 - `tools/`: current package/APK build and development service tooling.
 - `factory/applets/`: current applet source, including optional applet-owned backends.
 - `factory/`: applet author instructions, portable guides, and skills. Example applets live under `factory/applets/`.
@@ -26,9 +27,9 @@ A Genesis developer may work in either layer. Follow the instructions for the la
 
 Only HN is bundled. Its frontend is under `factory/applets/news.ycombinator.com/src`; its separate Node/SQLite service is under `factory/applets/news.ycombinator.com/backend`. Bookmarks/categories are authoritative on that service. Generic host storage holds public account coordination and Post drafts; existing legacy bookmarks are preserved and never silently uploaded. The backend does not run inside Genesis.
 
-The SDK already supports managed DOM effects, owned React pages, source/page navigation, local documents, and declared HTTPS services. Source arrays support several websites, but a distinct multi-website applet still needs qualification. HN's three current source entries are sections of the same website. X and YouTube are preserved inactive prototypes.
+SDK/tools `0.2.0` support managed DOM effects, owned React pages, source/page navigation, local documents, and declared HTTPS services. Sources can represent several websites and share applet records/pages. HN's three source entries represent sections of the same website. X and YouTube are preserved inactive prototypes.
 
-Applet packaging is still coupled to the Genesis checkout and APK build. The SDK is private; there is no standalone released creator CLI, independent applet installation, or coding-agent connector. The [single phase-3 separation plan](.plans/phase-3/2026-10-30/162034-genesis-platform-applet-separation-plan.md) covers the framework/tooling boundary and development loading path. Its runtime changes remain proposed.
+The standalone `genesis-applet` CLI creates/checks/builds applets and installs/updates/rolls back code in a compatible prebuilt debug host over authorized adb. Applet authors need no native compiler or platform source. Maintainers distribute packed SDK/tools archives; they are not published to a public registry. Release builds use bundled packages only. Production publisher trust/distribution and coding-agent connectors remain future work. The [phase-3 plan](.plans/phase-3/2026-10-30/162034-genesis-platform-applet-separation-plan.md) records the component decisions and implementation progress.
 
 The [29 October phone report](.reports/phase-2/2026-10-29/223320-genesis-android-phone-verification.md) records working HN flows on one Samsung phone/provider with a Mac-hosted HTTPS backend over adb reverse. It does not establish production distribution readiness or the full device/accessibility matrix. Release signing, production service provisioning, and broader qualification remain open.
 

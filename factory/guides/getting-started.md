@@ -1,6 +1,6 @@
 # Start an applet
 
-This guide covers the current SDK `0.1.0` workflow. Follow [the factory instructions](../AGENTS.md). The user supplies an application idea; the coding agent supplies the technical implementation.
+This guide covers the current SDK/tools `0.2.0` workflow. Follow [the factory instructions](../AGENTS.md). The user supplies an application idea; the coding agent supplies the technical implementation.
 
 ## Choose the parts of the application
 
@@ -16,47 +16,49 @@ There is no requirement to use React or a backend. A CSS adaptation can be a sma
 
 Write a short brief in the applet README: purpose, supported websites/routes, screens/actions, where records live, and a few concrete acceptance flows. For example, “Save an article on either source, open Saved, and return to the article on its original source.” Do not ask a nontechnical user to choose a database or bridge protocol unless the choice changes their product constraints.
 
-## Current repository setup
+## Independent creator setup
 
-Existing applets are under `factory/applets/<directory>/`. The directory name is a convention, not a one-website restriction. A new hybrid app can use an application name instead of a domain. Its manifest ID must be unique and stable.
+Use Node `24.15.0` and npm `11.14.1`. Obtain `genesis-sdk-0.2.0.tgz`, `genesis-applet-tools-0.2.0.tgz`, and a compatible prebuilt Genesis debug APK from the platform maintainer. The archives include the executable framework, types, and matching agent kit. They are not currently published to the public npm registry.
 
-The repository pins Node `24.15.0`, npm `11.14.1`, TypeScript `7.0.2`, and esbuild `0.28.2`. Use the checked-in npm lockfile and installed dependencies. Existing workspace dependencies resolve `@genesis/sdk` locally. A typical applet has:
+Install the tools archive in a local tools directory or through your agent's package workflow. For example, from an empty tools directory:
+
+```sh
+npm install /absolute/path/genesis-applet-tools-0.2.0.tgz
+npx --no-install genesis-applet create /absolute/path/my-reader --id my-reader --name "My reader" --source https://example.com/ --react
+```
+
+Then, from the created applet directory, install the exact SDK/tools archives and the generated React dependencies:
+
+```sh
+npm install /absolute/path/genesis-sdk-0.2.0.tgz /absolute/path/genesis-applet-tools-0.2.0.tgz
+npm run check
+npm run build
+```
+
+Commit the resulting applet lockfile with your applet source. `create` writes code/configuration and guidance only; it does not install dependencies, run a backend, or connect a device. Omit `--react` for a source-only starter. Its example reading style does not implement a website-specific workflow until the agent inspects that website and writes the adapters.
+
+The generated independent `tsconfig.json` includes strict DOM/ES2022 and optional TSX settings; it has no path into Genesis source. CSS text declarations live inside the applet. React `19.3.1`, React DOM `19.3.1`, and their matching current types are generated only when requested.
+
+A typical applet contains:
 
 ```text
-my-applet/
+my-reader/
+  AGENTS.md              forwards to the applet instructions
+  factory/               matching guides and skills, no platform source
   applet.json
   package.json
+  package-lock.json
   tsconfig.json
   README.md
   src/main.ts
-  src/extract.ts
   src/styles.css
-  src/pages/saved.tsx      optional
-  assets/brand.png        optional shell artwork
+  src/home.tsx           optional owned React page
+  assets/brand.png       optional shell artwork
   backend/               optional separate server
+  dist/                  generated bundle, ignored by Git
 ```
 
-For a new applet in the current root `factory/applets/` directory, the following configuration matches the existing workspace. These files do not register it with the build.
-
-```json
-{
-  "name": "@genesis/applet-my-reader",
-  "version": "0.1.0",
-  "private": true,
-  "type": "module",
-  "scripts": { "typecheck": "tsc -p tsconfig.json" },
-  "dependencies": { "@genesis/sdk": "0.1.0" }
-}
-```
-
-```json
-{
-  "extends": "../../../tsconfig.base.json",
-  "include": ["src", "../../../packages/sdk/src/assets.d.ts"]
-}
-```
-
-For React, the current HN workspace also declares `react` and `react-dom` at `19.3.1`, and development types `@types/react` and `@types/react-dom` at `19.3.0`. Keep versions consistent with the installed SDK and lockfile. External workspaces cannot use the relative tsconfig above without the monorepo; standalone packaging is planned.
+The applet ID is stable application identity, even when several websites are sources. In Genesis's development monorepo, examples live under `factory/applets/`. Maintainers choose APK bundles in `genesis.packages.json`; external creators use development installation without changing that selection.
 
 ## Minimal source adaptation
 
@@ -113,8 +115,24 @@ export default definePage({
 
 For real records, render an initial loading state and fetch after mount. Only display an empty state after a successful read. Return the `mountReact` promise so Genesis can wait for the initial commit before revealing the page.
 
-## Load the result today
+## Load and update the application
 
-Only HN is selected by `tools/check-packages.mjs`, and root npm workspaces are explicitly listed. Creating a directory does not add it to either list. Applet authors should hand new applet source to a Genesis maintainer for temporary bundle integration. A maintainer doing both roles must treat package selection/workspace edits as platform integration under root instructions, then rebuild and install the APK as an update. Do not silently edit those files during applet-only work.
+The host must already be installed, compatible with runtime API 1, and debuggable. Use an authorized Android device selected explicitly by serial. The creator needs adb, not native compilers or Genesis source. From the applet directory:
 
-For an existing selected applet, run [the verification commands](verification.md) and use the maintainer-supplied debug build. Standalone `create`, `build`, and `dev install` commands are not present yet. The future connector will use the platform toolchain; it will not require an agent to patch Rust for each applet.
+```sh
+npx --no-install genesis-applet dev status --device emulator-5554 --json
+npx --no-install genesis-applet dev install dist --device emulator-5554 --json
+```
+
+Open the applet from Genesis's Apps list. After changing code, run check/build and install with `--replace`. If declared origins, capabilities, or service IDs change, the tool prints their exact diff and requires `--allow-permission-change` as well. Keep the same applet ID to retain its records and service connections.
+
+```sh
+npm run check
+npm run build
+npx --no-install genesis-applet dev install dist --device emulator-5554 --replace --json
+npx --no-install genesis-applet dev rollback my-reader --device emulator-5554 --json
+```
+
+Rollback selects previous compatible code; it does not rewind application data. Package acceptance is separate from source UI/backend readiness. Installation restarts the host, so preserve unsaved work first. On an unknown-status error, read `dev status` before retrying. Release hosts ignore development packages; public publisher distribution and agent-specific connectors are outside this workflow.
+
+All commands support `--json` for one machine-readable result, diagnostics on stderr, and exit 0 for success, 1 for execution/validation failure, or 2 for usage errors. Device commands also support `--application <host-id>` and `--adb <executable>`. Read [services/data](services-and-data.md) for explicit service startup, and [verification](verification.md) before handing off.

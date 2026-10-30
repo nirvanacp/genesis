@@ -1,10 +1,10 @@
 # SDK and manifest reference
 
-Current contract: `@genesis/sdk` version `0.1.0`, manifest schema `1`, data schema `1`, bundled runtime stage `MVP-07`. These are current compatibility values, not a stable external release promise. This reference was checked against source on 30 October 2026. Read the installed types if a later SDK differs; do not mix a future plan with this contract.
+Current contract: `@genesis/sdk` version `0.2.0`, manifest schema `1`, data schema `1`, runtime API `1`, external bundle format `1`, internal bundled stage `MVP-07`. The SDK ships as built JavaScript/types in a packed archive; public registry publication has not occurred. This reference was checked against source on 30 October 2026. Read the installed types if a later SDK differs; do not mix a future plan with this contract.
 
 ## Public exports and lifecycle
 
-Import from `@genesis/sdk` or `@genesis/sdk/react`. Public root exports include `defineApplet`, `definePage`, `initialLayout`, `serviceMessage`, `GenesisError`, and context/storage types. The qualification types are legacy diagnostic exports, not the normal applet authoring entrypoint.
+Import from `@genesis/sdk` or `@genesis/sdk/react`. The `./manifest` export provides `Manifest`, `Source`, `AppletBundle`, and runtime API version 1. The root also exports `ServiceResponse<T> = {status:number;body:T}`. The tooling-only `./runtime` export wraps bootstrap; applet code must not call it. Public root exports include `defineApplet`, `definePage`, `initialLayout`, `serviceMessage`, `GenesisError`, and context/storage types. The qualification types are legacy diagnostic exports, not the normal applet authoring entrypoint.
 
 ```ts
 type Dispose = () => void;
@@ -90,8 +90,8 @@ RPC permits 32 pending calls and has a 15-second response timeout. A timed-out w
 | `services` | Optional unique logical service IDs; nonempty declarations require `services` capability. Credentials and origins are configured outside the manifest. |
 | `shell` | Optional `{title,brandAsset,sections,choices?}`; enables native app sections. |
 
-Shell title should be 1–79 characters to satisfy both current validators. Brand artwork is an applet-relative packaged file. Sections number 1–5 with unique `{id,label,sourceId,pageId?,icon?}`; `sourceId` is required even for a local page and gives its source context. Icons currently supported: `home`, `search`, `post`, `bookmark`, `person`; omit unsupported icons. Choices are `{label,url}` and must point to declared origins and explicit customized paths. Do not put a create/delete action in a section destination.
+Shell title should be 1–79 characters to satisfy both current validators. Brand artwork is an applet-relative packaged file. Sections number 1–5 with unique `{id,label,sourceId,pageId?,icon?}`; `sourceId` is required even for a local page and gives its source context. Icons currently supported: `home`, `search`, `post`, `bookmark`, `person`; omit unsupported icons. Choices are `{label,url,sourceId?}` and must point to that source's origins and explicit customized paths. Missing sourceId defaults to the first section's source for legacy manifests. Do not put a create/delete action in a section destination.
 
 All entries and assets must stay inside the applet, including resolved symlinks. The current bundler supports TS/TSX, CSS imported as text, generated local HTML, and the declared shell artwork. It is not a general public-assets server. Backend files are not browser entries. No runtime external or dynamic imports may remain in a bundle. Generated revisions/hashes belong to the build, not hand-edited manifests.
 
-The JavaScript checker and Rust validator are separate and have some mismatches, such as duplicate action validation and shell-title limits. Both must accept a packaged applet. The standalone contract and validator consolidation are planned; this guide uses the stricter valid subset.
+The tooling and Rust host independently validate schema, fields, identifiers, references, exact origins, and capabilities. Both reject duplicate action IDs and use the same shell-title limit of 79 UTF-8 bytes. The host also checks canonical revision and asset bytes; it does not trust a creator-side check. Source presentation is limited to the selected source. Use sources.open for a customization-aware transition to another source; an ordinary cross-source web link uses reader presentation.

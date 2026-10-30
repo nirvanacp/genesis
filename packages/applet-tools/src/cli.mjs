@@ -3,6 +3,8 @@ import { checkApplet } from './check.mjs';
 import { buildApplet } from './build.mjs';
 import { Device, installApplet, rollbackApplet } from './device.mjs';
 import { manageService } from './services.mjs';
+import { createApplet } from './create.mjs';
+import { exportKit } from './kit.mjs';
 export class UsageError extends Error { constructor(message) { super(message); this.code = 'USAGE'; } }
 function parse(args, permitted) {
   const positional = [], options = {};
@@ -18,6 +20,8 @@ function parse(args, permitted) {
 const args = process.argv.slice(2), json = args.includes('--json');
 let command = args[0] ?? 'help';
 const help = `Genesis applet tools
+  create <directory> --id <id> --name <name> --source <https-url> [--react] [--json]
+  kit export --out <directory> [--json]
   check <directory> [--json]
   build <directory> --out <directory> [--json]
   dev install <bundle-directory> --device <serial> [--replace] [--allow-permission-change] [--json]
@@ -29,7 +33,14 @@ try {
   if (command === 'help' || args.includes('--help')) console.log(json ? JSON.stringify({ ok: true, command: 'help', result: { help } }) : help);
   else {
     let result;
-    if (command === 'check' || command === 'build') {
+    if (command === 'create') {
+      const { positional: p, options: o } = parse(args.slice(1), ['json','id','name','source','react']);
+      if (p.length !== 1) throw new UsageError('Expected one target directory'); result = await createApplet(p[0], o);
+    } else if (command === 'kit') {
+      command = 'kit export';
+      const { positional: p, options: o } = parse(args.slice(2), ['json','out']);
+      if (args[1] !== 'export' || p.length || !o.out) throw new UsageError('Use kit export --out <directory>'); result = await exportKit(o.out);
+    } else if (command === 'check' || command === 'build') {
       const { positional: p, options: o } = parse(args.slice(1), command === 'build' ? ['json','out'] : ['json']);
       if (p.length !== 1) throw new UsageError('Expected one applet directory');
       if (command === 'check') { const a = await checkApplet(p[0]); result = { appletId: a.manifest.id }; }
