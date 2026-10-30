@@ -28,6 +28,13 @@ pub fn validate(index: &PackageIndex) -> Result<(), String> {
     if index.schema_version != 1 || index.implementation_stage != IMPLEMENTATION_STAGE {
         return Err("Unsupported bundled index version or implementation stage".into());
     }
+    if index
+        .hidden_applet_ids
+        .iter()
+        .any(|id| !index.packages.iter().any(|p| &p.manifest.id == id))
+    {
+        return Err("Unknown hidden applet".into());
+    }
     let mut ids = HashSet::new();
     for package in &index.packages {
         let manifest = &package.manifest;
@@ -272,6 +279,7 @@ pub fn validate_bundle(bundle: &AppletBundle) -> Result<(), String> {
         return Err("Bundle assets must be sorted and unique".into());
     }
     validate(&PackageIndex {
+        hidden_applet_ids: Vec::new(),
         schema_version: 1,
         implementation_stage: IMPLEMENTATION_STAGE.into(),
         packages: vec![{
