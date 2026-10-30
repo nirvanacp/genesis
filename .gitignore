@@ -5,3 +5,4 @@
 
 /packages/sdk/dist/
 /packages/applet-tools/kit/
+/packages/sdk/.build-lock

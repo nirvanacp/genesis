@@ -92,3 +92,31 @@ pub extern "system" fn Java_app_nirvana_genesis_NativeBridge_enqueueStorage<'loc
         })
         .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
 }
+
+/// Package policy is validated independently from creator-side tooling.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_app_nirvana_genesis_NativeBridge_validateBundle<'local>(
+    mut unowned: EnvUnowned<'local>,
+    _class: JClass<'local>,
+    value: JString<'local>,
+) -> JString<'local> {
+    unowned
+        .with_env(|env| -> jni::errors::Result<_> {
+            let result = catch_unwind(AssertUnwindSafe(|| -> Result<(), String> {
+                let input = value.to_string();
+                if input.len() > 1024 * 1024 {
+                    return Err("Bundle metadata exceeds 1 MiB".into());
+                }
+                let bundle = serde_json::from_str::<genesis_contracts::AppletBundle>(&input)
+                    .map_err(|_| "Invalid bundle metadata".to_owned())?;
+                packages::validate_bundle(&bundle)
+            }));
+            let message = match result {
+                Ok(Ok(())) => "ok".to_owned(),
+                Ok(Err(error)) => error,
+                Err(_) => "Package validation failed".to_owned(),
+            };
+            JString::from_str(env, message)
+        })
+        .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
+}
