@@ -6,9 +6,6 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Looper;
 import android.window.OnBackInvokedDispatcher;
-import java.io.InputStream;
-import java.io.ByteArrayOutputStream;
-import java.nio.charset.StandardCharsets;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -18,6 +15,7 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
     private HostViews views;
     private BrowserAdapter browser;
     private ServiceClient services;
+    PackageStore packageStore;
     private final java.util.Map<Long, BrowserAdapter> sessions = new java.util.HashMap<>();
     private boolean attached;
     private Bundle browserStates = new Bundle();
@@ -40,13 +38,10 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
             String storage = NativeBridge.configureStorage(getFilesDir().getAbsolutePath());
             if (!"ok".equals(storage)) views.error("Storage setup failed: " + storage);
         } catch (Exception | LinkageError error) { views.error("Native setup failed: " + error); return; }
-        try (InputStream input = getAssets().open("packages/index.json")) {
-            ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-            byte[] buffer = new byte[8192];
-            int count;
-            while ((count = input.read(buffer)) != -1) bytes.write(buffer, 0, count);
+        try {
+            packageStore = new PackageStore(this);
+            JSONObject index = packageStore.load();
             JSONObject attach = HostViews.event("attach");
-            JSONObject index = new JSONObject(bytes.toString(StandardCharsets.UTF_8.name()));
             attach.put("index", index);
             services.importDevelopment(index.getJSONArray("packages"));
             attach.put("debug", (getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0);
@@ -55,6 +50,7 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
             }
             send(attach);
             attached = true;
+            packageStore.acknowledge();
         } catch (Exception | LinkageError error) { views.error("Genesis startup failed: " + error); }
     }
 

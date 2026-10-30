@@ -2,3 +2,7 @@
 /node_modules/
 **/node_modules/
 .DS_Store
+
+/packages/sdk/dist/
+/packages/applet-tools/kit/
+/packages/sdk/.build-lock

@@ -1,8 +1,8 @@
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { readPackages, root } from "./check-packages.mjs";
+import { buildApplet } from "../packages/applet-tools/src/build.mjs";
 
 // Subprocesses use argument arrays; a build never installs dependencies.
 function run(executable, args, env = {}, capture = false) {
@@ -15,7 +15,6 @@ function run(executable, args, env = {}, capture = false) {
   return capture ? result.stdout.trim() : "";
 }
 
-const sha256 = bytes => createHash("sha256").update(bytes).digest("hex");
 const options = new Map();
 for (let i = 2; i < process.argv.length; i += 2) {
   const key = process.argv[i];
@@ -42,58 +41,29 @@ async function requireFile(filename, message) {
 async function check() {
   if (process.versions.node !== "24.15.0") throw new Error("Use Node 24.15.0: nvm install && nvm use, or set genesis.node in android/local.properties");
   await requireFile(path.join(root, "node_modules/typescript/lib/tsc.js"), "Missing npm dependencies. Run npm ci from the repository root.");
-  await requireFile(path.join(root, "Cargo.lock"), "Missing Cargo.lock. Resolve and review dependencies before building.");
+  run(process.execPath, ["packages/sdk/build.mjs"]);
   const packages = await readPackages();
   for (const directory of ["packages/sdk", ...packages.map(p => path.relative(root, p.base))]) {
     run(process.execPath, ["node_modules/typescript/lib/tsc.js", "-p", `${directory}/tsconfig.json`]);
   }
-  let rustVersion;
-  try { rustVersion = run(cargo, ["--version"], {}, true); }
-  catch (error) { throw new Error(`${error.message}\nInstall the pinned Rust toolchain with rustup toolchain install 1.94.0, or set genesis.cargo in android/local.properties.`); }
-  if (!rustVersion.startsWith("cargo 1.94.0 ")) throw new Error(`Expected Cargo 1.94.0, got ${rustVersion}. Set genesis.cargo or install the pinned Rust toolchain.`);
   return packages;
 }
 
 async function assets(packages) {
-  const { build } = await import("esbuild");
   const index = { schemaVersion: 1, implementationStage: "MVP-07", packages: [] };
   const output = path.join(generated, "assets");
   await rm(output, { recursive: true, force: true });
-  for (const { base, manifest: original } of packages) {
-    const manifest = structuredClone(original);
-    const files = new Map();
-    for (const [kind, entries] of [["sources", manifest.sources], ["pages", manifest.pages]]) {
-      for (const entry of entries) {
-        const originalEntry = path.join(base, entry.entry);
-        entry.entry = `${kind}/${entry.id}.js`;
-        const source = `import entry from ${JSON.stringify(originalEntry)};
-          import { bootstrap } from "./packages/sdk/src/bootstrap.ts";
-          bootstrap(__GENESIS_BINDING__, entry);`;
-        const result = await build({
-          stdin: { contents: source, resolveDir: root, sourcefile: `${original.id}-${entry.id}.js` },
-          bundle: true, format: "iife", target: "es2022", platform: "browser", splitting: false,
-          jsx: "automatic", loader: { ".css": "text" }, write: false, metafile: true,
-          define: { "process.env.NODE_ENV": '"production"' },
-        });
-        if (Object.values(result.metafile.outputs).some(o => o.imports.length > 0)) {
-          throw new Error(`${original.id}: bundle contains an external or dynamic import`);
-        }
-        files.set(entry.entry, result.outputFiles[0].contents);
-        if (kind === "pages") {
-          files.set(`pages/${entry.id}/index.html`, Buffer.from(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${entry.id}</title><style>html,body{margin:0;padding:0}</style></head><body><noscript>Genesis requires JavaScript for this local page.</noscript></body></html>`));
-        }
-      }
-    }
-    if (manifest.shell) files.set(manifest.shell.brandAsset, await readFile(path.join(base, manifest.shell.brandAsset)));
-    const assets = [...files].map(([name, bytes]) => ({ path: name, sha256: sha256(bytes) }));
-    const revision = sha256(JSON.stringify({ manifest, assets }));
-    const directory = path.join(output, "packages", manifest.id, revision);
-    for (const [name, bytes] of files) {
-      const destination = path.join(directory, name);
+  for (const { base, manifest } of packages) {
+    const bundleDirectory = path.join(intermediates, "bundles", manifest.id);
+    const bundle = await buildApplet(base, bundleDirectory);
+    const pack = bundle.package;
+    const directory = path.join(output, "packages", pack.manifest.id, pack.revision);
+    for (const asset of pack.assets) {
+      const destination = path.join(directory, asset.path);
       await mkdir(path.dirname(destination), { recursive: true });
-      await writeFile(destination, bytes);
+      await writeFile(destination, await readFile(path.join(bundleDirectory, "assets", asset.path)));
     }
-    index.packages.push({ manifest, revision, assets });
+    index.packages.push(pack);
   }
   await mkdir(path.join(output, "packages"), { recursive: true });
   await writeFile(path.join(output, "packages/index.json"), `${JSON.stringify(index, null, 2)}\n`);
@@ -101,6 +71,9 @@ async function assets(packages) {
 }
 
 async function native() {
+  await requireFile(path.join(root, "Cargo.lock"), "Missing Cargo.lock");
+  const version = run(cargo, ["--version"], {}, true);
+  if (!version.startsWith("cargo 1.94.0 ")) throw new Error(`Expected Cargo 1.94.0, got ${version}`);
   if (!sdk) throw new Error("Set sdk.dir in android/local.properties or ANDROID_HOME to the Android SDK directory.");
   const ndk = path.join(sdk, "ndk/28.2.13676358");
   await requireFile(path.join(ndk, "source.properties"), `Install NDK 28.2.13676358 with SDK Manager at ${ndk}`);

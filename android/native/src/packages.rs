@@ -1,4 +1,6 @@
-use genesis_contracts::{IMPLEMENTATION_STAGE, PackageIndex};
+use genesis_contracts::{
+    AppletBundle, BUNDLE_FORMAT_VERSION, IMPLEMENTATION_STAGE, PackageIndex, RUNTIME_API_VERSION,
+};
 use std::collections::HashSet;
 use url::Url;
 
@@ -12,6 +14,7 @@ fn identifier(value: &str) -> bool {
 }
 fn asset_path(path: &str) -> bool {
     !path.starts_with('/')
+        && !path.contains('\0')
         && !path.contains('\\')
         && path
             .split('/')
@@ -30,6 +33,7 @@ pub fn validate(index: &PackageIndex) -> Result<(), String> {
         let manifest = &package.manifest;
         if manifest.schema_version != 1
             || manifest.data_schema_version != 1
+            || manifest.name.trim().is_empty()
             || !identifier(&manifest.id)
             || !ids.insert(&manifest.id)
             || manifest.sources.is_empty()
@@ -40,6 +44,14 @@ pub fn validate(index: &PackageIndex) -> Result<(), String> {
                 .any(|c| !["dom", "navigation-policy", "storage", "services"].contains(&c.as_str()))
         {
             return Err("Invalid bundled package identity, schema or capability".into());
+        }
+        let mut capabilities = HashSet::new();
+        if manifest
+            .capabilities
+            .iter()
+            .any(|c| !capabilities.insert(c))
+        {
+            return Err("Duplicate capability".into());
         }
         let mut services = HashSet::new();
         if manifest
@@ -68,16 +80,20 @@ pub fn validate(index: &PackageIndex) -> Result<(), String> {
                 || !source
                     .origins
                     .contains(&start.origin().ascii_serialization())
+                || source.origins.is_empty()
                 || !assets.contains(&source.entry)
             {
                 return Err("Invalid bundled source definition".into());
             }
-            if source.customized_paths.as_ref().is_some_and(|paths| {
-                paths.iter().any(|p| {
-                    !p.starts_with('/') || p.contains(['?', '#', '\\']) || p.contains("..")
-                })
-            }) {
+            if source
+                .customized_paths
+                .as_ref()
+                .is_some_and(|paths| paths.iter().any(|p| !route(p)))
+            {
                 return Err("Invalid customized paths".into());
+            }
+            if source.home_paths.iter().any(|p| !route(p)) {
+                return Err("Invalid home paths".into());
             }
             let mut rule_ids = HashSet::new();
             for rule in &source.navigation_rules {
@@ -85,7 +101,7 @@ pub fn validate(index: &PackageIndex) -> Result<(), String> {
                 if !identifier(&rule.id)
                     || !rule_ids.insert(&rule.id)
                     || rule.action != "block"
-                    || !rule.path_prefix.starts_with('/')
+                    || !route(&rule.path_prefix)
                     || fallback.scheme() != "https"
                     || !fallback.username().is_empty()
                     || fallback.password().is_some()
@@ -100,9 +116,14 @@ pub fn validate(index: &PackageIndex) -> Result<(), String> {
                     return Err("Invalid navigation rule or fallback loop".into());
                 }
             }
+            let mut origin_ids = HashSet::new();
             for origin in &source.origins {
                 let url = Url::parse(origin).map_err(|e| e.to_string())?;
-                if url.scheme() != "https" || url.origin().ascii_serialization() != *origin {
+                if url.scheme() != "https"
+                    || url.origin().ascii_serialization() != *origin
+                    || url.host_str() == Some("appassets.androidplatform.net")
+                    || !origin_ids.insert(origin)
+                {
                     return Err("Source requires exact HTTPS origins".into());
                 }
             }
@@ -119,15 +140,15 @@ pub fn validate(index: &PackageIndex) -> Result<(), String> {
         }
         if let Some(shell) = &manifest.shell {
             let mut sections = HashSet::new();
-            if shell.title.is_empty()
-                || shell.title.len() > 80
+            if shell.title.trim().is_empty()
+                || shell.title.len() >= 80
                 || !assets.contains(&shell.brand_asset)
                 || shell.sections.is_empty()
                 || shell.sections.len() > 5
                 || shell.sections.iter().any(|s| {
                     !identifier(&s.id)
                         || !sections.insert(&s.id)
-                        || s.label.is_empty()
+                        || s.label.trim().is_empty()
                         || s.icon.as_ref().is_some_and(|i| {
                             !["home", "search", "post", "bookmark", "person"].contains(&i.as_str())
                         })
@@ -139,11 +160,16 @@ pub fn validate(index: &PackageIndex) -> Result<(), String> {
             }
             for choice in &shell.choices {
                 let url = Url::parse(&choice.url).map_err(|e| e.to_string())?;
-                if choice.label.is_empty()
+                let source_id = choice
+                    .source_id
+                    .as_deref()
+                    .unwrap_or(&shell.sections[0].source_id);
+                if choice.label.trim().is_empty()
                     || !url.username().is_empty()
                     || url.password().is_some()
                     || !manifest.sources.iter().any(|s| {
-                        s.origins.contains(&url.origin().ascii_serialization())
+                        s.id == source_id
+                            && s.origins.contains(&url.origin().ascii_serialization())
                             && s.customized_paths
                                 .as_ref()
                                 .is_some_and(|p| p.iter().any(|p| p == url.path()))
@@ -157,6 +183,7 @@ pub fn validate(index: &PackageIndex) -> Result<(), String> {
         for action in &manifest.actions {
             if !identifier(&action.id)
                 || !actions.insert(&action.id)
+                || action.label.trim().is_empty()
                 || !pages.contains(&action.page_id)
             {
                 return Err("Invalid bundled action/page reference".into());
@@ -164,4 +191,44 @@ pub fn validate(index: &PackageIndex) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+fn route(path: &str) -> bool {
+    path.starts_with('/')
+        && !path.contains("..")
+        && path
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"/.-".contains(&b))
+}
+
+/// Validate the external shape before the Android store verifies bytes and canonical revision.
+pub fn validate_bundle(bundle: &AppletBundle) -> Result<(), String> {
+    if bundle.format_version != BUNDLE_FORMAT_VERSION
+        || bundle.runtime_api_version != RUNTIME_API_VERSION
+    {
+        return Err(format!(
+            "Unsupported bundle/runtime API; supported {BUNDLE_FORMAT_VERSION}/{RUNTIME_API_VERSION}"
+        ));
+    }
+    let version: Vec<_> = bundle.sdk_version.split('.').collect();
+    if version.len() != 3
+        || version
+            .iter()
+            .any(|v| v.is_empty() || !v.bytes().all(|b| b.is_ascii_digit()))
+    {
+        return Err("Invalid SDK version".into());
+    }
+    if bundle
+        .package
+        .assets
+        .windows(2)
+        .any(|a| a[0].path >= a[1].path)
+    {
+        return Err("Bundle assets must be sorted and unique".into());
+    }
+    validate(&PackageIndex {
+        schema_version: 1,
+        implementation_stage: IMPLEMENTATION_STAGE.into(),
+        packages: vec![bundle.package.clone()],
+    })
 }
