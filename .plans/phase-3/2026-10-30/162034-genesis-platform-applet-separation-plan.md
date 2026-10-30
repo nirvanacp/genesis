@@ -195,3 +195,5 @@ No implementation-blocking product choice remains for this scoped plan. Registry
 - 30 October: user authorized all components and a commit at each significant step. Documentation checkpoint committed as `429cb4f`. Existing worktree relocation/configuration was preserved and verified as component 1.
 
 - Component 2 completed: packed SDK 0.2.0 and runtime API 1 contract, with semantic validation separated from readApplet filesystem checks. Canonical hash verification is performed by the Android host store using MessageDigest; Rust remains the independent shape/policy validator.
+
+- Component 3 completed: standalone check/build/readBundle and shared APK bundling passed external DOM/React artifact qualification and Android build/lint.
