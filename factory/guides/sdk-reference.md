@@ -4,7 +4,7 @@ Current contract: `@genesis/sdk` version `0.3.0`, manifest schema `1`, data sche
 
 ## Public exports and lifecycle
 
-Import from `@genesis/sdk` or `@genesis/sdk/react`. The `./manifest` export provides `Manifest`, `Source`, `AppletBundle`, and runtime API version 1. The root also exports `ServiceResponse<T> = {status:number;body:T}`. The tooling-only `./runtime` export wraps bootstrap; applet code must not call it. Public root exports include `defineApplet`, `definePage`, `initialLayout`, `serviceMessage`, `GenesisError`, and context/storage types. The qualification types are legacy diagnostic exports, not the normal applet authoring entrypoint.
+Import from `@genesis/sdk` or `@genesis/sdk/react`. The `./manifest` export provides `Manifest`, `Source`, `AppletBundle`, and runtime API version 2. The root also exports `ServiceResponse<T> = {status:number;body:T}`. The tooling-only `./runtime` export wraps bootstrap; applet code must not call it. Public root exports include `defineApplet`, `definePage`, `initialLayout`, `serviceMessage`, `GenesisError`, and context/storage types. The qualification types are legacy diagnostic exports, not the normal applet authoring entrypoint.
 
 ```ts
 type Dispose = () => void;

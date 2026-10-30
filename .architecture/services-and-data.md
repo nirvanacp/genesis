@@ -22,7 +22,7 @@ A configured backend is trusted to receive the chosen applet data and return dat
 
 Servers enforce authentication and application authorization. The current HN process uses a single bearer token and a single database. It is a personal single-tenant backend, not a multi-user account service. Production deployment requires an operator-managed trusted HTTPS endpoint, durable volume, backups and appropriate network/rate controls. Server secrets stay outside source and frontend bundles.
 
-Do not retry uncertain writes automatically. A transport or RPC timeout may happen after commit. Read current state before a user retries. A future exactly-once user experience needs applet-owned idempotency keys and operation status. Dropping a late UI completion does not roll back a remote write.
+Do not retry uncertain writes automatically. A transport or RPC timeout may happen after commit. Read current state before a user retries. HN still needs applet-owned idempotency keys and operation status for a stronger retry experience. The phase-4 X backend implements these in its own SQLite transactions, with operation receipts and revision preconditions; this does not create a generic host synchronization engine. Dropping a late UI completion does not roll back a remote write.
 
 ## Local storage and migration
 
