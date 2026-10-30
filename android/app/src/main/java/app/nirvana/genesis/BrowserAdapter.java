@@ -204,8 +204,10 @@ final class BrowserAdapter {
                 if (matches(current)) views.error("Camera and microphone access are unsupported in this MVP.");
             }
             @Override public boolean onShowFileChooser(WebView view, ValueCallback<android.net.Uri[]> callback, FileChooserParams params) {
-                callback.onReceiveValue(null);
-                if (matches(current)) views.error("File upload is unsupported in this MVP.");
+                if (!matches(current) || !attached) { callback.onReceiveValue(null); return true; }
+                long epoch = navigationEpoch; String url = view.getUrl();
+                activity.chooseFiles(params, callback, () -> matches(current) && attached && view == webView
+                    && epoch == navigationEpoch && java.util.Objects.equals(url, view.getUrl()));
                 return true;
             }
             @Override public boolean onCreateWindow(WebView view, boolean dialog, boolean gesture, android.os.Message result) {
@@ -405,7 +407,7 @@ final class BrowserAdapter {
         }
     }
 
-    void detach() { attached = false; if (webView != null) views.browserSlot.removeView(webView); }
+    void detach() { attached = false; activity.cancelInvalidFiles(); if (webView != null) views.browserSlot.removeView(webView); }
     void attach() throws Exception {
         attached = true;
         views.configureShell(creation, new PackageAssets(activity.packageStore, creation));
@@ -535,7 +537,7 @@ final class BrowserAdapter {
         out.putBundle("genesis.browserHistory", all);
     }
     private void beginTransition() {
-        navigationEpoch++; committed = false; prepared = false; visualPending = false;
+        navigationEpoch++; activity.cancelInvalidFiles(); committed = false; prepared = false; visualPending = false;
         views.pageStarting();
     }
     void onPresentation(JSONObject command) throws JSONException {
