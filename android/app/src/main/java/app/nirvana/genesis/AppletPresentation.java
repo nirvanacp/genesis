@@ -65,7 +65,7 @@ final class AppletPresentation extends FrameLayout {
         active();
         if (foregroundView != null || view.getParent() != null || sourceViews.containsValue(view) || view == websiteView)
             throw new IllegalStateException("Foreground already assigned or view already owned");
-        foregroundView = view; view.setVisibility(View.INVISIBLE); foreground.addView(view, fullSize());
+        foregroundView = view; view.setFocusable(true); view.setFocusableInTouchMode(true); view.setVisibility(View.INVISIBLE); foreground.addView(view, fullSize());
     }
     long beginForegroundTransition() {
         active(); epoch++; foregroundPrepared = false;
@@ -78,8 +78,10 @@ final class AppletPresentation extends FrameLayout {
         foregroundPrepared = true;
         expected.postVisualStateCallback(expectedEpoch, new WebView.VisualStateCallback() {
             @Override public void onComplete(long requestId) {
-                if (!disposed && expectedEpoch == epoch && foregroundView == expected && websiteView == null)
+                if (!disposed && expectedEpoch == epoch && foregroundView == expected && websiteView == null) {
                     expected.setVisibility(View.VISIBLE);
+                    if(!expected.hasFocus()) expected.requestFocus();
+                }
             }
         });
     }
