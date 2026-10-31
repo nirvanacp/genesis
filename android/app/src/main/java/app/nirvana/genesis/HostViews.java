@@ -58,7 +58,7 @@ final class HostViews {
     private String appletId, sourceId, pageId, sectionId;
     private LinearLayout appHeader, sections;
     private TextView brand;
-    private ImageButton appBack;
+    private ImageButton appBack, appOptions;
     private Button choices;
     private boolean customizedRoute, detailRoute;
 
@@ -150,6 +150,7 @@ final class HostViews {
         if (owner != null) { sourceId = owner.getString("sourceId"); pageId = owner.isNull("pageId") ? "" : owner.getString("pageId"); }
         if (appHeader != null) content.removeView(appHeader);
         if (sections != null) content.removeView(sections);
+        appOptions = null;
         if (shell == null) return;
         appHeader = new LinearLayout(activity); appHeader.setGravity(Gravity.CENTER_VERTICAL); appHeader.setBackgroundColor(paper);
         appBack = iconButton(R.drawable.ic_nav_back, "Back", () -> events.send(event("back")));
@@ -164,6 +165,8 @@ final class HostViews {
         brand.setSingleLine(true); brand.setEllipsize(android.text.TextUtils.TruncateAt.END);
         brand.setOnLongClickListener(v -> { menu(); return true; });
         appHeader.addView(brand, new LinearLayout.LayoutParams(0, -2, 1));
+        appOptions = iconButton(R.drawable.ic_nav_more, "Applet options", () -> menu());
+        appHeader.addView(appOptions, new LinearLayout.LayoutParams(dp(48), dp(48)));
         choices = button("View", () -> {
             PopupMenu popup = new PopupMenu(activity, choices, Gravity.END);
             JSONArray items = shell.optJSONArray("choices");
@@ -241,6 +244,7 @@ final class HostViews {
     void route(boolean customized, boolean detail) { customizedRoute = customized; detailRoute = detail; }
     void modal(boolean open) {
         floatingMenu.setEnabled(!open);
+        if (appOptions != null) appOptions.setEnabled(!open);
         if (sections != null) for (int i = 0; i < sections.getChildCount(); i++) sections.getChildAt(i).setEnabled(!open);
     }
     private int entryDirection;
@@ -379,7 +383,7 @@ final class HostViews {
     }
     private void dismissMenu() { if (activeMenu != null) { activeMenu.dismiss(); activeMenu = null; } }
     private void menu() {
-        dismissMenu(); PopupMenu popup = new PopupMenu(activity, floatingMenu, Gravity.END); activeMenu = popup;
+        dismissMenu(); PopupMenu popup = new PopupMenu(activity, appOptions != null ? appOptions : floatingMenu, Gravity.END); activeMenu = popup;
         popup.setOnDismissListener(value -> { if (activeMenu == popup) activeMenu = null; });
         Menu menu = popup.getMenu();
         menu.add("Return to Genesis").setOnMenuItemClickListener(item -> { events.send(event("home")); return true; });
@@ -398,6 +402,7 @@ final class HostViews {
             }
         }
         menu.add("Service connections").setOnMenuItemClickListener(item -> { events.send(event("configureServices")); return true; });
+        menu.add("Rendering").setOnMenuItemClickListener(item -> { events.send(event("renderingSettings")); return true; });
         SubMenu recoveryMenu = menu.addSubMenu("Recovery");
         recoveryMenu.add("Retry customization").setOnMenuItemClickListener(item -> { events.send(event("retry")); return true; });
         recoveryMenu.add("Open ordinary site").setOnMenuItemClickListener(item -> { events.send(event("ordinary")); return true; });

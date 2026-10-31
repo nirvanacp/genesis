@@ -117,11 +117,7 @@ final class BrowserAdapter {
         PackageAssets assets = new PackageAssets(activity.packageStore, command);
         views.configureShell(command, assets);
         WebView browser = new WebView(activity); webView = browser;
-        // Emulator GPU raster caches can reuse stale table tiles after DOM customization.
-        // Keep this workaround off physical devices and the independent external reader.
-        boolean emulator = "ranchu".equals(Build.HARDWARE) || "goldfish".equals(Build.HARDWARE)
-            || Build.FINGERPRINT.startsWith("generic");
-        if (emulator && command.getBoolean("customized")) browser.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+        applyRendering();
         browser.getSettings().setJavaScriptEnabled(true);
         browser.getSettings().setDomStorageEnabled(true);
         browser.getSettings().setAllowFileAccess(false);
@@ -407,6 +403,15 @@ final class BrowserAdapter {
         }
     }
 
+    String appletId() {
+        return creation == null ? "" : creation.optJSONObject("context").optString("appletId");
+    }
+    void applyRendering() {
+        if (webView != null) {
+            webView.setLayerType(AppletRendering.layerType(activity, appletId(), creation.optBoolean("customized")), null);
+            webView.invalidate();
+        }
+    }
     void detach() { attached = false; activity.cancelInvalidFiles(); if (webView != null) views.browserSlot.removeView(webView); }
     void attach() throws Exception {
         attached = true; views.transitionDirection(0); views.pageStarting();

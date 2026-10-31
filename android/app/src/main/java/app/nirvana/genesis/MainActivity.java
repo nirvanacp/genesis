@@ -67,6 +67,7 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
         if (Looper.myLooper() != Looper.getMainLooper()) throw new IllegalStateException("UI thread required");
         try {
             String type = event.getString("type");
+            if ("renderingSettings".equals(type)) { showRenderingSettings(); return; }
             if (java.util.Arrays.asList("open","openPage","home","activateDestination").contains(type)) views.transitionDirection(0);
             if (!leavingApproved && browser != null && browser.leaveGuard() != null
                 && java.util.Arrays.asList("open","openPage","home","reload","retry","ordinary","activateDestination").contains(type)) {
@@ -90,6 +91,19 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
             JSONArray commands = new JSONArray(NativeBridge.dispatch(event.toString()));
             for (int i = 0; i < commands.length(); i++) execute(commands.getJSONObject(i));
         } catch (Exception | LinkageError error) { views.error("Genesis host failed: " + error); }
+    }
+
+    private void showRenderingSettings() {
+        String appletId = browser.appletId();
+        if (appletId.isEmpty()) return;
+        new android.app.AlertDialog.Builder(this).setTitle("Applet rendering")
+            .setSingleChoiceItems(AppletRendering.LABELS, AppletRendering.selection(this, appletId), (dialog, selected) -> {
+                AppletRendering.save(this, appletId, selected);
+                for (BrowserAdapter session : sessions.values()) {
+                    if (appletId.equals(session.appletId())) session.applyRendering();
+                }
+                dialog.dismiss();
+            }).setNegativeButton("Cancel", null).show();
     }
 
     private void execute(JSONObject command) throws Exception {
