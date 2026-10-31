@@ -1,123 +1,61 @@
-import { writeLocal } from "./local-state";
-import { backendStorage } from "./backend";
-import { defineApplet, type AppletContext, type ElementBinding, type Dispose } from "@genesis/sdk";
-import theme from "./theme.css";
-import sourceCss from "./source.css";
-import { inspectTargets } from "./targets";
-import { extractItem, STORY_SELECTOR } from "./extract-item";
-import { CategoryRepository } from "./categories";
-import { BookmarkRepository, bookmarkKey } from "./repository";
-import { openStoryDialog } from "./components/story-dialog";
-import { bindDiscussionTile } from "./story-interaction";
-import { mountAccountHub } from "./me";
-import { preservePostDraft } from "./post";
-interface Control { anchor: Element; binding: ElementBinding; button: HTMLButtonElement; dispose: Dispose; active: boolean; revision: number }
-export default defineApplet({
-  activate(ctx) {
-    synchronizeAccount(ctx);
-    ctx.styles.add("hn-editorial", theme + sourceCss);
-    const section = ctx.sourceId === "post" ? "post" : ctx.sourceId === "me" ? "me" : "home";
-    document.documentElement.classList.add("genesis-hn");
-    ctx.onDispose(() => document.documentElement.classList.remove("genesis-hn"));
-    if (section === "me" && ["/", "/news"].includes(location.pathname)) mountAccountHub(ctx);
-    if (section === "post") preservePostDraft(ctx);
-    if (location.pathname === "/item") {
-      const row = document.querySelector(STORY_SELECTOR), item = row && extractItem(row);
-      const anchor = row?.querySelector(".titleline");
-      if (item?.articleUrl && anchor) {
-        const visit = document.createElement("a"); visit.href = item.articleUrl; visit.textContent = "Visit website ↗"; visit.className = "visit-website";
-        anchor.append(visit); ctx.onDispose(() => visit.remove());
-      }
-    }
-    const repository = new BookmarkRepository(backendStorage(ctx)), controls = new Map<string, Control>(), queue = new Set<Control>();
-    let running = 0, categoryRead = 0;
-    let categoryNames = new Map<string, string>();
-    const pump = () => {
-      while (running < 8 && queue.size && !ctx.signal.aborted) {
-        const control = queue.values().next().value!; queue.delete(control);
-        if (!control.active) continue;
-        const revision = control.revision; running++;
-        void repository.get(control.binding.contentKey).then(saved => {
-          if (control.active && revision === control.revision && !ctx.signal.aborted) {
-            const names = saved?.value.categoryIds.map(id => categoryNames.get(id)).filter(Boolean) ?? [];
-            control.button.title = saved ? `Saved${names.length ? ` in ${names.join(", ")}` : ""}. Change bookmark` : "Save story";
-            control.button.setAttribute("aria-pressed", String(!!saved));
-            control.button.setAttribute("aria-label", saved ? "Edit Genesis bookmark" : "Save story to Genesis");
-
-          }
-        }).catch(error => { if (control.active) control.button.title = "Saved stories are temporarily unavailable. Tap to retry."; })
-          .finally(() => { running--; pump(); });
-      }
-    };
-    const refresh = (control: Control) => { control.revision++; queue.add(control); pump(); };
-    const reloadCategories = () => {
-      const version = ++categoryRead;
-      void new CategoryRepository(backendStorage(ctx)).read().then(snapshot => {
-        if (ctx.signal.aborted || version !== categoryRead) return;
-        categoryNames = new Map(snapshot.categories.map(category => [category.value.id, category.value.name]));
-        for (const control of controls.values()) refresh(control);
-      }).catch(() => { /* Bookmark controls remain usable when category labels cannot be read. */ });
-    };
-    reloadCategories();
-    ctx.onFocus(reloadCategories);
-    const remove = (binding: ElementBinding) => {
-      const control = controls.get(binding.id); if (!control) return;
-      control.active = false; queue.delete(control); control.dispose(); controls.delete(binding.id);
-    };
-    const mount = (binding: ElementBinding) => {
-      const anchor = binding.element.querySelector(".titleline"); if (!anchor) return;
-      const button = document.createElement("button"); button.type = "button";
-      button.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v19l-6-4-6 4z"/></svg>';
-      button.setAttribute("aria-label", "Save story to Genesis");
-      button.addEventListener("click", event => {
-        event.preventDefault(); event.stopPropagation();
-        const snapshot = extractItem(binding.element);
-        if (snapshot?.itemId === binding.contentKey && binding.element.isConnected && !ctx.signal.aborted) openStoryDialog(ctx, snapshot);
+import {defineSourceAdapter,type AppletContext} from '@genesis/sdk';
+import {extractItem,type StorySnapshot} from './extract-item';
+import {richText,safeUrl,type HnModel,type Story} from './view-model';
+const feeds=['/','/news','/newest','/front','/newcomments','/ask','/show','/shownew','/asknew','/jobs','/best','/active','/leaders','/from','/submitted','/threads','/favorites','/hidden','/upvoted'];
+export default defineSourceAdapter({adapters:['feed','discussion','profile','information'],activate(context){
+  const publish=()=>{
+    const url=new URL(location.href),path=url.pathname;
+    if(document.querySelector('input[type="password"]')||/please log in|you have to be logged in/i.test(document.body.textContent?.trim().slice(0,300)??'')){void context.source.publish({state:'auth-required'});return;}
+    if(!document.querySelector('#hnmain')&&!['/formatdoc','/newsfaq.html','/newsguidelines.html'].includes(path)){void context.source.publish({state:'unsupported'});return;}
+    const account=document.querySelector('.pagetop a[href^="user?id="]')?.textContent?.trim()??null;
+    const model:HnModel={kind:'feed',title:'Hacker News',account,logoutUrl:null,stories:[],comments:[],parts:[],nextUrl:null,partial:false};
+    if(context.sourceId==='me'&&['/','/news'].includes(path)){model.kind='account';model.title='Me';}
+    else if(path==='/item'){
+      if(!/^\d{1,20}$/.test(url.searchParams.get('id')??'')){void context.source.publish({state:'unsupported'});return;}
+      model.kind='discussion';model.title='Discussion';model.parts=richText(document.querySelector('.toptext'),location.href);
+    }else if(path==='/user'){
+      const name=url.searchParams.get('id');if(!name||!/^[A-Za-z0-9_-]{1,64}$/.test(name)){void context.source.publish({state:'unsupported'});return;}
+      model.kind='profile';model.title=name;
+      const fields=[...document.querySelectorAll('#bigbox table tr')].flatMap(row=>{
+        const cells=row.children;if(cells.length!==2)return[];const label=cells[0].textContent?.trim().replace(/:$/,'');
+        return label&&['user','created','karma','about'].includes(label)?[{label,parts:richText(cells[1],location.href)}]:[];
       });
-      const disposeMount = ctx.ui.mountAt(`story:${binding.id}`, anchor, { position: "append",
-        css: theme + ":host{position:absolute;right:0;top:0;display:block}button{display:flex;align-items:center;justify-content:center;color:var(--accent);background:transparent;border:0;border-radius:8px;padding:10px;min-width:48px;min-height:48px;cursor:pointer}button[aria-pressed=true] svg{fill:currentColor}",
-        render: container => { container.append(button); } });
-      const disposeTile = location.pathname !== "/item" ? bindDiscussionTile(binding.element, () => extractItem(binding.element)?.discussionUrl ?? null) : () => {};
-      const metadata = binding.element.nextElementSibling;
-      const disposeMeta = location.pathname !== "/item" && metadata ? bindDiscussionTile(metadata, () => extractItem(binding.element)?.discussionUrl ?? null) : () => {};
-      const dispose = () => { disposeTile(); disposeMeta(); disposeMount(); };
-      const control = { anchor, binding, button, dispose, active: true, revision: 0 }; controls.set(binding.id, control); refresh(control);
-    };
-    ctx.watchElements("hn-stories", { selector: STORY_SELECTOR, attributes: ["id", "class", "href"], text: true, limit: 200,
-      contentKey: element => extractItem(element)?.itemId ?? null }, {
-      enter: mount,
-      update(binding) {
-        const control = controls.get(binding.id);
-        const anchor = binding.element.querySelector(".titleline");
-        if (control && anchor !== control.anchor) { remove(binding); mount(binding); }
-        else if (control) refresh(control);
-      }, leave: remove,
-    });
-    backendStorage(ctx).onChanged(change => {
-      if (change.changes.some(c => c.collection === "categories")) reloadCategories();
-      for (const control of controls.values()) if (change.changes.some(c => c.collection === "bookmarks" && c.key === bookmarkKey(control.binding.contentKey))) refresh(control);
-    });
-    ctx.onDispose(() => { for (const control of controls.values()) { control.active = false; control.dispose(); } controls.clear(); queue.clear(); });
-  }, inspect: inspectTargets,
-});
-
-/** Website cookies stay in WebView. Only public account identity coordinates retained views. */
-function synchronizeAccount(context: AppletContext): void {
-  const profile = document.querySelector(".pagetop a[href^='user?id=']");
-  const login = document.querySelector(".pagetop a[href^='login']");
-  // Login forms and minimal submission headers observe changes without declaring a sign-out.
-  const identity = profile ? profile.textContent?.trim() ?? "" : login ? "" : null;
-  const initialIdentity = context.storage.get<{ identity: string }>("session", "hn-account").then(async ({ document }) => {
-    if (context.signal.aborted) return null;
-    if (identity !== null && document?.value.identity !== identity) {
-      await writeLocal(context, "session", "hn-account", { identity });
+      if(!fields.length){void context.source.publish({state:'unsupported'});return;}
+      model.profile={name,fields,links:['submitted','threads','favorites'].map(route=>({label:route==='submitted'?'Submissions':route==='threads'?'Comments':'HN favorites',url:`https://news.ycombinator.com/${route}?id=${encodeURIComponent(name)}`}))};
+    }else if(['/lists','/leaders','/formatdoc','/newsfaq.html','/newsguidelines.html'].includes(path)){
+      model.kind='information';model.title=path==='/lists'?'Lists':document.title||'Hacker News';model.parts=richText(document.querySelector('#bigbox')??document.querySelector('body center table')??document.body,location.href,16000);
+    }else if(!feeds.includes(path)){void context.source.publish({state:'unsupported'});return;}
+    if(model.kind==='feed'||model.kind==='discussion'){
+      for(const row of document.querySelectorAll('tr.athing.submission[id]')){
+        let snapshot=extractItem(row);
+        const title=row.querySelector<HTMLAnchorElement>('.titleline>a:first-child');
+        if(!snapshot&&path==='/jobs'&&/^\d+$/.test(row.id)&&title){snapshot={itemId:row.id,title:(title.textContent??'').slice(0,2048),discussionUrl:`https://news.ycombinator.com/item?id=${row.id}`,articleUrl:safeUrl(title.href,location.href),submitter:null,truncated:false,capturedAtMs:Date.now()} satisfies StorySnapshot;}
+        if(!snapshot)continue;
+        const meta=row.nextElementSibling;
+        const story:Story={snapshot,score:meta?.querySelector('.score')?.textContent??'',age:meta?.querySelector('.age')?.textContent??'',comments:[...meta?.querySelectorAll('a')??[]].find(a=>/comment|discuss/.test(a.textContent??''))?.textContent??'Discussion',rank:row.querySelector('.rank')?.textContent??''};
+        model.stories.push(story);
+      }
+      for(const row of document.querySelectorAll('tr.comtr[id]')){
+        if(!/^\d+$/.test(row.id))continue;
+        const reply=row.querySelector<HTMLAnchorElement>('.reply a[href]');
+        const text=row.querySelector('.commtext');if(!text)continue;
+        model.comments.push({id:row.id,author:row.querySelector('.hnuser')?.textContent??'Unknown',age:row.querySelector('.age')?.textContent??'',depth:Math.min(12,Number(row.querySelector('.ind')?.getAttribute('indent')??0)),parts:richText(text,location.href,6000),replyUrl:reply?safeUrl(reply.href,location.href):null,contextUrl:`https://news.ycombinator.com/item?id=${row.id}`});
+        if(model.comments.length>=100||new TextEncoder().encode(JSON.stringify(model)).length>145000){model.partial=true;break;}
+      }
+      if(model.kind==='discussion'&&!model.stories.length&&!model.parts.length){
+        model.parts=richText(document.querySelector('table.fatitem .commtext'),location.href);
+        const author=document.querySelector('table.fatitem .hnuser')?.textContent?.trim();
+        if(author)model.title=`Comment by ${author}`;
+      }
+      model.nextUrl=safeUrl(document.querySelector<HTMLAnchorElement>('a.morelink')?.getAttribute('href')??'',location.href);
+      if(!document.querySelector('a.morelink'))model.nextUrl=null;
+      if(!model.stories.length&&!model.comments.length&&model.kind==='discussion'&&!model.parts.length){
+        const top=document.querySelector('tr.athing[id]');if(!top){void context.source.publish({state:'unsupported'});return;}
+      }
     }
-    return identity ?? document?.value.identity ?? "";
-  }).catch(() => identity);
-  context.onFocus(() => {
-    void initialIdentity.then(async baseline => {
-      const { document } = await context.storage.get<{ identity: string }>("session", "hn-account");
-      if (!context.signal.aborted && document && document.value.identity !== baseline) location.reload();
-    }).catch(() => {});
-  });
-}
+    void context.source.publish({state:model.stories.length||model.comments.length||!['feed','discussion'].includes(model.kind)?'ready':'empty',data:model});
+  };
+  publish();
+  context.watchElements('hn-content',{selector:'#hnmain,.comment-tree,.toptext',attributes:['id'],text:true,limit:3,contentKey:()=>location.href},{enter:publish,update:publish});
+  context.navigation.onChange(publish);
+}});
