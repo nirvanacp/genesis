@@ -8,19 +8,25 @@ import {openCategorySheet} from './components/category-sheet';
 import library from './library';
 import {Icon} from './components/icon';
 import {Post,XLink} from './components/post';
+import {PullToRefresh} from './components/pull-to-refresh';
 import theme from './theme.css';
 import css from './app.css';
 export default defineForeground({screens,mount(context,root){return mountReact(context,root,<App context={context}/>);}});
 function App({context}:{context:AppletContext}){
-  const[snapshot,setSnapshot]=useState<SourceSnapshot|null>(null),[model,setModel]=useState<XModel|null>(null),[accountReady,setAccountReady]=useState(false),[error,setError]=useState(''),[search,setSearch]=useState(''),[more,setMore]=useState(false);
+  const[snapshot,setSnapshot]=useState<SourceSnapshot|null>(null),[model,setModel]=useState<XModel|null>(null),[accountReady,setAccountReady]=useState(false),[error,setError]=useState(''),[search,setSearch]=useState(''),[more,setMore]=useState(false),[reloading,setReloading]=useState(false);
   const owned=useRef<HTMLDivElement>(null),cache=useRef(new Map<string,XModel>()),positions=useRef(new Map<string,number>()),destination=useRef(''),restore=useRef<string|null>(null),epoch=useRef(-1),version=useRef(0),lastHandle=useRef<string|null>(null);
+  const pendingRefresh=useRef<{sourceId:string;url:string;epoch:number;finish:(error?:unknown)=>void}|null>(null);
+  useEffect(()=>()=>pendingRefresh.current?.finish(),[]);
   useEffect(()=>context.source.subscribe(value=>{
     const current=++version.current,key=value.pageId||value.url;
     if(destination.current&&destination.current!==key)positions.current.set(destination.current,window.scrollY);
     const changed=destination.current!==key;destination.current=key;
     if(epoch.current!==value.epoch){epoch.current=value.epoch;setAccountReady(false);setError('');setMore(false);}
     setSnapshot(value);
-    const incoming=validModel(value.data)?value.data:null;
+    // During navigation the old document may publish before the replacement binds.
+    const incoming=validModel(value.data)&&value.data.kind===routeKind(new URL(value.url).pathname)?value.data:null;
+    const pending=pendingRefresh.current;
+    if(pending&&(value.sourceId!==pending.sourceId||value.url!==pending.url||!!value.pageId||value.epoch!==pending.epoch&&value.state!=='loading'))pending.finish();
     const confirmed=!!incoming&&incoming.account.status==='signed-in';
     if(incoming?.account.status==='signed-out'||confirmed&&incoming.account.handle!==lastHandle.current){cache.current.clear();lastHandle.current=incoming.account.handle;}
     const tabKey=incoming?.tabs.filter(t=>t.selected).map(t=>t.key).join(',')??'';
@@ -52,6 +58,21 @@ function App({context}:{context:AppletContext}){
     });
   },[context,snapshot?.pageId]);
   const run=(action:Promise<unknown>)=>{setError('');void action.catch(e=>setError(String(e)));};
+  const refreshSource=()=>{
+    if(!snapshot||snapshot.pageId||pendingRefresh.current)return;
+    const current=snapshot;
+    setError('');setReloading(true);
+    for(const key of cache.current.keys())if(key.startsWith(current.url+'|'))cache.current.delete(key);
+    positions.current.set(current.url,0);window.scrollTo(0,0);
+    const timer=setTimeout(()=>request.finish(new Error('Refresh is taking too long. Try again or open X.')),25000);
+    const request={sourceId:current.sourceId,url:current.url,epoch:current.epoch,finish:(failure?:unknown)=>{
+      if(pendingRefresh.current!==request)return;
+      clearTimeout(timer);pendingRefresh.current=null;
+      if(!context.signal.aborted){setReloading(false);if(failure)setError(String(failure));}
+    }};
+    pendingRefresh.current=request;
+    void context.sources.open(current.sourceId,current.url).catch(request.finish);
+  };
   const open=(raw:string,website=false)=>{
     const url=safeLink(raw);if(!url)return;const parsed=new URL(url);
     if(website||parsed.origin!=='https://x.com'||!routeKind(parsed.pathname)){run(context.webViews.open({url}));return;}
@@ -70,8 +91,8 @@ function App({context}:{context:AppletContext}){
   const isLibrary=snapshot?.pageId==='library',refreshing=snapshot?.state==='loading'&&!!model&&(model.posts.length>0||model.entries.length>0||!!model.profile),ready=!!model&&(['ready','empty','error'].includes(snapshot?.state??'')||refreshing);
   const isMedia=ready&&model?.kind==='media'&&!!model.media,emptyLines=model?.emptyText?.split('\n').map(line=>line.trim()).filter(Boolean)??[];
   const searchForm=<form className="search" role="search" onSubmit={searchSubmit}><label className="search-field"><Icon name="search"/><input type="search" aria-label="Search X" placeholder="Search X" value={search} maxLength={200} onChange={e=>setSearch(e.target.value)}/></label><button className="icon-button search-submit" type="submit" aria-label="Search"><Icon name="search"/></button></form>;
-  return <><style>{theme+css}</style><main className={'x-app'+(isMedia?' media-surface':'')}>{error&&<p className="error banner" role="alert">{error}</p>}{isLibrary?<>{accountReady?<div ref={owned}/>:<section className="state"><h1>Categories</h1><p>{snapshot?.state==='loading'?'Verifying your X account…':'Open X and verify the account for your Categories library.'}</p>{snapshot?.state!=='loading'&&link(snapshot?.url??'https://x.com/i/history','Open X',true,'secondary')}</section>}</>:<>
-    {!isMedia&&<header className="screen-title">{model?.kind==='discovery'?searchForm:<h1>{ready?model!.title:snapshot?.sectionId==='alerts'?'Notifications':snapshot?.sectionId==='saved'?'Saved':snapshot?.sectionId==='me'?'Profile':snapshot?.sectionId==='explore'?'Explore':'Home'}</h1>}<div className="header-actions">{model?.kind!=='discovery'&&<XLink url="https://x.com/i/chat" open={open} website className="icon-button" label="Messages on X"><Icon name="mail"/></XLink>}<XLink url="https://x.com/settings/account" open={open} website className="icon-button" label="Account settings on X"><Icon name="settings"/></XLink></div></header>}
+  return <><style>{theme+css}</style><main className={'x-app'+(isMedia?' media-surface':'')}><PullToRefresh enabled={!!snapshot&&!isLibrary&&!isMedia&&!reloading} busy={reloading} onRefresh={refreshSource} resetKey={(snapshot?.sourceId??'')+'|'+(snapshot?.url??'')}>{error&&<p className="error banner" role="alert">{error}</p>}{isLibrary?<>{accountReady?<div ref={owned}/>:<section className="state"><h1>Categories</h1><p>{snapshot?.state==='loading'?'Verifying your X account…':'Open X and verify the account for your Categories library.'}</p>{snapshot?.state!=='loading'&&link(snapshot?.url??'https://x.com/i/history','Open X',true,'secondary')}</section>}</>:<>
+    {!isMedia&&<header className="screen-title">{model?.kind==='discovery'?searchForm:<h1>{ready?model!.title:snapshot?.sectionId==='alerts'?'Notifications':snapshot?.sectionId==='saved'?'Saved':snapshot?.sectionId==='me'?'Profile':snapshot?.sectionId==='explore'?'Explore':'Home'}</h1>}<div className="header-actions">{model?.kind!=='discovery'&&<XLink url="https://x.com/i/chat" open={open} website className="icon-button" label="Messages on X"><Icon name="mail"/></XLink>}<button className="icon-button" aria-label="Refresh" disabled={!snapshot||reloading} onClick={refreshSource}><Icon name="refresh"/></button><XLink url="https://x.com/settings/account" open={open} website className="icon-button" label="Account settings on X"><Icon name="settings"/></XLink></div></header>}
     {['collection','people'].includes(model?.kind??'')&&snapshot&&<div className="page-actions">{link(snapshot.url,model?.kind==='collection'?'Create or manage on X':'People actions on X',true,'secondary')}</div>}
     {model?.kind==='saved'?<div className="mode" role="tablist" aria-label="Saved location"><button role="tab" aria-selected={!snapshot?.url.includes('/likes')} onClick={()=>open('https://x.com/i/history')}><span>Bookmarks</span></button><button role="tab" aria-selected={!!snapshot?.url.includes('/likes')} onClick={()=>open('https://x.com/i/history/likes')}><span>Likes</span></button><button role="tab" aria-selected={false} onClick={()=>run(context.pages.open('library'))}><span>Categories</span></button></div>:model?.kind!=='profile'&&sourceTabs()}
     {!snapshot||snapshot.state==='loading'&&!refreshing?<section className="state" aria-label="Loading X" aria-busy="true"><p role="status">Loading X…</p><div className="skeleton"/><div className="skeleton"/><div className="skeleton"/></section>:!ready?<section className="state"><h2>{snapshot.state==='auth-required'?'Sign in to X':snapshot.state==='challenge'?'X needs your attention':snapshot.state==='error'?'X is unavailable':snapshot.state==='website'?'Continue on X':'Continue on the website'}</h2><p>{snapshot.error?.message??'This page needs the original X website. Your applet will stay here while you use it.'}</p><div className="row">{link(snapshot.url,'Open website',true,'secondary')}<button className="secondary" onClick={()=>run(context.sources.open(snapshot.sourceId,snapshot.url))}>Retry</button></div></section>:<>
@@ -101,5 +122,5 @@ function App({context}:{context:AppletContext}){
       {model!.partial&&<p className="banner">Showing a window of this page. {link(snapshot.url,'Continue on X',true)}</p>}
       {!isMedia&&<footer className="page-actions">{link(snapshot.url,'Open page on X',true,'secondary')}{model!.account.handle&&validHandle(model!.account.handle)&&link(`https://x.com/${model!.account.handle}`,'My profile')}{link('https://x.com/settings','Settings',true)}</footer>}
     </>}
-  </>}{!isLibrary&&!isMedia&&ready&&<XLink url="https://x.com/compose/post" open={open} website className="compose-button" label="Post on X"><Icon name="compose"/></XLink>}</main></>;
+  </>}{!isLibrary&&!isMedia&&ready&&<XLink url="https://x.com/compose/post" open={open} website className="compose-button" label="Post on X"><Icon name="compose"/></XLink>}</PullToRefresh></main></>;
 }

@@ -24,6 +24,8 @@ The source observer identifies the signed-in account through inspected signed-in
 
 ## Native X design brief
 
+The November UX repair requires primary sections to open their declared roots, pull-to-refresh and a labeled refresh control on owned browsing screens, and a read-only refresh for Categories. A refresh clears that URL's merged feed window and waits for a replacement source result. Loading from a different route must not display the previous route's model. Existing provider and private-record boundaries remain unchanged.
+
 Required: reproduce native X's compact feed and controls in owned HTML/React, using the live mobile-width X website for details that cannot be confirmed in the native app. Preserve Genesis's existing Home / Explore / Notifications / Saved / Profile bottom navigation. Do not add a primary sidebar or a second tab bar. Android system typography, 15px/20px post copy, 40px feed avatars, inline author/handle/time, hairline separators, blue tab indicators, icon actions and profile imagery provide the shared visual language. Categories uses the same tokens and controls.
 
 The stable route inventory in `applet.json` is unchanged. This presentation contract supplements its adapter/renderer/provider mapping. Source data remains bounded and validated; neither source CSS nor upstream HTML supplies the foreground.
