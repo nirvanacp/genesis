@@ -2,6 +2,8 @@
 
 Project: Genesis X applet, `factory/applets/x.com`. Phase: `phase-4`, branch `proto/phase-4`. Created 31 October 2026, 12:06:56 Asia/Kolkata. This is a planning deliverable; no application implementation or live tier-transition verification was performed.
 
+Current continuation: the [folder fallback completion plan](125355-x-folder-fallback-completion-plan.md) supersedes the initial source-qualification block and supplies the remaining implementation order. The [overlay plan](125045-x-overlay-opacity-repair-plan.md) addresses the separate source-opacity defect. Keep this document's data authority and tier-transition requirements; read its progress notes as historical component status, not a claim of delivered automatic routing.
+
 ## Problem and intended outcome
 
 The current applet exposes two independent systems: X bookmarks and its paid folder UI, and our backend-backed Categories. A free user can still enter X's folder flow and encounter an upgrade prompt despite the applet having its own category implementation. The user wants folder organization to remain available without buying X Premium, while accounts entitled to X folders continue using X's original feature. Subscription changes must not lose records, strand earlier saves, or submit an action to the wrong provider.
@@ -166,3 +168,9 @@ Step 1 inspected the real signed-in emulator Saved route `/i/history`. Native he
 Step 2 implemented shared account observations, ticket epoch validation, editor invalidation, private-row clearing, library-scoped preferences and checked pending-operation isolation/migration. Static checks and temporary repository harness passed. Retained-source identity freshness is still limited by source DOM observation; multi-account/device qualification remains outstanding. This component is not a claim that automatic folder routing is delivered.
 
 Step 3 implemented `folder-capability.ts` and passed temporary logical scenarios for evidence expiry, contradictory native/denied evidence, logout/account changes, repeated denial, provider pinning and intent deadlines. The controller is intentionally not connected to native controls because step 4 lacks qualified selectors. Built revision `80bbbfb286dd1df5693c4ae462723f5c2c9a674c7decf41f2108b3704b8dc604` in `/private/tmp/x-adaptive-folders-build`; not installed. Steps 4–6 are incomplete, and automatic source paywall replacement is not delivered.
+
+## Subsequent investigation and revised next steps
+
+The user's screenshots identified the missed entry point. Live inspection on 31 October qualified a transient source bookmark alert containing an English Add to Folder button with no href or test ID. Clicking it navigated to `/i/verified-get-verified`. This route is outside customized coverage and retires the applet binding. The earlier absence of a folder control on Saved did not mean the app lacked folder entry points.
+
+The continuation plan now governs the remaining work: qualify toast/post association and navigation mechanism, supply a generic one-use host return capability if required by the observed full-page flow, fix intent expiry/editor completion, connect the source adapter, and install/qualify the complete journey. It proposes bounded ephemeral host-memory transfer across retirement, explicitly superseding this plan's in-document-only snapshot constraint for that case. It preserves account validation, separate authorities, no automatic migration, and native pass-through. Native picker structure and the proposed platform capability remain qualification gates. This later task changed plans only; it did not finish stages 4–6.
