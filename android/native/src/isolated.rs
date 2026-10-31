@@ -26,6 +26,8 @@ pub struct IsolatedHost {
     history: Vec<(Value, String, String)>,
     sections: HashMap<String, (String, String)>,
     website: bool,
+    source_exposed: bool,
+    website_session: Option<String>,
     modal: bool,
     back_handler: bool,
     pending_back: Option<u64>,
@@ -101,6 +103,8 @@ impl IsolatedHost {
         self.documents.clear();
         self.history.clear();
         self.website = false;
+        self.website_session = None;
+        self.source_exposed = false;
         let entries: Vec<Value> = self.index.as_ref().into_iter().flat_map(|i| i.packages.iter().filter(|p| !i.hidden_applet_ids.contains(&p.manifest.id))).map(|p|
             json!({"appletId":p.manifest.id,"sourceId":p.manifest.sources[0].id,"label":p.manifest.name})).collect();
         out.push(json!({"type":"showLauncher","entries":entries,"status":"Your customized apps"}));
@@ -198,6 +202,8 @@ impl IsolatedHost {
         self.page = page;
         self.epoch += 1;
         self.website = false;
+        self.website_session = None;
+        self.source_exposed = false;
         self.modal = false;
         self.back_handler = false;
         self.pending_back = None;
@@ -209,8 +215,8 @@ impl IsolatedHost {
             }
             self.generation += 1;
             self.documents.clear();
-            self.website = true;
-            out.push(json!({"type":"isolatedLegacy","generation":self.generation,"package":package,"selection":self.selection,"url":self.url}));
+            self.begin_website();
+            out.push(json!({"type":"isolatedLegacy","sessionId":self.website_session,"generation":self.generation,"package":package,"selection":self.selection,"url":self.url}));
             return Ok(());
         }
 
@@ -232,6 +238,12 @@ impl IsolatedHost {
         out.push(json!({"type":"isolatedNavigate","generation":self.generation,"epoch":self.epoch,"url":self.url,"pageId":self.page,"selection":self.selection,"source":source,"detail":detail}));
         self.route_state(out);
         Ok(())
+    }
+    fn begin_website(&mut self) {
+        self.serial += 1;
+        self.website_session = Some(format!("website-{}-{}", self.generation, self.serial));
+        self.website = true;
+        self.pending_back = None;
     }
     fn back(&mut self, out: &mut Vec<Value>) -> Result<(), String> {
         if self.website {
@@ -340,26 +352,30 @@ impl IsolatedHost {
         }
         match kind {
             "back" => self.back(&mut out)?,
-            "isolatedBackDeadline" => if event["token"].as_u64() == self.pending_back { self.pending_back=None; self.back_default(&mut out)?; },
+            "isolatedBackDeadline" => if self.pending_back.is_some() && event["token"].as_u64() == self.pending_back { self.pending_back=None; self.back_default(&mut out)?; },
+            "isolatedForegroundFailed" => {self.documents.remove("foreground");self.modal=false;self.back_handler=false;self.pending_back=None;out.push(json!({"type":"modalState","open":false}));},
             "isolatedForegroundRetry" => {self.documents.remove("foreground");let mut input=self.selection.clone();input["url"]=json!(self.url);input["pageId"]=json!(self.page);self.open(&input,false,&mut out)?;},
             "isolatedLink" => {
+                if self.website { return Ok(out); }
                 let url=event["url"].as_str().unwrap_or("");
                 if matches!(self.resolution(url),RouteResolution::Matched{result:RouteResult::Custom{..},..}) {
                     let mut input=self.selection.clone();input["url"]=json!(url);input["pageId"]=Value::Null;self.open(&input,true,&mut out)?;
                 } else if url::Url::parse(url).is_ok_and(|u|["http","https"].contains(&u.scheme())&&u.username().is_empty()&&u.password().is_none()) {
-                    self.website=true;let adopt=url==self.url;if adopt{self.notify("source","context.retired",Value::Null,&mut out);self.documents.remove("source");}
-                    out.push(json!({"type":"isolatedWebsite","generation":self.generation,"url":url,"adopt":adopt}));
+                    self.begin_website();let adopt=url==self.url;self.source_exposed=adopt;if adopt{self.notify("source","context.retired",Value::Null,&mut out);self.documents.remove("source");}
+                    out.push(json!({"type":"isolatedWebsite","sessionId":self.website_session,"generation":self.generation,"url":url,"adopt":adopt}));
                 }
             },
-            "ordinary" => { self.website=true; self.notify("source","context.retired",Value::Null,&mut out); self.documents.remove("source"); out.push(json!({"type":"isolatedWebsite","generation":self.generation,"url":self.url,"adopt":true})); },
+            "ordinary" => { self.begin_website(); self.source_exposed=true; self.notify("source","context.retired",Value::Null,&mut out); self.documents.remove("source"); out.push(json!({"type":"isolatedWebsite","sessionId":self.website_session,"generation":self.generation,"url":self.url,"adopt":true})); },
             "retry" | "reload" => if self.website { out.push(self.command("isolatedWebsiteReload")); } else {
                 let mut input=self.selection.clone();input["url"]=json!(self.url);input["pageId"]=json!(self.page);self.open(&input,false,&mut out)?;
             },
             "forward" => out.push(self.command("isolatedWebsiteForward")),
-            "readerClose" => { self.website=false; out.push(self.command("isolatedWebsiteClose")); },
+            "readerClose" => {out.push(self.command("isolatedWebsiteClose"));},
             "isolatedWebsiteClosed" => {
-                self.website=false;
-                if event["adopted"] == true || event["revalidate"] == true {
+                if !self.website || self.website_session.as_deref()!=event["sessionId"].as_str() { return Ok(out); }
+                self.website=false;self.source_exposed=false;self.website_session=None;
+                if self.package.as_ref().is_some_and(|p|p.manifest.schema_version==1){self.launcher(&mut out);return Ok(out);}
+                if event["adopted"] == true || event["revalidate"] == true || !self.documents.contains_key("foreground") || !self.documents.get("source").is_some_and(|d|d.bound) || self.snapshot["state"]=="loading" {
                     let mut input=self.selection.clone();input["url"]=json!(self.url);input["pageId"]=json!(self.page);self.open(&input,false,&mut out)?;
                 }
                 self.notify("foreground","host.focused",Value::Null,&mut out);
@@ -406,7 +422,8 @@ impl IsolatedHost {
     fn message(&mut self, event: &Value, out: &mut Vec<Value>) -> Result<(), String> {
         let role = event["role"].as_str().unwrap_or("");
         if !["foreground", "source"].contains(&role)
-            || (role == "source" && (self.website || event["epoch"].as_u64() != Some(self.epoch)))
+            || (role == "source"
+                && (self.source_exposed || event["epoch"].as_u64() != Some(self.epoch)))
         {
             return Ok(());
         }
@@ -580,6 +597,15 @@ impl IsolatedHost {
                     self.reply(role, request, Ok(Value::Null), out);
                 }
                 "source.route" => {
+                    if self.website {
+                        self.reply(
+                            role,
+                            request,
+                            Err("Source navigation is deferred while a website is visible"),
+                            out,
+                        );
+                        return Ok(());
+                    }
                     let url = params["url"].as_str().unwrap_or("");
                     if matches!(
                         self.resolution(url),
@@ -613,6 +639,16 @@ impl IsolatedHost {
             }
             return Ok(());
         }
+        // A late owned-page callback cannot replace the user's visible website.
+        if self.website && matches!(method, "sources.open" | "pages.open" | "webViews.open") {
+            self.reply(
+                role,
+                request,
+                Err("Close the current website before navigating"),
+                out,
+            );
+            return Ok(());
+        }
         match method {
             "runtime.ready"=>{out.push(self.command("isolatedForegroundReady"));self.notify(role,"source.snapshot",self.snapshot.clone(),out);},
             "runtime.phase"=>{},
@@ -632,15 +668,15 @@ impl IsolatedHost {
                 self.open(&input,true,out)?;
             },
             "webViews.open"=>{
-                let url=params["url"].as_str().unwrap_or(&self.url);
+                let url=params["url"].as_str().unwrap_or("");
                 let valid=url::Url::parse(url).is_ok_and(|u|["http","https"].contains(&u.scheme())&&u.username().is_empty()&&u.password().is_none()&&u.host_str()!=Some("appassets.androidplatform.net"));
                 if !valid {self.reply(role,request,Err("Invalid website URL"),out);return Ok(());}
-                let adopt=url==self.url;self.website=true;if adopt{self.notify("source","context.retired",Value::Null,out);self.documents.remove("source");}
-                out.push(json!({"type":"isolatedWebsite","generation":self.generation,"url":url,"adopt":adopt}));self.reply(role,request,Ok(json!({"sessionId":format!("website-{}",self.generation)})),out);
+                let url=url.to_owned();let adopt=url==self.url;self.begin_website();self.source_exposed=adopt;if adopt{self.notify("source","context.retired",Value::Null,out);self.documents.remove("source");}
+                out.push(json!({"type":"isolatedWebsite","sessionId":self.website_session,"generation":self.generation,"url":url,"adopt":adopt}));self.reply(role,request,Ok(json!({"sessionId":self.website_session})),out);
             },
-            "webViews.close"=>{out.push(self.command("isolatedWebsiteClose"));self.reply(role,request,Ok(Value::Null),out);},
+            "webViews.close"=>{if let Some(session)=params["sessionId"].as_str() && self.website_session.as_deref()!=Some(session){self.reply(role,request,Err("Website session is no longer current"),out);return Ok(());}out.push(self.command("isolatedWebsiteClose"));self.reply(role,request,Ok(Value::Null),out);},
             "navigation.backHandler"=>{self.back_handler=params["enabled"]==true;self.reply(role,request,Ok(Value::Null),out);},
-            "navigation.backResult"=>{if params["token"].as_u64()==self.pending_back{self.pending_back=None;if params["consumed"]!=true{self.back_default(out)?;}}self.reply(role,request,Ok(Value::Null),out);},
+            "navigation.backResult"=>{if self.pending_back.is_some() && params["token"].as_u64()==self.pending_back{self.pending_back=None;if params["consumed"]!=true{self.back_default(out)?;}}self.reply(role,request,Ok(Value::Null),out);},
             "navigation.leaveGuard"=>{out.push(json!({"type":"isolatedLeaveGuard","generation":self.generation,"message":params["message"]}));self.reply(role,request,Ok(Value::Null),out);},
             "ui.modalState"=>{self.modal=params["open"]==true;out.push(json!({"type":"modalState","open":self.modal}));self.reply(role,request,Ok(Value::Null),out);},
             "storage.get"|"storage.list"|"storage.commit"=>{
