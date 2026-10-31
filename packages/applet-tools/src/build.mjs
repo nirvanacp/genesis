@@ -36,6 +36,7 @@ export async function readBundle(directory) {
 }
 export async function buildApplet(directory, output) {
   const { base, manifest: original } = await checkApplet(directory);
+  requireValue(original.schemaVersion === 1, 'Isolated applets require runtime API 3; foreground execution is not yet available');
   requireValue(typeof output === 'string' && output.length > 0, 'Output directory required');
   const destination = path.resolve(output);
   // Resolve the parent to catch output symlinks before any cleanup.

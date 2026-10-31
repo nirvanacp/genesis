@@ -26,3 +26,30 @@ export interface AppletBundle {
   formatVersion: 1; runtimeApiVersion: 1 | 2; sdkVersion: string;
   package: { manifest: Manifest; revision: string; assets: { path: string; sha256: string }[] };
 }
+
+/** API 3 authoring types. Runtime API 2 hosts cannot execute these packages. */
+export interface RouteContract {
+  id: string;
+  origins: string[];
+  routes: RouteRule[];
+  unmatched: "unsupported";
+}
+export interface RouteRule {
+  id: string;
+  path: string;
+  query?: Record<string, "present" | { equals: string }>;
+  fragment?: { equals: string };
+  result: { kind: "custom"; screen: string; adapter: string }
+    | { kind: "website" | "blocked"; reason: string };
+}
+export type RouteResolution = { kind: "matched"; routeId: string; result: RouteRule["result"] }
+  | { kind: "unsupported" | "external" | "blocked" };
+export interface IsolatedSource {
+  id: string; startUrl: string; routeContractId: string; entry: string; homePaths?: string[];
+}
+export interface IsolatedManifest extends Omit<Manifest, "schemaVersion" | "sources"> {
+  schemaVersion: 2;
+  sources: IsolatedSource[];
+  routeContracts: RouteContract[];
+  foreground: { pageId: string; screens: string[] };
+}

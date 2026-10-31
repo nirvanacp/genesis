@@ -1,12 +1,12 @@
 # Genesis isolated applet foreground implementation plan
 
-Status: proposed implementation, not released behavior. Project: Genesis platform, X and Hacker News applets, and portable creator guidance. Phase: `phase-5`, selected from `proto/phase-5`. Created 31 October 2026, Asia/Kolkata.
+Status: implementation started. Route declaration types, validators and resolvers are implemented; isolated runtime execution and applet migrations are pending. Project: Genesis platform, X and Hacker News applets, and portable creator guidance. Phase: `phase-5`, selected from `proto/phase-5`. Created 31 October 2026, Asia/Kolkata.
 
 ## Request and completion boundary
 
 The user wants every applet to declare a maintained URL contract, run upstream website documents behind its own foreground, and use a framework web-view provider whenever an external or uncustomized website must be visible. Loading, network failure and navigation must never expose source DOM inside the custom layout. Preserve one X app and one HN app, their current stable IDs, accounts, records, services and reachable workflows. Future applets must use the same contract.
 
-This task produces this plan only, plus the repository-required development record. Do not implement the runtime or update the operating/architecture/creator documents during planning. The steps below specify those later edits. Do not modify `AGENTS.md`; the user has not explicitly authorized agent-instruction edits.
+The original planning task produced this plan and its development record. On 31 October 2026 the user authorized implementation, verification, repairs and creator-workflow updates for both applets. The steps below now govern that implementation. Do not modify `AGENTS.md`; the user has not explicitly authorized agent-instruction edits.
 
 The implementation is substantial. Execute the component commits in order, with the acceptance gates below. A platform demo or migrated manifest does not complete either applet. All new interfaces below are proposals and must be implemented before applet code imports them.
 
@@ -479,3 +479,9 @@ Rejected approaches: more source CSS selectors, an always-on same-document overl
 Primary risks are hidden-WebView layout/virtualization and media behavior, renderer sharing, X DOM churn, source actions requiring real user gestures, and the amount of owned rendering to migrate. The native isolation gate is deliberately before applet rewrites. Source-only behavior that cannot be qualified becomes an explicit provider workflow or a reported blocked requirement, never a silent product reduction. No unanswered product question blocks the architecture; device/provider behavior and actual source variants are implementation qualification gates.
 
 Complete only when both applets use mandatory contracts, all specified owned screen families exist, the source never appears in applet mode across the matrix, provider sessions preserve required workflows/return state, existing records survive update/rollback, new creators cannot omit the contract, current guidance matches the actual API, and real verification gaps are resolved or explicitly accepted by the user. Passing typechecks alone does not satisfy this definition.
+
+## Implementation progress
+
+- Contract foundation: schema 2 declaration types, structural schema, JavaScript semantic validation and matching, and Rust matching/validation added. API 2 remains the advertised/executable runtime. Schema 2 authoring validation is available, but build/execution explicitly fail until the isolated host is implemented. This staged guard prevents the new format falling through to legacy source rendering.
+- Verification: existing workspace typechecks, selected HN package checks, Rust check/clippy/test passed. Existing Rust suites contain zero tests. A temporary external verifier compared 33 JS/Rust route cases and 13 invalid declarations; all passed. No repository test files were added.
+- Remaining: role/session transport, native isolation/composition, adapter broker, website provider, creator generation/version release, both applet migrations, current documentation replacement and integrated interaction qualification. The emulator is available, but no new runtime has been installed or visually qualified.

@@ -41,6 +41,22 @@ pub fn validate(index: &PackageIndex) -> Result<(), String> {
         if ![1, 2].contains(&package.runtime_api_version) {
             return Err("Unsupported package runtime API".into());
         }
+        if manifest.schema_version == 2 {
+            crate::routes::validate_manifest(manifest)?;
+            return Err(
+                "Isolated applets require API 3 foreground execution, which is not available yet"
+                    .into(),
+            );
+        }
+        if !manifest.route_contracts.is_empty()
+            || manifest.foreground.is_some()
+            || manifest
+                .sources
+                .iter()
+                .any(|s| s.route_contract_id.is_some())
+        {
+            return Err("Isolated declarations require schema 2".into());
+        }
         if manifest.schema_version != 1
             || manifest.data_schema_version != 1
             || manifest.name.trim().is_empty()
