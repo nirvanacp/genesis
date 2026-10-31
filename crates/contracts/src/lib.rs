@@ -421,6 +421,7 @@ pub enum HostCommand {
         generation: u64,
         epoch: u64,
     },
+    ReturnToUrl { generation: u64, url: String },
     DeferNavigation {
         generation: u64,
         #[serde(rename = "documentId")]

@@ -144,6 +144,7 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
                 BrowserAdapter retired = sessions.remove(command.getLong("generation"));
                 if (retired != null) { retired.saveStates(browserStates); retired.destroy(); } break;
             }
+            case "returnToUrl":
             case "loadUrl":
             case "goBack":
             case "goForward":
