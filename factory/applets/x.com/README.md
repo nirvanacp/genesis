@@ -1,29 +1,26 @@
 # X applet
 
-This is the single X application inside Genesis, built over the live X website. Timelines, search, conversations, profiles, messages, media, authentication and private Categories belong to this one applet. Categories is an integrated feature whose data has a separate backend authority. X bookmarks stay in X. Saving or removing a category record never changes an upstream bookmark.
+X is one applet with native Home, Explore, Notifications, Saved and Profile sections. It uses SDK/tools 0.4.0, runtime API 3 and manifest schema 2. Stable applet/source/page/service IDs and both existing bookmark stores are preserved.
 
-## Product brief
+## Product and rendering
 
-One X client over the live mobile website, with native Home, Explore, Notifications, Saved and Profile sections. Keep X's typography, timelines, search, conversations, media, profiles, account drawer, forms and original social actions. Profile opens the actual signed-in profile. There is no separate account hub or fabricated notifications page. Saved keeps X's Bookmarks and Likes tabs and adds Categories to the same row.
+The original X document runs hidden, muted and excluded from accessibility and keyboard focus. `src/main.tsx` publishes bounded validated post, profile, notification, discovery and collection data. `src/app.tsx` renders every customized screen in a separate packaged foreground. Loading, errors, authentication gates and unfamiliar pages remain owned. Website DOM/CSS is never a foreground fallback.
 
-The user requested this correction on 31 October 2026. It supersedes the earlier plan's custom Me hub and extra Saved mode row. Preserve the stable `x-bookmarks` identity, source IDs, sessions and both bookmark authorities. Delivery remains the existing development-installed X applet in Genesis. No neighboring applet source is changed.
+The mandatory shared `x` route contract in `applet.json` is the route inventory. It maps Home, discovery/search, profiles/people, conversations, post metadata/media, notifications, Saved and collections to declared adapters and owned screens. Reserved login/settings/messages/composer/account routes are explicit website outcomes before dynamic profile rules. Unmatched routes remain unsupported with explicit website recovery. Route matching does not prove account or content validity.
 
-| Journey | Required behavior |
+| Journey | Behavior |
 | --- | --- |
-| Home / Following, Explore / search, Notifications / Mentions | Live source content and tabs, one native primary footer, no content hidden under source headers |
-| Profile, conversations, media and source account drawer | Original source behavior and return navigation; no invented replacement pages |
-| Saved | One Bookmarks / Likes / Categories row, independent upstream and private saved records |
-| Save to category | Select one or more categories, create categories, confirm the backend write and show membership on the correct post |
-| Categories | Search the whole library, filter categories, create/rename/manage categories, open the live post and return |
-| Login, settings, messages and composer | Source-owned controls and account gates; verification never submits posts/messages or changes account settings |
+| Home / Following, Explore / search, Notifications / Mentions | Owned content and observed source tabs, one native primary footer |
+| Profile and people | Actual observed signed-in profile and public profiles, with owned descriptions and links |
+| Post and media | Owned post/thread and bounded thumbnails; full playback and social controls in the website provider |
+| Saved | One Bookmarks / Likes / Categories row; upstream and private records remain independent |
+| Save to category | Owned editor, one or more categories, service receipts and backend read-back |
+| Categories | Search/filter/manage the existing library, open live post and return |
+| Login/settings/messages/composer/follow/reply/like/repost/bookmark | Explicit bridge-free website view; original forms/session and native Close/Back |
 
-See the [current audit and verification matrix](../../../.reports/phase-4/2026-10-31/083700-x-ui-audit-and-verification.md) for observed results and remaining checks. Website requests can fail independently; retain X's retry/recovery controls.
+Read operations such as tab selection, opening an observed trend and loading more use epoch-bound source commands. They revalidate the exact source element and do not submit social actions. The foreground keeps a bounded window of posts and scroll positions. Source media does not play in the background. The website provider owns playback, uploads and full original-site interactions. Verification never submits posts/messages or changes account settings.
 
-## Rendering
-
-Genesis's **Applet options → Rendering** setting is available to any applet and stored on this device for that applet ID. X's authenticated emulator session exhibited distorted text, clipped compose controls and broken video painting under the host's default software renderer. Switching X to **Hardware acceleration** immediately corrected those defects. Other applets retain their existing settings. This is a host preference, not an X manifest flag or a source font override.
-
-Requires Genesis runtime API 2 and SDK/tools 0.3.0. The applet uses only public SDK APIs. Origin permission is limited to `https://x.com`. Website sessions remain in WebView and never authorize the category server.
+The source observer identifies the signed-in account through inspected signed-in controls and its matching bootstrap entity. It never uses the viewed post author. Only the foreground persists accepted observations, bound to its current visit. Private Categories access checks that confirmed account against the backend's expected handle, and revision-bound operations prevent cross-account writes. Account loading and provider return require revalidation. Website cookies never become backend credentials.
 
 ## Backend
 
@@ -47,21 +44,10 @@ The helper stores its generated token, certificate, logs and database privately 
 
 ## Data and recovery
 
-Categories and selected bounded post snapshots are authoritative in the backend. Categories support multiple membership, up to 50 categories and 10 categories per post. A nonempty category cannot be deleted. The backend provides operation receipts and revision preconditions. After uncertain writes, check the same operation rather than resubmitting a new ID. No offline fallback or automatic import of X/HN bookmarks exists.
+Categories and selected bounded snapshots remain authoritative in the existing backend. A post can belong to up to 10 categories, with at most 50 categories. Nonempty categories cannot be deleted. Operation receipts and revision preconditions preserve uncertain-write recovery. Retry the same operation rather than inventing another ID. No offline substitute, automatic bookmark import or full media archive is provided.
 
-The packaged library verifies the signed-in X account through a one-use source round trip before showing records. Mobile detection reads the signed-in bootstrap entity and checks signed-in source controls; desktop detection uses the profile navigation link. The viewed post author is never used as the library account. It cannot inspect another WebView's DOM. Saved records are snapshots, may outlive source edits/deletion, and contain no downloaded media. Open the live post for current content and social actions.
+The previous mixed-document source CSS, injected post controls, one-use source-to-library tickets and premium folder interception were retired in this migration. The owned Save to category action is always available without changing X bookmarks. Original X bookmark/folder actions remain in the website view. Earlier phase-4 reports describe the earlier implementation and do not qualify this API-3 revision.
 
 ## Verification
 
-From this directory run `npx --no-install genesis-applet check . --json` and `npx --no-install genesis-applet build . --out /absolute/output --json`. Backend scripts support `node --check`. Static checks do not qualify source selectors, navigation, Android accessibility, service availability or source attachment handling. See the phase-4 qualification report for the actual device/provider coverage when available.
-
-No background collection, full media archive, automatic folder sync, chat passcode creation, calls/microphone integration or production distribution is supplied. Source actions and account changes require the user's intent. Preserve ordinary-site recovery for unsupported layouts.
-
-
-## Adaptive folder implementation status
-
-The qualified English post-save Add to Folder action now captures its exact post and permits X to determine native availability. A correlated navigation to `/i/verified-get-verified` or `/i/premium_sign_up` uses a bounded host return, then revalidates the account and opens Applet categories. Known denial routes subsequent folder intents in that active context to the custom editor. Ambiguous toast association, unsupported labels and older hosts retain source recovery and the explicit Categories entry. Native-capable actions remain source-owned; actual Premium picker markup and other folder-management entry points remain unqualified.
-
-Account loading is distinct from confirmed logout. Returned intents wait for account readiness and preserve epoch validation. Controller deadlines release abandoned intents; managed modal dismissal completes ownership. Native Back closes the sheet before leaving the source. X's qualified scroll-faded compose/toast containers receive a narrow opacity correction while hidden/exit values remain source-owned. Shared diagnostics inspect composed ancestry without altering website UI.
-
-Emulator verification passed: real Bookmark → Add to Folder → automatic Home return → custom editor; backend membership write and library read-back; custom removal; native Saved/Categories/Back; final opaque sheet and toast. Final installed revision is `5b38b6a4ca7e4ee3cadbc30b4b0f7e7a77b25dcb47ce4f0dedf5363117185bff`. Disposable records were removed. No subscription change was made. Physical-device/TalkBack, real tier transitions, localized/other source entries and shared multi-user provisioning remain unqualified. The personal-library service model and independent stores remain unchanged.
+Run the applet CLI check/build, workspace TypeScript check and backend `node --check` commands. Device acceptance must cover the actual authenticated applet, source tabs, internal/external transitions, provider Close/Back, category writes/read-back/cleanup and source isolation. See current phase-5 records for observed results. Static checks do not qualify current selectors or website behavior. Physical-device, localized layouts, Premium-only folder flows and multi-user service provisioning require separate qualification.

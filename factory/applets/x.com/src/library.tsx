@@ -61,6 +61,7 @@ function LibraryPage({context}:{context:AppletContext}){
     window.addEventListener("scroll",scroll,{passive:true});
     return()=>{clearTimeout(timer);window.removeEventListener("scroll",scroll);};
   },[query,filter,library]);
+  useEffect(()=>context.navigation.onBack(()=>{if(manage){setManage(false);return true;}return false;}),[context,manage]);
   const openX=(path="/i/history")=>{void savePreferences().then(()=>context.sources.open("saved",`https://x.com${path}`)).catch(e=>setError(errorMessage(e)));};
   const openPost=(row:Bookmark)=>{void savePreferences().then(()=>context.sources.open("saved",row.url)).catch(e=>setError(errorMessage(e)));};
   const choose=(id:string|null)=>{setFilter(id);setManage(false);window.scrollTo(0,0);};
