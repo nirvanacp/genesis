@@ -33,7 +33,7 @@ RPC has a 256 KiB envelope cap, 32 pending calls and a 15-second response deadli
 
 Read android/native/src/controller.rs, sources.rs, packages.rs; crates/contracts/src/lib.rs; MainActivity.java, BrowserAdapter.java, PackageAssets.java, HostViews.java; packages/sdk/src/bootstrap.ts, runtime.ts, scope.ts and rpc.ts. These implement the active TS runtime. crates/page-runtime is historical Wasm code.
 
-The observed emulator table raster-cache defect is contained to emulator customized WebViews with software layers. Physical devices and external reader views retain acceleration. This is a rendering compatibility workaround, not a general performance claim.
+Genesis exposes Applet options → Rendering for every applet. Device-local preferences are keyed by stable applet ID and apply immediately to its live and retained source views, then to future views. Hardware acceleration uses normal WebView acceleration; Software compatibility requests a software layer. Default preserves the existing emulator customized-view software workaround for table raster caches. Physical devices and independent external readers retain their default acceleration. X's distorted glyphs and media painting on the emulator were resolved with an explicit hardware preference; the default and other applets' preferences are unchanged. This is a rendering compatibility choice, not a general performance claim.
 
 ## Applet-facing boundary
 
