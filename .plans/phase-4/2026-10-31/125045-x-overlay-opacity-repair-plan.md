@@ -90,3 +90,12 @@ Run the step-2 checker after final edits and `git diff --check`. Update README a
 | Correct styles but bad pixels | Report rendering discrepancy separately with device/provider and native alpha evidence. |
 
 Root-cause evidence is complete for the reproduced .3 opacity. A guarantee that every future website overlay stays opaque would require taking over intentional source behavior and is not the chosen design. The framework provides bounded diagnosis, an owned-overlay contract and explicit qualification gates; adapters own source-specific policy. This planning task made no runtime, applet, style or test changes.
+
+
+## Implementation update, 31 October 2026
+
+Implemented shared overlay ancestry diagnostics/guidance, narrow X opacity correction, additive API-2 host-memory navigation returns, deadline/editor lifecycle repair, the qualified English post-save adapter, and account-readiness restoration. The return RPC rejects on older hosts; this is an additive API-2 contract rather than a runtime-version increment. Only confirmed source logout/account evidence changes the shared epoch; temporary loading does not.
+
+Built and updated the existing Android host and `x-bookmarks` installation. Final installed applet revision: `5b38b6a4ca7e4ee3cadbc30b4b0f7e7a77b25dcb47ce4f0dedf5363117185bff`. Real denied-account source flow opened the opaque custom editor automatically; a disposable backend membership persisted in the library and was removed. Native Saved, Categories and Back, final editor Back/cancel, solid toast, composed-opacity sampling and temporary controller scenarios passed. All diagnostic bookmarks were removed. No services were started and no real subscription changes occurred.
+
+Remaining qualification: actual native Premium chooser markup, localized/other folder entries, physical-device/TalkBack/large-text/dark-keyboard matrix and public multi-user provisioning. Existing Rust test commands completed successfully but these crates currently discover zero tests; temporary controller probes and real emulator acceptance supply the relevant behavior evidence. No new tests were created. The full-page flow uses covered location replacement and does not promise zero-frame suppression or restoration of arbitrary volatile source state. A complete blanket claim for every X folder entry remains open pending source qualification.
