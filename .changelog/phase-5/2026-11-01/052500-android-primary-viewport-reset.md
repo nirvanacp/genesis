@@ -1,0 +1,6 @@
+# Android primary viewport reset
+
+- Goal: Make a native primary-tab selection reset the visible screen as well as its hidden source URL.
+- Changes: Native isolated section events request foreground recreation. The isolated runtime honors this only at that native entry, using its existing destruction, generation and initial-layout lifecycle. Updated runtime architecture and phase-5 maintenance guidance.
+- Decisions: After fixing the remembered destination, the agent reproduced Home reselect preserving an owned scroll offset above 1,000 CSS pixels even though the source advanced epochs. A new section entry must discard transient presentation caches and scroll positions. The general host fix contains no applet routes or data. SDK internal navigation, Back and provider return do not set this flag.
+- Verification: Offline Rust check compiled the Android crate successfully, with zero unit cases in that target. Offline Gradle assembled both native ABIs and the APK, which was installed in place. Actual owned viewport inspection measured Home reselect moving from 447 CSS pixels to zero. Post navigation/Back and bookmark website entry/Close remained functional without submitting a bookmark. No new tests or record/schema changes.

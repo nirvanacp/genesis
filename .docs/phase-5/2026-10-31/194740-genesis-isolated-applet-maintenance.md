@@ -44,7 +44,7 @@ Only add `--allow-permission-change` after reviewing an intentional origin/capab
 
 ## Acceptance and diagnosis
 
-For isolated applets, native primary-section buttons explicitly open the declared source start URL and section page, including clearing an internal page for a source-only section. A remembered post, profile or category manager is not a primary tab's entry. Internal source/page navigation and Back still retain their ordinary history. Verify switching away from a detail and reselecting its primary section, as well as tapping the already-selected section.
+For isolated applets, native primary-section buttons explicitly open the declared source start URL and section page, including clearing an internal page for a source-only section. They recreate the owned foreground so cached child content and viewport offsets do not survive a root selection. A remembered post, profile or category manager is not a primary tab's entry. Internal source/page navigation, Back and website return retain their ordinary behavior. Verify switching away from a detail and reselecting its primary section, as well as tapping the already-selected section after scrolling.
 
 Start at the actual launcher. Exercise HN feeds/comments/parent/context/profile, discussion/Back, Saved/category writes/read-back/cleanup, Me/Post forms, and article/Close. Exercise X Home tabs, discovery/search, actual notification destinations, profiles/people, post/Back, media/provider return, Bookmarks/Likes/Categories and category writes/read-back/cleanup. Confirm original records remain.
 

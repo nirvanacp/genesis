@@ -207,7 +207,9 @@ impl IsolatedHost {
         self.modal = false;
         self.back_handler = false;
         self.pending_back = None;
-        let recreate = !same_app || !self.documents.contains_key("foreground");
+        let recreate = !same_app
+            || input["resetForeground"] == true
+            || !self.documents.contains_key("foreground");
         self.package = Some(package.clone());
         if package.manifest.schema_version == 1 {
             if self.generation > 0 {
