@@ -2,7 +2,7 @@ export type IconName = 'reply' | 'repost' | 'like' | 'views' | 'share' | 'more' 
 
 const paths: Record<IconName, string> = {
   reply: 'M14.05 2.24h-4.1a7.95 7.95 0 0 0 0 15.9h.05v3.62l3.8-3.62h.25a7.95 7.95 0 0 0 0-15.9Z',
-  repost: 'M4 8V5h13m-3-3 3 3-3 3M20 16v3H7m3-3-3 3 3 3M4 8l-3 3m3-3 3 3m13 5 3-3m-3 3-3-3',
+  repost: 'm3 7 4-4 4 4M7 3v14h8m6 0-4 4-4-4M17 21V7H9',
   like: 'M12 21S2.5 15.4 2.5 8.7a5.2 5.2 0 0 1 9.5-3 5.2 5.2 0 0 1 9.5 3C21.5 15.4 12 21 12 21Z',
   views: 'M4 21V11m5 10V3m6 18v-7m5 7V7',
   share: 'M12 16V2m-5 5 5-5 5 5M4 13v8h16v-8',

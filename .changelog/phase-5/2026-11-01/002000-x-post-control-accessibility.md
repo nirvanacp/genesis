@@ -1,0 +1,6 @@
+# X post control accessibility
+
+- Goal: Make every visible post control discoverable in the real Android accessibility tree while retaining the compact native-style layout.
+- Changes: The overflow summary explicitly exposes a button role. The visible timestamp link has a clear post/discussion label, replacing an extra clipped link that produced misleading tiny accessibility bounds. The repost symbol now uses two clean return arrows consistent with its meaning.
+- Decisions: During authorized ADB verification the overflow worked by touch but was absent from the Android accessibility dump. The agent kept the existing details/menu behavior and added the missing role rather than replacing its interaction model. Existing source and website-provider boundaries remain unchanged.
+- Verification: X TypeScript and applet build passed, with clean whitespace. Installed revision `577b6429ce093da624ddad03fef380d69f23c6aa7e9eb898213a959cc8420382` exposes named More options buttons and the timestamp discussion link in the real emulator tree. The preceding revision verified touch opening, native Back dismissal and category-editor cancellation. Full physical-device TalkBack and keyboard acceptance are not claimed. The running Categories backend was reconnected through the existing service provisioner without restarting or resetting it.
