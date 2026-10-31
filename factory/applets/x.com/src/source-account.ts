@@ -1,6 +1,9 @@
 import {validHandle} from "./domain";
 const accounts=new WeakMap<HTMLScriptElement,{handle:string;name:string}|null>();
+let confirmedAccounts=new WeakSet<HTMLScriptElement>();
+export function resetAccountConfirmation():void{confirmedAccounts=new WeakSet();}
 export function currentHandle():string|null{
+  if(document.querySelector('[data-testid="loginButton"]')){resetAccountConfirmation();return null;}
   const link=document.querySelector<HTMLAnchorElement>('[data-testid="AppTabBar_Profile_Link"]');
   const name=link?.getAttribute("href")?.match(/^\/([A-Za-z0-9_]{1,15})$/)?.[1];
   if(validHandle(name))return name.toLowerCase();
@@ -22,9 +25,15 @@ export function currentHandle():string|null{
   }
   const account=accounts.get(script);if(!account)return null;
   const mobile=document.querySelector('[data-testid="DashButton_ProfileIcon_Link"]');
-  if(mobile?.getAttribute("aria-label")===`Profile menu ${account.name}`)return account.handle;
-  if(document.querySelector('[data-testid="editProfileButton"]')&&location.pathname.split("/")[1]?.toLowerCase()===account.handle)return account.handle;
+  if(mobile){
+    if(mobile.getAttribute("aria-label")!==`Profile menu ${account.name}`){confirmedAccounts.delete(script);return null;}
+    confirmedAccounts.add(script);
+  }
+  if(document.querySelector('[data-testid="editProfileButton"]')&&location.pathname.split("/")[1]?.toLowerCase()===account.handle)confirmedAccounts.add(script);
   // Detail and bookmarks omit the profile button but retain signed-in navigation.
-  if(document.querySelector('[data-testid="AppTabBar_Notifications_Link"]')&&!mobile)return account.handle;
-  return null;
+  if(document.querySelector('[data-testid="AppTabBar_Notifications_Link"]')&&!mobile)confirmedAccounts.add(script);
+  // X briefly removes its navigation when an owned input opens the keyboard.
+  // Retain only a prior live-control confirmation of this exact bootstrap entity.
+  // Adapter activation, source navigation and explicit sign-out revoke it.
+  return confirmedAccounts.has(script)?account.handle:null;
 }
