@@ -15,3 +15,22 @@ For local backend startup, run `./start.sh` from this directory, or `./factory/s
 The backend is a personal single-token/single-database server, not a multi-user account system. Production requires trusted HTTPS, durable storage, backups, and managed credentials. No Node runtime is bundled in Android. Supported source routes and shell destinations are enumerated in applet.json. Real HN posting is never a routine verification action; its authorized prelaunch check remains separate.
 
 For phase 4, preserve this working applet and its stable ID. Limit HN changes to measured UI improvements under the [two-app improvement plan](../../../.plans/phase-4/2026-10-30/214048-genesis-two-complete-applets-plan.md). Search remains the existing placeholder described above; do not report it as functional search or silently expand a visual-polish change into a search/backend rewrite.
+
+## Category bookmark verification
+
+Required behavior is to save live HN stories into one or more categories within the existing `hn-bookmarks` app, edit those assignments, filter Saved, and preserve records across app restarts. The bookmark service remains authoritative. Source browsing and the existing library must remain intact. Delivery for this check was the installed Android debug applet, without a source or package update.
+
+Verified on 2026-10-31 using Android Studio device `emulator-5554`, runtime API 2, applet revision `8d0c52983ccac91033eca52f2dd57fe1322369f0f05b2ec7069346931dd4ee0d`, and the real HN source and HTTPS bookmark service. Saved initially showed an unavailable error because the HN backend was stopped and its adb reverse tunnel was missing. After explicit user authorization, `./start.sh --device emulator-5554` restored both using the existing private database. No bookmark logic defect was reproduced.
+
+| Journey | Expected result | Device result |
+| --- | --- | --- |
+| Launcher → HN → story Save → create category → save | Story appears in Saved with the category | Passed |
+| Assign two categories, select each filter, remove one assignment | Memberships persist independently; removed filter becomes empty | Passed |
+| Rename category; create a case-insensitive duplicate | Membership survives rename; duplicate is rejected visibly | Passed |
+| Saved → discussion → Back → Saved | Correct HN story opens; selected category is retained | Passed |
+| Force-stop/relaunch Genesis → HN → Saved | Bookmark, category membership, and filter persist | Passed |
+| Delete the remaining assigned category | Story stays saved under Uncategorized | Passed |
+| Cancel removal, then confirm removal | Cancellation keeps the story; confirmation removes it | Passed |
+| Clean up disposable records | Original library remains; temporary categories/bookmark are absent | Passed |
+
+The backend and HN tunnel were left running. Temporary diagnostic forwarding was removed. The package checker and shared port-registry checker passed. This check did not cover concurrent clients, write timeouts, the 50-category limit, TalkBack, large text, or other devices. The backend must be running and the device connection restored after a restart; this repair does not add automatic service startup.
