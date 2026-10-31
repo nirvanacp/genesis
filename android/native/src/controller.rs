@@ -4,9 +4,20 @@ use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet, VecDeque};
 use url::Url;
 
+struct NavigationReturn {
+    generation: u64,
+    key: String,
+    token: String,
+    paths: Vec<String>,
+    return_url: String,
+    state: Value,
+    expires: std::time::Instant,
+    matched: Option<String>,
+}
 #[derive(Default)]
 pub struct HostState {
     index: Option<PackageIndex>,
+    navigation_return: Option<NavigationReturn>,
     section_destinations: HashMap<String, SectionDestination>,
     pending_back: Option<(u64, u64, bool)>,
     instances: HashMap<InstanceId, AppletInstance>,
@@ -696,6 +707,28 @@ impl HostState {
             .is_some_and(|v| v.context.generation.0 == generation)
     }
     fn redirect_policy(&mut self, url: &str, commands: &mut Vec<C>) -> bool {
+        if let Some(guard) = &mut self.navigation_return {
+            let current = self.active.as_ref().is_some_and(|v| v.context.generation.0 == guard.generation);
+            if !current || std::time::Instant::now() >= guard.expires {
+                self.navigation_return = None;
+            } else if guard.matched.is_none() && url != guard.return_url {
+                let path = Url::parse(url).ok().filter(|u| Some(u.origin().ascii_serialization()) == origin(&guard.return_url)).map(|u| u.path().to_owned());
+                if path.as_ref().is_some_and(|p| guard.paths.contains(p)) {
+                    guard.matched = path;
+                    let generation = guard.generation;
+                    let url = guard.return_url.clone();
+                    self.notify("context.retired", commands);
+                    if let Some(view) = &mut self.active { view.document = None; view.challenge = None; view.ready = false; }
+                    commands.push(C::ReturnToUrl { generation, url });
+                    return true;
+                }
+                self.navigation_return = None;
+            } else if guard.matched.is_some() && url != guard.return_url {
+                // Ignore a late completion for the matched navigation while returning.
+                if Url::parse(url).ok().is_some_and(|u| guard.paths.iter().any(|p| p == u.path())) { return true; }
+                self.navigation_return = None;
+            }
+        }
         let Some(view) = &self.active else {
             return false;
         };
@@ -803,6 +836,7 @@ impl HostState {
         }
     }
     fn open(&mut self, selection: Selection, commands: &mut Vec<C>) -> Result<(), String> {
+        self.navigation_return = None;
         self.remember_section();
         if self.pending_opener.is_none()
             && self.active.as_ref().is_some_and(|v| {
@@ -1268,6 +1302,7 @@ impl HostState {
                 commands.push(C::ReplyToPage {generation,channel,message:json!({"type":"bound","documentId":id,"nonce":nonce,"context":view.context})});
             }
             _ => {
+                let return_is_source = message["params"]["returnUrl"].as_str().is_some_and(|u| Self::classify_url(view,u) == "source");
                 let Some(doc) = &mut view.document else {
                     return Ok(());
                 };
@@ -1355,6 +1390,30 @@ impl HostState {
                     Some("navigation.backHandler") if view.context.runtime_api_version >= 2 => {
                         view.back_handler = message["params"]["enabled"] == true;
                         commands.push(C::ReplyToPage {generation,channel,message:json!({"v":1,"documentId":doc.id,"requestId":request,"ok":true,"result":null})});
+                    }
+                    Some("navigation.armReturn") => {
+                        let params = &message["params"];
+                        let key = params["key"].as_str().filter(|s| !s.is_empty() && s.len() <= 80);
+                        let return_url = params["returnUrl"].as_str().filter(|u| u.len() <= 2048 && Self::safe_website_url(u) && origin(u) == origin(&view.url) && return_is_source);
+                        let paths = params["destinationPaths"].as_array().filter(|a| !a.is_empty() && a.len() <= 8).and_then(|a| a.iter().map(|v| v.as_str().filter(|p| p.starts_with('/') && p.len() <= 256 && !p.contains(['?', '#', '*', '%', '\\']) && !p.contains("..") && !p.starts_with("//")).map(str::to_owned)).collect::<Option<Vec<_>>>());
+                        let ttl = params["ttlMs"].as_u64().filter(|t| *t > 0 && *t <= 10000);
+                        let valid = view.selection.page_id.is_none() && view.leave_guard.is_none() && view.package.manifest.capabilities.iter().any(|c| c == "navigation-policy") && params["state"].to_string().len() <= 16384;
+                        if let (true, Some(key), Some(return_url), Some(paths), Some(ttl)) = (valid,key,return_url,paths,ttl) {
+                            let token = format!("{}:{}:{}",generation,doc.id.0,request);
+                            self.navigation_return = Some(NavigationReturn {generation,key:key.into(),token:token.clone(),paths,return_url:return_url.into(),state:params["state"].clone(),expires:std::time::Instant::now()+std::time::Duration::from_millis(ttl),matched:None});
+                            commands.push(C::ReplyToPage {generation,channel,message:json!({"v":1,"documentId":doc.id,"requestId":request,"ok":true,"result":{"token":token}})});
+                        } else {
+                            commands.push(C::ReplyToPage {generation,channel,message:json!({"v":1,"documentId":doc.id,"requestId":request,"ok":false,"error":{"code":"INVALID_ARGUMENT","message":"Invalid navigation return","retryable":false}})});
+                        }
+                    }
+                    Some("navigation.cancelReturn") => {
+                        if self.navigation_return.as_ref().is_some_and(|r| r.generation == generation && Some(r.token.as_str()) == message["params"]["token"].as_str()) { self.navigation_return = None; }
+                        commands.push(C::ReplyToPage {generation,channel,message:json!({"v":1,"documentId":doc.id,"requestId":request,"ok":true,"result":null})});
+                    }
+                    Some("navigation.takeReturn") => {
+                        let valid = self.navigation_return.as_ref().is_some_and(|r| r.generation == generation && Some(r.key.as_str()) == message["params"]["key"].as_str() && r.matched.is_some() && std::time::Instant::now() < r.expires && view.url == r.return_url);
+                        let result = if valid { let r = self.navigation_return.take().unwrap(); json!({"token":r.token,"matchedPath":r.matched,"state":r.state}) } else { Value::Null };
+                        commands.push(C::ReplyToPage {generation,channel,message:json!({"v":1,"documentId":doc.id,"requestId":request,"ok":true,"result":result})});
                     }
                     Some("navigation.leaveGuard") if view.context.runtime_api_version >= 2 => {
                         view.leave_guard = message["params"]["message"].as_str().map(|s| s.chars().take(160).collect::<String>()).filter(|s| !s.trim().is_empty());

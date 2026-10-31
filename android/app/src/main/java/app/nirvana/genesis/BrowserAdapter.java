@@ -328,6 +328,12 @@ final class BrowserAdapter {
         long expected = command.getLong("generation");
         if (!matches(expected)) return;
         switch (command.getString("type")) {
+            case "returnToUrl": {
+                beginTransition();
+                webView.stopLoading();
+                webView.evaluateJavascript("location.replace(" + JSONObject.quote(command.getString("url")) + ")", null);
+                break;
+            }
             case "loadUrl": {
                 String url = command.getString("url");
                 if (restoredHistory) {

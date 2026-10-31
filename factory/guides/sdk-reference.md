@@ -113,3 +113,7 @@ API 2 exposes `context.navigation.onBack(callback): Dispose`. Return true only a
 `context.navigation.setLeaveGuard({message})` returns an acknowledgement promise. Passing null clears it. Native section/reload/launcher navigation presents Stay/Leave while a guard is active. Register before editing, clear when the editor closes, and retain the website's own close/draft flow. This does not persist website drafts across process death.
 
 Native sections carry a host-owned section identity across `pages.open` and `sources.open`. Section switches restore the last destination within the bounded retention budget. Source details opened from a packaged page retain that page as their opener. Source/page identity still determines permissions; section identity only controls navigation/presentation.
+
+## One-use navigation returns
+
+Updated API-2 hosts expose `navigation.armReturn({key,destinationPaths,returnUrl,ttlMs,state})`, `cancelReturn(token)`, and `takeReturn(key)`. Arming acknowledges an exact same-origin path guard for at most ten seconds, with at most eight paths and 16 KiB of opaque JSON. Requires navigation-policy, a source binding and no active leave guard. A matching navigation returns with location replacement to the eligible source URL. The next binding consumes `{token,matchedPath,state}` once; state is memory-only and expires. Other navigation, source selection, generation change and process death cancel it. It grants no bridge access to excluded routes. Older hosts reject the additive RPC; callers must retain source recovery on rejection.

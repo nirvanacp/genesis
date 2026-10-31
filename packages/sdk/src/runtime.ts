@@ -40,6 +40,9 @@ export interface AppletContext {
     openModal(key: string, render: (container: HTMLElement) => void | Dispose): Dispose;
   };
   navigation: {
+    armReturn(options: {key:string;destinationPaths:string[];returnUrl:string;ttlMs:number;state:unknown}): Promise<{token:string}>;
+    cancelReturn(token:string): Promise<void>;
+    takeReturn(key:string): Promise<{token:string;matchedPath:string;state:unknown}|null>;
     onChange(callback: (url: string) => void): Dispose;
     onBack(callback: () => boolean | Promise<boolean>): Dispose;
     setLeaveGuard(guard: {message: string} | null): Promise<void>;
@@ -104,6 +107,9 @@ export class ManagedRuntime {
       ui: { mountAt: (key, anchor, options) => this.mount(key, anchor, options),
         openModal: (key, render) => this.openModal(key, render) },
       navigation: {
+        armReturn: options => this.call("navigation.armReturn", options),
+        cancelReturn: token => this.call("navigation.cancelReturn", {token}),
+        takeReturn: key => this.call("navigation.takeReturn", {key}),
         onBack: callback => {
           this.assertActive(); this.backHandler = callback;
           void this.call("navigation.backHandler", {enabled:true}).catch(() => {});
