@@ -43,11 +43,14 @@ function App({context}:{context:AppletContext}){
     Promise.resolve(library.activate(scoped.context)).then(dispose=>{if(typeof dispose==='function'){if(active)scoped.context.onDispose(dispose);else dispose();}}).catch(e=>{if(active)setError(String(e));});
     return()=>{active=false;scoped.dispose();owned.current?.replaceChildren();};
   },[context,snapshot?.pageId,snapshot?.epoch,accountReady]);
-  useEffect(()=>context.navigation.onBack(()=>{
+  useEffect(()=>{
+    if(snapshot?.pageId==='library')return;
+    return context.navigation.onBack(()=>{
     const root=context.root.getRootNode() as Document|ShadowRoot;
     const menu=root.querySelector<HTMLDetailsElement>('.post-menu[open]');
     if(!menu)return false;menu.open=false;menu.querySelector('summary')?.focus();return true;
-  }),[context]);
+    });
+  },[context,snapshot?.pageId]);
   const run=(action:Promise<unknown>)=>{setError('');void action.catch(e=>setError(String(e)));};
   const open=(raw:string,website=false)=>{
     const url=safeLink(raw);if(!url)return;const parsed=new URL(url);
