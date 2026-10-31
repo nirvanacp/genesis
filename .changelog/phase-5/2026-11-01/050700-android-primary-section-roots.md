@@ -1,0 +1,6 @@
+# Android primary section roots
+
+- Goal: Stop X Explore and other primary sections reopening a remembered child post instead of their declared entry screen.
+- Changes: Native isolated-applet footer buttons send the section's declared source start URL and explicit page destination. Source-only sections explicitly clear a remembered internal page. Legacy presentation and ordinary SDK source navigation keep their existing behavior. Updated the phase-5 maintenance guide.
+- Decisions: The user reported search opening one specific post. The agent reproduced search result to detail, Home, Explore returning to that detail. This is a general native-footer routing issue, so the fix uses manifest entries without X URLs or selectors in the host. Internal Back and category record authority remain unchanged.
+- Verification: Offline Gradle `:app:assembleDebug` passed and the host APK was updated in place on emulator-5554. The exact X search result/detail, Home, Explore sequence now opens search rather than the old post; reselecting Explore also opens its entry. HN comments/Back and Search/Saved/Home navigation were exercised afterward. X and HN remain the only launcher entries. No test files or user records changed.

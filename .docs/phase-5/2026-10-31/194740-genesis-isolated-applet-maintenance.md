@@ -44,6 +44,8 @@ Only add `--allow-permission-change` after reviewing an intentional origin/capab
 
 ## Acceptance and diagnosis
 
+For isolated applets, native primary-section buttons explicitly open the declared source start URL and section page, including clearing an internal page for a source-only section. A remembered post, profile or category manager is not a primary tab's entry. Internal source/page navigation and Back still retain their ordinary history. Verify switching away from a detail and reselecting its primary section, as well as tapping the already-selected section.
+
 Start at the actual launcher. Exercise HN feeds/comments/parent/context/profile, discussion/Back, Saved/category writes/read-back/cleanup, Me/Post forms, and article/Close. Exercise X Home tabs, discovery/search, actual notification destinations, profiles/people, post/Back, media/provider return, Bookmarks/Likes/Categories and category writes/read-back/cleanup. Confirm original records remain.
 
 Test loading and failed source requests separately from successful empty results. HN keeps bounded public content with a stale notice after failed refresh. X restores cached private content only after an accepted current-account observation. Backend failures must remain visible and must not invent empty collections or silently retry uncertain writes. Verify hidden source content is absent from applet accessibility, focus and foreground pixels; original website content is visible only after explicit provider entry.
