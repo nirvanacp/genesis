@@ -1,5 +1,5 @@
 :host{display:block;min-height:100dvh;background:var(--paper)}
-.x-app{max-width:600px;margin:0 auto;background:var(--paper);min-height:100dvh;padding-bottom:88px}
+.x-app{color:var(--ink);font:15px/20px system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;max-width:600px;margin:0 auto;background:var(--paper);min-height:100dvh;padding-bottom:88px}
 .screen-title{position:sticky;top:0;z-index:4;min-height:53px;padding:0 4px 0 16px;border-bottom:1px solid var(--line);display:flex;gap:8px;justify-content:space-between;align-items:center;background:var(--paper)}
 .screen-title h1{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .header-actions{display:flex;flex:none}

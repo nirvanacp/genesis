@@ -1,0 +1,6 @@
+# X owned theme inheritance
+
+- Goal: Keep owned post/header text readable in dark appearance instead of inheriting the native host's light-mode foreground color.
+- Changes: The X main element explicitly applies the shared ink token and system body font/line height. Other semantic colors, native bottom navigation and opaque category panels remain under their existing owners.
+- Decisions: Composed-style inspection found `--ink: #e7e9ea` available while post text still computed to the host's dark green light-mode foreground. The agent fixed the applet's inheritance boundary rather than changing the host or adding theme-specific overrides to individual text elements.
+- Verification: X TypeScript, manifest check/build and whitespace checks passed. Installed revision `d01d8b760798903496ef84d7109ff1ba4f28eb2e9d6e1e6ef34d75906a73b0ae` displays readable dark feed/body text and opaque dark menus/sheets. A 320-CSS-pixel viewport with doubled system text preserves wrapping, menu access and scrolling category body with Close/Cancel available. The native shell's labels clip at that extreme setting, a separate platform limitation. Original light mode, density 420 and font scale 1.0 were restored; no draft was saved.
