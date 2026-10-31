@@ -226,7 +226,10 @@ impl IsolatedHost {
         }
         self.documents.remove("source");
         self.last_publish = None;
-        out.push(json!({"type":"isolatedNavigate","generation":self.generation,"epoch":self.epoch,"url":self.url,"pageId":self.page,"selection":self.selection,"source":source,"detail":!self.history.is_empty()}));
+        let home = url::Url::parse(&self.url)
+            .is_ok_and(|url| source.home_paths.iter().any(|path| path == url.path()));
+        let detail = !self.page.is_empty() || (!self.history.is_empty() && !home);
+        out.push(json!({"type":"isolatedNavigate","generation":self.generation,"epoch":self.epoch,"url":self.url,"pageId":self.page,"selection":self.selection,"source":source,"detail":detail}));
         self.route_state(out);
         Ok(())
     }
