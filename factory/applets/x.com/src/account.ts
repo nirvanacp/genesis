@@ -107,7 +107,11 @@ export async function requireLibrarySession(context:AppletContext,library:Librar
   return session;
 }
 export function watchAccount(context:AppletContext):void{
-  const refresh=()=>{void observeAccount(context).catch(()=>{});};
+  const refresh=()=>{
+    // Loading/reloading removes signed-in controls temporarily. That is not a
+    // logout and must not invalidate a handoff from this same account.
+    if(currentHandle()||document.querySelector('[data-testid="loginButton"]')||/^\/(login|logout)(?:\/|$)/.test(location.pathname))void observeAccount(context).catch(()=>{});
+  };
   refresh();context.onFocus(refresh);context.navigation.onChange(refresh);
   context.watchElements("x-account-session",{selector:'[data-testid="AppTabBar_Profile_Link"],[data-testid="DashButton_ProfileIcon_Link"],[data-testid="AppTabBar_Notifications_Link"]',attributes:["href","aria-label"],text:false,limit:4,contentKey:e=>e.getAttribute("href")??e.getAttribute("aria-label")},{enter:refresh,update:refresh,leave:refresh});
 }
