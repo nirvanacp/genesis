@@ -7,6 +7,18 @@ import {isObject,postUrl,validSnapshot,type Post} from './domain';
 
 const key='x-folder-return',deniedPaths=['/i/verified-get-verified','/i/premium_sign_up'];
 interface Capture {post:Post;handle:string;url:string;time:number;article:Element;ambiguous:boolean}
+function returnState(post:Post,account:AccountSession):{post:Post;handle:string;epoch:string}{
+  const bounded=structuredClone(post);
+  const state={post:bounded,handle:account.handle!,epoch:account.epoch};
+  const size=()=>new TextEncoder().encode(JSON.stringify(state)).length;
+  // Leave headroom for JSON escaping and the host's 16 KiB state limit.
+  while(size()>14000&&bounded.snapshot.links.length)bounded.snapshot.links.pop();
+  while(size()>14000&&bounded.snapshot.text){
+    bounded.snapshot.text=[...bounded.snapshot.text].slice(0,-100).join('');
+    bounded.snapshot.textState=bounded.snapshot.text?'excerpt':'unavailable';
+  }
+  return state;
+}
 export function folderSource(context:AppletContext):void {
   const controller=folderController(context);
   const status=(value:string)=>{context.root.dataset.folderFlow=value;};status("ready");
@@ -61,7 +73,7 @@ export function folderSource(context:AppletContext):void {
       if(controller.state(account)==='custom'){open(saved.post,account);return;}
       // Let X decide capability. Only a causally matched denied route returns.
       try {
-        const armed=await context.navigation.armReturn({key,destinationPaths:deniedPaths,returnUrl:saved.url,ttlMs:10000,state:{post:saved.post,handle:account.handle,epoch:account.epoch}});
+        const armed=await context.navigation.armReturn({key,destinationPaths:deniedPaths,returnUrl:saved.url,ttlMs:10000,state:returnState(saved.post,account)});
         token=armed.token;status("armed");
       } catch {status("host-unavailable");/* Source action must remain usable on older hosts. */}
       if(context.signal.aborted||currentHandle()!==account.handle||!target.isConnected||location.href!==saved.url){cancelGuard();return;}

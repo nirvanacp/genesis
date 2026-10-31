@@ -60,7 +60,12 @@ export class Repository {
     const session=await requireLibrarySession(this.context,library),pending=await this.pending(library);
     const saved=this.pendingPayload;
     if(!saved||saved.marker.libraryId!==library.libraryId||saved.epoch!==session.epoch||pending?.value.operationId!==saved.marker.operationId)throw new LibraryError("PENDING","Refresh the original change before abandoning it.");
-    await this.settled(library,await this.backend.mutate(saved.marker.operationId,saved.marker.kind,saved.payload));
+    try{
+      await this.settled(library,await this.backend.mutate(saved.marker.operationId,saved.marker.kind,saved.payload));
+    }catch(error){
+      if(error instanceof LibraryError&&!error.uncertain)await this.clear(library,saved.marker.operationId);
+      throw error;
+    }
   }
   async abandon(library:Library):Promise<void>{
     if(await this.reconcile(library))return;
