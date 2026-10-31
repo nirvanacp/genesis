@@ -1,5 +1,7 @@
 # Verify and maintain an applet
 
+Read [the isolated architecture](isolated-applets.md) and its route inventory first. Check the owned foreground, hidden adapter and explicit website provider independently, then together.
+
 Start with the requested behavior and the selected applet, not the entire platform. Record SDK/package version, source routes, host build, and device/provider for live checks. Follow [factory instructions](../AGENTS.md); do not create or modify test files without a coverage request.
 
 Use the brief and acceptance-flow table from [product scope and clarification](product-scope.md). Verify the requested application, including preserved workflows, rather than only the newest component. Ask before assuming expected behavior when a material product choice is unresolved. Follow the user's existing authorization for both applet and platform work.
@@ -71,3 +73,7 @@ For each requirement separately report implementation status and verification re
 Website file inputs use Android's system document picker for single or multiple selection, up to 16 selected content URIs. No blanket storage or camera permission is requested. File-selection cancellation and stale-view result rejection need device qualification; attachments stay in the requesting website workflow, never in applet records.
 
 For faded overlays, inspect the control and its composed ancestor chain: opacity, alpha backgrounds, filters, blending and stacking contexts. Shadow DOM does not prevent ancestor opacity. Distinguish an intentional backdrop from a faded dialog panel. Compare settled samples with animation entry/exit. Correct computed styles with incorrect pixels require a separate native renderer/ancestor-alpha investigation. Genesis maintainers can use `node tools/inspect-ui-surfaces.mjs <CDP endpoint> <target-id> <selector>…` from the monorepo. It samples for one second without mutating DOM or collecting page text. This is a maintainer tool, not a portable SDK API.
+
+## Isolated-runtime acceptance
+
+Verify actual internal links, query/hash changes, section switches, Saved/detail/Back, external reader/Close and source-owned forms. During slow/offline loading and source errors, inspect frame recordings and accessibility trees to confirm no upstream pixels/nodes enter applet mode. Check source audio, autofocus, popups and fullscreen attempts. Recycled source rows and stale callbacks must not update another item/account/route. Confirm provider Close restores owned state and revalidates account data. Report exact device/provider/revisions and separate synthetic from real authenticated checks.
