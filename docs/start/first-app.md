@@ -62,4 +62,4 @@ Ask your agent to save the source and dependency lockfile in version control. Ke
 
 **Done when:** your app appears in Apps, the intended layout changes work, and browsing returns correctly.
 
-**Next:** [Describe what you want](../create/describe-your-app.md).
+**Next:** [Use your app](../use/everyday-use.md), or [describe your next change](../create/describe-your-app.md).
