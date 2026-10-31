@@ -102,6 +102,7 @@ export class ManagedRuntime {
   private backHandler: (() => boolean | Promise<boolean>) | undefined;
   private modal: Dispose | undefined;
   private frame = 0;
+  private readonly sourceScheduling: boolean;
   private serial = 0;
   private revision = 0;
   private url = location.href;
@@ -117,6 +118,7 @@ export class ManagedRuntime {
 
   constructor(binding: ExecutionContext, root: HTMLElement, private readonly call: HostCall,
     private readonly fatal: (error: unknown) => void) {
+    this.sourceScheduling = binding.runtimeApiVersion === 3 && binding.role === "source";
     this.context = {
       source: {
         publish: snapshot => {
@@ -188,7 +190,7 @@ export class ManagedRuntime {
     for (const name of ["popstate", "hashchange", "pageshow"]) {
       window.addEventListener(name, () => this.route(), { signal: this.abort.signal });
     }
-    const poll = setInterval(() => { if (!document.hidden) this.route(); }, 250);
+    const poll = setInterval(() => { if (this.sourceScheduling || !document.hidden) this.route(); }, 250);
     this.track(() => clearInterval(poll));
   }
   sourceSnapshot(snapshot: SourceSnapshot): void {
@@ -212,7 +214,8 @@ export class ManagedRuntime {
       ...(attributes.length ? { attributes: true, attributeFilter: attributes } : {}) });
   }
   private schedule(): void {
-    if (!this.frame && !this.disposed) this.frame = requestAnimationFrame(() => {
+    if (this.frame || this.disposed) return;
+    const reconcile = () => {
       this.frame = 0; const start = performance.now();
       this.route();
       for (const effect of [...this.effects.values()]) {
@@ -228,7 +231,10 @@ export class ManagedRuntime {
       }
       for (const watcher of [...this.watchers.values()]) if (!this.disposed && watcher.dirty) this.reconcile(watcher);
       this.batches.push(performance.now() - start); if (this.batches.length > 200) this.batches.shift();
-    });
+    };
+    // A deliberately occluded source has no display-frame guarantee. DOM work
+    // must progress independently of the foreground compositor.
+    this.frame = this.sourceScheduling ? window.setTimeout(reconcile, 32) : requestAnimationFrame(reconcile);
   }
   private watch(key: string, options: WatchOptions, handlers: ElementHandlers): Dispose {
     this.assertActive();
@@ -396,7 +402,10 @@ export class ManagedRuntime {
     clearTimeout(this.publishTimer); this.sourceListeners.clear(); this.commandListeners.clear();
     if (this.disposed) return;
     this.disposed = true; this.abort.abort(); this.modal?.();
-    if (this.frame) cancelAnimationFrame(this.frame); this.frame = 0;
+    if (this.frame) {
+      if (this.sourceScheduling) clearTimeout(this.frame); else cancelAnimationFrame(this.frame);
+    }
+    this.frame = 0;
     // Each registered callback runs once; exceptions cannot skip remaining cleanup.
     for (const dispose of [...this.disposers].reverse()) dispose();
     this.observer.disconnect(); this.watchers.clear(); this.effects.clear(); this.routes.clear(); this.storageListeners.clear();
