@@ -29,6 +29,14 @@ Requires Genesis runtime API 2 and SDK/tools 0.3.0. The applet uses only public 
 
 The separate Node 24 server uses built-in HTTP/HTTPS and SQLite. It is not bundled into Android. It requires `X_BACKEND_TOKEN`, `X_BACKEND_DB` and, on first database creation, `X_EXPECTED_HANDLE`. A service token authorizes one personal library; the handle check prevents accidental account mixing, not malicious impersonation. Multiple users/accounts are not supported.
 
+For routine local startup, run `./start.sh` from this directory, or `./factory/start-applet-servers.sh` from the Genesis root for all applets. Add `--device <adb-serial>` after reboot/reconnecting Android to restore its tunnel and service connection. X reserves port 8788 in `factory/ports.json`. Node 24, installed workspace dependencies and OpenSSL are required; no separate SQLite daemon is needed. The helper supplies the token/database/TLS environment and reuses private state at `~/.local/share/genesis/services/x-bookmarks/bookmarks/`, including `documents.sqlite3` and `server.log`. Only for a new database, prefix startup with `X_EXPECTED_HANDLE=your_handle`. `./start.sh --stop` stops the managed server without deleting records. See [startup and ports](../../guides/services-and-data.md#local-startup-and-port-assignments). Agents maintain and statically check scripts; they must not run services unless explicitly asked.
+
+| Local startup journey | Expected result | Verification |
+| --- | --- | --- |
+| Run `start.sh` after a computer restart | Existing X library/account and credentials reused; authenticated HTTPS ready on 8788 | Static checks only; startup intentionally not executed |
+| Rerun with `--device <serial>`, open X Categories | Android tunnel and connection restored; same private library available | Operator/device verification required |
+| Run `start.sh --stop` | Backend stops; private library preserved | Static checks only |
+
 For the development emulator, use the existing creator helper with the expected handle in the process environment:
 
 ```sh
