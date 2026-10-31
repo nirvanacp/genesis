@@ -13,6 +13,20 @@ export default defineSourceAdapter({adapters:screens,activate(context){
     const kind=routeKind(location.pathname);if(!kind){void context.source.publish({state:'unsupported'});return;}
     const handle=currentHandle(),signedOut=!!document.querySelector('[data-testid="loginButton"]');
     if(context.sourceId==='account'&&location.pathname==='/home'&&handle){location.replace(`https://x.com/${handle}`);return;}
+    if(kind==='post-metadata'&&location.pathname.endsWith('/analytics')){
+      const help=document.querySelector<HTMLAnchorElement>('[role="dialog"] a[href="https://help.x.com/using-twitter/view-counts"]');
+      const dialog=help?.closest('[role="dialog"]'),post=postUrl(location.pathname.replace(/\/analytics$/,''));
+      if(help&&dialog&&post){
+        const controls=new Set([...dialog.querySelectorAll('button,[role="button"]')].map(e=>text(e,100)));
+        const lines=text(dialog,1800).split('\n').map(s=>s.trim()).filter(Boolean);
+        const title=lines[0]?.slice(0,200),description=lines.slice(1).filter(line=>!controls.has(line)).join('\n');
+        const helpUrl=destination(help.href),label=text(help,100);
+        if(title&&description&&helpUrl&&label){
+          const notice:XModel={kind,title,account:{status:handle?'signed-in':signedOut?'signed-out':'unknown',handle},tabs:[],posts:[],entries:[],partial:false,emptyText:null,postNotice:{title,description,help:{label,url:helpUrl},postUrl:post.url}};
+          void context.source.publish({state:'ready',data:notice});return;
+        }
+      }
+    }
     if(kind==='media'){
       const match=location.pathname.match(/^\/([A-Za-z0-9_]{1,15})\/status\/([0-9]{1,25})\/(photo|video)\/([0-9]+)$/);
       const overlay=document.querySelector('[data-testid="swipe-to-dismiss"]');
