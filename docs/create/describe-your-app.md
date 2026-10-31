@@ -51,4 +51,4 @@ An installed preview or a screenshot does not prove the whole app works. Ask for
 
 **Try now:** write one request with an action and a visible result.
 
-**Back to:** [Learning path](../README.md).
+**Next:** [Add controls and screens](custom-screens.md).
