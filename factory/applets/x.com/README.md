@@ -2,13 +2,26 @@
 
 This is the single X application inside Genesis, built over the live X website. Timelines, search, conversations, profiles, messages, media, authentication and private Categories belong to this one applet. Categories is an integrated feature whose data has a separate backend authority. X bookmarks stay in X. Saving or removing a category record never changes an upstream bookmark.
 
-The implementation is development-only pending authenticated Android qualification. X currently rate-limits login on the verification emulator; it is not included in the default APK package selection. See [the qualification report](../../../.reports/phase-4/2026-10-30/211400-genesis-x-android-verification.md).
+## Product brief
 
-Follow the [two-app improvement plan](../../../.plans/phase-4/2026-10-30/214048-genesis-two-complete-applets-plan.md). Development-only availability is temporary. Do not deliver X UI preview, a separate library app or route-specific X apps to the everyday launcher. The descriptions below identify implemented components; the report limits what has actually been qualified.
+One X client over the live mobile website, with native Home, Explore, Notifications, Saved and Profile sections. Keep X's typography, timelines, search, conversations, media, profiles, account drawer, forms and original social actions. Profile opens the actual signed-in profile. There is no separate account hub or fabricated notifications page. Saved keeps X's Bookmarks and Likes tabs and adds Categories to the same row.
 
-## Implemented experience awaiting full qualification
+The user requested this correction on 31 October 2026. It supersedes the earlier plan's custom Me hub and extra Saved mode row. Preserve the stable `x-bookmarks` identity, source IDs, sessions and both bookmark authorities. Delivery remains the existing development-installed X applet in Genesis. No neighboring applet source is changed.
 
-Native Home, Explore, Alerts, Saved and Me sections use a neutral shell. Live feeds, search, profiles, conversations, photo/video routes, Lists and Communities retain source controls. A separate folder action captures the selected post into one or more categories. Saved switches between X History and the applet-owned Categories page with full-library search and category management. Login, settings, chat, calls, Grok and paid/creator routes retain ordinary source presentation. Source selectors can change independently.
+| Journey | Required behavior |
+| --- | --- |
+| Home / Following, Explore / search, Notifications / Mentions | Live source content and tabs, one native primary footer, no content hidden under source headers |
+| Profile, conversations, media and source account drawer | Original source behavior and return navigation; no invented replacement pages |
+| Saved | One Bookmarks / Likes / Categories row, independent upstream and private saved records |
+| Save to category | Select one or more categories, create categories, confirm the backend write and show membership on the correct post |
+| Categories | Search the whole library, filter categories, create/rename/manage categories, open the live post and return |
+| Login, settings, messages and composer | Source-owned controls and account gates; verification never submits posts/messages or changes account settings |
+
+See the [current audit and verification matrix](../../../.reports/phase-4/2026-10-31/083700-x-ui-audit-and-verification.md) for observed results and remaining checks. Website requests can fail independently; retain X's retry/recovery controls.
+
+## Rendering
+
+Genesis's **Applet options → Rendering** setting is available to any applet and stored on this device for that applet ID. X's authenticated emulator session exhibited distorted text, clipped compose controls and broken video painting under the host's default software renderer. Switching X to **Hardware acceleration** immediately corrected those defects. Other applets retain their existing settings. This is a host preference, not an X manifest flag or a source font override.
 
 Requires Genesis runtime API 2 and SDK/tools 0.3.0. The applet uses only public SDK APIs. Origin permission is limited to `https://x.com`. Website sessions remain in WebView and never authorize the category server.
 
@@ -28,7 +41,7 @@ The helper stores its generated token, certificate, logs and database privately 
 
 Categories and selected bounded post snapshots are authoritative in the backend. Categories support multiple membership, up to 50 categories and 10 categories per post. A nonempty category cannot be deleted. The backend provides operation receipts and revision preconditions. After uncertain writes, check the same operation rather than resubmitting a new ID. No offline fallback or automatic import of X/HN bookmarks exists.
 
-The packaged library verifies the visible X account through a one-use source round trip before showing records. It cannot inspect another WebView's DOM. Saved records are snapshots, may outlive source edits/deletion, and contain no downloaded media. Open the live post for current content and social actions.
+The packaged library verifies the signed-in X account through a one-use source round trip before showing records. Mobile detection reads the signed-in bootstrap entity and checks signed-in source controls; desktop detection uses the profile navigation link. The viewed post author is never used as the library account. It cannot inspect another WebView's DOM. Saved records are snapshots, may outlive source edits/deletion, and contain no downloaded media. Open the live post for current content and social actions.
 
 ## Verification
 
