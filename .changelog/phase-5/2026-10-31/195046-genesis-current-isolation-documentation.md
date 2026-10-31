@@ -1,0 +1,6 @@
+# Current isolated applet documentation
+
+- Goal: Make current repository and portable builder guidance describe the implemented architecture and verification boundaries.
+- Changes: Rewrote current platform/runtime/HN/X architecture, refreshed service/data boundaries and root/factory entrypoints, and added a phase-5 operating guide. Factory guides cover role-specific APIs, provider draft/recovery behavior and scoped debugging. The plan reconciles implemented readiness/snapshot/focus notifications and dispatch-only commands with earlier proposed names.
+- Decisions: The agent preserves HN APK selection and X development delivery rather than expanding release distribution. Historical phase records remain historical. Existing public draft records are retained but not injected into original forms; no durable POST/JavaScript restoration is claimed. Factory guidance was updated before applet migration and finalized after qualification.
+- Verification: All 21 current Markdown guidance paths passed local-link checks. Workspace TypeScript, selected-package and port-registry checks passed. SDK/tools archives packed successfully; the unpacked CLI and SDK passed independent vanilla/React create/check/build with existing dependencies, and exported guidance matched factory. No new dependencies or repository tests were installed/added.

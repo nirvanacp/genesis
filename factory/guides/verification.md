@@ -77,3 +77,7 @@ For faded overlays, inspect the control and its composed ancestor chain: opacity
 ## Isolated-runtime acceptance
 
 Verify actual internal links, query/hash changes, section switches, Saved/detail/Back, external reader/Close and source-owned forms. During slow/offline loading and source errors, inspect frame recordings and accessibility trees to confirm no upstream pixels/nodes enter applet mode. Check source audio, autofocus, popups and fullscreen attempts. Recycled source rows and stale callbacks must not update another item/account/route. Confirm provider Close restores owned state and revalidates account data. Report exact device/provider/revisions and separate synthetic from real authenticated checks.
+
+## Isolated runtime diagnostics
+
+In a debuggable host, Developer tools / Inspect current document explicitly enables local WebView inspection for the current applet visit. Leaving disables it. Keep diagnostic forwarding local and remove it afterward. Simulate creator failure and Terminate renderer should retain a native opaque recovery screen, with Retry recreating the foreground. The legacy 20-reload control is not available for API 3. Source-only schema-1 packages in a mixed API-3 host use ordinary website presentation; they are not isolated custom applets.

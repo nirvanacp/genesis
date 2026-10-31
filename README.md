@@ -6,7 +6,7 @@ There are two development layers:
 
 | Layer | Owns | Start here |
 | --- | --- | --- |
-| Genesis platform | Android browser integration and native shell, Rust lifecycle/policy, general SDK capabilities, package and creator tooling | [Root AGENTS.md](AGENTS.md), [architecture](.architecture/README.md), [phase-3 maintenance](.docs/phase-3/2026-10-30/162034-genesis-platform-maintenance.md) |
+| Genesis platform | Android browser integration and native shell, Rust lifecycle/policy, general SDK capabilities, package and creator tooling | [Root AGENTS.md](AGENTS.md), [architecture](.architecture/README.md), [phase-5 maintenance](.docs/phase-5/2026-10-31/194740-genesis-isolated-applet-maintenance.md) |
 | Applets | Website adapters, custom UI, application rules/data, optional independently operated backends | [Factory](factory/README.md), [factory AGENTS.md](factory/AGENTS.md), [builder skills](factory/skills/README.md) |
 
 A Genesis developer may work in either layer. Follow the instructions for the layer being changed. An applet author should use public SDK capabilities and their own code; they should not need to learn the host implementation to add application behavior.
@@ -70,18 +70,14 @@ npx --no-install genesis-applet service status factory/applets/x.com --local --j
 
 These startup scripts are operator commands. Coding agents maintain and statically check them, but must not run services unless explicitly asked. See [services and data](factory/guides/services-and-data.md#local-startup-and-port-assignments) for additional configuration and the contract for future applets with multiple servers or storage dependencies.
 
-## Phase-4 product direction
+## Current phase-5 state
 
-The intended delivery contains two everyday applications: Hacker News and one complete X client built over x.com. Website sections, owned pages, category storage and external readers belong within each applet. Verification packages must not appear as additional everyday apps. Follow the [two-app improvement plan](.plans/phase-4/2026-10-30/214048-genesis-two-complete-applets-plan.md). The current package-selection gap below is unfinished work, not the product definition.
+HN and X use mandatory schema-2 route inventories, hidden website adapters and a separate owned foreground. Native opaque rendering, source mute/accessibility/focus suppression, explicit website views, draft departure guards and renderer recovery keep original website DOM out of the customized layout. SDK/tools 0.4.0 and runtime API 3 are the supported authoring contract. New vanilla/React starters and the portable factory kit follow it.
 
-## Current state
+Stable applet identities, website cookies, native sections and backend records are preserved. HN remains selected for APK bundling; X remains development-installed in the existing debug host. This preserves the migration plan's distribution scope. A clean release APK does not implicitly include X. YouTube remains inactive. Production publisher trust/distribution, arbitrary background servers and camera/microphone support remain separate work.
 
-Only HN is bundled. Its frontend is under `factory/applets/news.ycombinator.com/src`; its separate Node/SQLite service is under `factory/applets/news.ycombinator.com/backend`. Bookmarks/categories are authoritative on that service. Generic host storage holds public account coordination and Post drafts; existing legacy bookmarks are preserved and never silently uploaded. The backend does not run inside Genesis.
+Source adapters publish bounded validated data and perform only revalidated read/navigation commands. Foregrounds own application UI, records/services and explicit website presentation. Website forms/social mutations and protected media keep their original session and controls in the provider. No process-death form restoration or POST replay is promised. Existing HN Search remains its documented placeholder.
 
-SDK/tools `0.3.0` support managed DOM effects, owned React pages, source/page navigation, local documents, and declared HTTPS services. Sources can represent several websites and share applet records/pages. HN's three source entries represent sections of the same website. X has an implemented development applet with incomplete authenticated qualification; YouTube remains inactive.
+The emulator migration checks cover real HN/X browsing, account-observed Categories, save/read-back/cleanup, internal/external return paths, media/notification variants, failed refresh, draft Stay/Leave and renderer recovery. Exact builds and unverified boundaries are recorded under `.reports/phase-5/`; historical reports qualify only their recorded environments.
 
-The standalone `genesis-applet` CLI creates/checks/builds applets and installs/updates/rolls back code in a compatible prebuilt debug host over authorized adb. Applet authors need no native compiler or platform source. Maintainers distribute packed SDK/tools archives; they are not published to a public registry. Release builds use bundled packages only. Production publisher trust/distribution and coding-agent connectors remain future work. The [phase-3 plan](.plans/phase-3/2026-10-30/162034-genesis-platform-applet-separation-plan.md) records the component decisions and implementation progress.
-
-The [29 October phone report](.reports/phase-2/2026-10-29/223320-genesis-android-phone-verification.md) records working HN flows on one Samsung phone/provider with a Mac-hosted HTTPS backend over adb reverse. It does not establish production distribution readiness or the full device/accessibility matrix. Release signing, production service provisioning, and broader qualification remain open.
-
-Read [product intent](.notes/README.md) for the direction. For current phase-4 development, use the [X operating guide](.docs/phase-4/2026-10-30/210800-genesis-x-development-guide.md) and the controlling two-app plan. The earlier [phase-3 maintenance guide](.docs/phase-3/2026-10-30/162034-genesis-platform-maintenance.md) supplies background tooling guidance or [applet getting started](factory/guides/getting-started.md), according to the task. Archived plans are historical, not specifications.
+Use [current maintenance](.docs/phase-5/2026-10-31/194740-genesis-isolated-applet-maintenance.md), [architecture](.architecture/README.md), [the implementation plan](.plans/phase-5/2026-10-31/171848-genesis-isolated-applet-architecture-plan.md) and [factory getting started](factory/guides/getting-started.md). Earlier phase-3/4 plans/guides are background where superseded by this API-3 contract.
