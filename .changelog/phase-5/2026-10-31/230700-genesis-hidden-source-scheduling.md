@@ -1,0 +1,6 @@
+# Hidden source observation scheduling
+
+- Goal: Keep API-3 source extraction progressing when its WebView is deliberately occluded by the owned foreground.
+- Changes: ManagedRuntime schedules source watcher batches with a coalesced 32 ms timer, keeps source route polling active independently of document visibility, and cancels pending batches on disposal. Foreground and legacy effects retain animation-frame scheduling. Updated the creator isolation guide.
+- Decisions: The agent traced a real X Saved fallback to delayed hidden-source observation. Source DOM had finished loading and the actual extraction/account validators passed, while the owned model remained stale until inspection. Source observation must not depend on display-frame availability. This is a shared SDK capability, not a website-specific retry loop.
+- Verification: Workspace typechecks, both applet bundles, 33 JavaScript/Rust route cases, 13 rejected declarations and actual-manifest lifecycle verifiers passed. A temporary runtime verifier withheld every animation frame and confirmed source initial observation, mutation updates and pending-work cancellation. No repository tests were added or changed. Final live emulator timing is recorded in the acceptance report.
