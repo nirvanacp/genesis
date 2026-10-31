@@ -25,6 +25,7 @@ function LibraryPage({context}:{context:AppletContext}){
       setCategories(groups);setRows(previous=>after?[...previous,...page.entries.filter(row=>!previous.some(old=>old.postId===row.postId))]:page.entries);setCursor(page.nextCursor);setPending(!settled);setReady(true);failures.current=0;
       if(restoreScroll.current){restoreScroll.current=false;requestAnimationFrame(()=>window.scrollTo(0,preferences.current.scroll));}
     }catch(e){if(context.signal.aborted||version!==sequence.current)return;
+      if(e instanceof LibraryError&&e.code==="CATEGORY_MISSING"&&filter){setFilter(null);setRows([]);setCursor(null);setReady(false);return;}
       if(e instanceof LibraryError&&e.code==="CURSOR_STALE"&&after&&failures.current++<2){void load(null);return;}
       setError(errorMessage(e));
     }finally{if(version===sequence.current&&!context.signal.aborted)setLoading(false);}
