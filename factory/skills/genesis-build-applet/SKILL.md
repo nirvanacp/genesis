@@ -5,6 +5,8 @@ description: Build a Genesis applet from a user's desired website workflow, incl
 
 # Build a Genesis applet
 
+Read [design and interaction fidelity](../../guides/design.md) before choosing the UI. Unless the user supplies a detailed alternative, aim for the source product's native mobile design and use its live mobile website where native details are uncertain. Preserve native shell navigation, rebuild the UI in owned code, and make custom additions visually coherent. Verify every changed interaction as well as appearance.
+
 Read [the API-3 isolation contract](../../guides/isolated-applets.md), then [factory instructions](../../AGENTS.md), [product scope and clarification](../../guides/product-scope.md), [getting started](../../guides/getting-started.md), and [SDK reference](../../guides/sdk-reference.md). Resolve links from this file's directory.
 
 1. Establish the applet directory and the actual installed SDK/tools/host versions. Use matching create/check/build tools and the current reference, not a hard-coded historical version. Verify host compatibility before dev install. Do not confuse debug loading with production distribution.

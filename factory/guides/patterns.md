@@ -2,6 +2,8 @@
 
 Use the [isolated applet architecture](isolated-applets.md), [SDK reference](sdk-reference.md) and [factory instructions](../AGENTS.md). Current applets use an owned foreground and a hidden source adapter. Website DOM is an extraction input, not the layout users interact with.
 
+Follow [design and interaction fidelity](design.md) before choosing an applet's appearance. Unless the user provides a detailed alternative, preserve the source product's mobile identity, aiming for its native app conventions and using its live mobile website where native details are uncertain. Rebuild that design in owned code. Keep the native primary navigation, compare connected screens, and apply the same tokens to applet-only features. Verify every changed interaction separately from visual comparison.
+
 Separate applet modules for extraction, model validation, owned screen rendering, source read/navigation commands, repositories and backend calls. Shared platform modules contain generic lifecycle/capability behavior only. Reuse an abstraction when several real adapters need it, not before.
 
 Use stable content IDs and bounded managed watchers. Revalidate DOM identity, route, account and operation sequence after async work. Dispose observers, subscriptions and listeners. Never treat missing selectors as an empty page. Extract the smallest valid model; do not clone or transfer a live website tree, arbitrary HTML, cookies or credentials.

@@ -20,6 +20,7 @@ Read the prompt, previous decisions, existing manifest/README and available auth
 - Which behavior the website supplies, which UI the applet owns and which store is authoritative.
 - Delivery target, such as source code, an installed debug applet or a bundled build. Do not confuse these.
 - User-approved exclusions, reversible technical assumptions and unresolved material choices. Attribute material decisions to the user or agent.
+- The visual reference and any explicit design/navigation overrides. Follow [design fidelity](design.md): source-product mobile/native identity is the default unless the user supplies a detailed alternative. Record inaccessible references and use the mobile website for uncertain native details.
 
 Label each requirement as `required`, `preserve`, or `user-approved deferred`. During work give it a separate status: `planned`, `implemented`, `verified`, `failed`, `blocked`, or `deferred`. Record evidence for verification and a reason for every block. An agent's convenience or inability to verify a flow does not turn it into a user-approved exclusion.
 

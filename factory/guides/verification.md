@@ -34,6 +34,8 @@ Prefer a separate QA environment for disposable packages. Before installing one 
 
 ## Live acceptance checklist
 
+For visual work, also follow [design and interaction fidelity](design.md). Compare equivalent screens at comparable CSS widths, appearance and text scale. Inventory every changed control, including items moved into menus, and verify its actual destination/result plus Back/Close. Record visual, component, integrated-source and device evidence separately. Native resemblance does not establish native feature parity.
+
 | Area | Check and expected result |
 | --- | --- |
 | Product scope | Intended launcher entries and full required journeys match the brief. Sources, internal pages, readers and services have not become extra delivered apps. |
