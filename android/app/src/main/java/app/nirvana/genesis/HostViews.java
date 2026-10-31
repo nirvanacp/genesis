@@ -240,7 +240,10 @@ final class HostViews {
             }
         }
         JSONObject event = open(source, page, url);
-        try { event.put("sectionId", entry.getString("id")); } catch (JSONException error) { throw new IllegalArgumentException(error); }
+        try {
+            event.put("sectionId", entry.getString("id"));
+            if (isolatedApplet) event.put("resetForeground", true);
+        } catch (JSONException error) { throw new IllegalArgumentException(error); }
         return event;
     }
     private int sectionIcon(String name) {
