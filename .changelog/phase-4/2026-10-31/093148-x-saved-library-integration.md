@@ -1,0 +1,6 @@
+# X Saved library integration
+
+- Goal: Make categorized saving part of the same X Saved experience, with consistent typography and usable category management.
+- Changes: The owned library now mirrors the source Bookmarks/Likes/Categories destinations, preserving query/filter/scroll before opening either source tab. Explicit library-wrapper font, foreground and full viewport background prevent host qualification defaults from leaking into short pages. The manager's return control has a positive inset. The existing private category service and database were restored without replacement.
+- Decisions: The user requested categorical saving like the earlier HN applet and mobile X fidelity. The agent reused X's existing backend, bounded snapshots, multiple memberships and receipt-backed operations. Upstream bookmarks remain independent. README, architecture and the earlier plan now record the latest direction, which supersedes the custom account hub and duplicated Saved row.
+- Verification: X typecheck, manifest validation and bundle build passed. On the authenticated emulator, category creation, source-post save, membership badges, persisted library reads, search match/no-match, category filter and live-post return passed. Final management and regression results are recorded in the audit. No test files were added or changed.
