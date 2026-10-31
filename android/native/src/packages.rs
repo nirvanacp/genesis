@@ -28,9 +28,19 @@ pub fn validate(index: &PackageIndex) -> Result<(), String> {
     if index.schema_version != 1 || index.implementation_stage != IMPLEMENTATION_STAGE {
         return Err("Unsupported bundled index version or implementation stage".into());
     }
+    if index
+        .hidden_applet_ids
+        .iter()
+        .any(|id| !index.packages.iter().any(|p| &p.manifest.id == id))
+    {
+        return Err("Unknown hidden applet".into());
+    }
     let mut ids = HashSet::new();
     for package in &index.packages {
         let manifest = &package.manifest;
+        if ![1, 2].contains(&package.runtime_api_version) {
+            return Err("Unsupported package runtime API".into());
+        }
         if manifest.schema_version != 1
             || manifest.data_schema_version != 1
             || manifest.name.trim().is_empty()
@@ -92,6 +102,26 @@ pub fn validate(index: &PackageIndex) -> Result<(), String> {
             {
                 return Err("Invalid customized paths".into());
             }
+            if source.customized_paths.is_some() && source.customized_routes.is_some() {
+                return Err("Choose paths or route patterns".into());
+            }
+            for patterns in [
+                source.customized_routes.as_deref().unwrap_or(&[]),
+                &source.ordinary_routes,
+            ] {
+                let unique: HashSet<_> = patterns.iter().collect();
+                if patterns.len() > 100
+                    || unique.len() != patterns.len()
+                    || patterns.iter().any(|p| !crate::routes::valid_pattern(p))
+                {
+                    return Err("Invalid route patterns".into());
+                }
+            }
+            if package.runtime_api_version < 2
+                && (source.customized_routes.is_some() || !source.ordinary_routes.is_empty())
+            {
+                return Err("Routes require API 2".into());
+            }
             if source.home_paths.iter().any(|p| !route(p)) {
                 return Err("Invalid home paths".into());
             }
@@ -140,6 +170,22 @@ pub fn validate(index: &PackageIndex) -> Result<(), String> {
         }
         if let Some(shell) = &manifest.shell {
             let mut sections = HashSet::new();
+            if package.runtime_api_version < 2
+                && (shell.color_scheme.is_some()
+                    || shell
+                        .sections
+                        .iter()
+                        .any(|s| s.icon.as_deref() == Some("notifications")))
+            {
+                return Err("Shell additions require API 2".into());
+            }
+            if shell
+                .color_scheme
+                .as_ref()
+                .is_some_and(|v| !["default", "neutral"].contains(&v.as_str()))
+            {
+                return Err("Invalid color scheme".into());
+            }
             if shell.title.trim().is_empty()
                 || shell.title.len() >= 80
                 || !assets.contains(&shell.brand_asset)
@@ -150,7 +196,15 @@ pub fn validate(index: &PackageIndex) -> Result<(), String> {
                         || !sections.insert(&s.id)
                         || s.label.trim().is_empty()
                         || s.icon.as_ref().is_some_and(|i| {
-                            !["home", "search", "post", "bookmark", "person"].contains(&i.as_str())
+                            ![
+                                "home",
+                                "search",
+                                "post",
+                                "bookmark",
+                                "person",
+                                "notifications",
+                            ]
+                            .contains(&i.as_str())
                         })
                         || !sources.contains(&s.source_id)
                         || s.page_id.as_ref().is_some_and(|p| !pages.contains(p))
@@ -170,9 +224,7 @@ pub fn validate(index: &PackageIndex) -> Result<(), String> {
                     || !manifest.sources.iter().any(|s| {
                         s.id == source_id
                             && s.origins.contains(&url.origin().ascii_serialization())
-                            && s.customized_paths
-                                .as_ref()
-                                .is_some_and(|p| p.iter().any(|p| p == url.path()))
+                            && crate::routes::customized(s, url.path())
                     })
                 {
                     return Err("Invalid shell choice".into());
@@ -204,7 +256,7 @@ fn route(path: &str) -> bool {
 /// Validate the external shape before the Android store verifies bytes and canonical revision.
 pub fn validate_bundle(bundle: &AppletBundle) -> Result<(), String> {
     if bundle.format_version != BUNDLE_FORMAT_VERSION
-        || bundle.runtime_api_version != RUNTIME_API_VERSION
+        || ![1, RUNTIME_API_VERSION].contains(&bundle.runtime_api_version)
     {
         return Err(format!(
             "Unsupported bundle/runtime API; supported {BUNDLE_FORMAT_VERSION}/{RUNTIME_API_VERSION}"
@@ -227,8 +279,13 @@ pub fn validate_bundle(bundle: &AppletBundle) -> Result<(), String> {
         return Err("Bundle assets must be sorted and unique".into());
     }
     validate(&PackageIndex {
+        hidden_applet_ids: Vec::new(),
         schema_version: 1,
         implementation_stage: IMPLEMENTATION_STAGE.into(),
-        packages: vec![bundle.package.clone()],
+        packages: vec![{
+            let mut package = bundle.package.clone();
+            package.runtime_api_version = bundle.runtime_api_version;
+            package
+        }],
     })
 }

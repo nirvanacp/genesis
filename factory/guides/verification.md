@@ -2,6 +2,8 @@
 
 Start with the requested behavior and the selected applet, not the entire platform. Record SDK/package version, source routes, host build, and device/provider for live checks. Follow [factory instructions](../AGENTS.md); do not create or modify test files without a coverage request.
 
+Use the brief and acceptance-flow table from [product scope and clarification](product-scope.md). Verify the requested application, including preserved workflows, rather than only the newest component. Ask before assuming expected behavior when a material product choice is unresolved. Follow the user's existing authorization for both applet and platform work.
+
 ## Static and development checks
 
 From the standalone applet directory with its installed SDK/tools:
@@ -18,12 +20,21 @@ Omit `--replace` for first installation. `check` validates the manifest, file co
 
 Use `node --check <changed-file.mjs>` for backend scripts. Frontend checks do not validate a server protocol or prove website behavior. Device status reports package acceptance/revisions, not source loading or backend availability. A timeout after install is an unknown outcome; inspect status before retrying. Rollback preserves current records.
 
-For Genesis monorepo examples, maintainers can also run root workspace typechecks and selected-bundle checks. `genesis.packages.json` selects only HN by default. Native host work uses the platform's own maintenance instructions; external applet work does not require them. Frontend-only platform stages no longer need Cargo.
+For Genesis monorepo examples, maintainers can also run root workspace typechecks and selected-bundle checks. Read the actual `genesis.packages.json` selection and device status; root checks do not cover every installed development applet. Historical HN-only selection is not a product scope rule. Native host work uses the platform's own maintenance instructions; external applet work does not require them. Frontend-only platform stages no longer need Cargo.
+
+## Integrated acceptance and diagnostic boundaries
+
+Start at the actual delivered launcher. Confirm the intended application count and stable identities, enter the requested screen, perform the authorized action, verify its actual store/result and return to the opener. Include account/sign-in, section switching, detail/reader return and source forms where the requested app uses them. Reopen the feature to check persistence. Static checks, package receipts, backend health and isolated UI previews each establish only their own result.
+
+Label evidence by what was exercised: static, component with synthetic providers, integrated real source/service, and actual device. Record source/account access, revision and provider without exposing credentials. If login is blocked, real authenticated acceptance stays blocked. Synthetic records can check layout or client behavior but cannot pass source selectors, identity, upstream actions or full integration. Still screenshots do not establish motion quality.
+
+Prefer a separate QA environment for disposable packages. Before installing one on an everyday device, record its ID, purpose and safe supported cleanup method. Verify that it is absent from everyday navigation before handoff. Do not assume visibility/removal commands exist, edit private registries manually or clear user data to clean the launcher. If safe cleanup is unavailable, avoid the extra installation; report any existing leftover as incomplete delivery. A report-only verification task records this finding without mutating the device.
 
 ## Live acceptance checklist
 
 | Area | Check and expected result |
 | --- | --- |
+| Product scope | Intended launcher entries and full required journeys match the brief. Sources, internal pages, readers and services have not become extra delivered apps. |
 | Source identity | Correct records on supported routes; incomplete/unrecognized markup skipped; recycled nodes never retain another record's controls. |
 | Cleanup | Repeated navigation/reload creates no duplicate mounts or listeners. Leaving an element removes its owned effects. Late results cannot change replacement content. |
 | Initial UI | Initial page shell/loading state appears without waiting on service data. Customized page reveal and recovery work on the actual host. |
@@ -54,3 +65,9 @@ Give a platform maintainer the SDK/host versions, minimal manifest, entry, exact
 ## Maintenance handoff
 
 Update the applet README with supported source routes, behavior, data authority, backend setup if any, and known gaps. Preserve applet IDs and data on updates. Source websites can change independently; record the date and routes inspected, and isolate adapter changes from record-schema changes. Report checks as passed, failed, or not run with a reason. Existing historical device reports apply to those builds only.
+
+For each requirement separately report implementation status and verification result. Identify blocked requirements and explicitly user-approved deferrals; do not conflate them. Keep core gaps visible in the final answer and current operating guidance. A developer-only subset or installed preview is not a completed full-client deliverable. Continue independent authorized work and report the precise remaining dependency when it prevents completion.
+
+Website file inputs use Android's system document picker for single or multiple selection, up to 16 selected content URIs. No blanket storage or camera permission is requested. File-selection cancellation and stale-view result rejection need device qualification; attachments stay in the requesting website workflow, never in applet records.
+
+For faded overlays, inspect the control and its composed ancestor chain: opacity, alpha backgrounds, filters, blending and stacking contexts. Shadow DOM does not prevent ancestor opacity. Distinguish an intentional backdrop from a faded dialog panel. Compare settled samples with animation entry/exit. Correct computed styles with incorrect pixels require a separate native renderer/ancestor-alpha investigation. Genesis maintainers can use `node tools/inspect-ui-surfaces.mjs <CDP endpoint> <target-id> <selector>…` from the monorepo. It samples for one second without mutating DOM or collecting page text. This is a maintainer tool, not a portable SDK API.

@@ -41,7 +41,7 @@ export class Device {
     let status;
     try { status = JSON.parse(this.privateRead('genesis-applet-status.json')); }
     catch { throw creatorError('UNSUPPORTED_HOST', 'Host development status is unavailable; launch a compatible debug Genesis build'); }
-    if (status.debug !== true || status.runtimeApiVersion !== 1 || !status.bundleFormatVersions?.includes(1) || !Array.isArray(status.applets)) throw creatorError('INCOMPATIBLE_HOST', 'Host does not support bundle/runtime API 1');
+    if (status.debug !== true || status.runtimeApiVersion !== 2 || !status.bundleFormatVersions?.includes(1) || !Array.isArray(status.applets)) throw creatorError('INCOMPATIBLE_HOST', 'Host does not support bundle/runtime API 2');
     return status;
   }
   async submit(request) {
@@ -87,4 +87,14 @@ export async function rollbackApplet(id, options = {}) {
   if (!current?.previousRevision) throw creatorError('NO_PREVIOUS_REVISION', 'No previous applet code is available; records are unchanged');
   process.stderr.write('Rolling back code only; application records remain at their current state.\n');
   return device.submit({ action: 'rollback', appletId: id, expectedCurrentRevision: current.revision });
+}
+
+export async function setAppletVisibility(id, options = {}) {
+  requireValue(/^[a-z][a-z0-9-]{0,63}$/.test(id), 'Invalid applet ID');
+  requireValue(['true','false'].includes(options.hidden), '--hidden must be true or false');
+  const device = new Device(options), status = device.status();
+  if (!status.packageVisibility) throw creatorError('UNSUPPORTED_HOST', 'Upgrade the host for package visibility');
+  const current = status.applets.find(p => p.id === id);
+  if (!current) throw creatorError('UNKNOWN_APPLET', 'Applet is not installed');
+  return device.submit({action:'visibility', appletId:id, hidden:options.hidden === 'true', expectedCurrentRevision:current.revision});
 }

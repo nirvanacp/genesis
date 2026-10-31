@@ -75,7 +75,7 @@ export default defineApplet({
         if (snapshot?.itemId === binding.contentKey && binding.element.isConnected && !ctx.signal.aborted) openStoryDialog(ctx, snapshot);
       });
       const disposeMount = ctx.ui.mountAt(`story:${binding.id}`, anchor, { position: "append",
-        css: theme + ":host{position:absolute;right:0;top:0;display:block}button{display:flex;align-items:center;justify-content:center;color:var(--accent);background:transparent;border:0;border-radius:8px;padding:10px;min-width:44px;min-height:44px;cursor:pointer}button[aria-pressed=true] svg{fill:currentColor}",
+        css: theme + ":host{position:absolute;right:0;top:0;display:block}button{display:flex;align-items:center;justify-content:center;color:var(--accent);background:transparent;border:0;border-radius:8px;padding:10px;min-width:48px;min-height:48px;cursor:pointer}button[aria-pressed=true] svg{fill:currentColor}",
         render: container => { container.append(button); } });
       const disposeTile = location.pathname !== "/item" ? bindDiscussionTile(binding.element, () => extractItem(binding.element)?.discussionUrl ?? null) : () => {};
       const metadata = binding.element.nextElementSibling;

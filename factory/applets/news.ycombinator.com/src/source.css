@@ -19,21 +19,21 @@ a:link,a:visited{color:var(--ink)}a:hover{color:var(--accent)}a:focus-visible,bu
 #bigbox>td>table:not(.fatitem)>tbody>tr.submission>td.votelinks{padding-inline:0}
 #bigbox>td>table:not(.fatitem)>tbody>tr.submission .rank{display:block;font:11px/21px Verdana,Geneva,sans-serif;color:var(--muted)}
 #bigbox>td>table:not(.fatitem)>tbody>tr.submission>td.title:has(.titleline){min-width:0;padding-right:0}
-#bigbox>td>table:not(.fatitem)>tbody>tr.submission .titleline{position:relative;padding-right:44px}
+#bigbox>td>table:not(.fatitem)>tbody>tr.submission .titleline{position:relative;padding-right:48px}
 #bigbox>td>table:not(.fatitem)>tbody>tr.submission+tr>td{padding:0 0 8px;border-bottom:1px solid var(--line)}
 #bigbox>td>table:not(.fatitem)>tbody>tr.submission+tr>td.subtext{display:table-cell}
 .discussion-tile{cursor:pointer}.spacer{height:4px!important}
-.votelinks{width:44px!important;vertical-align:top}.votelinks center{margin:0}
-.votelinks a{display:flex;align-items:flex-start;justify-content:center;min-width:44px;min-height:44px;padding-top:6px;line-height:0;border-radius:8px}
+.votelinks{width:48px!important;vertical-align:top}.votelinks center{margin:0}
+.votelinks a{display:flex;align-items:flex-start;justify-content:center;min-width:48px;min-height:48px;padding-top:6px;line-height:0;border-radius:8px}
 .votearrow{display:block;width:18px!important;height:14px!important;margin:0!important;background:var(--muted)!important;clip-path:polygon(50% 0,100% 100%,0 100%)}
 .votelinks a:hover .votearrow,.votelinks a:focus-visible .votearrow{background:var(--accent)!important}
 /* Discussion tables have spacer/colspan rows that must not size title or form columns. */
 .fatitem{display:block;width:100%;border-spacing:0}.fatitem>tbody{display:block}
 .fatitem>tbody>tr{display:block}.fatitem>tbody>tr>td{display:block;padding:0}
-.fatitem>tbody>tr.submission{display:grid;grid-template-columns:44px minmax(0,1fr);gap:8px}
+.fatitem>tbody>tr.submission{display:grid;grid-template-columns:48px minmax(0,1fr);gap:8px}
 .fatitem>tbody>tr.submission>td.title:has(.rank),.fatitem>tbody>tr>td:empty{display:none}
 .fatitem>tbody>tr.submission>td.title:has(.titleline){min-width:0}
-.fatitem .titleline{position:relative;padding-right:44px}
+.fatitem .titleline{position:relative;padding-right:48px}
 .fatitem>tbody>tr>td.subtext{padding:0 0 12px 52px}.fatitem form{width:100%}
 .fatitem .titleline>a:first-child{font-size:18px!important}.fatitem .titleline{margin:0 0 12px}
 .visit-website{display:block;width:fit-content;padding:12px 0;font-size:14px;font-weight:600;color:var(--accent)!important}

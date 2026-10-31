@@ -1,16 +1,392 @@
 {
   "schemaVersion": 1,
   "id": "x-bookmarks",
-  "name": "X with Genesis bookmarks",
+  "name": "X",
   "dataSchemaVersion": 1,
-  "sources": [{
-    "id": "primary",
-    "startUrl": "https://x.com/home",
-    "origins": ["https://x.com", "https://www.x.com", "https://mobile.x.com", "https://twitter.com", "https://www.twitter.com", "https://mobile.twitter.com"],
-    "entry": "src/main.tsx",
-    "navigationRules": []
-  }],
-  "pages": [{ "id": "library", "entry": "src/library.tsx" }],
-  "actions": [{ "id": "library", "label": "Genesis bookmarks", "pageId": "library" }],
-  "capabilities": ["dom", "storage"]
+  "sources": [
+    {
+      "id": "primary",
+      "startUrl": "https://x.com/home",
+      "origins": [
+        "https://x.com"
+      ],
+      "entry": "src/main.tsx",
+      "homePaths": [
+        "/home"
+      ],
+      "customizedRoutes": [
+        "/home",
+        "/explore",
+        "/explore/*",
+        "/search",
+        "/hashtag/:tag",
+        "/:handle",
+        "/:handle/with_replies",
+        "/:handle/reposts",
+        "/:handle/media",
+        "/:handle/following",
+        "/:handle/followers",
+        "/:handle/verified_followers",
+        "/:handle/status/:id",
+        "/:handle/status/:id/quotes",
+        "/:handle/status/:id/analytics",
+        "/:handle/status/:id/photo/:index",
+        "/:handle/status/:id/video/:index",
+        "/compose/*",
+        "/notifications",
+        "/notifications/mentions",
+        "/i/history",
+        "/i/history/likes",
+        "/:handle/lists",
+        "/i/lists/*",
+        "/:handle/communities",
+        "/:handle/communities/*",
+        "/i/communities/*",
+        "/i/connect_people"
+      ],
+      "ordinaryRoutes": [
+        "/",
+        "/login",
+        "/logout",
+        "/settings/*",
+        "/account/*",
+        "/i/flow/*",
+        "/i/jf/onboarding/*",
+        "/i/chat/*",
+        "/messages/*",
+        "/i/grok",
+        "/i/jf/grok/*",
+        "/i/calls",
+        "/i/spaces/*",
+        "/i/premium_sign_up",
+        "/i/verified-get-verified",
+        "/i/jf/creators/*",
+        "/i/verified-orgs-signup",
+        "/tos",
+        "/privacy",
+        "/about",
+        "/download"
+      ],
+      "navigationRules": []
+    },
+    {
+      "id": "explore",
+      "startUrl": "https://x.com/explore",
+      "origins": [
+        "https://x.com"
+      ],
+      "entry": "src/main.tsx",
+      "homePaths": [
+        "/explore"
+      ],
+      "customizedRoutes": [
+        "/home",
+        "/explore",
+        "/explore/*",
+        "/search",
+        "/hashtag/:tag",
+        "/:handle",
+        "/:handle/with_replies",
+        "/:handle/reposts",
+        "/:handle/media",
+        "/:handle/following",
+        "/:handle/followers",
+        "/:handle/verified_followers",
+        "/:handle/status/:id",
+        "/:handle/status/:id/quotes",
+        "/:handle/status/:id/analytics",
+        "/:handle/status/:id/photo/:index",
+        "/:handle/status/:id/video/:index",
+        "/compose/*",
+        "/notifications",
+        "/notifications/mentions",
+        "/i/history",
+        "/i/history/likes",
+        "/:handle/lists",
+        "/i/lists/*",
+        "/:handle/communities",
+        "/:handle/communities/*",
+        "/i/communities/*",
+        "/i/connect_people"
+      ],
+      "ordinaryRoutes": [
+        "/",
+        "/login",
+        "/logout",
+        "/settings/*",
+        "/account/*",
+        "/i/flow/*",
+        "/i/jf/onboarding/*",
+        "/i/chat/*",
+        "/messages/*",
+        "/i/grok",
+        "/i/jf/grok/*",
+        "/i/calls",
+        "/i/spaces/*",
+        "/i/premium_sign_up",
+        "/i/verified-get-verified",
+        "/i/jf/creators/*",
+        "/i/verified-orgs-signup",
+        "/tos",
+        "/privacy",
+        "/about",
+        "/download"
+      ],
+      "navigationRules": []
+    },
+    {
+      "id": "alerts",
+      "startUrl": "https://x.com/notifications",
+      "origins": [
+        "https://x.com"
+      ],
+      "entry": "src/main.tsx",
+      "homePaths": [
+        "/notifications"
+      ],
+      "customizedRoutes": [
+        "/home",
+        "/explore",
+        "/explore/*",
+        "/search",
+        "/hashtag/:tag",
+        "/:handle",
+        "/:handle/with_replies",
+        "/:handle/reposts",
+        "/:handle/media",
+        "/:handle/following",
+        "/:handle/followers",
+        "/:handle/verified_followers",
+        "/:handle/status/:id",
+        "/:handle/status/:id/quotes",
+        "/:handle/status/:id/analytics",
+        "/:handle/status/:id/photo/:index",
+        "/:handle/status/:id/video/:index",
+        "/compose/*",
+        "/notifications",
+        "/notifications/mentions",
+        "/i/history",
+        "/i/history/likes",
+        "/:handle/lists",
+        "/i/lists/*",
+        "/:handle/communities",
+        "/:handle/communities/*",
+        "/i/communities/*",
+        "/i/connect_people"
+      ],
+      "ordinaryRoutes": [
+        "/",
+        "/login",
+        "/logout",
+        "/settings/*",
+        "/account/*",
+        "/i/flow/*",
+        "/i/jf/onboarding/*",
+        "/i/chat/*",
+        "/messages/*",
+        "/i/grok",
+        "/i/jf/grok/*",
+        "/i/calls",
+        "/i/spaces/*",
+        "/i/premium_sign_up",
+        "/i/verified-get-verified",
+        "/i/jf/creators/*",
+        "/i/verified-orgs-signup",
+        "/tos",
+        "/privacy",
+        "/about",
+        "/download"
+      ],
+      "navigationRules": []
+    },
+    {
+      "id": "saved",
+      "startUrl": "https://x.com/i/history",
+      "origins": [
+        "https://x.com"
+      ],
+      "entry": "src/main.tsx",
+      "homePaths": [
+        "/i/history"
+      ],
+      "customizedRoutes": [
+        "/home",
+        "/explore",
+        "/explore/*",
+        "/search",
+        "/hashtag/:tag",
+        "/:handle",
+        "/:handle/with_replies",
+        "/:handle/reposts",
+        "/:handle/media",
+        "/:handle/following",
+        "/:handle/followers",
+        "/:handle/verified_followers",
+        "/:handle/status/:id",
+        "/:handle/status/:id/quotes",
+        "/:handle/status/:id/analytics",
+        "/:handle/status/:id/photo/:index",
+        "/:handle/status/:id/video/:index",
+        "/compose/*",
+        "/notifications",
+        "/notifications/mentions",
+        "/i/history",
+        "/i/history/likes",
+        "/:handle/lists",
+        "/i/lists/*",
+        "/:handle/communities",
+        "/:handle/communities/*",
+        "/i/communities/*",
+        "/i/connect_people"
+      ],
+      "ordinaryRoutes": [
+        "/",
+        "/login",
+        "/logout",
+        "/settings/*",
+        "/account/*",
+        "/i/flow/*",
+        "/i/jf/onboarding/*",
+        "/i/chat/*",
+        "/messages/*",
+        "/i/grok",
+        "/i/jf/grok/*",
+        "/i/calls",
+        "/i/spaces/*",
+        "/i/premium_sign_up",
+        "/i/verified-get-verified",
+        "/i/jf/creators/*",
+        "/i/verified-orgs-signup",
+        "/tos",
+        "/privacy",
+        "/about",
+        "/download"
+      ],
+      "navigationRules": []
+    },
+    {
+      "id": "account",
+      "startUrl": "https://x.com/home",
+      "origins": [
+        "https://x.com"
+      ],
+      "entry": "src/main.tsx",
+      "homePaths": [
+        "/home"
+      ],
+      "customizedRoutes": [
+        "/home",
+        "/explore",
+        "/explore/*",
+        "/search",
+        "/hashtag/:tag",
+        "/:handle",
+        "/:handle/with_replies",
+        "/:handle/reposts",
+        "/:handle/media",
+        "/:handle/following",
+        "/:handle/followers",
+        "/:handle/verified_followers",
+        "/:handle/status/:id",
+        "/:handle/status/:id/quotes",
+        "/:handle/status/:id/analytics",
+        "/:handle/status/:id/photo/:index",
+        "/:handle/status/:id/video/:index",
+        "/compose/*",
+        "/notifications",
+        "/notifications/mentions",
+        "/i/history",
+        "/i/history/likes",
+        "/:handle/lists",
+        "/i/lists/*",
+        "/:handle/communities",
+        "/:handle/communities/*",
+        "/i/communities/*",
+        "/i/connect_people"
+      ],
+      "ordinaryRoutes": [
+        "/",
+        "/login",
+        "/logout",
+        "/settings/*",
+        "/account/*",
+        "/i/flow/*",
+        "/i/jf/onboarding/*",
+        "/i/chat/*",
+        "/messages/*",
+        "/i/grok",
+        "/i/jf/grok/*",
+        "/i/calls",
+        "/i/spaces/*",
+        "/i/premium_sign_up",
+        "/i/verified-get-verified",
+        "/i/jf/creators/*",
+        "/i/verified-orgs-signup",
+        "/tos",
+        "/privacy",
+        "/about",
+        "/download"
+      ],
+      "navigationRules": []
+    }
+  ],
+  "pages": [
+    {
+      "id": "library",
+      "entry": "src/library.tsx"
+    }
+  ],
+  "actions": [
+    {
+      "id": "library",
+      "label": "Categories",
+      "pageId": "library"
+    }
+  ],
+  "capabilities": [
+    "dom",
+    "navigation-policy",
+    "storage",
+    "services"
+  ],
+  "services": [
+    "bookmarks"
+  ],
+  "shell": {
+    "title": "X",
+    "brandAsset": "assets/x.png",
+    "colorScheme": "neutral",
+    "sections": [
+      {
+        "id": "home",
+        "label": "Home",
+        "sourceId": "primary",
+        "icon": "home"
+      },
+      {
+        "id": "explore",
+        "label": "Explore",
+        "sourceId": "explore",
+        "icon": "search"
+      },
+      {
+        "id": "alerts",
+        "label": "Notifications",
+        "sourceId": "alerts",
+        "icon": "notifications"
+      },
+      {
+        "id": "saved",
+        "label": "Saved",
+        "sourceId": "saved",
+        "icon": "bookmark"
+      },
+      {
+        "id": "me",
+        "label": "Profile",
+        "sourceId": "account",
+        "icon": "person"
+      }
+    ]
+  }
 }

@@ -1,0 +1,13 @@
+{
+  "serviceId": "bookmarks",
+  "entry": "backend/server.mjs",
+  "healthPath": "/health",
+  "port": 8788,
+  "environment": {
+    "token": "X_BACKEND_TOKEN",
+    "database": "X_BACKEND_DB",
+    "port": "X_BACKEND_PORT",
+    "certificate": "GENESIS_TLS_CERT",
+    "key": "GENESIS_TLS_KEY"
+  }
+}

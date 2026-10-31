@@ -12,18 +12,21 @@ import org.json.JSONObject;
 
 /** Activity lifecycle, JSON transport, and command execution only. */
 public final class MainActivity extends Activity implements NativeBridge.StorageResults {
+    private FileSelection files;
     private HostViews views;
     private BrowserAdapter browser;
     private ServiceClient services;
     PackageStore packageStore;
     private final java.util.Map<Long, BrowserAdapter> sessions = new java.util.HashMap<>();
     private boolean attached;
+    private boolean leavingApproved, leavePrompt;
     private Bundle browserStates = new Bundle();
     private String retainedSession;
 
     @Override public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         android.webkit.WebView.setWebContentsDebuggingEnabled(false);
+        files = new FileSelection(this);
         views = new HostViews(this, this::send);
         services = new ServiceClient(this);
         browser = new BrowserAdapter(this, views, this::send);
@@ -64,6 +67,19 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
         if (Looper.myLooper() != Looper.getMainLooper()) throw new IllegalStateException("UI thread required");
         try {
             String type = event.getString("type");
+            if ("renderingSettings".equals(type)) { showRenderingSettings(); return; }
+            if (java.util.Arrays.asList("open","openPage","home","activateDestination").contains(type)) views.transitionDirection(0);
+            if (!leavingApproved && browser != null && browser.leaveGuard() != null
+                && java.util.Arrays.asList("open","openPage","home","reload","retry","ordinary","activateDestination").contains(type)) {
+                if (!leavePrompt) {
+                    leavePrompt = true;
+                    new android.app.AlertDialog.Builder(this).setTitle("Leave this page?").setMessage(browser.leaveGuard())
+                        .setNegativeButton("Stay", (dialog, which) -> {}).setPositiveButton("Leave", (dialog, which) -> {
+                            leavingApproved = true; try { send(event); } finally { leavingApproved = false; }
+                        }).setOnDismissListener(dialog -> leavePrompt = false).show();
+                }
+                return;
+            }
             if ("readerClose".equals(type)) { browser.closeReader(); return; }
             if ("copyLink".equals(type) || "shareLink".equals(type) || "openBrowser".equals(type)) {
                 browser.readerAction(type); return;
@@ -75,6 +91,19 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
             JSONArray commands = new JSONArray(NativeBridge.dispatch(event.toString()));
             for (int i = 0; i < commands.length(); i++) execute(commands.getJSONObject(i));
         } catch (Exception | LinkageError error) { views.error("Genesis host failed: " + error); }
+    }
+
+    private void showRenderingSettings() {
+        String appletId = browser.appletId();
+        if (appletId.isEmpty()) return;
+        new android.app.AlertDialog.Builder(this).setTitle("Applet rendering")
+            .setSingleChoiceItems(AppletRendering.LABELS, AppletRendering.selection(this, appletId), (dialog, selected) -> {
+                AppletRendering.save(this, appletId, selected);
+                for (BrowserAdapter session : sessions.values()) {
+                    if (appletId.equals(session.appletId())) session.applyRendering();
+                }
+                dialog.dismiss();
+            }).setNegativeButton("Cancel", null).show();
     }
 
     private void execute(JSONObject command) throws Exception {
@@ -115,12 +144,15 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
                 BrowserAdapter retired = sessions.remove(command.getLong("generation"));
                 if (retired != null) { retired.saveStates(browserStates); retired.destroy(); } break;
             }
+            case "returnToUrl":
             case "loadUrl":
             case "goBack":
             case "goForward":
             case "reload":
             case "challenge":
             case "deferNavigation":
+            case "leaveGuard":
+            case "scheduleBackDeadline":
             case "scheduleModalDeadline":
             case "scheduleDeadline":
             case "terminateRenderer":
@@ -131,6 +163,14 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
         }
     }
 
+    void cancelInvalidFiles() { if (files != null) files.cancelIfInvalid(); }
+    void chooseFiles(android.webkit.WebChromeClient.FileChooserParams params, android.webkit.ValueCallback<android.net.Uri[]> callback, java.util.function.BooleanSupplier valid) {
+        files.open(params, callback, valid);
+    }
+    @SuppressWarnings("deprecation")
+    @Override protected void onActivityResult(int requestCode, int resultCode, android.content.Intent data) {
+        if (!files.result(requestCode, resultCode, data)) super.onActivityResult(requestCode, resultCode, data);
+    }
     @SuppressWarnings("deprecation")
     @SuppressLint("GestureBackNavigation") // API 33+ uses the callback registered in onCreate.
     @Override public void onBackPressed() { send(HostViews.event("back")); }
@@ -143,6 +183,7 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
     @Override protected void onPause() { if (attached) send(HostViews.event("suspended")); if (browser != null) browser.pause(); super.onPause(); }
     @Override protected void onResume() { super.onResume(); if (browser != null) browser.resume(); if (attached) send(HostViews.event("resumed")); }
     @Override protected void onDestroy() {
+        if (files != null) files.cancel();
         if (views != null) views.dispose();
         if (services != null) services.close();
         NativeBridge.detach(this);

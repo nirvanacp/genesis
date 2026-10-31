@@ -39,7 +39,14 @@ export interface AppletContext {
     mountAt(key: string, anchor: Element, options: MountOptions): Dispose;
     openModal(key: string, render: (container: HTMLElement) => void | Dispose): Dispose;
   };
-  navigation: { onChange(callback: (url: string) => void): Dispose };
+  navigation: {
+    armReturn(options: {key:string;destinationPaths:string[];returnUrl:string;ttlMs:number;state:unknown}): Promise<{token:string}>;
+    cancelReturn(token:string): Promise<void>;
+    takeReturn(key:string): Promise<{token:string;matchedPath:string;state:unknown}|null>;
+    onChange(callback: (url: string) => void): Dispose;
+    onBack(callback: () => boolean | Promise<boolean>): Dispose;
+    setLeaveGuard(guard: {message: string} | null): Promise<void>;
+  };
   sources: { open(sourceId: string, url?: string): Promise<void> };
   pages: { open(pageId: string): Promise<void> };
   services: { request<T = unknown>(serviceId: string, request: { path: string; method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"; body?: unknown }): Promise<T> };
@@ -78,6 +85,7 @@ export class ManagedRuntime {
   private readonly focusListeners = new Set<() => void>();
   private readonly routes = new Set<(url: string) => void>();
   private readonly observer: MutationObserver;
+  private backHandler: (() => boolean | Promise<boolean>) | undefined;
   private modal: Dispose | undefined;
   private frame = 0;
   private serial = 0;
@@ -98,7 +106,17 @@ export class ManagedRuntime {
       watchElements: (key, options, handlers) => this.watch(key, options, handlers),
       ui: { mountAt: (key, anchor, options) => this.mount(key, anchor, options),
         openModal: (key, render) => this.openModal(key, render) },
-      navigation: { onChange: callback => {
+      navigation: {
+        armReturn: options => this.call("navigation.armReturn", options),
+        cancelReturn: token => this.call("navigation.cancelReturn", {token}),
+        takeReturn: key => this.call("navigation.takeReturn", {key}),
+        onBack: callback => {
+          this.assertActive(); this.backHandler = callback;
+          void this.call("navigation.backHandler", {enabled:true}).catch(() => {});
+          return this.track(() => { if (this.backHandler === callback) { this.backHandler = undefined; void this.call("navigation.backHandler", {enabled:false}).catch(() => {}); } });
+        },
+        setLeaveGuard: guard => this.call<void>("navigation.leaveGuard", {message:guard?.message ?? null}),
+        onChange: callback => {
         this.assertActive(); this.routes.add(callback);
         return this.track(() => this.routes.delete(callback));
       } },
@@ -255,9 +273,29 @@ export class ManagedRuntime {
     dialog.setAttribute("aria-label", key); dialog.tabIndex = -1;
     dialog.style.cssText = "background:white;color:#202020;max-height:85vh;overflow:auto;width:min(100%,520px);padding:20px;border-radius:12px;box-sizing:border-box;font:16px system-ui";
     shadow.append(dialog);
+    const backgrounds = new Map<HTMLElement, {inert:boolean; hidden:string|null}>();
+    const hideBackground = () => {
+      for (const child of Array.from(document.body.children).slice(0, 200)) {
+        if (!(child instanceof HTMLElement) || child === host || backgrounds.has(child)) continue;
+        backgrounds.set(child, {inert:child.inert, hidden:child.getAttribute("aria-hidden")});
+        child.inert = true; child.setAttribute("aria-hidden", "true");
+      }
+    };
+    hideBackground();
+    const backgroundObserver = new MutationObserver(hideBackground);
+    backgroundObserver.observe(document.body, {childList:true});
     let creator: void | Dispose;
     const dispose = this.effect("modal", host, () => document.body.append(host), () => {
       this.modal = undefined;
+      backgroundObserver.disconnect();
+      for (const [element, previousState] of backgrounds) {
+        if (element.inert) element.inert = previousState.inert;
+        if (element.getAttribute("aria-hidden") === "true") {
+          if (previousState.hidden === null) element.removeAttribute("aria-hidden");
+          else element.setAttribute("aria-hidden", previousState.hidden);
+        }
+      }
+      backgrounds.clear();
       void this.call("ui.modalState", { open: false }).catch(() => {});
       try { creator?.(); } finally { if (previous instanceof HTMLElement && previous.isConnected) previous.focus(); }
     });
@@ -278,6 +316,11 @@ export class ManagedRuntime {
     catch (error) { dispose(); throw error; }
     void this.call("ui.modalState", { open: true }).catch(error => this.fatal(error));
     return dispose;
+  }
+  async handleBack(token: number): Promise<void> {
+    let consumed = false;
+    try { consumed = await this.backHandler?.() ?? false; } catch { /* Fall through to native history. */ }
+    if (!this.disposed) await this.call("navigation.backResult", {token,consumed}).catch(() => {});
   }
   route(): void {
     if (this.disposed || this.url === location.href) return;

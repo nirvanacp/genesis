@@ -37,6 +37,7 @@ final class PackageStore {
     private final AtomicFile registryFile;
     private JSONObject registry = new JSONObject();
     private JSONObject receipt;
+    private JSONObject visibility = new JSONObject();
     private final Map<String, JSONObject> bundled = new LinkedHashMap<>();
     private final Map<String, JSONObject> effective = new LinkedHashMap<>();
     private final Map<String, JSONObject> locations = new HashMap<>();
@@ -64,6 +65,8 @@ final class PackageStore {
             try (InputStream input = registryFile.openRead()) {
                 registry = new JSONObject(new String(read(input, 1024 * 1024), StandardCharsets.UTF_8));
             } catch (Exception error) { registry = new JSONObject(); }
+            File visibilityFile = new File(root, "visibility.json");
+            if (visibilityFile.isFile()) visibility = readJson(visibilityFile, 1024 * 1024);
             recover();
             consumeImport();
             refreshEffective();
@@ -73,6 +76,9 @@ final class PackageStore {
         JSONArray result = new JSONArray();
         for (JSONObject pack : effective.values()) result.put(pack);
         index.put("packages", result);
+        JSONArray hidden = new JSONArray();
+        if (debug) for (String id : effective.keySet()) if (visibility.optBoolean(id, false)) hidden.put(id);
+        index.put("hiddenAppletIds", hidden);
         return index;
     }
 
@@ -142,7 +148,7 @@ final class PackageStore {
                 expected.add(path);
             }
             if (!expected.equals(files(directory, ""))) return null;
-            return pack;
+            return new JSONObject(pack.toString()).put("runtimeApiVersion", bundle.getInt("runtimeApiVersion"));
         } catch (Exception error) { return null; }
     }
 
@@ -159,6 +165,16 @@ final class PackageStore {
             JSONObject pack;
             if ("install".equals(action)) pack = install(request);
             else if ("rollback".equals(action)) pack = rollback(request);
+            else if ("visibility".equals(action)) {
+                fields(request, "requestId", "action", "appletId", "hidden", "expectedCurrentRevision");
+                String id = request.getString("appletId");
+                pack = effective.get(id);
+                if (pack == null || !pack.getString("revision").equals(request.getString("expectedCurrentRevision")))
+                    throw failure("CONFLICT", "Applet changed; read status before retrying");
+                if (!(request.get("hidden") instanceof Boolean)) throw failure("INVALID_PACKAGE", "hidden must be boolean");
+                JSONObject next = new JSONObject(visibility.toString()).put(id, request.getBoolean("hidden"));
+                atomicJson(new File(root, "visibility.json"), next); visibility = next;
+            }
             else throw failure("INVALID_PACKAGE", "Unsupported package operation");
             receipt = new JSONObject().put("requestId", requestId).put("ok", true)
                 .put("appletId", pack.getJSONObject("manifest").getString("id")).put("revision", pack.getString("revision"));
@@ -247,12 +263,13 @@ final class PackageStore {
             JSONObject record = registry.optJSONObject(id), previous = record == null ? null : record.optJSONObject("previous");
             JSONObject permissions = permissionObject(manifest);
             entries.put(new JSONObject().put("id", id).put("revision", pack.getString("revision"))
+                .put("hidden", visibility.optBoolean(id, false))
                 .put("originKind", locations.containsKey(id) ? locations.get(id).getString("kind") : "bundled")
                 .put("previousRevision", previous == null ? JSONObject.NULL : previous.getString("revision"))
                 .put("origins", permissions.getJSONArray("origins")).put("capabilities", permissions.getJSONArray("capabilities")).put("services", permissions.getJSONArray("services")));
         }
         atomicJson(new File(context.getFilesDir(), "genesis-applet-status.json"), new JSONObject()
-            .put("runtimeApiVersion", 1).put("bundleFormatVersions", new JSONArray().put(1)).put("debug", true).put("applets", entries));
+            .put("packageVisibility", true).put("runtimeApiVersion", 2).put("runtimeApiVersions", new JSONArray().put(1).put(2)).put("bundleFormatVersions", new JSONArray().put(1)).put("debug", true).put("applets", entries));
     }
 
     private static JSONObject permissionObject(JSONObject manifest) throws Exception {
