@@ -65,3 +65,7 @@ npm pack ./packages/applet-tools --pack-destination /absolute/artifacts
 ```
 
 Tools prepack refreshes its portable factory kit. Verify both React and vanilla create/check/build from the packed CLI, and compare the exported kit with current factory guidance. These packages remain maintainer-supplied archives, not public registry releases. No ordinary applet build needs Cargo or Android source.
+
+## Current qualified revision
+
+The [31 October acceptance report](../../../.reports/phase-5/2026-10-31/231100-genesis-isolated-applets-verification.md) records both installed revisions, real and synthetic journeys, creator archive checks and explicit gaps. Source watcher batches must progress without animation frames because their WebViews are deliberately occluded. Provider sessions are unique; an expired close ID cannot close another reader, and owned navigation cannot replace a currently open website. Wait until the applet returns before opening another destination.
