@@ -1,0 +1,6 @@
+# Genesis public documentation foundation
+
+- Goal: Give new Genesis users a short, ordered route from understanding custom apps to trying their first applet on Android.
+- Changes: Added the public `docs/` landing page, five onboarding and prompting pages, concrete product examples, prerequisites, and a source-only Hacker News tutorial. The existing untracked `docs/README.md` was empty before this task. Public pages stay in `docs/`, as the user explicitly requested, separate from internal operating documents.
+- Decisions: The user requested simple language, nested Markdown pages, examples, and a gradual learning curve. The agent chose a small layout customization as the first result, postponing data and services until later guides. Current code and the portable factory guidance supply the supported workflow; no phase-5 operating docs exist. Examples describe possible apps rather than claiming they are shipped. No platform or applet source changed.
+- Verification: Passed local link checks across all six pages, heading/code-fence checks, and whitespace checks. Checked documented flags against current CLI help and setup against scaffold/factory contracts. Phone execution is outside this documentation change; the tutorial explicitly distinguishes build checks from real-device acceptance.
