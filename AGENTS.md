@@ -77,15 +77,16 @@ Write plans so a lightweight coding agent can implement the intended result with
 - If the plan conflicts with current requirements or code, establish the intended behavior before implementing the affected step. Record material deviations and their rationale in the plan and development changelog. Do not silently substitute a different design.
 - Verify each step against its acceptance criteria and the **Testing and verification** rules before committing it. Keep the development changelog current and report completion, deviations and any remaining verification gaps.
 
-### Version control
+## Version control
 
-When the user asks you to implement a plan, commit the resulting changes as part of the implementation unless the user explicitly asks you not to commit. A separate request to commit is not required.
+For every user-requested change, commit the resulting changes as part of the task unless the user explicitly asks you not to commit. This applies to direct change requests and plan implementation, including code, configuration, documentation and agent-instruction changes of any size. A separate request to commit or a written plan is not required.
 
-1. Break the plan into multiple logical steps, organized by software component, and implement them in order.
-2. After completing and verifying each step, commit its changes in the affected repositories. Use separate commits for different components rather than combining the entire plan into one commit. Include only changes related to that step; do not commit unrelated work or repositories.
+1. Before editing, break substantial work into ordered logical steps with clear commit boundaries, organized by software component and dependencies. Work spanning multiple components or independently verifiable stages requires multiple steps and commits. Follow an existing plan when provided; otherwise, outline the steps in a brief progress update and proceed without requiring a separate planning task. A small, focused change may use one step and one commit.
+2. Complete and verify each step using the applicable project checks and the **Testing and verification** rules, update its development changelog, and commit it in the affected repositories before starting the next step. Use separate commits for different components. Do not defer all commits until the end of substantial work. Include only changes related to that step; do not commit unrelated or pre-existing work or repositories.
 3. Use the commit message format `feat/(_x): short message`. Replace `_x` with the relevant section, feature, or module name, such as `feat/(auth): add sign-in`.
 4. Use the email returned by `git config user.email` in each affected repository as the commit author email. Do not substitute another email address.
 5. Follow the coding philosophy above and the repository's existing architecture and design patterns.
+6. In the final response, report the commits made and any verification gaps. If verification or committing is blocked, explain the blocker and identify any changes left uncommitted instead of claiming the task is fully complete.
 
 ## Thread titles
 
