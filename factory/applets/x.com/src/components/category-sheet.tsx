@@ -2,7 +2,7 @@ import {useEffect,useState} from "react";
 import {createRoot} from "react-dom/client";
 import type {AppletContext} from "@genesis/sdk";
 import {repository} from "../repository";
-import {verifyAccount,currentHandle} from "../account";
+import {verifyAccount,currentHandle,requireLibrarySession} from "../account";
 import {errorMessage} from "../backend";
 import {validateName} from "../categories";
 import {validBookmark,type Post,type Category,type Membership,type Library} from "../domain";
@@ -12,20 +12,22 @@ export function openCategorySheet(context:AppletContext,post:Post,verifiedLibrar
   let close=()=>{};
   close=context.ui.openModal("Save to category",container=>{
     container.setAttribute("aria-label","Save to category");
+    const unsubscribe=context.storage.onChanged(change=>{if(change.changes.some(c=>c.collection==="session"&&c.key==="account"))close();});
     const style=document.createElement("style");style.textContent=theme+sheetCss;container.append(style);
-    const target=document.createElement("div");container.append(target);const root=createRoot(target);root.render(<CategorySheet context={context} post={post} verifiedLibrary={verifiedLibrary} close={()=>close()}/>);return()=>root.unmount();
+    const target=document.createElement("div");container.append(target);const root=createRoot(target);root.render(<CategorySheet context={context} post={post} verifiedLibrary={verifiedLibrary} close={()=>close()}/>);return()=>{unsubscribe();root.unmount();};
   });
 }
 function CategorySheet({context,post,close,verifiedLibrary}:{context:AppletContext;post:Post;close:()=>void;verifiedLibrary?:Library}){
   const repo=repository(context);
   const[categories,setCategories]=useState<Category[]>([]),[selected,setSelected]=useState<string[]>([]),[membership,setMembership]=useState<Membership|null>(null);
   const[library,setLibrary]=useState<Library|null>(null),[loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[error,setError]=useState(""),[query,setQuery]=useState(""),[name,setName]=useState(""),[creating,setCreating]=useState(false),[pending,setPending]=useState(false),[confirmRemove,setConfirmRemove]=useState(false);
-  const verify=()=>verifiedLibrary&&context.sourceId===null?Promise.resolve(verifiedLibrary):verifyAccount(context,repo.backend);
+  const verify=()=>verifiedLibrary&&context.sourceId===null?requireLibrarySession(context,verifiedLibrary).then(()=>verifiedLibrary):verifyAccount(context,repo.backend);
   const load=async()=>{
     setLoading(true);setError("");
     try{
       const verified=await verify();
       const[groups,state,settled]=await Promise.all([repo.backend.categories(),repo.backend.lookup([post.postId]),repo.reconcile(verified)]);
+      await requireLibrarySession(context,verified);
       if(context.signal.aborted||context.sourceId!==null&&currentHandle()!==verified.expectedHandle)return;
       setLibrary(verified);setCategories(groups);setMembership(state.records[0]??null);setSelected(state.records[0]?.categoryIds??[]);setPending(!settled);
     }catch(e){if(!context.signal.aborted)setError(errorMessage(e));}finally{if(!context.signal.aborted)setLoading(false);}

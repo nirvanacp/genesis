@@ -39,15 +39,16 @@ export async function verifyAccount(context:AppletContext,backend:Backend):Promi
   return library;
 }
 export async function openLibrary(context:AppletContext):Promise<void>{
-  const handle=currentHandle();
-  const ticket:Ticket={nonce:crypto.randomUUID(),phase:handle?"verified":"failed",handle,epoch:crypto.randomUUID(),createdAtMs:Date.now()};
+  const session=await observeAccount(context),handle=session.handle;
+  const ticket:Ticket={nonce:crypto.randomUUID(),phase:handle?"verified":"failed",handle,epoch:session.epoch,createdAtMs:Date.now()};
   await writeLocal(context,"session","library-entry",ticket);
   if(!context.signal.aborted)await context.pages.open("library");
 }
 export async function enterLibrary(context:AppletContext):Promise<Library|null>{
   const library=await new Backend(context).library();
   const ticket=await readLocal<Ticket>(context,"session","library-entry");
-  if(ticket?.phase==="verified"&&Date.now()-ticket.createdAtMs<30000){
+  const session=await readLocal<AccountSession>(context,"session","account");
+  if(ticket?.phase==="verified"&&session?.epoch===ticket.epoch&&session.handle===ticket.handle&&Date.now()>=ticket.createdAtMs&&Date.now()-ticket.createdAtMs<30000){
     await writeLocal(context,"session","library-entry",{...ticket,phase:"consumed"});
     if(ticket.handle!==library.expectedHandle.toLowerCase())throw new LibraryError("ACCOUNT_MISMATCH",`Categories belongs to @${library.expectedHandle}. Switch to that X account to continue.`);
     return library;
@@ -67,16 +68,39 @@ export function verifyLibraryReturn(context:AppletContext):void{
       const ticket=await readLocal<Ticket>(context,"session","library-entry");
       if(ticket?.phase!=="requested")return;
       const expired=Date.now()-ticket.createdAtMs>10000;
-      const handle=currentHandle();
+      const session=await observeAccount(context),handle=session.handle;
       if(!handle&&!expired){clearTimeout(deadline);deadline=setTimeout(()=>void check(),10001-(Date.now()-ticket.createdAtMs));return;}
       clearTimeout(deadline);
       const latest=await context.storage.get<Ticket>("session","library-entry");
       if(latest.document?.value.nonce!==ticket.nonce||latest.document.value.phase!=="requested")return;
-      await context.storage.commit({checks:[{collection:"session",key:"library-entry",expectedRevision:latest.document.revision}],puts:[{collection:"session",key:"library-entry",value:{...ticket,handle,phase:expired?"failed":"verified",createdAtMs:Date.now(),...(expired?{reason:"Account verification expired. Open X bookmarks, then try Categories again."}:{})}}],deletes:[]});
+      await context.storage.commit({checks:[{collection:"session",key:"library-entry",expectedRevision:latest.document.revision}],puts:[{collection:"session",key:"library-entry",value:{...ticket,handle,epoch:session.epoch,phase:expired?"failed":"verified",createdAtMs:Date.now(),...(expired?{reason:"Account verification expired. Open X bookmarks, then try Categories again."}:{})}}],deletes:[]});
       if(!context.signal.aborted)await context.pages.open("library");
     }catch{/* Keep source navigation available. A later focus retries verification. */}finally{running=false;}
   };
   void check();context.onFocus(()=>void check());
   context.storage.onChanged(change=>{if(change.changes.some(key=>key.collection==="session"&&key.key==="library-entry"))void check();});
   context.watchElements("x-library-account",{selector:'[data-testid="AppTabBar_Profile_Link"],[data-testid="DashButton_ProfileIcon_Link"],[data-testid="AppTabBar_Notifications_Link"]',attributes:["href","aria-label"],text:false,limit:3,contentKey:element=>element.getAttribute("href")??element.getAttribute("aria-label")},{enter:()=>void check(),update:()=>void check()});
+}
+
+
+export interface AccountSession {handle:string|null;epoch:string}
+/** Observations are hints for accidental account mixing, never service credentials. */
+export async function observeAccount(context:AppletContext):Promise<AccountSession>{
+  const handle=currentHandle();
+  const {document}=await context.storage.get<AccountSession>("session","account");
+  if(context.signal.aborted||currentHandle()!==handle)throw new LibraryError("ACCOUNT_CHANGED","Your X account changed.");
+  if(document?.value.handle===handle)return document.value;
+  const value={handle,epoch:crypto.randomUUID()};
+  await context.storage.commit({checks:[{collection:"session",key:"account",expectedRevision:document?.revision??null}],puts:[{collection:"session",key:"account",value}],deletes:[]});
+  return value;
+}
+export async function requireLibrarySession(context:AppletContext,library:Library):Promise<AccountSession>{
+  const session=context.sourceId!==null?await observeAccount(context):await readLocal<AccountSession>(context,"session","account");
+  if(!session?.handle||session.handle!==library.expectedHandle.toLowerCase())throw new LibraryError("ACCOUNT_CHANGED","Open X and verify the account for this library again.");
+  return session;
+}
+export function watchAccount(context:AppletContext):void{
+  const refresh=()=>{void observeAccount(context).catch(()=>{});};
+  refresh();context.onFocus(refresh);context.navigation.onChange(refresh);
+  context.watchElements("x-account-session",{selector:'[data-testid="AppTabBar_Profile_Link"],[data-testid="DashButton_ProfileIcon_Link"],[data-testid="AppTabBar_Notifications_Link"]',attributes:["href","aria-label"],text:false,limit:4,contentKey:e=>e.getAttribute("href")??e.getAttribute("aria-label")},{enter:refresh,update:refresh,leave:refresh});
 }

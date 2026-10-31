@@ -2,7 +2,7 @@ import {useEffect,useRef,useState} from "react";
 import {definePage,type AppletContext} from "@genesis/sdk";
 import {mountReact} from "@genesis/sdk/react";
 import {repository} from "./repository";
-import {enterLibrary} from "./account";
+import {enterLibrary,requireLibrarySession} from "./account";
 import {readLocal,writeLocal} from "./local-state";
 import {errorMessage,LibraryError} from "./backend";
 import {safeLink,type Bookmark,type Category,type Library} from "./domain";
@@ -16,11 +16,12 @@ interface Preferences{query:string;categoryId:string|null;scroll:number}
 function LibraryPage({context}:{context:AppletContext}){
   const repo=repository(context),[library,setLibrary]=useState<Library|null>(null),[categories,setCategories]=useState<Category[]>([]),[rows,setRows]=useState<Bookmark[]>([]),[query,setQuery]=useState(""),[filter,setFilter]=useState<string|null>(null),[cursor,setCursor]=useState<string|null>(null),[error,setError]=useState(""),[loading,setLoading]=useState(true),[ready,setReady]=useState(false),[manage,setManage]=useState(false),[pending,setPending]=useState(false);
   const sequence=useRef(0),verified=useRef<Library|null>(null),preferences=useRef<Preferences>({query:"",categoryId:null,scroll:0}),restoreScroll=useRef(false),failures=useRef(0);
-  const savePreferences=()=>{preferences.current={query,categoryId:filter,scroll:window.scrollY};return writeLocal(context,"preferences","library",preferences.current).catch(()=>{});};
+  const savePreferences=()=>{if(!verified.current)return Promise.resolve();preferences.current={query,categoryId:filter,scroll:window.scrollY};return writeLocal(context,"preferences",`library:${verified.current!.libraryId}`,preferences.current).catch(()=>{});};
   const load=async(after:string|null=null)=>{
     const account=verified.current;if(!account)return;const version=++sequence.current;setLoading(true);setError("");
     try{
       const [groups,page,settled]=await Promise.all([repo.backend.categories(),repo.backend.query(filter,query,after),repo.reconcile(account)]);
+      await requireLibrarySession(context,account);
       if(context.signal.aborted||version!==sequence.current)return;
       setCategories(groups);setRows(previous=>after?[...previous,...page.entries.filter(row=>!previous.some(old=>old.postId===row.postId))]:page.entries);setCursor(page.nextCursor);setPending(!settled);setReady(true);failures.current=0;
       if(restoreScroll.current){restoreScroll.current=false;requestAnimationFrame(()=>window.scrollTo(0,preferences.current.scroll));}
@@ -35,11 +36,15 @@ function LibraryPage({context}:{context:AppletContext}){
     const verify=async()=>{
       sequence.current++;verified.current=null;setLibrary(null);setRows([]);setLoading(true);setError("");
       try{
-        const prefs=await readLocal<Preferences>(context,"preferences","library");if(prefs){preferences.current=prefs;setQuery(prefs.query);setFilter(prefs.categoryId);restoreScroll.current=true;}
         const account=await enterLibrary(context);if(!active||context.signal.aborted||!account)return;
+        const key=`library:${account.libraryId}`;
+        const prefs=await readLocal<Preferences>(context,"preferences",key)??await readLocal<Preferences>(context,"preferences","library");
+        if(!active||context.signal.aborted)return;
+        await requireLibrarySession(context,account);
+        if(prefs){preferences.current=prefs;setQuery(prefs.query);setFilter(prefs.categoryId);restoreScroll.current=true;await writeLocal(context,"preferences",key,prefs);}
         verified.current=account;setLibrary(account);
       }catch(e){if(active&&!context.signal.aborted){setError(errorMessage(e));setLoading(false);}}
-    };void verify();const focus=context.onFocus(()=>void verify());return()=>{active=false;sequence.current++;focus();};
+    };void verify();const unsubscribe=context.storage.onChanged(change=>{if(change.changes.some(c=>c.collection==="session"&&c.key==="account")){sequence.current++;verified.current=null;setLibrary(null);setRows([]);setCategories([]);setError("Your account changed. Reopen applet categories to verify it.");setLoading(false);}});const focus=context.onFocus(()=>void verify());return()=>{active=false;sequence.current++;focus();unsubscribe();};
   },[context]);
   useEffect(()=>{if(!library)return;const timer=setTimeout(()=>void load(),300);return()=>{clearTimeout(timer);sequence.current++;};},[library,filter,query]);
   useEffect(()=>repo.subscribe(()=>{if(verified.current)void load();}),[repo,filter,query]);
