@@ -65,6 +65,29 @@ fn is_home_url(url: &str, source: &Source) -> bool {
     })
 }
 
+fn valid_section_destination(
+    index: &PackageIndex,
+    applet_id: &str,
+    section_id: &str,
+    saved: &SectionDestination,
+) -> bool {
+    index
+        .packages
+        .iter()
+        .find(|package| package.manifest.id == applet_id)
+        .is_some_and(|package| {
+            saved.selection.applet_id.0 == applet_id
+                && saved.selection.section_id.as_deref() == Some(section_id)
+                && package.manifest.shell.as_ref().is_some_and(|shell| {
+                    shell.sections.iter().any(|section| section.id == section_id)
+                })
+                && package.manifest.sources.iter().any(|source| source.id == saved.selection.source_id.0)
+                && saved.selection.page_id.as_ref().is_none_or(|page| {
+                    package.manifest.pages.iter().any(|entry| &entry.id == page)
+                })
+        })
+}
+
 fn trace(events: &mut VecDeque<&'static str>, label: &'static str) {
     if events.len() == 48 {
         events.pop_front();
@@ -130,7 +153,10 @@ impl HostState {
                 self.index = Some(index);
                 if let Some(snapshot) = restore {
                     let restored_url = snapshot.current_url.clone();
-                    self.section_destinations = snapshot.section_destinations.clone();
+                    self.section_destinations = snapshot.section_destinations.into_iter().filter(|(key, saved)| {
+                        let Some((applet, section)) = key.split_once('/') else { return false; };
+                        self.index.as_ref().is_some_and(|index| valid_section_destination(index, applet, section, saved))
+                    }).collect();
                     self.pending_opener = snapshot.opener.clone();
                     self.disabled.extend(snapshot.disabled);
                     for instance in self.instances.values_mut() {
@@ -226,7 +252,7 @@ impl HostState {
                             .get(&format!("{applet_id}/{section}"))
                     })
                     .cloned()
-                    .filter(|_| url.is_none());
+                    .filter(|saved| url.is_none() && self.index.as_ref().is_some_and(|index| valid_section_destination(index, &applet_id, section_id.as_deref().unwrap_or_default(), saved)));
                 let restoring_section = remembered.is_some();
                 let (source_id, page_id, url) = if let Some(saved) = remembered {
                     self.pending_opener = saved.opener;
@@ -415,8 +441,10 @@ impl HostState {
                     .is_some_and(|d| d.id == document_id)
                 && self.pending_back.is_some_and(|p| p.0 == token) =>
             {
-                let (_, _, can_go_back) = self.pending_back.take().expect("pending Back");
-                self.back_navigation(can_go_back, &mut commands)?;
+                let (_, route_revision, can_go_back) = self.pending_back.take().expect("pending Back");
+                if self.active.as_ref().and_then(|view| view.document.as_ref()).is_some_and(|doc| doc.route_revision.0 == route_revision) {
+                    self.back_navigation(can_go_back, &mut commands)?;
+                }
             }
             E::Forward => {
                 if let Some(view) = &self.active {
