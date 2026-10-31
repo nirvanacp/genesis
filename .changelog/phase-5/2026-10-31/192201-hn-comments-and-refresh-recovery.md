@@ -1,0 +1,6 @@
+# HN comments and refresh recovery
+
+- Goal: Repair feed/link gaps found during complete HN migration checks and preserve useful content when a refresh fails.
+- Changes: The adapter recognizes inspected standalone comment rows as well as discussion rows, publishes safe parent/context/story links and canonical reply destinations, and rejects unrecognized empty feed structures. Owned comments expose author profiles with adequate touch targets. A bounded public-page cache retains the last valid same-source/URL content with a stale notice on failure; account pages are excluded. Missing bounded comment anchors offer explicit website recovery.
+- Decisions: The agent preserved actual HN navigation semantics and avoided exporting action tokens. Public cached content may be shown after failure, while private account state must be observed live. The existing Search placeholder and website-owned posting remain unchanged.
+- Verification: TypeScript, CLI manifest check and bundle build passed. Emulator passed live new-comments rendering, parent navigation, author-to-profile and Saved read-back. A real public-network interruption during Reload showed the last loaded feed with an explicit stale notice; original network settings were restored automatically. No test files changed.

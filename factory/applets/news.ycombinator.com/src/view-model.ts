@@ -1,7 +1,7 @@
 import type {StorySnapshot} from './extract-item';
 export interface TextPart {text:string;href?:string;strong?:boolean;code?:boolean;em?:boolean}
 export interface Story {snapshot:StorySnapshot;score:string;age:string;comments:string;rank:string}
-export interface Comment {id:string;author:string;age:string;depth:number;parts:TextPart[];replyUrl:string|null;contextUrl:string}
+export interface Comment {id:string;author:string;age:string;depth:number;parts:TextPart[];replyUrl:string|null;contextUrl:string;links:{label:string;url:string}[]}
 export interface HnModel {
   kind:'feed'|'discussion'|'profile'|'information'|'account';title:string;
   account:string|null;logoutUrl:string|null;stories:Story[];comments:Comment[];parts:TextPart[];
