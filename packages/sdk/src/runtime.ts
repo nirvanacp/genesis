@@ -28,7 +28,20 @@ export interface MountOptions {
   render(container: HTMLElement): void | Dispose;
 }
 export type HostCall = <T = unknown>(method: string, params: unknown) => Promise<T>;
+export interface SourceSnapshot<T = unknown> {
+  state: "loading" | "ready" | "empty" | "auth-required" | "challenge" | "unsupported" | "error" | "website" | "blocked";
+  data?: T; error?: { message: string }; url: string; sourceId: string; pageId: string; sectionId?: string; epoch: number;
+  route?: {kind:string; routeId?:string; result?:{kind:string;screen?:string;adapter?:string}};
+}
 export interface AppletContext {
+  source: {
+    publish(snapshot: {state: string; data?: unknown; error?: {message:string}}): Promise<void>;
+    subscribe(callback: (snapshot: SourceSnapshot) => void): Dispose;
+    command(command: { name: string; payload?: unknown; epoch?: number }): Promise<void>;
+    onCommand(callback: (command: {name:string;payload?:unknown;epoch?:number}) => void): Dispose;
+  };
+  webViews: { open(options: {url:string}): Promise<{sessionId:string}>; close(sessionId?:string):Promise<void> };
+
   readonly binding: ExecutionContext;
   readonly signal: AbortSignal;
   readonly root: HTMLElement;
@@ -92,6 +105,11 @@ export class ManagedRuntime {
   private revision = 0;
   private url = location.href;
   private disposed = false;
+  private sourceListeners = new Set<(snapshot: SourceSnapshot) => void>();
+  private commandListeners = new Set<(command: {name:string;payload?:unknown;epoch?:number}) => void>();
+  private latestSnapshot: SourceSnapshot | undefined;
+  private publishTimer: ReturnType<typeof setTimeout> | undefined;
+  private publishValue: unknown;
   private missingKeys = 0;
   private conflicts = 0;
   private batches: number[] = [];
@@ -99,6 +117,27 @@ export class ManagedRuntime {
   constructor(binding: ExecutionContext, root: HTMLElement, private readonly call: HostCall,
     private readonly fatal: (error: unknown) => void) {
     this.context = {
+      source: {
+        publish: snapshot => {
+          this.publishValue = snapshot;
+          if (!this.publishTimer) {
+            this.publishTimer = setTimeout(() => {
+              this.publishTimer = undefined;
+              if (!this.disposed) void this.call("source.publish",this.publishValue).catch(error => this.fatal(error));
+            },250);
+          }
+          return Promise.resolve();
+        },
+        subscribe: callback => {
+          this.sourceListeners.add(callback);
+          if(this.latestSnapshot) callback(this.latestSnapshot);
+          void this.call("source.subscribe",{}).catch(error=>this.fatal(error));
+          return this.track(()=>this.sourceListeners.delete(callback));
+        },
+        command: command => this.call("source.command",command),
+        onCommand: callback => { this.commandListeners.add(callback); return this.track(()=>this.commandListeners.delete(callback)); },
+      },
+      webViews: { open: options => this.call("webViews.open",options), close: sessionId => this.call("webViews.close",{sessionId}) },
       onFocus: callback => { this.focusListeners.add(callback); return this.track(() => this.focusListeners.delete(callback)); },
       binding, root, signal: this.abort.signal,
       sourceId: binding.binding.kind === "source" ? binding.binding.sourceId : null,
@@ -150,6 +189,13 @@ export class ManagedRuntime {
     }
     const poll = setInterval(() => { if (!document.hidden) this.route(); }, 250);
     this.track(() => clearInterval(poll));
+  }
+  sourceSnapshot(snapshot: SourceSnapshot): void {
+    this.latestSnapshot = snapshot;
+    for(const callback of this.sourceListeners) this.invoke(()=>callback(snapshot));
+  }
+  sourceCommand(command: {name:string;payload?:unknown;epoch?:number}):void {
+    for(const callback of this.commandListeners) this.invoke(()=>callback(command));
   }
   private assertActive(): void { if (this.disposed) throw new Error("EXPIRED_CONTEXT: runtime disposed"); }
   private track(callback: Dispose): Dispose {
@@ -346,6 +392,7 @@ export class ManagedRuntime {
       routeRevision: this.revision, batchesMs: this.batches.slice(-100) };
   }
   dispose(): void {
+    clearTimeout(this.publishTimer); this.sourceListeners.clear(); this.commandListeners.clear();
     if (this.disposed) return;
     this.disposed = true; this.abort.abort(); this.modal?.();
     if (this.frame) cancelAnimationFrame(this.frame); this.frame = 0;

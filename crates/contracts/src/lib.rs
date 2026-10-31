@@ -2,7 +2,7 @@
 use serde::{Deserialize, Serialize};
 
 pub const IMPLEMENTATION_STAGE: &str = "MVP-07";
-pub const RUNTIME_API_VERSION: u32 = 2;
+pub const RUNTIME_API_VERSION: u32 = 3;
 fn legacy_api() -> u32 {
     1
 }

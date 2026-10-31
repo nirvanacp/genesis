@@ -67,6 +67,13 @@ export function bootstrap(config: BootstrapConfig, entry: AppletEntry): void {
       phases.mount = scope.root().isConnected;
       client = new RpcClient(acceptedDocument!, message => bridge.postMessage(message));
       runtime = new ManagedRuntime(binding, scope.root(), client.call, fail);
+      if (binding.runtimeApiVersion === 3 && binding.role === "source") {
+        let sourceUrl = location.href;
+        runtime.context.navigation.onChange(url => {
+          if(url !== sourceUrl) { sourceUrl = url; void client?.call("source.route",{url}).catch(()=>{}); }
+        });
+      }
+      if (entry.registration && binding.runtimeApiVersion === 3) await client.call("runtime.register",entry.registration);
       const disposer = await entry.activate(runtime.context);
       if (activation.signal.aborted || failed || documentId !== acceptedDocument) { if (typeof disposer === "function") disposer(); return; }
       if (typeof disposer === "function") runtime.context.onDispose(disposer);
@@ -90,10 +97,13 @@ export function bootstrap(config: BootstrapConfig, entry: AppletEntry): void {
       } else if (message.documentId === documentId && documentId) {
         if (message.type === "context.retired") { cleanup(); documentId = null; }
         client?.receive(message);
-        if (message.type === "storage.changed") runtime?.storageChanged(message as unknown as StorageChange);
+        const data = (message.data ?? message) as Record<string, unknown>;
+        if (message.type === "source.snapshot") runtime?.sourceSnapshot(data as unknown as import("./runtime").SourceSnapshot);
+        if (message.type === "source.command") runtime?.sourceCommand(data as unknown as {name:string;payload?:unknown;epoch?:number});
+        if (message.type === "storage.changed") runtime?.storageChanged(data as unknown as StorageChange);
         if (message.type === "route.changed") runtime?.route();
         if (message.type === "host.focused") runtime?.focused();
-        if (message.type === "navigation.back" && typeof message.token === "number") void runtime?.handleBack(message.token);
+        if (message.type === "navigation.back" && typeof data.token === "number") void runtime?.handleBack(data.token);
         if (message.type === "ui.dismissModal") runtime?.dismissModal();
         if (message.type === "host.suspended") cleanup();
         if (message.type === "host.resumed" && abort?.signal.aborted) hello();

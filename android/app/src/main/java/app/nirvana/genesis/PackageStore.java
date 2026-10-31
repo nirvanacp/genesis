@@ -269,11 +269,11 @@ final class PackageStore {
                 .put("origins", permissions.getJSONArray("origins")).put("capabilities", permissions.getJSONArray("capabilities")).put("services", permissions.getJSONArray("services")));
         }
         atomicJson(new File(context.getFilesDir(), "genesis-applet-status.json"), new JSONObject()
-            .put("packageVisibility", true).put("runtimeApiVersion", 2).put("runtimeApiVersions", new JSONArray().put(1).put(2)).put("bundleFormatVersions", new JSONArray().put(1)).put("debug", true).put("applets", entries));
+            .put("packageVisibility", true).put("runtimeApiVersion", 3).put("runtimeApiVersions", new JSONArray().put(1).put(2).put(3)).put("bundleFormatVersions", new JSONArray().put(1)).put("debug", true).put("applets", entries));
     }
 
     private static JSONObject permissionObject(JSONObject manifest) throws Exception {
-        Set<String> origins = new HashSet<>(); JSONArray sources = manifest.getJSONArray("sources");
+        Set<String> origins = new HashSet<>(); JSONArray sources = manifest.getJSONArray(manifest.getInt("schemaVersion")==2?"routeContracts":"sources");
         for (int i = 0; i < sources.length(); i++) { JSONArray values = sources.getJSONObject(i).getJSONArray("origins"); for (int j = 0; j < values.length(); j++) origins.add(values.getString(j)); }
         return new JSONObject().put("origins", sorted(origins)).put("capabilities", sorted(strings(manifest.getJSONArray("capabilities"))))
             .put("services", sorted(strings(manifest.optJSONArray("services"))));

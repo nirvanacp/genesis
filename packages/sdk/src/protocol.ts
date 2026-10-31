@@ -1,5 +1,6 @@
 export interface ExecutionContext {
   runtimeApiVersion?: number;
+  role?: "foreground" | "source";
   instanceId: string;
   appletId: string;
   viewId: string;

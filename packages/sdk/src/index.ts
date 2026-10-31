@@ -2,7 +2,7 @@ export type { ExecutionContext, QualificationContext, QualificationEntry } from 
 export type { AppletContext, ElementBinding, WatchOptions, ElementHandlers, MountOptions, Dispose } from "./runtime";
 export { GenesisError } from "./rpc";
 import type { AppletContext, Dispose } from "./runtime";
-export interface AppletEntry { activate(context: AppletContext): void | Dispose | Promise<void | Dispose>; inspect?(): unknown }
+export interface AppletEntry { registration?: {screens?:string[];adapters?:string[]}; activate(context: AppletContext): void | Dispose | Promise<void | Dispose>; inspect?(): unknown }
 export const defineApplet = (entry: AppletEntry): AppletEntry => entry;
 export interface PageEntry { mount(context: AppletContext, container: HTMLElement): void | Dispose | Promise<void | Dispose>; inspect?(): unknown }
 export function definePage(entry: PageEntry | AppletEntry): AppletEntry {
@@ -26,3 +26,12 @@ export function serviceMessage(error: unknown): string {
 export { RUNTIME_API_VERSION } from "./manifest";
 export type { Manifest, Source, AppletBundle } from "./manifest";
 export interface ServiceResponse<T = unknown> { status: number; body: T }
+
+export type { SourceSnapshot } from "./runtime";
+export type { IsolatedManifest, RouteContract, RouteRule } from "./manifest";
+export function defineForeground(entry: PageEntry & { screens: string[] }): AppletEntry {
+  return { ...definePage(entry), registration: {screens:entry.screens} };
+}
+export function defineSourceAdapter(entry: AppletEntry & {adapters:string[]}): AppletEntry {
+  return { ...entry, registration:{adapters:entry.adapters} };
+}
