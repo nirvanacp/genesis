@@ -365,7 +365,7 @@
       },
       {
         "id": "alerts",
-        "label": "Alerts",
+        "label": "Notifications",
         "sourceId": "alerts",
         "icon": "notifications"
       },
@@ -377,7 +377,7 @@
       },
       {
         "id": "me",
-        "label": "Me",
+        "label": "Profile",
         "sourceId": "account",
         "icon": "person"
       }

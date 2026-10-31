@@ -1,8 +1,13 @@
-html.genesis-x{background:Canvas;color-scheme:light dark}
-.genesis-x header[role=banner],.genesis-x [data-testid="sidebarColumn"],.genesis-x [data-testid="BottomBar"],.genesis-x [data-testid="AppTabBar"],.genesis-x [data-testid="SideNav_NewTweet_Button"]{display:none!important}
-.genesis-x main[role=main]{width:100%!important;align-items:center!important;flex-grow:1!important}
-.genesis-x #react-root>div{align-items:stretch!important}
-.genesis-x [data-testid="primaryColumn"]{width:100%!important;max-width:680px!important;min-width:0!important;border-left:0!important;border-right:0!important}
-.genesis-x [data-testid="tweet"]{transition:none!important}
-.genesis-x.genesis-x-hub [data-testid="primaryColumn"]{display:none!important}
-.genesis-x [data-genesis-owned]{flex-shrink:0}
+/* Preserve the website's typography, header spacers and responsive columns.
+   Renderer compatibility is a host preference, not a source font override. */
+/* Genesis reserves its footer already. Keep search tabs and compose controls. */
+.genesis-x [data-testid="sidebarColumn"],
+.genesis-x [data-testid="BottomBar"],
+.genesis-x [data-testid="AppTabBar"],
+.genesis-x nav:has([data-testid="AppTabBar_Home_Link"]) { display: none !important; }
+.genesis-x [data-genesis-owned] { flex-shrink: 0; }
+.genesis-x [data-testid="DashButton_ProfileIcon_Link"] { align-self: center; }
+@media (prefers-reduced-motion: reduce) {
+  .genesis-x [data-testid="tweet"],
+  .genesis-x [data-testid="app-text-transition-container"] { transition: none !important; }
+}
