@@ -5,7 +5,7 @@ description: Verify or diagnose a Genesis applet with package checks, TypeScript
 
 # Verify a Genesis applet
 
-Read [factory instructions](../../AGENTS.md), [product scope and clarification](../../guides/product-scope.md), and [verification](../../guides/verification.md). Use [SDK reference](../../guides/sdk-reference.md) to confirm expected behavior.
+Read [the API-3 isolation contract](../../guides/isolated-applets.md), then [factory instructions](../../AGENTS.md), [product scope and clarification](../../guides/product-scope.md), and [verification](../../guides/verification.md). Use [SDK reference](../../guides/sdk-reference.md) to confirm expected behavior.
 
 1. Read the latest user requirements and applet brief before choosing checks. Identify intended apps/launcher entries, exact revisions, selected build, SDK version and device/provider. Ask about unresolved material scope or data semantics before assuming expected behavior. Use the standalone checker for this applet; the Genesis root checker covers only the current APK selection, not every dev-installed applet.
 2. Run existing static checks appropriate to the change. Inspect their output and separate pre-existing failures. Do not add test files or install unrelated tooling as a substitute for the existing workflow.
@@ -16,3 +16,5 @@ Read [factory instructions](../../AGENTS.md), [product scope and clarification](
 7. Label synthetic, component, integrated-source and device checks separately. A preview with substituted account/data providers cannot pass real authentication or integration acceptance. Inventory temporary installations and complete supported cleanup without erasing data. If cleanup cannot be completed safely, report it as unfinished delivery. Give every required flow a passed, failed, blocked or not-run result, with evidence or reason; only the user can approve deferral of a requirement.
 
 The handoff states expected and actual behavior, changed files if any, commands/results, device evidence, and remaining blockers. A passing typecheck is not a live-site pass. Read-only verification does not authorize publishing content, modifying accounts, or deploying a backend.
+
+Require a route-to-owned-screen/provider inventory for changed behavior. Verify internal query/path transitions, external website/Close, authentication/POST preservation, stale replies, failed loading and source accessibility/audio isolation. CSS and inline source controls cannot satisfy an API-3 foreground migration. Never claim source selectors or backend interactions verified from a typecheck or synthetic preview.

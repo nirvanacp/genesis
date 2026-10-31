@@ -6,7 +6,7 @@ Use this workflow with [factory instructions](../AGENTS.md) and the selected [ap
 
 An applet is the application a person opens. A source is a running website context, a page is an internal screen, and a service is a data provider. Several sources or pages can belong to the same applet. A user asking for one social client with categorized bookmarks usually wants timelines, search, conversations, account flows and bookmarking inside one application. A separate category backend does not imply a separate bookmark app. A request for two distinct applications normally produces two applet identities.
 
-For an existing app, preserve its working behavior and identity while adding the requested change. For a complete website-backed client, map the daily experience before selecting implementation components. Preserve source browsing, forms and authentication where the website already provides them. Do not reduce the app to the custom feature merely because that feature needs most of the new code. A source-owned screen can satisfy a workflow without a custom rewrite, provided it stays reachable and returns correctly.
+For an existing app, preserve its working behavior and identity while adding the requested change. For a complete website-backed client, map the daily experience before selecting implementation components. Preserve source browsing, forms and authentication where the website already provides them. Do not reduce the app to the custom feature merely because that feature needs most of the new code. A source-owned form/action can satisfy a workflow through explicit website presentation with correct return navigation. Core custom browsing screens require owned renderers.
 
 Copy useful technical patterns from reference applets. Do not copy an unrelated placeholder, missing workflow, personal-account restriction, visual theme or data model as if the user requested it. A minimum capability set means least privilege, not minimum product functionality. Component milestones are useful; a component demo is not the completed application.
 
@@ -80,3 +80,5 @@ These are manual reasoning examples, not executable tests or promised tool capab
 | "Make a client like the native app" but a core host facility is absent | Record the expected workflow, explain the precise gap and ask about a material fallback; do not declare a subset equivalent. |
 | Login becomes rate-limited after source work | Keep real acceptance blocked, complete independent work and do not deliver a second synthetic app as the result. |
 | A QA applet remains in the launcher | Treat this as unfinished delivery cleanup, even if its individual UI checks passed. |
+
+The product brief must include the mandatory route inventory with owned-screen/adapter mapping, website-provider actions and unknown-route recovery. See [isolated applets](isolated-applets.md). A route match is not evidence of valid loaded source content.

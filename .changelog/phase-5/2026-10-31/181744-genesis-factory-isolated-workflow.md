@@ -1,0 +1,6 @@
+# Isolated applet creator workflow
+
+- Goal: Update portable creator instructions before migrating HN and X, as explicitly requested by the user.
+- Changes: Updated factory AGENTS and applet instructions, all three build/customize/verify skills, SDK/getting-started/pattern guides, product and verification guidance, and service ownership notes. Added the detailed isolated source/foreground route contract guide. The creator now generates schema-2 adapters and an owned foreground for both vanilla and React projects, pins matching 0.4.0 dependencies and exports the current matching kit instead of stale packed guidance.
+- Decisions: Source DOM is extraction input, never the visible custom layout. Unknown/error routes keep owned recovery and explicit website presentation. Core browsing screens retain owned renderers while protected forms/actions use the provider. Keep account/service authority and data IDs stable. Legacy maintenance APIs do not define new customization patterns.
+- Verification: Fresh vanilla and React projects both passed check/build with the public SDK. Generated manifests use runtime API 3 and correct registration names. Changed Markdown links and whitespace passed. HN/X source migrations start after this instruction update; their real-device acceptance remains a separate required step.

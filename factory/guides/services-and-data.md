@@ -128,3 +128,7 @@ Handle missing configuration, authentication, TLS failure, unreachable service, 
 Requests and responses are bounded; see [SDK limits](sdk-reference.md). A retired view or aborted UI operation does not cancel a remote commit. Use applet-owned idempotency keys/status for workflows that require safe write retries. Do not switch to a different database when a service fails. An offline cache needs explicit authority, freshness, and conflict rules.
 
 DOM-capable applets can observe and affect their authorized source pages. Shadow DOM and an isolated JavaScript world do not confine all outbound traffic. Service capability checks protect the host broker, not every possible web request. Review generated applet code and origins accordingly. Do not claim production publisher trust, applet signing, or malicious-code isolation from the current bundled prototype.
+
+## Isolated runtime ownership
+
+In API 3 the owned foreground alone uses applet storage and declared backend services. Hidden source adapters publish bounded data/account observations; they never receive backend credentials or storage authority. Preserve all stable applet IDs, service IDs, keys and authoritative stores during rendering migration. Revalidate account identity after website-provider return before allowing private writes. Website cookies remain in their browser session and do not authorize the backend. See [the isolation contract](isolated-applets.md).
