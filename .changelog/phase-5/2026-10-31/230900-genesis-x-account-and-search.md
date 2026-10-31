@@ -1,0 +1,6 @@
+# X account observation and search label
+
+- Goal: Keep Saved/Categories account verification retryable and provide an identifiable search field.
+- Changes: Source account detection memoizes only successfully parsed bootstrap identities, allowing an initially incomplete streamed script to be observed again. X search has a persistent visible label and a responsive field wrapper; the query and existing submit behavior remain intact.
+- Decisions: The agent retained fail-closed account gates and matching backend ownership. An unknown observation never authorizes private records. The shared hidden-source scheduling fix handles observation progress; the account change prevents an unknown result being cached permanently. A visible label supplements the WebView's inconsistent empty-field accessibility exposure.
+- Verification: Workspace typechecks, manifest checks and bundle build passed. With local inspection disabled after a host restart, actual Saved Bookmarks/Likes and Categories loaded. The original categories and saved record remained present; category management and Back were exercised. Public search returned actual posts and source result tabs. No upstream social action or account change was submitted, and no repository test files changed.
