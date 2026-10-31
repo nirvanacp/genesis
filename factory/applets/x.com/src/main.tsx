@@ -1,5 +1,5 @@
 import {defineSourceAdapter} from '@genesis/sdk';
-import {currentHandle} from './source-account';
+import {currentHandle,resetAccountConfirmation} from './source-account';
 import {extractPost} from './extract-post';
 import {safeLink,postUrl,validHandle,isObject} from './domain';
 import {imageUrl,routeKind,screens,type XModel,type XPost,type XEntry} from './view-model';
@@ -7,6 +7,7 @@ const text=(element:Element|null|undefined,max=1200)=>(element instanceof HTMLEl
 const destination=(value:string|null|undefined)=>{try{return value?safeLink(new URL(value,location.href).href):null;}catch{return null;}};
 const key=(value:string)=>{let hash=2166136261;for(let i=0;i<value.length;i++)hash=Math.imul(hash^value.charCodeAt(i),16777619);return(hash>>>0).toString(36);};
 export default defineSourceAdapter({adapters:screens,activate(context){
+  resetAccountConfirmation();
   let targets=new Map<string,{element:HTMLElement;text:string}>(),moreTimer:ReturnType<typeof setTimeout>|undefined,publication:ReturnType<typeof setTimeout>|undefined;
   const publish=()=>{
     const kind=routeKind(location.pathname);if(!kind){void context.source.publish({state:'unsupported'});return;}
@@ -88,7 +89,7 @@ export default defineSourceAdapter({adapters:screens,activate(context){
   };
   const schedule=()=>{if(!publication)publication=setTimeout(()=>{publication=undefined;publish();},300);};
   publish();context.watchElements('x-content',{selector:'body',attributes:['href','src','aria-selected','data-testid'],text:true,limit:1,contentKey:()=>location.href},{enter:schedule,update:schedule});
-  context.navigation.onChange(publish);window.addEventListener('DOMContentLoaded',schedule,{signal:context.signal});window.addEventListener('load',schedule,{signal:context.signal});
+  context.navigation.onChange(()=>{resetAccountConfirmation();publish();});window.addEventListener('DOMContentLoaded',schedule,{signal:context.signal});window.addEventListener('load',schedule,{signal:context.signal});
   context.source.onCommand(command=>{
     if(command.name==='loadMore'){window.scrollBy({top:Math.max(window.innerHeight*2,1000),behavior:'instant'});clearTimeout(moreTimer);moreTimer=setTimeout(publish,1000);return;}
     if(!['selectTab','openEntry','openQuote'].includes(command.name)||!isObject(command.payload)||typeof command.payload.key!=='string')return;
