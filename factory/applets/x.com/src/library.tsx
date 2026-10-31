@@ -55,12 +55,12 @@ function LibraryPage({context}:{context:AppletContext}){
     window.addEventListener("scroll",scroll,{passive:true});
     return()=>{clearTimeout(timer);window.removeEventListener("scroll",scroll);};
   },[query,filter,library]);
-  const openX=()=>{void savePreferences().then(()=>context.sources.open("saved","https://x.com/i/history")).catch(e=>setError(errorMessage(e)));};
+  const openX=(path="/i/history")=>{void savePreferences().then(()=>context.sources.open("saved",`https://x.com${path}`)).catch(e=>setError(errorMessage(e)));};
   const openPost=(row:Bookmark)=>{void savePreferences().then(()=>context.sources.open("saved",row.url)).catch(e=>setError(errorMessage(e)));};
   const choose=(id:string|null)=>{setFilter(id);setManage(false);window.scrollTo(0,0);};
   return <><style>{theme+css}</style><main className="library">
     <header className="library-title"><h1>Saved</h1><p>Your private Categories library</p></header>
-    <div className="mode" role="tablist" aria-label="Saved location"><button role="tab" aria-selected={false} onClick={openX}>X bookmarks</button><button role="tab" aria-selected={true} onClick={()=>setManage(false)}>Categories</button></div>
+    <div className="mode" role="tablist" aria-label="Saved location"><button role="tab" aria-selected={false} onClick={()=>openX()}>Bookmarks</button><button role="tab" aria-selected={false} onClick={()=>openX("/i/history/likes")}>Likes</button><button role="tab" aria-selected={true} onClick={()=>setManage(false)}>Categories</button></div>
     {library?<div className="library-layout"><aside className="category-sidebar" aria-label="Filter saved posts"><button aria-pressed={filter===null} onClick={()=>choose(null)}>All saved</button>{categories.map(c=><button key={c.id} aria-pressed={filter===c.id} onClick={()=>choose(c.id)}>{c.name} <small className="muted">{c.count}</small></button>)}</aside><section className="saved-list">
       {manage?<><button className="back-link" onClick={()=>setManage(false)}>‹ Saved posts</button><CategoryManager library={library} repo={repo} categories={categories} refresh={load} openCategory={choose}/></>:<>
       <div className="library-tools"><div className="filter-row"><button className="filter-button secondary" aria-label="Filter by category" onClick={()=>openCategoryFilter(context,categories,filter,choose)}>{categories.find(c=>c.id===filter)?.name??"All saved"} <span aria-hidden="true">⌄</span></button><span className="spacer"/><button onClick={()=>setManage(true)}>Manage</button></div><input type="search" aria-label="Search all saved posts" placeholder="Search saved posts" value={query} onChange={e=>setQuery(e.target.value)} maxLength={200}/></div>
@@ -73,6 +73,6 @@ function LibraryPage({context}:{context:AppletContext}){
       {cursor&&<button className="secondary load-more" onClick={()=>void load(cursor)} disabled={loading}>Load more</button>}</>}
       {error&&<div className="library-status"><p className="error" role="alert">{error}</p>{rows.length>0&&<p className="muted">Showing previously loaded posts.</p>}<button onClick={()=>void load()}>Refresh</button></div>}
       {pending&&<div className="library-status"><p>A previous change is still unconfirmed.</p><button className="secondary" onClick={()=>void repo.retry(library).then(()=>load()).catch(e=>setError(errorMessage(e)))}>Check or retry the same change</button><button onClick={()=>void repo.abandon(library).then(()=>load()).catch(e=>setError(errorMessage(e)))}>Refresh state and abandon pending change</button></div>}
-    </section></div>:<div className="empty"><h2>{loading?"Verifying your account…":"Categories unavailable"}</h2><p role={error?"alert":"status"}>{error||"Checking your X account before showing your private library."}</p>{!loading&&<button className="primary" onClick={openX}>Open X bookmarks</button>}</div>}
+    </section></div>:<div className="empty"><h2>{loading?"Verifying your account…":"Categories unavailable"}</h2><p role={error?"alert":"status"}>{error||"Checking your X account before showing your private library."}</p>{!loading&&<button className="primary" onClick={()=>openX()}>Open X bookmarks</button>}</div>}
   </main></>;
 }
