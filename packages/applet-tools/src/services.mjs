@@ -15,16 +15,25 @@ function run(command, args) {
 }
 export async function manageService(action, directory, options = {}) {
   if (!['start','status','stop','provision'].includes(action)) throw creatorError('USAGE', 'Unknown service action');
-  const { base, manifest, service } = await readApplet(directory);
+  if (options.local && action === 'provision') throw creatorError('USAGE', 'Local-only mode cannot provision a device');
+  const { base, manifest, service } = await readApplet(directory, { serviceFile: options['service-file'] });
   if (!service) throw creatorError('SERVICE_DECLARATION_REQUIRED', 'This applet needs backend/service.json for local service tooling');
   const entry = await containedFile(base, service.entry);
-  const device = new Device(options);
+  const device = options.local ? null : new Device(options);
   const state = path.join(process.env.GENESIS_SERVICE_STATE_ROOT ?? path.join(homedir(), '.local/share/genesis/services'), manifest.id, service.serviceId);
   const pidFile = path.join(state, 'process.json');
   let managed;
   try { managed = JSON.parse(await readFile(pidFile, 'utf8')); } catch (error) { if (error.code !== 'ENOENT') throw creatorError('SERVICE_STATE_INVALID', 'Invalid managed service process metadata'); }
   const alive = () => { if (!Number.isInteger(managed?.pid) || managed.pid < 1) return false; try { process.kill(managed.pid, 0); return true; } catch { return false; } };
   const result = extra => ({ appletId: manifest.id, serviceId: service.serviceId, ...extra });
+  // A reboot can reuse a recorded PID for an unrelated process. Never signal it.
+  if (action === 'start' && alive()) {
+    const command = run('ps', ['-p', String(managed.pid), '-o', 'command=']);
+    if (!command.includes(entry) || !command.includes(process.execPath)) {
+      if (typeof managed.entry === 'string' && command.includes(managed.entry)) throw creatorError('PROCESS_IDENTITY_MISMATCH', 'Recorded backend is running from another checkout or Node installation; stop it there first');
+      managed = undefined;
+    }
+  }
   if (action === 'status') return result({ running: alive(), healthChecked: false });
   if (action === 'stop') {
     if (alive()) {
@@ -37,8 +46,10 @@ export async function manageService(action, directory, options = {}) {
     await unlink(pidFile).catch(error => { if (error.code !== 'ENOENT') throw error; });
     return result({ running: false, dataPreserved: true });
   }
-  const host = device.status().applets.find(p => p.id === manifest.id);
-  if (!host?.services.includes(service.serviceId)) throw creatorError('UNDECLARED_SERVICE', 'Install this applet and declare its service before provisioning');
+  if (device) {
+    const host = device.status().applets.find(p => p.id === manifest.id);
+    if (!host?.services.includes(service.serviceId)) throw creatorError('UNDECLARED_SERVICE', 'Install this applet and declare its service before provisioning');
+  }
   async function provision(origin, token, certificate = '') {
     const url = new URL(origin);
     if (url.protocol !== 'https:' || url.origin !== origin || url.username || url.password) throw creatorError('INVALID_SERVICE_ORIGIN', 'Use an exact HTTPS origin without path or credentials');
@@ -75,7 +86,7 @@ export async function manageService(action, directory, options = {}) {
   }
   const certificate = await readFile(certFile, 'utf8');
   const health = () => new Promise((resolve, reject) => {
-    const request = https.get({ hostname: 'localhost', port: service.port, path: service.healthPath, ca: certificate, headers: { Authorization: `Bearer ${token}` }, timeout: 3000 }, response => {
+    const request = https.get({ hostname: '127.0.0.1', port: service.port, path: service.healthPath, ca: certificate, headers: { Authorization: `Bearer ${token}` }, timeout: 3000 }, response => {
       let size = 0, data = '';
       response.on('data', chunk => { size += chunk.length; if (size > 32768) response.destroy(new Error('Health response too large')); else data += chunk; });
       response.on('error', reject);
@@ -103,6 +114,7 @@ export async function manageService(action, directory, options = {}) {
   const deadline = Date.now() + 15000;
   while (Date.now() < deadline) { try { await health(); healthy = true; break; } catch { await delay(200); } }
   if (!healthy) throw creatorError('SERVICE_HEALTH_FAILED', 'Backend did not become healthy; inspect its private server log');
+  if (!device) return result({ ready: true, running: alive(), kind: 'local', deviceConnected: false });
   device.run(['reverse', `tcp:${service.port}`, `tcp:${service.port}`]);
   await provision(`https://localhost:${service.port}`, token, certificate);
   return result({ ready: true, running: alive(), kind: 'local' });
