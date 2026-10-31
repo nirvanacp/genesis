@@ -30,13 +30,13 @@ The stable route inventory in `applet.json` is unchanged. This presentation cont
 
 | Routes / owned screen | Presentation and interactions | Provider boundary | Acceptance |
 | --- | --- | --- | --- |
-| `/home`, timeline | Compact feed, For you / Following, post details, load more | Composer and social mutations | Required; pending live verification |
-| `/explore/*`, `/search?q=…`, discovery | Search field, source tabs, readable trends/people, results | Unsupported destination recovery | Required; pending live verification |
-| `/notifications`, `/notifications/mentions` | Source tabs and complete clickable notification rows | Original notification/account actions | Required; pending live verification |
-| `/:handle`, profile and people subroutes | Banner/avatar, bio, follow counts, source tabs and posts | Edit/follow and protected account forms | Required; pending live verification |
-| `/:handle/status/:id` and photo/video/activity subroutes | Post actions, quoted post, image grid, expanded detail | Reply/repost/like/bookmark/share, full playback | Required; pending live verification |
-| `/i/history`, `/i/history/likes`, internal `library` | One Bookmarks / Likes / Categories row; coherent saved rows and category sheets | X bookmarks stay independent of private Categories | Preserve; pending live verification |
-| Unknown, loading, auth and error states | Owned recovery, visible retry and website entry | Explicit website view and native return | Preserve; pending live verification |
+| `/home`, timeline | Compact feed, For you / Following, post details, load more | Composer and social mutations | Passed on authenticated emulator |
+| `/explore/*`, `/search?q=…`, discovery | Search field, source tabs, readable trends/people, results | Unsupported destination recovery | Passed, including trend options and Follow handoff |
+| `/notifications`, `/notifications/mentions` | Source tabs and complete clickable notification rows | Original notification/account actions | Passed row-to-post, Mentions empty state and source error recovery |
+| `/:handle`, profile and people subroutes | Banner/avatar, bio, follow counts, source tabs and posts | Edit/follow and protected account forms | Passed public/own profiles, People, Replies/Media, Lists/detail and Communities |
+| `/:handle/status/:id` and photo/video/activity subroutes | Post actions, quoted post, image grid, black media viewer, expanded detail | Reply/repost/like/bookmark/share, full playback | Passed details, quote, multi-photo boundaries, Views/help and provider entry/return; actual video playback not qualified |
+| `/i/history`, `/i/history/likes`, internal `library` | One Bookmarks / Likes / Categories row; coherent saved rows and category sheets | X bookmarks stay independent of private Categories | Passed tabs, filtering, create/rename/save/read-back/remove/delete of disposable records; existing records preserved |
+| Unknown, loading, auth and error states | Owned recovery, visible retry and website entry | Explicit website view and native return | Loading and real source errors passed; sign-out/challenge and unknown routes not requalified in this visual pass |
 
 The user requested verification of all interactions. Opening original forms does not authorize publishing posts/messages or changing account settings. Component previews establish layout and event wiring only; actual source, account, backend persistence and native return need integrated checks. Visual similarity does not establish native feature parity.
 
@@ -68,6 +68,8 @@ The previous mixed-document source CSS, injected post controls, one-use source-t
 
 ## Verification
 
-The native-design update passes workspace TypeScript, applet check/build, CSS parsing and whitespace checks. It was development-installed on `emulator-5554`. Browser inspection confirmed current website presentation selectors. Live visual, interaction and backend acceptance of this revision remains required, pending access to the emulator UI or explicit authorization for ADB UI control. Package acceptance is not interaction verification. The attempted local-file component preview was blocked by the browser and supplies no verification evidence.
+The native-design update passes workspace TypeScript, applet check/build, CSS parsing and whitespace checks. Revision `eff332d4c8d176b7700b2387144703f1b3880cd2969ee5eeb38b784ab30f762d` was installed and exercised on `emulator-5554` using user-authorized ADB screenshots/taps. Authenticated mobile website inspection supplied the reference; native X itself was unavailable, so exact native/font parity is not claimed. See the [integrated verification report](../../../.reports/phase-5/2026-11-01/011600-x-native-design-verification.md) for journeys, fixes, commits and limits. The blocked local-file component preview supplies no evidence.
+
+Light/dark appearance and a 320-CSS-pixel viewport with doubled system text were inspected. Applet text wraps and the category sheet scrolls with Close/Cancel available. Native shell bottom labels clip at that extreme text setting; this is an outstanding platform limitation. The Android accessibility dump also omits the search field's name despite its owned HTML label; touch/keyboard search works, and TalkBack remains unqualified. Emulator appearance/density/text settings were restored. Social/account forms were opened and closed without submitting changes. Real video playback, physical-device layouts, localized text, account switching and Premium-only flows remain unqualified.
 
 Run the applet CLI check/build, workspace TypeScript check and backend `node --check` commands. Device acceptance must cover the actual authenticated applet, source tabs, internal/external transitions, provider Close/Back, category writes/read-back/cleanup and source isolation. See current phase-5 records for observed results. Static checks do not qualify current selectors or website behavior. Physical-device, localized layouts, Premium-only folder flows and multi-user service provisioning require separate qualification.
