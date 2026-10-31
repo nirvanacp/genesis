@@ -22,6 +22,24 @@ Read operations such as tab selection, opening an observed trend and loading mor
 
 The source observer identifies the signed-in account through inspected signed-in controls and its matching bootstrap entity. It never uses the viewed post author. Only the foreground persists accepted observations, bound to its current visit. Private Categories access checks that confirmed account against the backend's expected handle, and revision-bound operations prevent cross-account writes. Account loading and provider return require revalidation. Website cookies never become backend credentials.
 
+## Native X design brief
+
+Required: reproduce native X's compact feed and controls in owned HTML/React, using the live mobile-width X website for details that cannot be confirmed in the native app. Preserve Genesis's existing Home / Explore / Notifications / Saved / Profile bottom navigation. Do not add a primary sidebar or a second tab bar. Android system typography, 15px/20px post copy, 40px feed avatars, inline author/handle/time, hairline separators, blue tab indicators, icon actions and profile imagery provide the shared visual language. Categories uses the same tokens and controls.
+
+The stable route inventory in `applet.json` is unchanged. This presentation contract supplements its adapter/renderer/provider mapping. Source data remains bounded and validated; neither source CSS nor upstream HTML supplies the foreground.
+
+| Routes / owned screen | Presentation and interactions | Provider boundary | Acceptance |
+| --- | --- | --- | --- |
+| `/home`, timeline | Compact feed, For you / Following, post details, load more | Composer and social mutations | Required; pending live verification |
+| `/explore/*`, `/search?q=…`, discovery | Search field, source tabs, readable trends/people, results | Unsupported destination recovery | Required; pending live verification |
+| `/notifications`, `/notifications/mentions` | Source tabs and complete clickable notification rows | Original notification/account actions | Required; pending live verification |
+| `/:handle`, profile and people subroutes | Banner/avatar, bio, follow counts, source tabs and posts | Edit/follow and protected account forms | Required; pending live verification |
+| `/:handle/status/:id` and photo/video/activity subroutes | Post actions, quoted post, image grid, expanded detail | Reply/repost/like/bookmark/share, full playback | Required; pending live verification |
+| `/i/history`, `/i/history/likes`, internal `library` | One Bookmarks / Likes / Categories row; coherent saved rows and category sheets | X bookmarks stay independent of private Categories | Preserve; pending live verification |
+| Unknown, loading, auth and error states | Owned recovery, visible retry and website entry | Explicit website view and native return | Preserve; pending live verification |
+
+The user requested verification of all interactions. Opening original forms does not authorize publishing posts/messages or changing account settings. Component previews establish layout and event wiring only; actual source, account, backend persistence and native return need integrated checks. Visual similarity does not establish native feature parity.
+
 ## Backend
 
 The separate Node 24 server uses built-in HTTP/HTTPS and SQLite. It is not bundled into Android. It requires `X_BACKEND_TOKEN`, `X_BACKEND_DB` and, on first database creation, `X_EXPECTED_HANDLE`. A service token authorizes one personal library; the handle check prevents accidental account mixing, not malicious impersonation. Multiple users/accounts are not supported.
@@ -49,5 +67,7 @@ Categories and selected bounded snapshots remain authoritative in the existing b
 The previous mixed-document source CSS, injected post controls, one-use source-to-library tickets and premium folder interception were retired in this migration. The owned Save to category action is always available without changing X bookmarks. Original X bookmark/folder actions remain in the website view. Earlier phase-4 reports describe the earlier implementation and do not qualify this API-3 revision.
 
 ## Verification
+
+The native-design update passes workspace TypeScript, applet check/build, CSS parsing and whitespace checks. It was development-installed on `emulator-5554`. Browser inspection confirmed current website presentation selectors. Live visual, interaction and backend acceptance of this revision remains required, pending access to the emulator UI or explicit authorization for ADB UI control. Package acceptance is not interaction verification. The attempted local-file component preview was blocked by the browser and supplies no verification evidence.
 
 Run the applet CLI check/build, workspace TypeScript check and backend `node --check` commands. Device acceptance must cover the actual authenticated applet, source tabs, internal/external transitions, provider Close/Back, category writes/read-back/cleanup and source isolation. See current phase-5 records for observed results. Static checks do not qualify current selectors or website behavior. Physical-device, localized layouts, Premium-only folder flows and multi-user service provisioning require separate qualification.

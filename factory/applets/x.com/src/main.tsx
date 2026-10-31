@@ -33,9 +33,23 @@ export default defineSourceAdapter({adapters:screens,activate(context){
     }
     for(const article of primary.querySelectorAll('article[data-testid="tweet"]')){
       const post=extractPost(article);if(!post||model.posts.some(p=>p.postId===post.postId))continue;
-      const metrics=[...article.querySelectorAll<HTMLElement>('[data-testid="reply"],[data-testid="retweet"],[data-testid="unretweet"],[data-testid="like"],[data-testid="unlike"],a[href$="/analytics"]')].filter(e=>e.closest('article')===article).map(e=>({label:(e.getAttribute('data-testid')??'Views').replace('un',''),value:e.getAttribute('aria-label')??text(e,120)})).slice(0,5);
+      const metrics=[...article.querySelectorAll<HTMLElement>('[data-testid="reply"],[data-testid="retweet"],[data-testid="unretweet"],[data-testid="like"],[data-testid="unlike"],a[href$="/analytics"]')].filter(e=>e.closest('article')===article).map(e=>({label:(e.getAttribute('data-testid')??'views').replace(/^un/,''),value:text(e,120)||e.getAttribute('aria-label')?.slice(0,120)||'',active:['unlike','unretweet'].includes(e.getAttribute('data-testid')??'')})).slice(0,5);
       const quote=article.querySelector('[role="link"] [data-testid="tweetText"]'),quoteLink=quote?.closest('[role="link"]')?.querySelector<HTMLAnchorElement>('a[href*="/status/"]');
       const item:XPost={...post,time:text(article.querySelector('time'),100),avatar:imageUrl(article.querySelector<HTMLImageElement>('[data-testid="Tweet-User-Avatar"] img')?.src),photos:[...article.querySelectorAll<HTMLImageElement>('[data-testid="tweetPhoto"] img')].filter(i=>{const href=destination(i.closest('a[href]')?.getAttribute('href'));if(!href)return false;const u=new URL(href),m=u.pathname.match(/\/status\/([0-9]+)\/photo\/[0-9]+$/);return u.origin==='https://x.com'&&m?.[1]===post.postId;}).map(i=>imageUrl(i.src)).filter((v):v is string=>!!v).slice(0,4),metrics,quote:quote?{text:text(quote,2500),url:destination(quoteLink?.getAttribute('href'))}:null};
+      if(quote&&item.quote){
+        const container=quote.closest<HTMLElement>('[role="link"]');
+        const name=container?.querySelector('[data-testid="User-Name"]');
+        const labels=text(name,400).split('\n').map(s=>s.trim()).filter(Boolean);
+        const quotedHandle=labels.find(s=>s.startsWith('@'))?.slice(1);
+        item.quote.authorName=labels[0]?.slice(0,200);
+        if(validHandle(quotedHandle))item.quote.authorHandle=quotedHandle;
+        item.quote.avatar=imageUrl(container?.querySelector<HTMLImageElement>('[data-testid="Tweet-User-Avatar"] img')?.src);
+        item.quote.time=text(container?.querySelector('time'),100);
+        item.quote.verified=!!name?.querySelector('[data-testid="icon-verified"]');
+        if(container){item.quote.key='quote-'+post.postId;nextTargets.set(item.quote.key,{element:container,text:text(container,3200)});}
+      }
+      const dateTime=article.querySelector('time')?.getAttribute('datetime');if(dateTime&&Number.isFinite(Date.parse(dateTime)))item.dateTime=dateTime;
+      item.verified=!!article.querySelector('[data-testid="User-Name"] [data-testid="icon-verified"]');
       const social=article.querySelector('[data-testid="socialContext"]');const socialUrl=destination(social?.closest('a[href]')?.getAttribute('href'));if(social&&socialUrl)item.context={text:text(social,200),url:socialUrl};
       model.posts.push(item);if(model.posts.length>=40){model.partial=true;break;}
     }
@@ -45,7 +59,7 @@ export default defineSourceAdapter({adapters:screens,activate(context){
       const label=text(element,type==='notification'?1800:700);if(!label||model.entries.length>=60)return;
       const id=type+'-'+key(label),link=element.matches('a[href]')?element:element.querySelector('a[href]');
       const url=command?null:destination(link?.getAttribute('href'));if(model.entries.some(e=>e.key===id))return;
-      model.entries.push({key:id,kind:type,text:label,url,command});if(command&&element instanceof HTMLElement)nextTargets.set(id,{element,text:label});
+      model.entries.push({key:id,kind:type,text:label,url,command,avatar:imageUrl(element.querySelector<HTMLImageElement>('img')?.src)});if(command&&element instanceof HTMLElement)nextTargets.set(id,{element,text:label});
     };
     if(kind==='notifications')for(const e of primary.querySelectorAll('[data-testid="notification"]'))add(e,'notification',true);
     if(kind==='discovery')for(const e of primary.querySelectorAll('[data-testid="trend"]'))add(e,'trend',true);
@@ -58,7 +72,7 @@ export default defineSourceAdapter({adapters:screens,activate(context){
     const profileName=primary.querySelector('[data-testid="UserName"]');
     const profileHandle=location.pathname.split('/')[1];
     if(kind==='profile'&&profileName&&validHandle(profileHandle)){
-      model.title=text(profileName,200).split('\n')[0];model.profile={handle:profileHandle,name:model.title,description:text(primary.querySelector('[data-testid="UserDescription"]'),4000),details:text(primary.querySelector('[data-testid="UserProfileHeader_Items"]'),1000),links:[...primary.querySelectorAll<HTMLAnchorElement>('a[href]')].filter(a=>new RegExp(`^/${profileHandle}/(following|followers|verified_followers)$`,'i').test(a.getAttribute('href')??'')).slice(0,3).map(a=>({label:text(a,100),url:a.href}))};
+      model.title=text(profileName,200).split('\n')[0];model.profile={handle:profileHandle,name:model.title,description:text(primary.querySelector('[data-testid="UserDescription"]'),4000),details:text(primary.querySelector('[data-testid="UserProfileHeader_Items"]'),1000),links:[...primary.querySelectorAll<HTMLAnchorElement>('a[href]')].filter(a=>new RegExp(`^/${profileHandle}/(following|followers|verified_followers)$`,'i').test(a.getAttribute('href')??'')).slice(0,3).map(a=>({label:text(a,100),url:a.href})),avatar:imageUrl(primary.querySelector<HTMLImageElement>(`a[href="/${profileHandle}/photo"] img`)?.src),banner:imageUrl(primary.querySelector<HTMLImageElement>(`a[href="/${profileHandle}/header_photo"] img`)?.src),verified:!!profileName.querySelector('[data-testid="icon-verified"]')};
     }
     const empty=primary.querySelector('[data-testid="emptyState"]');if(empty)model.emptyText=text(empty,1800);
     if(!model.emptyText&&!model.posts.length&&!model.entries.length&&!model.profile){
@@ -77,10 +91,14 @@ export default defineSourceAdapter({adapters:screens,activate(context){
   context.navigation.onChange(publish);window.addEventListener('DOMContentLoaded',schedule,{signal:context.signal});window.addEventListener('load',schedule,{signal:context.signal});
   context.source.onCommand(command=>{
     if(command.name==='loadMore'){window.scrollBy({top:Math.max(window.innerHeight*2,1000),behavior:'instant'});clearTimeout(moreTimer);moreTimer=setTimeout(publish,1000);return;}
-    if(!['selectTab','openEntry'].includes(command.name)||!isObject(command.payload)||typeof command.payload.key!=='string')return;
-    const target=targets.get(command.payload.key);if(!target||!target.element.isConnected||text(target.element,command.name==='selectTab'?100:command.payload.key.startsWith('notification-')?1800:700)!==target.text)return;
+    if(!['selectTab','openEntry','openQuote'].includes(command.name)||!isObject(command.payload)||typeof command.payload.key!=='string')return;
+    const target=targets.get(command.payload.key);if(!target||!target.element.isConnected||text(target.element,command.name==='selectTab'?100:command.name==='openQuote'?3200:command.payload.key.startsWith('notification-')?1800:700)!==target.text)return;
     if(command.name==='selectTab'&&target.element.getAttribute('role')!=='tab')return;
     if(command.name==='openEntry'&&!target.element.matches('[data-testid="trend"],[data-testid="notification"],[data-testid="listCell"][role="link"]'))return;
+    if(command.name==='openQuote'){
+      const article=target.element.closest('article[data-testid="tweet"]');
+      if(!article||!target.element.matches('[role="link"]')||!target.element.querySelector('[data-testid="tweetText"]')||'quote-'+extractPost(article)?.postId!==command.payload.key)return;
+    }
     target.element.click();clearTimeout(moreTimer);moreTimer=setTimeout(publish,500);
   });
   context.onDispose(()=>{clearTimeout(moreTimer);clearTimeout(publication);});
