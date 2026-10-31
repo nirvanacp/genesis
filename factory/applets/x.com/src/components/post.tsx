@@ -67,7 +67,7 @@ export function Post({item, expanded, open, save, openQuote}: {
       {item.avatar ? <img className="avatar" src={item.avatar} alt="" loading="lazy"/> : <span className="avatar fallback">{item.snapshot.authorName.slice(0, 1)}</span>}
     </XLink>
     <header className="post-heading">
-      <div className="author"><XLink url={profile} open={open} className="author-name">{item.snapshot.authorName}</XLink>{item.verified && <Icon name="verified"/>}<span className="author-handle">@{item.snapshot.authorHandle}</span><XLink className="post-time" url={item.url} open={open} label={`Open post and discussion, ${item.time}`}>· {item.time}</XLink></div>
+      <div className="author"><XLink url={profile} open={open} className="author-name">{item.snapshot.authorName}</XLink>{item.verified && <Icon name="verified"/>}<span className="author-handle">@{item.snapshot.authorHandle}</span>{!expanded&&<XLink className="post-time" url={item.url} open={open} label={`Open post and discussion, ${item.time}`}>· {item.time}</XLink>}</div>
       <details className="post-menu" ref={menu}><summary role="button" aria-label={`More options for post by @${item.snapshot.authorHandle}`}><Icon name="more"/></summary><div className="post-menu-items">
         <button onClick={event => { event.currentTarget.closest('details')?.removeAttribute('open'); save(); }}><Icon name="folder"/>Save to category</button>
         <XLink url={item.url} open={open} website><Icon name="bookmark"/>Bookmark on X</XLink>
