@@ -1,0 +1,6 @@
+# X overlay opacity investigation
+
+- Goal: diagnose the user's transparent bookmark toast and compose button, and plan a shared-framework response without implementing code.
+- Changes: added the [overlay repair plan](../../../.plans/phase-4/2026-10-31/125400-x-overlay-opacity-repair-plan.md), covering measured source styles, bounded ancestry diagnostics, source-scoped correction, ownership rules and device acceptance.
+- Decisions: the user requested plans only. The agent chose narrow X corrections plus reusable diagnostics rather than a global opacity reset. Live source containers carried inline opacity .3 despite solid blue backgrounds; X already used hardware rendering. The prior software-rendering incident is distinct. The exact upstream event implementation and behavior in an uncustomized browser remain unverified.
+- Verification: observed the compose parent change from opacity 1 to .3 after a swipe, and captured the bookmark alert at .3. Inspected source CSS, SDK mount/modal ownership and native rendering settings. Removed the disposable bookmark, verified its unsaved state and removed CDP forwarding. Document whitespace and links checked before commit. No application code, tests, services or installed revisions changed.
