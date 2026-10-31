@@ -50,6 +50,7 @@ my-reader/
   package-lock.json
   tsconfig.json
   README.md
+  start.sh              operator entrypoint for the whole local backend layer
   src/main.ts
   src/styles.css
   src/home.tsx           optional owned React page
@@ -59,6 +60,8 @@ my-reader/
 ```
 
 The applet ID is stable application identity, even when several websites are sources. In Genesis's development monorepo, examples live under `factory/applets/`. Maintainers choose APK bundles in `genesis.packages.json`; external creators use development installation without changing that selection.
+
+Maintain `start.sh` even for an applet with no backend. When adding services or storage daemons, follow [local startup and port assignments](services-and-data.md#local-startup-and-port-assignments), reserve every listener and keep startup instructions current. Agents create and statically check scripts; the operator runs them unless service execution is explicitly requested.
 
 Create one applet per intended application, not per route, feature or backend. A temporary diagnostic applet is not another delivered application. Plan its environment and supported cleanup before installing it on an everyday device. See [verification](verification.md) for how to separate diagnostic evidence from real acceptance.
 

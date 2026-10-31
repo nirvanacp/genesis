@@ -14,6 +14,7 @@ An applet can combine several websites. Each source runs in its own browser docu
 | Choose a capability or check a signature | [SDK and manifest reference](guides/sdk-reference.md) |
 | Adapt a website, build React UI, or combine sources | [Implementation patterns](guides/patterns.md) |
 | Store records or connect a backend | [Services and data](guides/services-and-data.md) |
+| Restart local applet backends after a reboot | [Local startup and port assignments](guides/services-and-data.md#local-startup-and-port-assignments) |
 | Check or debug the result | [Verification and maintenance](guides/verification.md) |
 | Select an agent skill | [Skills](skills/README.md) |
 
@@ -24,6 +25,8 @@ Example request to an agent:
 Agents should work from an ordinary product request without requiring a technical specification from the user. One requested application keeps its sources, pages, custom features and services inside that application. Agents ask focused questions when unresolved intent would change what is delivered, and choose routine implementation details themselves. A compact app brief and real acceptance journeys keep incremental work aligned with the requested result. These instructions reduce avoidable mistakes; they do not guarantee that one prompt can overcome missing source access or host capabilities.
 
 ## What is available today
+
+In this monorepo, run `./factory/start-applet-servers.sh` from the Genesis root to start all local applet backends. For Android access after a computer/device restart, run `./factory/start-applet-servers.sh --device <adb-serial>` to restore tunnels and service connections too. Each applet also has its own `start.sh`. These are operator commands. Coding agents maintain them and use static checks; agents must not execute startup scripts or start services unless the user explicitly asks them to run services. See the services guide for prerequisites, storage, shutdown and port reservations.
 
 This kit matches SDK/tools `0.3.0`, runtime API `2`, and bundle format/manifest schema `1`. TypeScript, managed DOM effects, optional React pages, native manifest sections, applet-local documents, declared HTTPS services, and multiple sources are available.
 
