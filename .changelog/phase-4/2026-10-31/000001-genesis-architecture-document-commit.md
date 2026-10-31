@@ -1,0 +1,6 @@
+# Genesis architecture document commit
+
+- Goal: Preserve the untracked Genesis system architecture document in version control, as requested by the user, on the active `proto/phase-4` branch.
+- Changes: Add the existing [architecture document](../../../../.docs/phase-4/2026-10-30/184524-genesis-current-system-architecture.md), including its Mermaid diagram and descriptions of Android hosting, Rust lifecycle control, SDK messaging, applet storage, service connections, and development provisioning. Add this required development record alongside it.
+- Decisions: The user authorized committing all untracked files and splitting related work when useful. The agent selected one commit because the only existing untracked file is a single documentation change. Preserve its contents as supplied; architectural corrections and implementation work are outside this commit request.
+- Verification: Read the complete document and checked repository status to establish scope. The staged whitespace check passed, and the staged summary contains only the architecture document and this record. No runtime code changed, so application tests are not required. This task does not validate the document's architectural claims.

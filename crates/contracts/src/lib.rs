@@ -2,7 +2,11 @@
 use serde::{Deserialize, Serialize};
 
 pub const IMPLEMENTATION_STAGE: &str = "MVP-07";
-pub const RUNTIME_API_VERSION: u32 = 1;
+pub const RUNTIME_API_VERSION: u32 = 2;
+fn legacy_api() -> u32 {
+    1
+}
+
 pub const BUNDLE_FORMAT_VERSION: u32 = 1;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -17,6 +21,8 @@ pub struct AppletBundle {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PackageIndex {
+    #[serde(default)]
+    pub hidden_applet_ids: Vec<String>,
     pub schema_version: u32,
     pub implementation_stage: String,
     pub packages: Vec<Package>,
@@ -25,6 +31,8 @@ pub struct PackageIndex {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Package {
+    #[serde(default = "legacy_api")]
+    pub runtime_api_version: u32,
     pub manifest: Manifest,
     pub revision: String,
     pub assets: Vec<Asset>,
@@ -57,6 +65,10 @@ pub struct Manifest {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Source {
+    #[serde(default)]
+    pub customized_routes: Option<Vec<String>>,
+    #[serde(default)]
+    pub ordinary_routes: Vec<String>,
     #[serde(default)]
     pub customized_paths: Option<Vec<String>>,
     pub id: String,
@@ -96,6 +108,8 @@ pub struct Action {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AppShell {
+    #[serde(default)]
+    pub color_scheme: Option<String>,
     pub title: String,
     pub brand_asset: String,
     pub sections: Vec<ShellSection>,
@@ -163,6 +177,8 @@ pub enum ContextKind {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExecutionContext {
+    #[serde(default = "legacy_api")]
+    pub runtime_api_version: u32,
     pub instance_id: InstanceId,
     pub applet_id: AppletId,
     pub view_id: ViewId,
@@ -174,6 +190,8 @@ pub struct ExecutionContext {
 #[serde(rename_all = "camelCase")]
 pub struct SessionSnapshot {
     #[serde(default)]
+    pub section_destinations: std::collections::HashMap<String, SectionDestination>,
+    #[serde(default)]
     pub opener: Option<Selection>,
     #[serde(default)]
     pub current_url: Option<String>,
@@ -184,7 +202,17 @@ pub struct SessionSnapshot {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct SectionDestination {
+    pub selection: Selection,
+    pub url: String,
+    pub opener: Option<Selection>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Selection {
+    #[serde(default)]
+    pub section_id: Option<String>,
     pub applet_id: AppletId,
     pub source_id: SourceId,
     pub page_id: Option<String>,
@@ -197,9 +225,11 @@ pub enum HostEvent {
         index: PackageIndex,
         #[serde(default)]
         debug: bool,
-        restore: Option<SessionSnapshot>,
+        restore: Option<Box<SessionSnapshot>>,
     },
     Open {
+        #[serde(default, rename = "sectionId")]
+        section_id: Option<String>,
         #[serde(default)]
         url: Option<String>,
         #[serde(rename = "appletId")]
@@ -221,6 +251,12 @@ pub enum HostEvent {
         url: Option<String>,
     },
     ModalDeadline {
+        generation: u64,
+        #[serde(rename = "documentId")]
+        document_id: DocumentId,
+        token: u64,
+    },
+    BackDeadline {
         generation: u64,
         #[serde(rename = "documentId")]
         document_id: DocumentId,
@@ -305,6 +341,16 @@ pub enum HostEvent {
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum HostCommand {
+    LeaveGuard {
+        generation: u64,
+        message: Option<String>,
+    },
+    ScheduleBackDeadline {
+        generation: u64,
+        #[serde(rename = "documentId")]
+        document_id: DocumentId,
+        token: u64,
+    },
     ModalState {
         open: bool,
     },
@@ -375,6 +421,7 @@ pub enum HostCommand {
         generation: u64,
         epoch: u64,
     },
+    ReturnToUrl { generation: u64, url: String },
     DeferNavigation {
         generation: u64,
         #[serde(rename = "documentId")]

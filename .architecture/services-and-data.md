@@ -14,7 +14,7 @@ Transport constructs a path relative to the configured origin and rechecks schem
 
 Configuration edits affect future requests. Disconnecting removes saved configuration; it does not undo or guarantee cancellation of in-flight requests. Revocation-sensitive operations must also revoke the credential at the backend. Connection settings are scoped to the effective applet IDs; signed publisher/installation identity must be established before independent package installation.
 
-The runtime allows multiple service IDs, but the current creator helper reads one `backend/service.json` and starts one Node entrypoint per invocation. Provisioning restarts the debug host. Its ready receipt follows device-side health, but a failed health request does not roll back settings already committed. `status` checks the process rather than verifying end-to-end service readiness. Host service errors use generic wording. Applets supply domain-specific reader messages.
+The runtime allows multiple service IDs. The creator helper defaults to `backend/service.json`; `--service-file` selects another applet-contained declaration and starts one Node entrypoint per invocation, with private state scoped by applet/service ID. `--local` starts and health-checks a backend without a device. In the monorepo, operator-owned applet `start.sh` scripts and `factory/start-applet-servers.sh` run those services using reservations in `factory/ports.json`; agents maintain these without starting services unless explicitly asked. Device mode restores adb reverse and provisions connections. Provisioning restarts the debug host. Its ready receipt follows device-side health, but a failed health request does not roll back settings already committed. `status` checks the process rather than verifying end-to-end service readiness. Host service errors use generic wording. Applets supply domain-specific reader messages.
 
 ## Trust and application semantics
 
@@ -22,7 +22,7 @@ A configured backend is trusted to receive the chosen applet data and return dat
 
 Servers enforce authentication and application authorization. The current HN process uses a single bearer token and a single database. It is a personal single-tenant backend, not a multi-user account service. Production deployment requires an operator-managed trusted HTTPS endpoint, durable volume, backups and appropriate network/rate controls. Server secrets stay outside source and frontend bundles.
 
-Do not retry uncertain writes automatically. A transport or RPC timeout may happen after commit. Read current state before a user retries. A future exactly-once user experience needs applet-owned idempotency keys and operation status. Dropping a late UI completion does not roll back a remote write.
+Do not retry uncertain writes automatically. A transport or RPC timeout may happen after commit. Read current state before a user retries. HN still needs applet-owned idempotency keys and operation status for a stronger retry experience. The phase-4 X backend implements these in its own SQLite transactions, with operation receipts and revision preconditions; this does not create a generic host synchronization engine. Dropping a late UI completion does not roll back a remote write.
 
 ## Local storage and migration
 

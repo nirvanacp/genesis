@@ -1,0 +1,18 @@
+/* Preserve the website's typography, header spacers and responsive columns.
+   Renderer compatibility is a host preference, not a source font override. */
+/* Genesis reserves its footer already. Keep search tabs and compose controls. */
+.genesis-x [data-testid="sidebarColumn"],
+.genesis-x [data-testid="BottomBar"],
+.genesis-x [data-testid="AppTabBar"],
+.genesis-x nav:has([data-testid="AppTabBar_Home_Link"]) { display: none !important; }
+.genesis-x [data-genesis-owned] { flex-shrink: 0; }
+.genesis-x [data-testid="DashButton_ProfileIcon_Link"] { align-self: center; }
+@media (prefers-reduced-motion: reduce) {
+  .genesis-x [data-testid="tweet"],
+  .genesis-x [data-testid="app-text-transition-container"] { transition: none !important; }
+}
+
+/* X dims these active floating controls during scroll. Preserve its hidden/exit
+   opacity values and only correct the qualified .3 state, on the owner itself. */
+.genesis-x [data-testid="FloatingActionButtonBase"][style*="opacity: 0.3"]:not([hidden]):not([inert]):not([aria-hidden="true"]):has([data-testid="FloatingActionButtons_Tweet_Button"]:not([aria-disabled="true"])),
+.genesis-x [data-testid="toast"][role="alert"][style*="opacity: 0.3"]:not([hidden]):not([inert]):not([aria-hidden="true"]) { opacity: 1 !important; }

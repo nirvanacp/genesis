@@ -1,0 +1,6 @@
+# X folder and overlay qualification
+
+- Goal: deliver the repaired folder flow in the existing applet and verify persistence, navigation and visible UI.
+- Changes: updated the Android host and installed X revision 5b38b6a4ca7e4ee3cadbc30b4b0f7e7a77b25dcb47ce4f0dedf5363117185bff. Updated plans, README and architecture with supported behavior and limits. No new app identity or backend process.
+- Decisions: retain native action pass-through where capability is unknown; scope automatic fallback to qualified post-save evidence. Keep source and custom saves independent. Account-loading correction prevents unnecessary rejection while retaining epoch checks. No automatic import or real subscription changes.
+- Verification: applet check/build, SDK typecheck, Android assemble and Rust test commands passed; Rust discovered zero tests. Temporary policy probes passed. Actual emulator flow returned from denial into the opaque sheet, saved membership, read it through Categories, removed it, and returned through native Back. Final revision smoke passed. Eleven compose ancestry samples had opacity product 1; actual toast and settled sheet were opaque. Removed disposable records and debug forwarding. Real Premium picker/localized entries, tier transitions and physical-device accessibility remain unqualified.

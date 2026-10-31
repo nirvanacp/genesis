@@ -1,0 +1,6 @@
+# X folder capability policy
+
+- Goal: Choose folder providers from bounded source evidence while preserving in-progress edits.
+- Changes: Added the selector-independent `folder-capability.ts` reducer and context controller. Account/epoch, source generation, observation deadlines and intent phases prevent stale or duplicate fallback. Confirmed picker/paywall evidence selects native/custom respectively; the context controller resets on navigation, focus, account updates and disposal.
+- Decisions: The agent kept this component disconnected from source controls until actual folder selectors are qualified. No Premium badge inference, native save clicks, backend mutations, persisted post snapshots or automatic data migration. Existing custom access remains the current behavior.
+- Verification: Applet checker, bundle build and whitespace checks passed. Temporary logical harness passed repeated denial, single editor claim, pinned editor, five-minute evidence expiry, upgrade/downgrade evidence, account separation, ten-second intent expiry, clock rollback and logout. These are policy checks, not live native-folder qualification. Source integration remains blocked by the missing qualified folder/paywall surface on the inspected emulator.

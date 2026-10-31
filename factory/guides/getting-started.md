@@ -1,6 +1,6 @@
 # Start an applet
 
-This guide covers the current SDK/tools `0.2.0` workflow. Follow [the factory instructions](../AGENTS.md). The user supplies an application idea; the coding agent supplies the technical implementation.
+This guide covers the current SDK/tools `0.3.0` workflow. Follow [the factory instructions](../AGENTS.md). The user supplies an application idea; the coding agent supplies the technical implementation.
 
 ## Choose the parts of the application
 
@@ -14,23 +14,23 @@ This guide covers the current SDK/tools `0.2.0` workflow. Follow [the factory in
 
 There is no requirement to use React or a backend. A CSS adaptation can be a small `defineApplet` entry. React is useful for applet-owned pages or controls; it does not take ownership of the website's live React tree.
 
-Write a short brief in the applet README: purpose, supported websites/routes, screens/actions, where records live, and a few concrete acceptance flows. For example, “Save an article on either source, open Saved, and return to the article on its original source.” Do not ask a nontechnical user to choose a database or bridge protocol unless the choice changes their product constraints.
+Before mapping the parts, follow [product scope and clarification](product-scope.md). Write a short brief in the applet README with the intended app count/identity, complete requested journeys, existing behavior to preserve, data authority and delivery target. Record unresolved product decisions before dependent implementation. For example, "Open the app, browse either source, save an article, open Saved, and return to the article on its original source." Do not ask a nontechnical user to choose a database or bridge protocol unless the choice changes their product constraints. A complete-client request must not become only a Saved page.
 
 ## Independent creator setup
 
-Use Node `24.15.0` and npm `11.14.1`. Obtain `genesis-sdk-0.2.0.tgz`, `genesis-applet-tools-0.2.0.tgz`, and a compatible prebuilt Genesis debug APK from the platform maintainer. The archives include the executable framework, types, and matching agent kit. They are not currently published to the public npm registry.
+Use Node `24.15.0` and npm `11.14.1`. Obtain `genesis-sdk-0.3.0.tgz`, `genesis-applet-tools-0.3.0.tgz`, and a compatible prebuilt Genesis debug APK from the platform maintainer. The archives include the executable framework, types, and matching agent kit. They are not currently published to the public npm registry.
 
 Install the tools archive in a local tools directory or through your agent's package workflow. For example, from an empty tools directory:
 
 ```sh
-npm install /absolute/path/genesis-applet-tools-0.2.0.tgz
+npm install /absolute/path/genesis-applet-tools-0.3.0.tgz
 npx --no-install genesis-applet create /absolute/path/my-reader --id my-reader --name "My reader" --source https://example.com/ --react
 ```
 
 Then, from the created applet directory, install the exact SDK/tools archives and the generated React dependencies:
 
 ```sh
-npm install /absolute/path/genesis-sdk-0.2.0.tgz /absolute/path/genesis-applet-tools-0.2.0.tgz
+npm install /absolute/path/genesis-sdk-0.3.0.tgz /absolute/path/genesis-applet-tools-0.3.0.tgz
 npm run check
 npm run build
 ```
@@ -50,6 +50,7 @@ my-reader/
   package-lock.json
   tsconfig.json
   README.md
+  start.sh              operator entrypoint for the whole local backend layer
   src/main.ts
   src/styles.css
   src/home.tsx           optional owned React page
@@ -59,6 +60,10 @@ my-reader/
 ```
 
 The applet ID is stable application identity, even when several websites are sources. In Genesis's development monorepo, examples live under `factory/applets/`. Maintainers choose APK bundles in `genesis.packages.json`; external creators use development installation without changing that selection.
+
+Maintain `start.sh` even for an applet with no backend. When adding services or storage daemons, follow [local startup and port assignments](services-and-data.md#local-startup-and-port-assignments), reserve every listener and keep startup instructions current. Agents create and statically check scripts; the operator runs them unless service execution is explicitly requested.
+
+Create one applet per intended application, not per route, feature or backend. A temporary diagnostic applet is not another delivered application. Plan its environment and supported cleanup before installing it on an everyday device. See [verification](verification.md) for how to separate diagnostic evidence from real acceptance.
 
 ## Minimal source adaptation
 
@@ -117,7 +122,7 @@ For real records, render an initial loading state and fetch after mount. Only di
 
 ## Load and update the application
 
-The host must already be installed, compatible with runtime API 1, and debuggable. Use an authorized Android device selected explicitly by serial. The creator needs adb, not native compilers or Genesis source. From the applet directory:
+The host must already be installed, compatible with runtime API 2, and debuggable. Use an authorized Android device selected explicitly by serial. The creator needs adb, not native compilers or Genesis source. From the applet directory:
 
 ```sh
 npx --no-install genesis-applet dev status --device emulator-5554 --json

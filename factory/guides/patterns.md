@@ -2,6 +2,8 @@
 
 Use [SDK signatures](sdk-reference.md) and [factory instructions](../AGENTS.md). These patterns apply to all applets; HN's entities and visual design are examples, not platform rules.
 
+Start with the application's journeys under [product scope and clarification](product-scope.md). Map components to that experience. Separate implementation ownership does not require separate product apps, and a sample applet's limitations do not become requirements for the new app.
+
 ## Respect the running website
 
 Inspect the real DOM and canonical URLs. Prefer stable IDs and semantic relationships to generated class names, position, or translated labels. Put extraction and URL validation in a focused module. Return no record when required identity is missing. A selector that matches a row is not proof that it represents a supported item.
@@ -38,8 +40,14 @@ Maintain data authority and per-source freshness timestamps. Show partial result
 
 Declare native sections in `shell`; do not add a duplicate applet tab bar. Genesis reserves native chrome space. Avoid adding the same bottom inset twice. Customized routes use app navigation; external pages use ordinary reader controls with their actual origin. Keep unsupported same-origin routes usable through ordinary presentation and preserve original-page recovery.
 
+Only hide a source navigation control once its equivalent is usable in the adapted experience. If required anchors or account/layout detection fail, restore source navigation rather than leaving an empty shell. Authentication, settings and other protected source routes remain part of the same application's journey even when they receive no customization binding. Verify their entry and return separately from external-reader links.
+
 Treat each screen as loading, loaded-empty, loaded-content, refreshing, or error. Keep existing content during a failed refresh and retain user input. Confirm writes before showing success. Native navigation must remain usable during data errors. Refresh retained pages through `onFocus`; persist drafts explicitly because eviction and process death do not serialize arbitrary JavaScript state.
 
 For applet content, use consistent spacing, readable type, responsive widths, and visible keyboard focus. As a project design target, aim for 48 CSS-pixel interactive hit areas in WebView and verify their on-device size; native Android controls use 48 dp. Support 200% text, narrow screens, keyboard appearance, light/dark colors, and reduced motion. Label icon buttons and statuses for TalkBack; do not convey state by color alone. Avoid fixed-height text containers and horizontal overflow from long titles or code.
 
 These are portable applet acceptance requirements. The Genesis repository's Apple design skill informs general accessibility/layout principles; Android Back, Android sizing, HTML semantics, and the current host contract govern implementation. No Apple-only runtime or component library is required by this kit.
+
+## Opaque panels and source compositing
+
+Use `ui.openModal` for floating owned sheets. `mountAt` inherits source ancestor compositing even inside Shadow DOM. Put a translucent backdrop and an opaque light/dark panel on separate elements; fade the backdrop color rather than their shared parent. Verify settled and cancelled animations, reduced motion, hidden controls and semantic disabled state. Never force every source element opaque. Source corrections need qualified selectors, an active scope and cleanup.

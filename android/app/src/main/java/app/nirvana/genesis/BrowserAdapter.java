@@ -61,6 +61,8 @@ final class BrowserAdapter {
     private long readerEpoch;
     private boolean readerCommitted;
 
+    private String leaveGuard;
+    String leaveGuard() { return leaveGuard; }
     private long generation;
     private JSONObject creation;
     private boolean attached = true;
@@ -115,11 +117,7 @@ final class BrowserAdapter {
         PackageAssets assets = new PackageAssets(activity.packageStore, command);
         views.configureShell(command, assets);
         WebView browser = new WebView(activity); webView = browser;
-        // Emulator GPU raster caches can reuse stale table tiles after DOM customization.
-        // Keep this workaround off physical devices and the independent external reader.
-        boolean emulator = "ranchu".equals(Build.HARDWARE) || "goldfish".equals(Build.HARDWARE)
-            || Build.FINGERPRINT.startsWith("generic");
-        if (emulator && command.getBoolean("customized")) browser.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+        applyRendering();
         browser.getSettings().setJavaScriptEnabled(true);
         browser.getSettings().setDomStorageEnabled(true);
         browser.getSettings().setAllowFileAccess(false);
@@ -202,8 +200,10 @@ final class BrowserAdapter {
                 if (matches(current)) views.error("Camera and microphone access are unsupported in this MVP.");
             }
             @Override public boolean onShowFileChooser(WebView view, ValueCallback<android.net.Uri[]> callback, FileChooserParams params) {
-                callback.onReceiveValue(null);
-                if (matches(current)) views.error("File upload is unsupported in this MVP.");
+                if (!matches(current) || !attached) { callback.onReceiveValue(null); return true; }
+                long epoch = navigationEpoch; String url = view.getUrl();
+                activity.chooseFiles(params, callback, () -> matches(current) && attached && view == webView
+                    && epoch == navigationEpoch && java.util.Objects.equals(url, view.getUrl()));
                 return true;
             }
             @Override public boolean onCreateWindow(WebView view, boolean dialog, boolean gesture, android.os.Message result) {
@@ -289,13 +289,21 @@ final class BrowserAdapter {
             });
             JSONObject config = new JSONObject(command.getJSONObject("context").toString());
             config.put("revision", command.getJSONObject("package").getString("revision"));
-            JSONArray paths = null;
+            JSONObject sourceDefinition = null;
             if ("source".equals(binding.getString("kind"))) {
                 JSONArray sources = command.getJSONObject("package").getJSONObject("manifest").getJSONArray("sources");
-                for (int i = 0; i < sources.length(); i++) { JSONObject source = sources.getJSONObject(i); if (source.getString("id").equals(binding.getString("sourceId"))) paths = source.optJSONArray("customizedPaths"); }
+                for (int i = 0; i < sources.length(); i++) {
+                    JSONObject source = sources.getJSONObject(i);
+                    if (source.getString("id").equals(binding.getString("sourceId"))) sourceDefinition = source;
+                }
             }
-            String condition = paths == null ? "true" : paths + ".includes(location.pathname)";
-            String injected = "if (" + condition + ") { const __GENESIS_BINDING__ = " + config + ";\n" + assets.script(command.getString("entry")) + "\n}";
+            JSONArray paths = sourceDefinition == null ? null : sourceDefinition.optJSONArray("customizedPaths");
+            boolean modern = config.optInt("runtimeApiVersion", 1) >= 2;
+            String condition = sourceDefinition == null ? "true" : modern
+                ? "customizedRoute(" + sourceDefinition + ", location.pathname)"
+                : paths == null ? "true" : paths + ".includes(location.pathname)";
+            String injected = (modern ? assets.script("runtime/routes.js") + "\n" : "")
+                + "if (" + condition + ") { const __GENESIS_BINDING__ = " + config + ";\n" + assets.script(command.getString("entry")) + "\n}";
             script = WebViewCompat.addJavaScriptOnEvent(browser, injected, WebViewCompat.INJECTION_EVENT_DOCUMENT_START, origins, world);
         }
         PackageInfo provider = WebViewCompat.getCurrentWebViewPackage(activity);
@@ -320,6 +328,12 @@ final class BrowserAdapter {
         long expected = command.getLong("generation");
         if (!matches(expected)) return;
         switch (command.getString("type")) {
+            case "returnToUrl": {
+                beginTransition();
+                webView.stopLoading();
+                webView.evaluateJavascript("location.replace(" + JSONObject.quote(command.getString("url")) + ")", null);
+                break;
+            }
             case "loadUrl": {
                 String url = command.getString("url");
                 if (restoredHistory) {
@@ -340,8 +354,8 @@ final class BrowserAdapter {
                 }
                 restoredHistory = false; beginTransition(); webView.loadUrl(url); break;
             }
-            case "goBack": webView.goBack(); break;
-            case "goForward": webView.goForward(); break;
+            case "goBack": views.transitionDirection(-1); webView.goBack(); break;
+            case "goForward": views.transitionDirection(1); webView.goForward(); break;
             case "reload": webView.reload(); break;
             case "destroyView": destroy(); break;
             case "deferNavigation": {
@@ -351,6 +365,12 @@ final class BrowserAdapter {
                 event.put("url", command.opt("url"));
                 // Acknowledgement is posted first; replacement runs on a later UI turn.
                 main.post(() -> emit(event, expected)); break;
+            }
+            case "leaveGuard": leaveGuard = command.isNull("message") ? null : command.getString("message"); break;
+            case "scheduleBackDeadline": {
+                JSONObject event = HostViews.event("backDeadline");
+                event.put("documentId", command.getString("documentId")); event.put("token", command.getLong("token"));
+                main.postDelayed(() -> emit(event, expected), 300); break;
             }
             case "scheduleModalDeadline": {
                 JSONObject event = HostViews.event("modalDeadline");
@@ -389,9 +409,18 @@ final class BrowserAdapter {
         }
     }
 
-    void detach() { attached = false; if (webView != null) views.browserSlot.removeView(webView); }
+    String appletId() {
+        return creation == null ? "" : creation.optJSONObject("context").optString("appletId");
+    }
+    void applyRendering() {
+        if (webView != null) {
+            webView.setLayerType(AppletRendering.layerType(activity, appletId(), creation.optBoolean("customized")), null);
+            webView.invalidate();
+        }
+    }
+    void detach() { attached = false; activity.cancelInvalidFiles(); if (webView != null) views.browserSlot.removeView(webView); }
     void attach() throws Exception {
-        attached = true;
+        attached = true; views.transitionDirection(0); views.pageStarting();
         views.configureShell(creation, new PackageAssets(activity.packageStore, creation));
         views.browserSlot.removeAllViews();
         views.browserSlot.addView(webView, new android.widget.FrameLayout.LayoutParams(-1, -1));
@@ -410,12 +439,14 @@ final class BrowserAdapter {
     boolean hasReader() { return reader != null; }
     void closeReader() {
         if (reader == null) return;
+        views.transitionDirection(-1); views.pageStarting();
         WebView retired = reader; reader = null; readerEpoch++;
         views.browserSlot.removeView(retired); retired.stopLoading(); retired.destroy();
         webView.setVisibility(View.VISIBLE); webView.onResume();
-        views.route(!"ordinary".equals(routeKind), !isFeed(webView.getUrl()));
+        views.route(isCustomizedRoute(), !isFeed(webView.getUrl()));
         updateNavigation(webView.getUrl()); views.reveal(); webView.requestFocus();
     }
+    private boolean isCustomizedRoute() { return "source".equals(routeKind) || "page".equals(routeKind); }
     private String classify(String url) {
         try {
             JSONObject event = HostViews.event("classifyUrl"); event.put("url", url);
@@ -426,7 +457,7 @@ final class BrowserAdapter {
     @SuppressLint("SetJavaScriptEnabled")
     private void openReader(String url) {
         if (reader != null) { reader.loadUrl(url); return; }
-        views.pageStarting(); views.route(false, false);
+        views.transitionDirection(1); views.pageStarting(); views.route(false, false);
         views.navigation(url, true, true, false);
         webView.onPause(); webView.setVisibility(View.INVISIBLE);
         WebView child = new WebView(activity); reader = child;
@@ -518,7 +549,7 @@ final class BrowserAdapter {
         out.putBundle("genesis.browserHistory", all);
     }
     private void beginTransition() {
-        navigationEpoch++; committed = false; prepared = false; visualPending = false;
+        navigationEpoch++; activity.cancelInvalidFiles(); committed = false; prepared = false; visualPending = false;
         views.pageStarting();
     }
     void onPresentation(JSONObject command) throws JSONException {
@@ -526,10 +557,11 @@ final class BrowserAdapter {
         if (epoch < hostEpoch) return;
         hostEpoch = epoch;
         String nextKind = command.getString("route_kind");
-        if (!"ordinary".equals(routeKind) && "ordinary".equals(nextKind) && webView != null)
+        if (isCustomizedRoute() && "ordinary".equals(nextKind) && webView != null)
             openerIndex = Math.max(0, webView.copyBackForwardList().getCurrentIndex() - (committed ? 1 : 0));
         routeKind = nextKind;
-        views.route(!"ordinary".equals(routeKind), command.getBoolean("detail"));
+        if (!isCustomizedRoute()) leaveGuard = null;
+        views.route(isCustomizedRoute(), command.getBoolean("detail"));
         String state = command.getString("state");
         if ("ready".equals(state) || "ordinary".equals(state)) {
             prepared = true; maybeReveal();
@@ -608,7 +640,7 @@ final class BrowserAdapter {
     private void updateNavigation(String url) {
         if (!attached || reader != null || webView == null || url == null) return;
         visibleUrl = url;
-        boolean reader = "ordinary".equals(routeKind);
+        boolean reader = !isCustomizedRoute();
         views.navigation(url, reader, webView.canGoBack(), webView.canGoForward());
     }
     private void recordScroll(WebView view) {

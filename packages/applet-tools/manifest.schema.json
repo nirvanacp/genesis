@@ -89,6 +89,24 @@
                 "fallbackUrl"
               ]
             }
+          },
+          "customizedRoutes": {
+            "type": "array",
+            "maxItems": 100,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "maxLength": 256
+            }
+          },
+          "ordinaryRoutes": {
+            "type": "array",
+            "maxItems": 100,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "maxLength": 256
+            }
           }
         },
         "required": [
@@ -215,7 +233,8 @@
                   "search",
                   "post",
                   "bookmark",
-                  "person"
+                  "person",
+                  "notifications"
                 ]
               }
             },
@@ -252,6 +271,12 @@
               "url"
             ]
           }
+        },
+        "colorScheme": {
+          "enum": [
+            "default",
+            "neutral"
+          ]
         }
       },
       "required": [

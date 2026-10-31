@@ -1,0 +1,6 @@
+# Connect X folder denial to applet categories
+
+- Goal: make the actual post-save Add to Folder gesture usable when X denies native folders.
+- Changes: activated a source adapter with immutable post capture, bounded/unique toast correlation, one-use navigation return, account revalidation and managed editor completion. Declared navigation-policy and explicit ordinary Premium coverage. Restoration waits for source account readiness. Source loading no longer invalidates an account epoch as though it were confirmed logout.
+- Decisions: preserve original native actions for unknown capability and leave ambiguous/unsupported controls usable. Only the qualified English toast and correlated denied routes trigger automatic fallback. The SDK addition remains generic. Existing custom categories stay independently accessible, with no import or dual writes.
+- Verification: real emulator Bookmark → Add to Folder returned to Home and opened Applet categories; existing groups loaded, disposable membership saved, source showed Categories · 1, and the library read it back. Removed the custom record and source bookmark. Native Saved, Categories and Back return worked. Temporary controller probes passed for deadlines, stale results, pinning, account and evidence expiry. Actual Premium picker/localized/other folder-entry qualification remains open.

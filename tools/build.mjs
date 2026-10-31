@@ -63,7 +63,7 @@ async function assets(packages) {
       await mkdir(path.dirname(destination), { recursive: true });
       await writeFile(destination, await readFile(path.join(bundleDirectory, "assets", asset.path)));
     }
-    index.packages.push(pack);
+    index.packages.push({ ...pack, runtimeApiVersion: bundle.runtimeApiVersion });
   }
   await mkdir(path.join(output, "packages"), { recursive: true });
   await writeFile(path.join(output, "packages/index.json"), `${JSON.stringify(index, null, 2)}\n`);

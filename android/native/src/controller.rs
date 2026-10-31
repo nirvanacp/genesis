@@ -4,9 +4,22 @@ use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet, VecDeque};
 use url::Url;
 
+struct NavigationReturn {
+    generation: u64,
+    key: String,
+    token: String,
+    paths: Vec<String>,
+    return_url: String,
+    state: Value,
+    expires: std::time::Instant,
+    matched: Option<String>,
+}
 #[derive(Default)]
 pub struct HostState {
     index: Option<PackageIndex>,
+    navigation_return: Option<NavigationReturn>,
+    section_destinations: HashMap<String, SectionDestination>,
+    pending_back: Option<(u64, u64, bool)>,
     instances: HashMap<InstanceId, AppletInstance>,
     pub(crate) active: Option<LiveView>,
     disabled: HashSet<AppletId>,
@@ -50,6 +63,29 @@ fn is_home_url(url: &str, source: &Source) -> bool {
             .contains(&parsed.origin().ascii_serialization())
             && source.home_paths.iter().any(|path| path == parsed.path())
     })
+}
+
+fn valid_section_destination(
+    index: &PackageIndex,
+    applet_id: &str,
+    section_id: &str,
+    saved: &SectionDestination,
+) -> bool {
+    index
+        .packages
+        .iter()
+        .find(|package| package.manifest.id == applet_id)
+        .is_some_and(|package| {
+            saved.selection.applet_id.0 == applet_id
+                && saved.selection.section_id.as_deref() == Some(section_id)
+                && package.manifest.shell.as_ref().is_some_and(|shell| {
+                    shell.sections.iter().any(|section| section.id == section_id)
+                })
+                && package.manifest.sources.iter().any(|source| source.id == saved.selection.source_id.0)
+                && saved.selection.page_id.as_ref().is_none_or(|page| {
+                    package.manifest.pages.iter().any(|entry| &entry.id == page)
+                })
+        })
 }
 
 fn trace(events: &mut VecDeque<&'static str>, label: &'static str) {
@@ -117,6 +153,10 @@ impl HostState {
                 self.index = Some(index);
                 if let Some(snapshot) = restore {
                     let restored_url = snapshot.current_url.clone();
+                    self.section_destinations = snapshot.section_destinations.into_iter().filter(|(key, saved)| {
+                        let Some((applet, section)) = key.split_once('/') else { return false; };
+                        self.index.as_ref().is_some_and(|index| valid_section_destination(index, applet, section, saved))
+                    }).collect();
                     self.pending_opener = snapshot.opener.clone();
                     self.disabled.extend(snapshot.disabled);
                     for instance in self.instances.values_mut() {
@@ -134,21 +174,22 @@ impl HostState {
                     // Restore only destinations still declared by the current package index.
                     let selection = snapshot.selection.filter(|selection| {
                         self.index.as_ref().is_some_and(|index| {
-                            index.packages.iter().any(|package| {
-                                package.manifest.id == selection.applet_id.0
-                                    && package
-                                        .manifest
-                                        .sources
-                                        .iter()
-                                        .any(|source| source.id == selection.source_id.0)
-                                    && selection.page_id.as_ref().is_none_or(|page_id| {
-                                        package
+                            !index.hidden_applet_ids.contains(&selection.applet_id.0)
+                                && index.packages.iter().any(|package| {
+                                    package.manifest.id == selection.applet_id.0
+                                        && package
                                             .manifest
-                                            .pages
+                                            .sources
                                             .iter()
-                                            .any(|page| &page.id == page_id)
-                                    })
-                            })
+                                            .any(|source| source.id == selection.source_id.0)
+                                        && selection.page_id.as_ref().is_none_or(|page_id| {
+                                            package
+                                                .manifest
+                                                .pages
+                                                .iter()
+                                                .any(|page| &page.id == page_id)
+                                        })
+                                })
                         })
                     });
                     if let Some(selection) = selection {
@@ -178,9 +219,55 @@ impl HostState {
                 applet_id,
                 source_id,
                 page_id,
+                section_id,
             } => {
+                self.remember_section();
+                let section_id = section_id.or_else(|| {
+                    self.index
+                        .as_ref()
+                        .and_then(|index| {
+                            index.packages.iter().find(|p| p.manifest.id == applet_id)
+                        })
+                        .and_then(|p| p.manifest.shell.as_ref())
+                        .and_then(|shell| {
+                            shell
+                                .sections
+                                .iter()
+                                .find(|s| s.source_id == source_id && s.page_id == page_id)
+                        })
+                        .map(|s| s.id.clone())
+                });
+                if url.is_none()
+                    && section_id.is_some()
+                    && self.active.as_ref().is_some_and(|v| {
+                        v.selection.applet_id.0 == applet_id && v.selection.section_id == section_id
+                    })
+                {
+                    return Ok(commands);
+                }
+                let remembered = section_id
+                    .as_ref()
+                    .and_then(|section| {
+                        self.section_destinations
+                            .get(&format!("{applet_id}/{section}"))
+                    })
+                    .cloned()
+                    .filter(|saved| url.is_none() && self.index.as_ref().is_some_and(|index| valid_section_destination(index, &applet_id, section_id.as_deref().unwrap_or_default(), saved)));
+                let restoring_section = remembered.is_some();
+                let (source_id, page_id, url) = if let Some(saved) = remembered {
+                    self.pending_opener = saved.opener;
+                    let source_url = saved.selection.page_id.is_none().then_some(saved.url);
+                    (
+                        saved.selection.source_id.0,
+                        saved.selection.page_id,
+                        source_url,
+                    )
+                } else {
+                    (source_id, page_id, url)
+                };
                 self.qualification = None;
-                if url.is_some()
+                if !restoring_section
+                    && url.is_some()
                     && let Some(view) = &self.active
                     && view.selection.page_id.is_some()
                 {
@@ -188,6 +275,7 @@ impl HostState {
                 }
                 self.open(
                     Selection {
+                        section_id,
                         applet_id: AppletId(applet_id),
                         source_id: SourceId(source_id),
                         page_id,
@@ -198,7 +286,9 @@ impl HostState {
                     if !Self::safe_website_url(&url) {
                         return Err("Unsafe destination".into());
                     }
-                    if let Some(view) = self.active.as_mut() {
+                    if let Some(view) = self.active.as_mut()
+                        && view.url != url
+                    {
                         view.url = url.clone();
                         commands.retain(|c| !matches!(c, C::LoadUrl { .. }));
                         commands.push(C::LoadUrl {
@@ -296,6 +386,7 @@ impl HostState {
                 commands.push(C::TerminateRenderer { generation });
             }
             E::Home => {
+                self.remember_section();
                 self.qualification = None;
                 self.retire(&mut commands);
                 commands.push(self.launcher());
@@ -318,22 +409,41 @@ impl HostState {
                         commands.push(C::ExitFullscreen {
                             generation: view.context.generation.0,
                         });
-                    } else if can_go_back {
-                        commands.push(C::GoBack {
-                            generation: view.context.generation.0,
-                        });
-                    } else if let Some(opener) = view.opener.clone() {
-                        self.open(opener, &mut commands)?;
-                    } else if view.selection.page_id.is_some() {
-                        let mut selection = view.selection.clone();
-                        selection.page_id = None;
-                        self.open(selection, &mut commands)?;
+                    } else if view.back_handler
+                        && let Some(doc) = &view.document
+                    {
+                        if self.pending_back.is_none() {
+                            let token = increment(&mut self.serial)?;
+                            self.pending_back = Some((token, doc.route_revision.0, can_go_back));
+                            commands.push(C::ReplyToPage { generation:view.context.generation.0, channel:doc.channel, message:json!({"type":"navigation.back","documentId":doc.id,"token":token}) });
+                            commands.push(C::ScheduleBackDeadline {
+                                generation: view.context.generation.0,
+                                document_id: doc.id.clone(),
+                                token,
+                            });
+                        }
                     } else {
-                        self.retire(&mut commands);
-                        commands.push(self.launcher());
+                        self.back_navigation(can_go_back, &mut commands)?;
                     }
                 } else {
                     commands.push(C::FinishActivity);
+                }
+            }
+            E::BackDeadline {
+                generation,
+                document_id,
+                token,
+            } if self.current(generation)
+                && self
+                    .active
+                    .as_ref()
+                    .and_then(|v| v.document.as_ref())
+                    .is_some_and(|d| d.id == document_id)
+                && self.pending_back.is_some_and(|p| p.0 == token) =>
+            {
+                let (_, route_revision, can_go_back) = self.pending_back.take().expect("pending Back");
+                if self.active.as_ref().and_then(|view| view.document.as_ref()).is_some_and(|doc| doc.route_revision.0 == route_revision) {
+                    self.back_navigation(can_go_back, &mut commands)?;
                 }
             }
             E::Forward => {
@@ -384,8 +494,15 @@ impl HostState {
                 if self.redirect_policy(&url, &mut commands) {
                     return Ok(commands);
                 }
+                let was_ordinary = self
+                    .active
+                    .as_ref()
+                    .is_some_and(|view| !Self::eligible(view));
+                let will_ordinary = self.active.as_ref().is_some_and(|view| {
+                    !matches!(Self::classify_url(view, &url), "source" | "page")
+                });
                 let view = self.active.as_mut().expect("view");
-                if !same_document {
+                if !same_document || will_ordinary {
                     increment(&mut view.epoch)?;
                     if let Some(doc) = &view.document {
                         commands.push(C::ReplyToPage {
@@ -399,6 +516,13 @@ impl HostState {
                     view.ready = false;
                     view.failed = false;
                     self.modal_open = false;
+                    self.pending_back = None;
+                    view.back_handler = false;
+                    view.leave_guard = None;
+                    commands.push(C::LeaveGuard {
+                        generation,
+                        message: None,
+                    });
                 } else if let Some(doc) = &mut view.document {
                     increment(&mut doc.route_revision.0)?;
                     commands.push(C::ReplyToPage {
@@ -407,7 +531,10 @@ impl HostState {
                         message: json!({"type":"route.changed","documentId":doc.id,"url":url}),
                     });
                 }
-                view.url = url;
+                view.url = url.clone();
+                if same_document && was_ordinary && !will_ordinary {
+                    commands.push(C::LoadUrl { generation, url });
+                }
                 self.navigation_presentation(&mut commands);
             }
             E::Navigated { generation, url } if self.current(generation) => {
@@ -608,6 +735,28 @@ impl HostState {
             .is_some_and(|v| v.context.generation.0 == generation)
     }
     fn redirect_policy(&mut self, url: &str, commands: &mut Vec<C>) -> bool {
+        if let Some(guard) = &mut self.navigation_return {
+            let current = self.active.as_ref().is_some_and(|v| v.context.generation.0 == guard.generation);
+            if !current || std::time::Instant::now() >= guard.expires {
+                self.navigation_return = None;
+            } else if guard.matched.is_none() && url != guard.return_url {
+                let path = Url::parse(url).ok().filter(|u| Some(u.origin().ascii_serialization()) == origin(&guard.return_url)).map(|u| u.path().to_owned());
+                if path.as_ref().is_some_and(|p| guard.paths.contains(p)) {
+                    guard.matched = path;
+                    let generation = guard.generation;
+                    let url = guard.return_url.clone();
+                    self.notify("context.retired", commands);
+                    if let Some(view) = &mut self.active { view.document = None; view.challenge = None; view.ready = false; }
+                    commands.push(C::ReturnToUrl { generation, url });
+                    return true;
+                }
+                self.navigation_return = None;
+            } else if guard.matched.is_some() && url != guard.return_url {
+                // Ignore a late completion for the matched navigation while returning.
+                if Url::parse(url).ok().is_some_and(|u| guard.paths.iter().any(|p| p == u.path())) { return true; }
+                self.navigation_return = None;
+            }
+        }
         let Some(view) = &self.active else {
             return false;
         };
@@ -660,6 +809,7 @@ impl HostState {
             view.context.generation.0 == generation
                 && !view.failed
                 && view.customized
+                && Self::eligible(view)
                 && applet_id.is_none_or(|id| view.context.applet_id.0 == id)
                 && view
                     .document
@@ -669,7 +819,7 @@ impl HostState {
     }
 
     fn eligible(view: &LiveView) -> bool {
-        origin(&view.url).is_some_and(|o| view.origins.contains(&o))
+        matches!(Self::route_kind(view), "source" | "page")
     }
     fn safe_website_url(url: &str) -> bool {
         Url::parse(url).is_ok_and(|u| {
@@ -679,7 +829,43 @@ impl HostState {
                 && u.password().is_none()
         })
     }
+    fn back_navigation(&mut self, can_go_back: bool, commands: &mut Vec<C>) -> Result<(), String> {
+        if let Some(view) = &self.active {
+            if can_go_back {
+                commands.push(C::GoBack {
+                    generation: view.context.generation.0,
+                });
+            } else if let Some(opener) = view.opener.clone() {
+                self.open(opener, commands)?;
+            } else if view.selection.page_id.is_some() {
+                let mut selection = view.selection.clone();
+                selection.page_id = None;
+                self.open(selection, commands)?;
+            } else {
+                self.remember_section();
+                self.retire(commands);
+                commands.push(self.launcher());
+            }
+        }
+        Ok(())
+    }
+    fn remember_section(&mut self) {
+        if let Some(view) = &self.active
+            && let Some(section) = &view.selection.section_id
+        {
+            self.section_destinations.insert(
+                format!("{}/{}", view.selection.applet_id.0, section),
+                SectionDestination {
+                    selection: view.selection.clone(),
+                    url: view.url.clone(),
+                    opener: view.opener.clone(),
+                },
+            );
+        }
+    }
     fn open(&mut self, selection: Selection, commands: &mut Vec<C>) -> Result<(), String> {
+        self.navigation_return = None;
+        self.remember_section();
         if self.pending_opener.is_none()
             && self.active.as_ref().is_some_and(|v| {
                 v.selection.applet_id == selection.applet_id
@@ -795,6 +981,7 @@ impl HostState {
         }
         let generation = increment(&mut self.generation)?;
         let context = ExecutionContext {
+            runtime_api_version: package.runtime_api_version,
             instance_id: instance_id(&selection.applet_id),
             applet_id: selection.applet_id.clone(),
             view_id: ViewId(format!("view-{generation}")),
@@ -805,6 +992,8 @@ impl HostState {
             selection.page_id.is_some() || !self.disabled.contains(&selection.applet_id);
         let owner_selection = self.pending_opener.take();
         self.active = Some(LiveView {
+            back_handler: false,
+            leave_guard: None,
             opener: owner_selection.clone(),
             context: context.clone(),
             package: package.clone(),
@@ -844,6 +1033,7 @@ impl HostState {
         Ok(())
     }
     fn retire(&mut self, commands: &mut Vec<C>) {
+        self.pending_back = None;
         self.modal_open = false;
         self.source_status(SourceStatus::Closed);
         if let Some(view) = self.active.take() {
@@ -901,20 +1091,19 @@ impl HostState {
                 "ordinary"
             };
         }
-        if view
+        if let Some(source) = view
             .package
             .manifest
             .sources
             .iter()
             .find(|s| s.id == view.selection.source_id.0)
-            .is_some_and(|s| {
-                s.origins.contains(&url.origin().ascii_serialization())
-                    && s.customized_paths
-                        .as_ref()
-                        .is_none_or(|paths| paths.iter().any(|p| p == url.path()))
-            })
+            && source.origins.contains(&url.origin().ascii_serialization())
         {
-            "source"
+            if crate::routes::customized(source, url.path()) {
+                "source"
+            } else {
+                "source-ordinary"
+            }
         } else {
             "ordinary"
         }
@@ -930,7 +1119,7 @@ impl HostState {
                 );
             } else if view.supported == Some(false) || view.failed {
                 // Preserve the explicit unsupported/failure presentation until recovery.
-            } else if Self::route_kind(view) == "ordinary" {
+            } else if matches!(Self::route_kind(view), "ordinary" | "source-ordinary") {
                 self.present("ordinary", "Ordinary external/authentication page. No Genesis bridge is registered for this origin.", commands);
             } else if view.ready {
                 self.present("ready", "Genesis · Customization ready.", commands);
@@ -996,6 +1185,7 @@ impl HostState {
     }
     fn snapshot(&self) -> SessionSnapshot {
         SessionSnapshot {
+            section_destinations: self.section_destinations.clone(),
             opener: self.active.as_ref().and_then(|v| v.opener.clone()),
             current_url: self.active.as_ref().map(|v| v.url.clone()),
             selection: self.active.as_ref().map(|v| v.selection.clone()),
@@ -1028,7 +1218,11 @@ impl HostState {
             entries: self
                 .index
                 .iter()
-                .flat_map(|i| &i.packages)
+                .flat_map(|i| {
+                    i.packages
+                        .iter()
+                        .filter(|p| !i.hidden_applet_ids.contains(&p.manifest.id))
+                })
                 .filter_map(|p| {
                     p.manifest.sources.first().map(|source| LauncherEntry {
                         applet_id: p.manifest.id.clone(),
@@ -1056,6 +1250,7 @@ impl HostState {
             || raw.len() > 262_144
             || view.failed
             || !view.customized
+            || !Self::eligible(view)
             || view.supported != Some(true)
             || !view.origins.iter().any(|o| o == callback_origin)
             || origin(&view.url).as_deref() != Some(callback_origin)
@@ -1135,6 +1330,7 @@ impl HostState {
                 commands.push(C::ReplyToPage {generation,channel,message:json!({"type":"bound","documentId":id,"nonce":nonce,"context":view.context})});
             }
             _ => {
+                let return_is_source = message["params"]["returnUrl"].as_str().is_some_and(|u| Self::classify_url(view,u) == "source");
                 let Some(doc) = &mut view.document else {
                     return Ok(());
                 };
@@ -1218,6 +1414,47 @@ impl HostState {
                         self.modal_open = message["params"]["open"]==true;
                         commands.push(C::ModalState { open: self.modal_open });
                         commands.push(C::ReplyToPage { generation,channel,message:json!({"v":1,"documentId":doc.id,"requestId":request,"ok":true,"result":null}) });
+                    }
+                    Some("navigation.backHandler") if view.context.runtime_api_version >= 2 => {
+                        view.back_handler = message["params"]["enabled"] == true;
+                        commands.push(C::ReplyToPage {generation,channel,message:json!({"v":1,"documentId":doc.id,"requestId":request,"ok":true,"result":null})});
+                    }
+                    Some("navigation.armReturn") => {
+                        let params = &message["params"];
+                        let key = params["key"].as_str().filter(|s| !s.is_empty() && s.len() <= 80);
+                        let return_url = params["returnUrl"].as_str().filter(|u| u.len() <= 2048 && Self::safe_website_url(u) && origin(u) == origin(&view.url) && return_is_source);
+                        let paths = params["destinationPaths"].as_array().filter(|a| !a.is_empty() && a.len() <= 8).and_then(|a| a.iter().map(|v| v.as_str().filter(|p| p.starts_with('/') && p.len() <= 256 && !p.contains(['?', '#', '*', '%', '\\']) && !p.contains("..") && !p.starts_with("//")).map(str::to_owned)).collect::<Option<Vec<_>>>());
+                        let ttl = params["ttlMs"].as_u64().filter(|t| *t > 0 && *t <= 10000);
+                        let valid = view.selection.page_id.is_none() && view.leave_guard.is_none() && view.package.manifest.capabilities.iter().any(|c| c == "navigation-policy") && params["state"].to_string().len() <= 16384;
+                        if let (true, Some(key), Some(return_url), Some(paths), Some(ttl)) = (valid,key,return_url,paths,ttl) {
+                            let token = format!("{}:{}:{}",generation,doc.id.0,request);
+                            self.navigation_return = Some(NavigationReturn {generation,key:key.into(),token:token.clone(),paths,return_url:return_url.into(),state:params["state"].clone(),expires:std::time::Instant::now()+std::time::Duration::from_millis(ttl),matched:None});
+                            commands.push(C::ReplyToPage {generation,channel,message:json!({"v":1,"documentId":doc.id,"requestId":request,"ok":true,"result":{"token":token}})});
+                        } else {
+                            commands.push(C::ReplyToPage {generation,channel,message:json!({"v":1,"documentId":doc.id,"requestId":request,"ok":false,"error":{"code":"INVALID_ARGUMENT","message":"Invalid navigation return","retryable":false}})});
+                        }
+                    }
+                    Some("navigation.cancelReturn") => {
+                        if self.navigation_return.as_ref().is_some_and(|r| r.generation == generation && Some(r.token.as_str()) == message["params"]["token"].as_str()) { self.navigation_return = None; }
+                        commands.push(C::ReplyToPage {generation,channel,message:json!({"v":1,"documentId":doc.id,"requestId":request,"ok":true,"result":null})});
+                    }
+                    Some("navigation.takeReturn") => {
+                        let valid = self.navigation_return.as_ref().is_some_and(|r| r.generation == generation && Some(r.key.as_str()) == message["params"]["key"].as_str() && r.matched.is_some() && std::time::Instant::now() < r.expires && view.url == r.return_url);
+                        let result = if valid { let r = self.navigation_return.take().unwrap(); json!({"token":r.token,"matchedPath":r.matched,"state":r.state}) } else { Value::Null };
+                        commands.push(C::ReplyToPage {generation,channel,message:json!({"v":1,"documentId":doc.id,"requestId":request,"ok":true,"result":result})});
+                    }
+                    Some("navigation.leaveGuard") if view.context.runtime_api_version >= 2 => {
+                        view.leave_guard = message["params"]["message"].as_str().map(|s| s.chars().take(160).collect::<String>()).filter(|s| !s.trim().is_empty());
+                        commands.push(C::LeaveGuard {generation,message:view.leave_guard.clone()});
+                        commands.push(C::ReplyToPage {generation,channel,message:json!({"v":1,"documentId":doc.id,"requestId":request,"ok":true,"result":null})});
+                    }
+                    Some("navigation.backResult") if view.context.runtime_api_version >= 2 => {
+                        let pending = self.pending_back.filter(|p| Some(p.0) == message["params"]["token"].as_u64());
+                        commands.push(C::ReplyToPage {generation,channel,message:json!({"v":1,"documentId":doc.id,"requestId":request,"ok":true,"result":null})});
+                        if let Some((_, route_revision, can_go_back)) = pending {
+                            self.pending_back = None;
+                            if route_revision == doc.route_revision.0 && message["params"]["consumed"] != true { self.back_navigation(can_go_back, commands)?; }
+                        }
                     }
                     Some("sources.open") | Some("pages.open") => {
                         let mut selection = view.selection.clone();
