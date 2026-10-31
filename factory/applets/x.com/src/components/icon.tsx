@@ -1,4 +1,4 @@
-export type IconName = 'reply' | 'repost' | 'like' | 'views' | 'share' | 'more' | 'folder' | 'search' | 'settings' | 'mail' | 'compose' | 'close' | 'bookmark' | 'play' | 'link' | 'verified' | 'previous' | 'next';
+export type IconName = 'reply' | 'repost' | 'like' | 'views' | 'share' | 'more' | 'folder' | 'search' | 'settings' | 'mail' | 'compose' | 'close' | 'bookmark' | 'play' | 'link' | 'verified' | 'previous' | 'next' | 'refresh';
 
 const paths: Record<IconName, string> = {
   reply: 'M14.05 2.24h-4.1a7.95 7.95 0 0 0 0 15.9h.05v3.62l3.8-3.62h.25a7.95 7.95 0 0 0 0-15.9Z',
@@ -15,6 +15,7 @@ const paths: Record<IconName, string> = {
   close: 'm5 5 14 14M19 5 5 19',
   previous: 'm15 5-7 7 7 7',
   next: 'm9 5 7 7-7 7',
+  refresh: 'M20 7V2l-3 3a9 9 0 1 0 3.5 10M20 7h-5',
   bookmark: 'M5 3h14v19l-7-5-7 5V3Z',
   play: 'm8 4 13 8-13 8V4Z',
   link: 'm9 15 6-6M7 17l-1 1a4 4 0 0 1-6-6l5-5a4 4 0 0 1 6 0m2 10a4 4 0 0 0 6 0l5-5a4 4 0 0 0-6-6l-1 1',

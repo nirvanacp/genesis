@@ -86,7 +86,7 @@
 .post-avatar{grid-row:2/span 3}.post:not(:has(.post-context)) .post-avatar{grid-row:1/span 3}.expanded .post-avatar{grid-row:auto!important}.post-text{cursor:pointer}.expanded .post-text{cursor:text}
 button.quoted-post{width:100%;border-radius:16px;text-align:left;font-weight:400;line-height:20px}
 .quote-heading{display:flex;align-items:center;gap:4px;margin-bottom:4px;white-space:nowrap;overflow:hidden}.quote-heading img{width:20px;height:20px;border-radius:50%;object-fit:cover}.quote-heading strong{overflow:hidden;text-overflow:ellipsis}.quote-heading>span{color:var(--muted);overflow:hidden;text-overflow:ellipsis}
-.source-tabs,.x-app>.mode{position:sticky;top:53px;z-index:3}.post>.post-heading{padding-right:36px}
+.source-tabs,.x-app>.refresh-region>.mode{position:sticky;top:53px;z-index:3}.post>.post-heading{padding-right:36px}
 .entry-trend .entry-target{padding-right:56px}.entry-options{position:absolute;right:4px;top:4px;color:var(--muted)}
 .screen-title:has(.search){padding-left:12px;gap:0}.screen-title .search{flex:1;min-width:0;border:0;padding:4px 0}.screen-title .search-field{gap:8px}
 .post-notice{max-width:400px;margin:12vh auto;padding:32px}.post-notice h2{font-size:31px;line-height:36px;font-weight:800}.post-notice p{color:var(--muted);margin:16px 0 24px;line-height:20px}.post-notice>.primary{display:flex;align-items:center;justify-content:center;min-height:48px;padding:12px 20px;border-radius:999px}

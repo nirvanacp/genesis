@@ -9,6 +9,8 @@ import {safeLink,type Bookmark,type Category,type Library} from "./domain";
 import {CategoryManager} from "./components/category-manager";
 import {openCategorySheet} from "./components/category-sheet";
 import {openCategoryFilter} from "./components/category-filter";
+import {PullToRefresh} from "./components/pull-to-refresh";
+import {Icon} from "./components/icon";
 import theme from "./theme.css";
 import css from "./library.css";
 export default definePage({mount:(context,container)=>mountReact(context,container,<LibraryPage context={context}/>)});
@@ -16,6 +18,7 @@ interface Preferences{query:string;categoryId:string|null;scroll:number}
 function LibraryPage({context}:{context:AppletContext}){
   const repo=repository(context),[library,setLibrary]=useState<Library|null>(null),[categories,setCategories]=useState<Category[]>([]),[rows,setRows]=useState<Bookmark[]>([]),[query,setQuery]=useState(""),[filter,setFilter]=useState<string|null>(null),[cursor,setCursor]=useState<string|null>(null),[error,setError]=useState(""),[loading,setLoading]=useState(true),[ready,setReady]=useState(false),[manage,setManage]=useState(false),[pending,setPending]=useState(false);
   const sequence=useRef(0),verified=useRef<Library|null>(null),preferences=useRef<Preferences>({query:"",categoryId:null,scroll:0}),restoreScroll=useRef(false),failures=useRef(0);
+  const[refreshing,setRefreshing]=useState(false);
   const savePreferences=()=>{if(!verified.current)return Promise.resolve();preferences.current={query,categoryId:filter,scroll:window.scrollY};return writeLocal(context,"preferences",`library:${verified.current!.libraryId}`,preferences.current).catch(()=>{});};
   const load=async(after:string|null=null)=>{
     const account=verified.current;if(!account)return;const version=++sequence.current;setLoading(true);setError("");
@@ -65,8 +68,9 @@ function LibraryPage({context}:{context:AppletContext}){
   const openX=(path="/i/history")=>{void savePreferences().then(()=>context.sources.open("saved",`https://x.com${path}`)).catch(e=>setError(errorMessage(e)));};
   const openPost=(row:Bookmark)=>{void savePreferences().then(()=>context.sources.open("saved",row.url)).catch(e=>setError(errorMessage(e)));};
   const choose=(id:string|null)=>{setFilter(id);setManage(false);window.scrollTo(0,0);};
-  return <><style>{theme+css}</style><main className="library">
-    <header className="library-title"><h1>Saved</h1><p>Your private Categories library</p></header>
+  const refresh=()=>{if(loading||refreshing)return;setRefreshing(true);void load().finally(()=>setRefreshing(false));};
+  return <><style>{theme+css}</style><main className="library"><PullToRefresh enabled={!!library&&!manage&&!loading} busy={refreshing} onRefresh={refresh} resetKey={query+'|'+filter}>
+    <header className="library-title"><div className="library-heading"><h1>Saved</h1><button className="icon-button" aria-label="Refresh saved posts" disabled={!library||loading} onClick={refresh}><Icon name="refresh"/></button></div><p>Your private Categories library</p></header>
     <div className="mode" role="tablist" aria-label="Saved location"><button role="tab" aria-selected={false} onClick={()=>openX()}><span>Bookmarks</span></button><button role="tab" aria-selected={false} onClick={()=>openX("/i/history/likes")}><span>Likes</span></button><button role="tab" aria-selected={true} onClick={()=>setManage(false)}><span>Categories</span></button></div>
     {library?<div className="library-layout"><aside className="category-sidebar" aria-label="Filter saved posts"><button aria-pressed={filter===null} onClick={()=>choose(null)}>All saved</button>{categories.map(c=><button key={c.id} aria-pressed={filter===c.id} onClick={()=>choose(c.id)}>{c.name} <small className="muted">{c.count}</small></button>)}</aside><section className="saved-list">
       {manage?<><button className="back-link" onClick={()=>setManage(false)}>‹ Saved posts</button><CategoryManager library={library} repo={repo} categories={categories} refresh={load} openCategory={choose}/></>:<>
@@ -81,5 +85,5 @@ function LibraryPage({context}:{context:AppletContext}){
       {error&&<div className="library-status"><p className="error" role="alert">{error}</p>{rows.length>0&&<p className="muted">Showing previously loaded posts.</p>}<button onClick={()=>void load()}>Refresh</button></div>}
       {pending&&<div className="library-status"><p>A previous change is still unconfirmed.</p><button className="secondary" onClick={()=>void repo.retry(library).then(()=>load()).catch(e=>setError(errorMessage(e)))}>Check or retry the same change</button><button onClick={()=>void repo.abandon(library).then(()=>load()).catch(e=>setError(errorMessage(e)))}>Refresh state and abandon pending change</button></div>}
     </section></div>:<div className="empty"><h2>{loading?"Verifying your account…":"Categories unavailable"}</h2><p role={error?"alert":"status"}>{error||"Checking your X account before showing your private library."}</p>{!loading&&<button className="primary" onClick={()=>openX()}>Open X bookmarks</button>}</div>}
-  </main></>;
+  </PullToRefresh></main></>;
 }
