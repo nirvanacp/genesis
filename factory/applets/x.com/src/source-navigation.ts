@@ -6,38 +6,49 @@ export function sourceNavigation(context:AppletContext):void{
   context.styles.add("x-source",sourceCss);
   let state:"detecting"|"ready"|"unsupported"|"retired"="detecting";
   let statusNode:HTMLElement|null=null;
-  context.onDispose(()=>{state="retired";document.documentElement.classList.remove("genesis-x","genesis-x-hub");});
+  context.onDispose(()=>{state="retired";document.documentElement.classList.remove("genesis-x");});
   let routeEffects:Dispose[]=[],guard=false;
   const report=(error:unknown)=>{if(statusNode)statusNode.textContent=error instanceof Error?error.message:"This action is temporarily unavailable.";};
   const link=(label:string,path:string)=>{const a=document.createElement("a");a.textContent=label;a.href=new URL(path,"https://x.com").href;return a;};
   const render=()=>{
-    for(const dispose of routeEffects)dispose();routeEffects=[];document.documentElement.classList.remove("genesis-x-hub");
+    for(const dispose of routeEffects)dispose();routeEffects=[];
     document.documentElement.classList.remove("genesis-x");statusNode=null;
     if(state==="retired")return;
     const primary=document.querySelector('[data-testid="primaryColumn"]');
-    if(!currentHandle()||!primary){state="unsupported";return;}
-    routeEffects.push(context.ui.mountAt("x-navigation-status",primary,{position:"before",css:theme+":host{display:block}p:empty{display:none}p{padding:12px 16px;color:var(--danger)}",render:container=>{statusNode=document.createElement("p");statusNode.setAttribute("role","status");statusNode.setAttribute("aria-live","polite");container.append(statusNode);return()=>{statusNode=null;};}}));
-    if(context.sourceId==="account"&&location.pathname==="/home"){
-      const handle=currentHandle()!;
-      routeEffects.push(context.ui.mountAt("x-account",primary,{position:"before",css:theme+":host{display:block;width:100%;max-width:680px;background:var(--paper)}.hub{padding:24px 20px}.hub header{padding:4px 0 24px}.hub nav{display:grid}.hub nav a,.hub nav button{display:flex;align-items:center;text-align:start;min-height:56px;border-radius:0;border-bottom:1px solid var(--line);padding:12px 4px;color:var(--ink);font-weight:600}.hub nav a:after{content:'›';margin-inline-start:auto;color:var(--muted)}.handle{margin-top:6px;color:var(--muted)}",render:container=>{
-        const main=document.createElement("main");main.className="hub enter";const header=document.createElement("header"),heading=document.createElement("h1"),identity=document.createElement("p");heading.textContent="Your X";identity.textContent=`@${handle}`;identity.className="handle";header.append(heading,identity);main.append(header);
-        const nav=document.createElement("nav");nav.setAttribute("aria-label","Account destinations");
-        for(const [label,path]of[["Profile",`/${handle}`],["Messages","/i/chat"],["Lists",`/${handle}/lists`],["Communities",`/${handle}/communities`],["X bookmarks","/i/history"],["Settings and privacy","/settings"],["Grok","/i/grok"],["Calls","/i/calls"],["Premium","/i/premium_sign_up"]])nav.append(link(label,path));
-        const account=document.createElement("button");account.textContent="Account actions";account.onclick=()=>{const upstream=document.querySelector<HTMLElement>('[data-testid="SideNav_AccountSwitcher_Button"]');if(upstream)upstream.click();else location.assign("https://x.com/settings");};nav.append(account);main.append(nav);container.append(main);
-      }}));document.documentElement.classList.add("genesis-x-hub");
-    }else if(location.pathname==="/home"){
-      routeEffects.push(context.ui.mountAt("x-shortcuts",primary,{position:"before",css:theme+":host{display:block;width:100%;max-width:680px;background:var(--paper);border-bottom:1px solid var(--line)}nav{display:flex;justify-content:flex-end;gap:8px;padding:6px 16px}a{display:flex;align-items:center;min-height:44px;padding:8px 16px;font-weight:650;border-radius:999px}a:last-child{background:var(--ink);color:var(--paper)}",render:container=>{const nav=document.createElement("nav");nav.setAttribute("aria-label","Quick actions");nav.append(link("Messages","/i/chat"),link("Post","/compose/post"));container.append(nav);}}));
+    const content=primary?.firstElementChild;
+    if(!primary||!content){state="unsupported";return;}
+    const handle=currentHandle();
+    if(context.sourceId==="account"&&location.pathname==="/home"&&handle){
+      location.replace(`https://x.com/${handle}`);return;
     }
-    if(location.pathname==="/i/history"||location.pathname==="/i/history/likes"){
-      routeEffects.push(context.ui.mountAt("x-saved-modes",primary,{position:"before",css:theme+":host{display:block;width:100%;max-width:680px}",render:container=>{
-        const nav=document.createElement("div");nav.className="mode";nav.setAttribute("role","tablist");nav.setAttribute("aria-label","Saved location");
-        for(const label of["X bookmarks","Categories"]){const b=document.createElement("button");b.textContent=label;b.setAttribute("role","tab");b.setAttribute("aria-selected",String(label==="X bookmarks"));if(label==="Categories")b.onclick=()=>void openLibrary(context).catch(report);nav.append(b);}container.append(nav);
+    routeEffects.push(context.ui.mountAt("x-navigation-status",content,{position:"before",css:theme+":host{display:block}p:empty{display:none}p{padding:12px 16px;color:var(--danger)}",render:container=>{statusNode=document.createElement("p");statusNode.setAttribute("role","status");statusNode.setAttribute("aria-live","polite");container.append(statusNode);return()=>{statusNode=null;};}}));
+    if(location.pathname==="/home"){
+      const profile=document.querySelector('[data-testid="DashButton_ProfileIcon_Link"]');
+      const actions=profile?.parentElement;
+      if(profile&&actions&&getComputedStyle(actions).flexDirection==="row"&&actions.getBoundingClientRect().height<=56){
+        // The inspected mobile header has room beside the profile button. Keep
+        // messaging here rather than inserting another row above the timeline.
+        routeEffects.push(context.ui.mountAt("x-messages",profile,{position:"after",css:theme+":host{display:flex;align-self:center;margin-inline-start:8px;flex:none}a{display:flex;align-items:center;justify-content:center;width:48px;min-height:48px;border-radius:999px;color:var(--ink)}a:hover{background:var(--line)}",render:container=>{
+          const messages=link("","/i/chat");messages.setAttribute("aria-label","Messages");messages.title="Messages";
+          messages.innerHTML='<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="m4 6 8 7 8-7"/></svg>';container.append(messages);
+        }}));
+      }else routeEffects.push(context.ui.mountAt("x-messages",content,{position:"before",css:theme+":host{display:block;width:100%;max-width:680px;background:var(--paper)}nav{display:flex;justify-content:flex-end;padding:0 16px}a{display:flex;align-items:center;min-height:48px;font-weight:650}",render:container=>{
+        const nav=document.createElement("nav");nav.setAttribute("aria-label","Messages");nav.append(link("Messages","/i/chat"));container.append(nav);
       }}));
     }
-    state="ready";document.documentElement.classList.add("genesis-x");
+    if(location.pathname==="/i/history"||location.pathname==="/i/history/likes"){
+      const tabs=document.querySelector('[role="tablist"]:has(a[href="/i/history"])');
+      if(tabs)routeEffects.push(context.ui.mountAt("x-saved-categories",tabs,{position:"append",css:theme+":host{display:flex;flex:1;min-width:110px}button{flex:1;border-radius:0;font-weight:650;color:var(--muted);min-height:50px}",render:container=>{
+        container.style.display="contents";
+        const button=document.createElement("button");button.textContent="Categories";button.setAttribute("role","tab");button.setAttribute("aria-selected","false");button.onclick=()=>void openLibrary(context).catch(report);container.append(button);
+      }}));
+    }
+    state="ready";
+    // Keep source navigation available when signed-in layout detection fails.
+    if(handle)document.documentElement.classList.add("genesis-x");
   };
   context.navigation.onChange(render);
-  context.watchElements("x-source-layout",{selector:'[data-testid="primaryColumn"],[data-testid="AppTabBar_Profile_Link"]',attributes:["href"],text:false,limit:4,contentKey:element=>element.getAttribute("data-testid")},{enter:render,leave:render,update:render});
+  context.watchElements("x-source-layout",{selector:'[data-testid="primaryColumn"],[data-testid="AppTabBar_Profile_Link"],[data-testid="DashButton_ProfileIcon_Link"],[data-testid="AppTabBar_Notifications_Link"],[role="tablist"]:has(a[href="/i/history"])',attributes:["href","aria-label"],text:false,limit:8,contentKey:element=>element.getAttribute("data-testid")??"saved-tabs"},{enter:render,leave:render,update:render});
   const updateGuard=()=>{
     const composer=!!document.querySelector('[role="dialog"] [data-testid^="tweetTextarea"]')||[...document.querySelectorAll('[data-testid^="tweetTextarea"][contenteditable="true"]')].some(element=>!!element.textContent?.trim());
     if(composer!==guard){guard=composer;void context.navigation.setLeaveGuard(composer?{message:"Your post may have unsaved changes. Close it in X to keep a draft, or leave this page."}:null).catch(()=>{});}
@@ -50,6 +61,12 @@ export function sourceNavigation(context:AppletContext):void{
     const active=dialogs.at(-1);
     const close=active?.querySelector<HTMLElement>('[data-testid="app-bar-close"],[aria-label="Close"]');
     if(close){close.click();return true;}
+    // X pushes a discovery redirect when entering Communities. Browser history
+    // alone can revisit that redirect indefinitely; X's own Back skips it.
+    if(/^\/[A-Za-z0-9_]{1,15}\/communities\/explore$/.test(location.pathname)){
+      const back=document.querySelector<HTMLElement>('[data-testid="app-bar-back"]');
+      if(back?.getClientRects().length){back.click();return true;}
+    }
     if(location.pathname==="/i/history"&&document.querySelector('input[aria-label="Search Bookmarks"]')){
       const back=document.querySelector<HTMLElement>('[data-testid="app-bar-back"]');if(back){back.click();return true;}
     }

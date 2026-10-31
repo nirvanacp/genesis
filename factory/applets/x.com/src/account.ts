@@ -3,10 +3,32 @@ import {validHandle,type Library} from "./domain";
 import {readLocal,writeLocal} from "./local-state";
 import {Backend,LibraryError} from "./backend";
 interface Ticket {nonce:string;phase:"requested"|"verified"|"consumed"|"failed";handle:string|null;epoch:string;createdAtMs:number;reason?:string}
+const accounts=new WeakMap<HTMLScriptElement,{handle:string;name:string}|null>();
 export function currentHandle():string|null{
   const link=document.querySelector<HTMLAnchorElement>('[data-testid="AppTabBar_Profile_Link"]');
   const name=link?.getAttribute("href")?.match(/^\/([A-Za-z0-9_]{1,15})$/)?.[1];
-  return validHandle(name)?name.toLowerCase():null;
+  if(validHandle(name))return name.toLowerCase();
+  // Mobile X replaces the desktop account link with a button. Read only the
+  // signed-in entity, never the author of the currently viewed post.
+  const script=[...document.scripts].find(s=>s.textContent?.startsWith("window.__INITIAL_STATE__="));
+  if(!script)return null;
+  if(!accounts.has(script)){
+    let account:{handle:string;name:string}|null=null;
+    try{
+      const text=script.textContent??"",end=text.indexOf(";window.");
+      const initial=JSON.parse(text.slice("window.__INITIAL_STATE__=".length,end<0?undefined:end));
+      const user=initial.entities?.users?.entities?.[initial.session?.user_id];
+      if(validHandle(user?.screen_name)&&typeof user.name==="string")account={handle:user.screen_name.toLowerCase(),name:user.name};
+    }catch{/* Unrecognized account state cannot authorize private records. */}
+    accounts.set(script,account);
+  }
+  const account=accounts.get(script);if(!account)return null;
+  const mobile=document.querySelector('[data-testid="DashButton_ProfileIcon_Link"]');
+  if(mobile?.getAttribute("aria-label")===`Profile menu ${account.name}`)return account.handle;
+  if(document.querySelector('[data-testid="editProfileButton"]')&&location.pathname.split("/")[1]?.toLowerCase()===account.handle)return account.handle;
+  // Detail and bookmarks omit the profile button but retain signed-in navigation.
+  if(document.querySelector('[data-testid="AppTabBar_Notifications_Link"]')&&!mobile)return account.handle;
+  return null;
 }
 export async function verifyAccount(context:AppletContext,backend:Backend):Promise<Library>{
   const handle=currentHandle();
@@ -56,5 +78,5 @@ export function verifyLibraryReturn(context:AppletContext):void{
   };
   void check();context.onFocus(()=>void check());
   context.storage.onChanged(change=>{if(change.changes.some(key=>key.collection==="session"&&key.key==="library-entry"))void check();});
-  context.watchElements("x-library-account",{selector:'[data-testid="AppTabBar_Profile_Link"]',attributes:["href"],text:false,limit:1,contentKey:element=>element.getAttribute("href")},{enter:()=>void check(),update:()=>void check()});
+  context.watchElements("x-library-account",{selector:'[data-testid="AppTabBar_Profile_Link"],[data-testid="DashButton_ProfileIcon_Link"],[data-testid="AppTabBar_Notifications_Link"]',attributes:["href","aria-label"],text:false,limit:3,contentKey:element=>element.getAttribute("href")??element.getAttribute("aria-label")},{enter:()=>void check(),update:()=>void check()});
 }
