@@ -158,3 +158,7 @@ Logical checks may use temporary fake clocks, account observations, adapter obse
 | DOM drift or excluded-route fallback | Source restored and gap reported; never silently claimed complete. |
 
 Completion requires every supported folder entry path to satisfy the matrix, zero unaccounted mutations in X or the custom service, existing records accessible after both tier transitions, and documented user provisioning. Real tier purchases/cancellations are not required. Logical coverage must be reported separately from actual source/device checks. If selector qualification, full-page interception or multi-user provisioning remains unresolved, deliver the completed independent components with the exact blocked requirement, not a claim that automatic folders work for every account.
+
+## Implementation progress, 31 October 2026
+
+Step 1 inspected the real signed-in emulator Saved route `/i/history`. Native header controls were Back and Search Bookmarks; the source tab row exposed Bookmarks and Likes, plus the existing owned Categories mount. No folder/Premium control was present in the inspected document. Ordinary `bookmark`/`removeBookmark` controls are not safe folder interception targets. No native mutations were performed. Native folder picker, denied-save toast/menu and full-page folder upsell remain unqualified. Step 4 is blocked on that evidence; do not ship guessed selectors. Independent session/receipt and capability work proceeds under steps 2–3.
