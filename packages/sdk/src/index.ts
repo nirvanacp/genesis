@@ -35,3 +35,4 @@ export function defineForeground(entry: PageEntry & { screens: string[] }): Appl
 export function defineSourceAdapter(entry: AppletEntry & {adapters:string[]}): AppletEntry {
   return { ...entry, registration:{adapters:entry.adapters} };
 }
+export {createOwnedScope} from './owned-scope';
