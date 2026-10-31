@@ -50,6 +50,10 @@ pub struct Asset {
 pub struct Manifest {
     #[serde(default)]
     pub shell: Option<AppShell>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub route_contracts: Vec<RouteContract>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub foreground: Option<Foreground>,
     pub schema_version: u32,
     pub id: String,
     pub name: String,
@@ -73,12 +77,90 @@ pub struct Source {
     pub customized_paths: Option<Vec<String>>,
     pub id: String,
     pub start_url: String,
+    #[serde(default)]
     pub origins: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub route_contract_id: Option<String>,
     pub entry: String,
     #[serde(default)]
     pub home_paths: Vec<String>,
     #[serde(default)]
     pub navigation_rules: Vec<NavigationRule>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Foreground {
+    pub page_id: String,
+    pub screens: Vec<String>,
+}
+
+/// API 3 authoring contract. Kept separate until the isolated host can execute it.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RouteContract {
+    pub id: String,
+    pub origins: Vec<String>,
+    pub routes: Vec<RouteRule>,
+    pub unmatched: UnmatchedRoute,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum UnmatchedRoute {
+    Unsupported,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RouteRule {
+    pub id: String,
+    pub path: String,
+    #[serde(default)]
+    pub query: std::collections::BTreeMap<String, QueryConstraint>,
+    pub fragment: Option<ExactValue>,
+    pub result: RouteResult,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum QueryConstraint {
+    Present(PresentQuery),
+    Equals(ExactValue),
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub enum PresentQuery {
+    #[serde(rename = "present")]
+    Present,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExactValue {
+    pub equals: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
+pub enum RouteResult {
+    Custom { screen: String, adapter: String },
+    Website { reason: String },
+    Blocked { reason: String },
+}
+
+/// Every URL resolves, including malformed inputs and undeclared destinations.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum RouteResolution {
+    Matched {
+        #[serde(rename = "routeId")]
+        route_id: String,
+        result: RouteResult,
+    },
+    Unsupported,
+    External,
+    Blocked,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -421,7 +503,10 @@ pub enum HostCommand {
         generation: u64,
         epoch: u64,
     },
-    ReturnToUrl { generation: u64, url: String },
+    ReturnToUrl {
+        generation: u64,
+        url: String,
+    },
     DeferNavigation {
         generation: u64,
         #[serde(rename = "documentId")]
