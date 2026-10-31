@@ -15,6 +15,7 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
     private FileSelection files;
     private HostViews views;
     private BrowserAdapter browser;
+    private IsolatedBrowser isolated;
     private ServiceClient services;
     PackageStore packageStore;
     private final java.util.Map<Long, BrowserAdapter> sessions = new java.util.HashMap<>();
@@ -67,6 +68,7 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
         if (Looper.myLooper() != Looper.getMainLooper()) throw new IllegalStateException("UI thread required");
         try {
             String type = event.getString("type");
+            if (isolated != null && isolated.handleUserEvent(event)) return;
             if ("renderingSettings".equals(type)) { showRenderingSettings(); return; }
             if (java.util.Arrays.asList("open","openPage","home","activateDestination").contains(type)) views.transitionDirection(0);
             if (!leavingApproved && browser != null && browser.leaveGuard() != null
@@ -80,11 +82,11 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
                 }
                 return;
             }
-            if ("readerClose".equals(type)) { browser.closeReader(); return; }
+            if (isolated == null && "readerClose".equals(type)) { browser.closeReader(); return; }
             if ("copyLink".equals(type) || "shareLink".equals(type) || "openBrowser".equals(type)) {
                 browser.readerAction(type); return;
             }
-            if ("back".equals(type) && browser.readerBack()) return;
+            if (isolated == null && "back".equals(type) && browser.readerBack()) return;
             if (browser.hasReader() && "forward".equals(type)) { browser.readerForward(); return; }
             if (browser.hasReader() && "reload".equals(type)) { browser.readerReload(); return; }
             if ("back".equals(event.getString("type"))) event.put("canGoBack", browser.canGoBack());
@@ -107,7 +109,13 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
     }
 
     private void execute(JSONObject command) throws Exception {
-        switch (command.getString("type")) {
+        String commandType=command.getString("type");
+        if(commandType.startsWith("isolated")) {
+            if("isolatedCreate".equals(commandType)||"isolatedLegacy".equals(commandType)) { if(isolated!=null)isolated.destroy(); isolated=new IsolatedBrowser(this,views,this::send); if("isolatedLegacy".equals(commandType))isolated.createLegacy(command);else isolated.create(command); }
+            else if(isolated!=null) { isolated.execute(command); if("isolatedDestroy".equals(commandType))isolated=null; }
+            return;
+        }
+        switch (commandType) {
             case "serviceRequest": services.request(command.getJSONObject("job")); break;
             case "configureServices": services.configure(command); break;
             case "storageJob": {
@@ -188,6 +196,7 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
         if (services != null) services.close();
         NativeBridge.detach(this);
         if (attached) send(HostViews.event("detach"));
+        if(isolated!=null)isolated.destroy();
         for (BrowserAdapter session : sessions.values()) session.destroy(); sessions.clear();
         super.onDestroy();
     }

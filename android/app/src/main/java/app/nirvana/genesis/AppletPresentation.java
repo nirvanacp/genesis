@@ -15,6 +15,19 @@ import java.util.Map;
 
 /** Native isolation for API 3. Document authority remains the host's responsibility. */
 final class AppletPresentation extends FrameLayout {
+    /** Blocks virtual source nodes even if WebView changes importance after loading. */
+    static final class SourceView extends WebView {
+        private boolean exposed;
+        SourceView(Context context) { super(context); }
+        void expose(boolean value) { exposed=value; setImportantForAccessibility(value?View.IMPORTANT_FOR_ACCESSIBILITY_AUTO:View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS); }
+        @Override public android.view.accessibility.AccessibilityNodeProvider getAccessibilityNodeProvider() { return exposed?super.getAccessibilityNodeProvider():null; }
+        @Override public void onInitializeAccessibilityNodeInfo(android.view.accessibility.AccessibilityNodeInfo info) {
+            if(exposed) super.onInitializeAccessibilityNodeInfo(info);
+            else { info.setClassName(View.class.getName()); info.setVisibleToUser(false); info.setFocusable(false); }
+        }
+        @Override public boolean onCheckIsTextEditor() { return exposed&&super.onCheckIsTextEditor(); }
+        @Override public boolean requestFocus(int direction, android.graphics.Rect rect) { return exposed&&super.requestFocus(direction,rect); }
+    }
     private final FrameLayout sources, foreground, website;
     private final View barrier;
     private final Map<String, WebView> sourceViews = new LinkedHashMap<>();
@@ -124,6 +137,7 @@ final class AppletPresentation extends FrameLayout {
     }
     private void showWebsite(WebView view) {
         websiteView = view; foreground.setVisibility(View.GONE);
+        if(view instanceof SourceView) ((SourceView)view).expose(true);
         website.addView(view, fullSize()); website.setVisibility(View.VISIBLE);
         view.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);
         view.setFocusable(true); view.setFocusableInTouchMode(true); view.setVisibility(View.VISIBLE);
@@ -131,6 +145,7 @@ final class AppletPresentation extends FrameLayout {
         view.onResume(); view.requestFocus();
     }
     private void hideSource(WebView view) {
+        if(view instanceof SourceView) ((SourceView)view).expose(false);
         WebViewCompat.setAudioMuted(view, true);
         view.getSettings().setMediaPlaybackRequiresUserGesture(true);
         view.clearFocus(); view.setFocusable(false); view.setFocusableInTouchMode(false);
