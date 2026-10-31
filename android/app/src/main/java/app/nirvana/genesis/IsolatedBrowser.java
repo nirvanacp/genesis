@@ -107,7 +107,12 @@ final class IsolatedBrowser {
                 if("appassets.androidplatform.net".equals(r.getUrl().getHost()))return assets.loader.shouldInterceptRequest(r.getUrl());
                 return null;
             }
-            @Override public boolean shouldOverrideUrlLoading(WebView v,WebResourceRequest r){return !foregroundPath.equals(r.getUrl().getPath())||!"https://appassets.androidplatform.net".equals(origin(r.getUrl().toString()));}
+            @Override public boolean shouldOverrideUrlLoading(WebView v,WebResourceRequest r){
+                String destination=r.getUrl().toString();
+                if(foregroundPath.equals(r.getUrl().getPath())&&"https://appassets.androidplatform.net".equals(origin(destination)))return false;
+                if(r.isForMainFrame()&&r.hasGesture()&&safeWebsite(destination))emit("isolatedLink","url",destination);
+                return true;
+            }
             @Override public void onPageCommitVisible(WebView v,String url){foregroundCommitted=true;reveal();}
             @Override public void onReceivedError(WebView v,WebResourceRequest r,WebResourceError error){if(r.isForMainFrame())failure("The applet interface could not load");}
             @Override public boolean onRenderProcessGone(WebView v,RenderProcessGoneDetail detail){failure("The applet renderer stopped. Retry or return to Apps.");return true;}

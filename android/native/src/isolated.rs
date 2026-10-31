@@ -161,7 +161,7 @@ impl IsolatedHost {
             .package
             .as_ref()
             .is_some_and(|p| p.manifest.id == applet);
-        if same_app && remember && !self.url.is_empty() {
+        if same_app && remember && !self.url.is_empty() && (self.url != url || self.page != page || self.selection["sourceId"] != source.id || self.selection["sectionId"] != section) {
             if self.history.len() >= 64 {
                 self.history.remove(0);
             }
@@ -197,8 +197,12 @@ impl IsolatedHost {
         let recreate = !same_app || !self.documents.contains_key("foreground");
         self.package = Some(package.clone());
         if package.manifest.schema_version == 1 {
-            if self.generation>0 { out.push(self.command("isolatedDestroy")); }
-            self.generation+=1;self.documents.clear();self.website=true;
+            if self.generation > 0 {
+                out.push(self.command("isolatedDestroy"));
+            }
+            self.generation += 1;
+            self.documents.clear();
+            self.website = true;
             out.push(json!({"type":"isolatedLegacy","generation":self.generation,"package":package,"selection":self.selection,"url":self.url}));
             return Ok(());
         }
@@ -288,7 +292,16 @@ impl IsolatedHost {
         match kind {
             "back" => self.back(&mut out)?,
             "isolatedBackDeadline" => if event["token"].as_u64() == self.pending_back.take() { self.back_default(&mut out)?; },
-            "ordinary" => { self.website=true; self.documents.remove("source"); out.push(json!({"type":"isolatedWebsite","generation":self.generation,"url":self.url,"adopt":true})); },
+            "isolatedLink" => {
+                let url=event["url"].as_str().unwrap_or("");
+                if matches!(self.resolution(url),RouteResolution::Matched{result:RouteResult::Custom{..},..}) {
+                    let mut input=self.selection.clone();input["url"]=json!(url);input["pageId"]=Value::Null;self.open(&input,true,&mut out)?;
+                } else if url::Url::parse(url).is_ok_and(|u|["http","https"].contains(&u.scheme())&&u.username().is_empty()&&u.password().is_none()) {
+                    self.website=true;let adopt=url==self.url;if adopt{self.notify("source","context.retired",Value::Null,&mut out);self.documents.remove("source");}
+                    out.push(json!({"type":"isolatedWebsite","generation":self.generation,"url":url,"adopt":adopt}));
+                }
+            },
+            "ordinary" => { self.website=true; self.notify("source","context.retired",Value::Null,&mut out); self.documents.remove("source"); out.push(json!({"type":"isolatedWebsite","generation":self.generation,"url":self.url,"adopt":true})); },
             "retry" | "reload" => if self.website { out.push(self.command("isolatedWebsiteReload")); } else {
                 let mut input=self.selection.clone();input["url"]=json!(self.url);input["pageId"]=json!(self.page);self.open(&input,false,&mut out)?;
             },
@@ -550,7 +563,12 @@ impl IsolatedHost {
             "runtime.phase"=>{},
             "runtime.error"=>out.push(json!({"type":"isolatedFailure","generation":self.generation,"message":"The applet could not prepare its interface. Retry or return to Apps."})),
             "source.subscribe"=>{self.notify(role,"source.snapshot",self.snapshot.clone(),out);self.reply(role,request,Ok(Value::Null),out);},
-            "source.command"=>{self.notify("source","source.command",params.clone(),out);self.reply(role,request,Ok(Value::Null),out);},
+            "source.command"=>{
+                if params["epoch"].as_u64()!=Some(self.epoch)||!self.documents.get("source").is_some_and(|d|d.bound)||params["name"].as_str().is_none_or(|n|n.is_empty()||n.len()>64) {
+                    self.reply(role,request,Err("Source is not ready for this command"),out);return Ok(());
+                }
+                self.notify("source","source.command",params.clone(),out);self.reply(role,request,Ok(Value::Null),out);
+            },
             "sources.open"|"pages.open"=>{
                 self.reply(role,request,Ok(Value::Null),out);
                 let mut input=self.selection.clone();input["pageId"]=Value::Null;
@@ -562,7 +580,7 @@ impl IsolatedHost {
                 let url=params["url"].as_str().unwrap_or(&self.url);
                 let valid=url::Url::parse(url).is_ok_and(|u|["http","https"].contains(&u.scheme())&&u.username().is_empty()&&u.password().is_none()&&u.host_str()!=Some("appassets.androidplatform.net"));
                 if !valid {self.reply(role,request,Err("Invalid website URL"),out);return Ok(());}
-                let adopt=url==self.url;self.website=true;if adopt{self.documents.remove("source");}
+                let adopt=url==self.url;self.website=true;if adopt{self.notify("source","context.retired",Value::Null,out);self.documents.remove("source");}
                 out.push(json!({"type":"isolatedWebsite","generation":self.generation,"url":url,"adopt":adopt}));self.reply(role,request,Ok(json!({"sessionId":format!("website-{}",self.generation)})),out);
             },
             "webViews.close"=>{out.push(self.command("isolatedWebsiteClose"));self.reply(role,request,Ok(Value::Null),out);},
