@@ -1,6 +1,6 @@
 import {isObject,validHandle,validSnapshot,postUrl,safeLink,type Post} from './domain';
 export const screens=['timeline','discovery','profile','people','conversation','post-metadata','media','notifications','saved','collection'];
-export interface XPost extends Post {time:string;avatar:string|null;photos:string[];metrics:{label:string;value:string}[];quote:{text:string;url:string|null}|null}
+export interface XPost extends Post {context?:{text:string;url:string};time:string;avatar:string|null;photos:string[];metrics:{label:string;value:string}[];quote:{text:string;url:string|null}|null}
 export interface XEntry {key:string;kind:'trend'|'person'|'notification'|'collection';text:string;url:string|null;command:boolean}
 export interface XTab {key:string;label:string;url:string|null;selected:boolean}
 export interface XModel {
