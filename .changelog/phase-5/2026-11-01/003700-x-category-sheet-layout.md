@@ -1,0 +1,6 @@
+# X category sheet layout
+
+- Goal: Preserve usable category rows and visible confirmation text within the native-style sheet, including keyboard and short-viewport conditions.
+- Changes: The sheet body uses a scrolling vertical flex layout with nonshrinking sections instead of compressing its category list into a tiny grid row. The removal warning lives in the fixed footer beside the confirmation controls. Saved-row actions align with their text, and the category filter uses available width before wrapping.
+- Decisions: Live screenshots showed only part of one category despite multiple available rows. The agent preserved fixed Close/Cancel/save controls and made the body scroll rather than shrinking individual controls. A later check showed the removal warning below the visible scroll area, so it moved into the footer.
+- Verification: X TypeScript/build and whitespace checks passed; revision `85c83ad43947fee9ef902a9122ee37c064b6fec3cda46d0cac65209c46a43e25` is installed. Real category create/save/read-back, filter/search, rename, removal and user-approved deletion of the empty temporary category passed. Its membership and category were removed; the original two categories retain counts 2 and 0. The final warning was verified using a cancelled draft on an existing record, without submitting that change.
