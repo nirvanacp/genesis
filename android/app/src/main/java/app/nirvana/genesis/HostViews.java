@@ -53,6 +53,7 @@ final class HostViews {
     private String presentationState = "loading", presentationMessage = "";
     private boolean fullscreen;
     private boolean readerVisible;
+    private boolean isolatedApplet;
     private boolean appletActive;
     private JSONObject shell;
     private String appletId, sourceId, pageId, sectionId;
@@ -139,6 +140,7 @@ final class HostViews {
     }
 
     void configureShell(JSONObject command, PackageAssets assets) throws Exception {
+        isolatedApplet=command.getJSONObject("package").getJSONObject("manifest").optInt("schemaVersion")==2;
         appletActive = true;
         JSONObject manifest = command.getJSONObject("package").getJSONObject("manifest");
         shell = manifest.optJSONObject("shell"); appletId = manifest.getString("id");
@@ -410,7 +412,7 @@ final class HostViews {
         if ((activity.getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0) {
             SubMenu debugMenu = menu.addSubMenu("Developer tools");
             String[][] debug = {{"Inspect current document", "inspect"}, {"Qualify 20 reloads", "qualify"}, {"Simulate creator failure", "debugFailure"}, {"Terminate renderer", "debugTerminate"}};
-            for (String[] item : debug) debugMenu.add(item[0]).setOnMenuItemClickListener(clicked -> { events.send(event(item[1])); return true; });
+            for (String[] item : debug) { if(isolatedApplet&&"qualify".equals(item[1]))continue; debugMenu.add(item[0]).setOnMenuItemClickListener(clicked -> { events.send(event(item[1])); return true; }); }
         }
         popup.show();
     }

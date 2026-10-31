@@ -161,7 +161,14 @@ impl IsolatedHost {
             .package
             .as_ref()
             .is_some_and(|p| p.manifest.id == applet);
-        if same_app && remember && !self.url.is_empty() && (self.url != url || self.page != page || self.selection["sourceId"] != source.id || self.selection["sectionId"] != section) {
+        if same_app
+            && remember
+            && !self.url.is_empty()
+            && (self.url != url
+                || self.page != page
+                || self.selection["sourceId"] != source.id
+                || self.selection["sectionId"] != section)
+        {
             if self.history.len() >= 64 {
                 self.history.remove(0);
             }
@@ -267,6 +274,45 @@ impl IsolatedHost {
             crate::packages::validate(&index)?;
             self.index = Some(index);
             self.launcher(&mut out);
+            // Restore only declared custom GET destinations. Website form/POST state is
+            // not serializable and must never be reconstructed or replayed.
+            let restore = &event["restore"];
+            if restore["selection"].is_object() {
+                let mut selection = restore["selection"].clone();
+                if let Some(url) = restore["currentUrl"].as_str() {
+                    selection["url"] = json!(url);
+                }
+                let id = selection["appletId"].as_str().unwrap_or("");
+                let source_id = selection["sourceId"].as_str().unwrap_or("");
+                let custom = self
+                    .index
+                    .as_ref()
+                    .and_then(|i| i.packages.iter().find(|p| p.manifest.id == id))
+                    .is_some_and(|p| {
+                        let source = p.manifest.sources.iter().find(|s| s.id == source_id);
+                        p.manifest
+                            .route_contracts
+                            .iter()
+                            .find(|c| {
+                                Some(&c.id) == source.and_then(|s| s.route_contract_id.as_ref())
+                            })
+                            .is_some_and(|c| {
+                                matches!(
+                                    crate::routes::resolve(
+                                        c,
+                                        selection["url"].as_str().unwrap_or("")
+                                    ),
+                                    RouteResolution::Matched {
+                                        result: RouteResult::Custom { .. },
+                                        ..
+                                    }
+                                )
+                            })
+                    });
+                if custom {
+                    self.open(&selection, false, &mut out)?;
+                }
+            }
             return Ok(out);
         }
         if kind == "home" {
@@ -291,7 +337,8 @@ impl IsolatedHost {
         }
         match kind {
             "back" => self.back(&mut out)?,
-            "isolatedBackDeadline" => if event["token"].as_u64() == self.pending_back.take() { self.back_default(&mut out)?; },
+            "isolatedBackDeadline" => if event["token"].as_u64() == self.pending_back { self.pending_back=None; self.back_default(&mut out)?; },
+            "isolatedForegroundRetry" => {self.documents.remove("foreground");let mut input=self.selection.clone();input["url"]=json!(self.url);input["pageId"]=json!(self.page);self.open(&input,false,&mut out)?;},
             "isolatedLink" => {
                 let url=event["url"].as_str().unwrap_or("");
                 if matches!(self.resolution(url),RouteResolution::Matched{result:RouteResult::Custom{..},..}) {
@@ -309,7 +356,7 @@ impl IsolatedHost {
             "readerClose" => { self.website=false; out.push(self.command("isolatedWebsiteClose")); },
             "isolatedWebsiteClosed" => {
                 self.website=false;
-                if event["adopted"] == true {
+                if event["adopted"] == true || event["revalidate"] == true {
                     let mut input=self.selection.clone();input["url"]=json!(self.url);input["pageId"]=json!(self.page);self.open(&input,false,&mut out)?;
                 }
                 self.notify("foreground","host.focused",Value::Null,&mut out);
@@ -391,7 +438,12 @@ impl IsolatedHost {
             }
             self.serial += 1;
             let doc = Document {
-                id: format!("isolated-{}-{}", self.generation, self.serial),
+                id: format!(
+                    "isolated-{}-{}-{}",
+                    self.generation,
+                    self.serial,
+                    m["nonce"].as_str().unwrap()
+                ),
                 channel,
                 nonce: m["nonce"].as_str().unwrap().into(),
                 challenge: format!("challenge-{}", self.serial),
@@ -419,7 +471,7 @@ impl IsolatedHost {
                     json!({"kind":"source","sourceId":source_id})
                 };
                 out.push(json!({"type":"isolatedReply","generation":self.generation,"role":role,"channel":channel,"message":{"type":"bound","nonce":doc.nonce,"documentId":doc.id,
-                    "context":{"runtimeApiVersion":3,"role":role,"instanceId":self.package.as_ref().unwrap().manifest.id,"appletId":self.package.as_ref().unwrap().manifest.id,"viewId":format!("{}-{}",role,self.generation),"generation":self.generation,"binding":binding}}}));
+                    "context":{"runtimeApiVersion":3,"role":role,"instanceId":self.package.as_ref().unwrap().manifest.id,"appletId":self.package.as_ref().unwrap().manifest.id,"viewId":doc.id,"generation":self.generation,"binding":binding}}}));
             }
             return Ok(());
         }
@@ -585,7 +637,7 @@ impl IsolatedHost {
             },
             "webViews.close"=>{out.push(self.command("isolatedWebsiteClose"));self.reply(role,request,Ok(Value::Null),out);},
             "navigation.backHandler"=>{self.back_handler=params["enabled"]==true;self.reply(role,request,Ok(Value::Null),out);},
-            "navigation.backResult"=>{if params["token"].as_u64()==self.pending_back.take()&&params["consumed"]!=true{self.back_default(out)?;}self.reply(role,request,Ok(Value::Null),out);},
+            "navigation.backResult"=>{if params["token"].as_u64()==self.pending_back{self.pending_back=None;if params["consumed"]!=true{self.back_default(out)?;}}self.reply(role,request,Ok(Value::Null),out);},
             "navigation.leaveGuard"=>{out.push(json!({"type":"isolatedLeaveGuard","generation":self.generation,"message":params["message"]}));self.reply(role,request,Ok(Value::Null),out);},
             "ui.modalState"=>{self.modal=params["open"]==true;out.push(json!({"type":"modalState","open":self.modal}));self.reply(role,request,Ok(Value::Null),out);},
             "storage.get"|"storage.list"|"storage.commit"=>{
