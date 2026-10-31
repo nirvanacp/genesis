@@ -88,14 +88,14 @@ export function validateManifest(input) {
   }
   return manifest;
 }
-export async function readApplet(directory) {
+export async function readApplet(directory, { serviceFile } = {}) {
   const base = await realpath(directory);
   const manifest = validateManifest(JSON.parse(await readFile(path.join(base, 'applet.json'), 'utf8')));
   for (const entry of [...manifest.sources, ...manifest.pages]) await containedFile(base, entry.entry);
   if (manifest.shell) await containedFile(base, manifest.shell.brandAsset);
   let service;
-  try { service = JSON.parse(await readFile(path.join(base, 'backend/service.json'), 'utf8')); }
-  catch (error) { if (error.code !== 'ENOENT') throw error; }
+  try { service = JSON.parse(await readFile(await containedFile(base, serviceFile ?? 'backend/service.json'), 'utf8')); }
+  catch (error) { if (error.code !== 'ENOENT' || serviceFile) throw error; }
   if (service) {
     object(service, ['serviceId','entry','healthPath','port','environment']);
     requireValue(manifest.services.includes(service.serviceId), 'Undeclared backend service');
