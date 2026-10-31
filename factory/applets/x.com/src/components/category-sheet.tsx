@@ -50,7 +50,7 @@ function CategorySheet({context,post,close,verifiedLibrary}:{context:AppletConte
   };
   return <div className="category-sheet">
     <header className="sheet-header"><button onClick={close} aria-label="Close category editor">✕</button><h2>Applet categories</h2></header>
-    <div className="sheet-body"><div className="preview"><strong>@{post.snapshot.authorHandle}</strong><p>{post.snapshot.text||`${post.snapshot.media.kind} post`}</p></div>
+    <div className="sheet-body"><div className="preview"><strong>@{post.snapshot.authorHandle}</strong><p>{post.snapshot.text||(post.snapshot.media.kind==='none'?'Post without a text preview':`${post.snapshot.media.kind} post`)}</p></div>
       {loading?<p role="status" className="status">Loading your categories…</p>:<>
         {library&&<><label className="field"><span>Find a category</span><input type="search" aria-label="Find a category" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search categories"/></label>
         <div className="categories">{categories.filter(c=>c.name.toLowerCase().includes(query.toLowerCase())).map(c=><label className="check" key={c.id}><input type="checkbox" aria-label={c.name} checked={selected.includes(c.id)} disabled={busy||pending||!selected.includes(c.id)&&selected.length>=10} onChange={e=>{setConfirmRemove(false);setSelected(ids=>e.target.checked?[...ids,c.id]:ids.filter(id=>id!==c.id));}}/><span>{c.name}</span></label>)}{!categories.length&&<p className="muted">Create your first category to keep this post organized.</p>}</div>

@@ -1,0 +1,6 @@
+# X collection card navigation
+
+- Goal: Repair a final acceptance gap where list suggestions appeared as text without individual navigation.
+- Changes: Inspected listCell link roles now publish separate epoch-bound read targets. Owned collection cards open their exact source destination; list/community pages expose explicit original-site management. Profile posts appear before follow suggestions, people offer a clear original-site follow action, and observed social context retains its community/repost link. Missing text previews no longer claim a misleading none post type.
+- Decisions: The agent kept list/social mutations in the website provider and reused source read-command validation for card navigation. The root post identity remains separate from quoted/media context.
+- Verification: Workspace/app TypeScript, both manifest checks and bundle builds passed. Authenticated emulator opened Profile/Lists, selected an individual owned list card and reached the actual list title/metadata and live post content. Communities redirect/rendering was inspected. A visibility-only wait for a below-fold Discussion control timed out, then direct inspection confirmed the loaded list/post; this was not a navigation failure. No repository tests changed.

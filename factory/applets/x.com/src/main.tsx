@@ -36,6 +36,7 @@ export default defineSourceAdapter({adapters:screens,activate(context){
       const metrics=[...article.querySelectorAll<HTMLElement>('[data-testid="reply"],[data-testid="retweet"],[data-testid="unretweet"],[data-testid="like"],[data-testid="unlike"],a[href$="/analytics"]')].filter(e=>e.closest('article')===article).map(e=>({label:(e.getAttribute('data-testid')??'Views').replace('un',''),value:e.getAttribute('aria-label')??text(e,120)})).slice(0,5);
       const quote=article.querySelector('[role="link"] [data-testid="tweetText"]'),quoteLink=quote?.closest('[role="link"]')?.querySelector<HTMLAnchorElement>('a[href*="/status/"]');
       const item:XPost={...post,time:text(article.querySelector('time'),100),avatar:imageUrl(article.querySelector<HTMLImageElement>('[data-testid="Tweet-User-Avatar"] img')?.src),photos:[...article.querySelectorAll<HTMLImageElement>('[data-testid="tweetPhoto"] img')].filter(i=>{const href=destination(i.closest('a[href]')?.getAttribute('href'));if(!href)return false;const u=new URL(href),m=u.pathname.match(/\/status\/([0-9]+)\/photo\/[0-9]+$/);return u.origin==='https://x.com'&&m?.[1]===post.postId;}).map(i=>imageUrl(i.src)).filter((v):v is string=>!!v).slice(0,4),metrics,quote:quote?{text:text(quote,2500),url:destination(quoteLink?.getAttribute('href'))}:null};
+      const social=article.querySelector('[data-testid="socialContext"]');const socialUrl=destination(social?.closest('a[href]')?.getAttribute('href'));if(social&&socialUrl)item.context={text:text(social,200),url:socialUrl};
       model.posts.push(item);if(model.posts.length>=40){model.partial=true;break;}
     }
     const focusedId=location.pathname.match(/\/status\/([0-9]+)/)?.[1];
@@ -49,7 +50,11 @@ export default defineSourceAdapter({adapters:screens,activate(context){
     if(kind==='notifications')for(const e of primary.querySelectorAll('[data-testid="notification"]'))add(e,'notification',true);
     if(kind==='discovery')for(const e of primary.querySelectorAll('[data-testid="trend"]'))add(e,'trend',true);
     if(['people','discovery','profile'].includes(kind))for(const e of primary.querySelectorAll('[data-testid="UserCell"]'))add(e,'person');
-    if(kind==='collection')for(const e of primary.querySelectorAll('[data-testid="cellInnerDiv"]')){if(!e.querySelector('article')&&(e.querySelector('a[href]')||e.querySelector('[role="link"]')))add(e,'collection');}
+    if(kind==='collection'){
+      model.title=text(primary.querySelector('h1,h2'),200)||'Collections';
+      for(const e of primary.querySelectorAll('[data-testid="listCell"][role="link"]'))add(e,'collection',true);
+      for(const e of primary.querySelectorAll('[data-testid="cellInnerDiv"]'))if(!e.querySelector('article,[data-testid="listCell"]')&&e.querySelector('a[href]'))add(e,'collection');
+    }
     const profileName=primary.querySelector('[data-testid="UserName"]');
     const profileHandle=location.pathname.split('/')[1];
     if(kind==='profile'&&profileName&&validHandle(profileHandle)){
@@ -75,7 +80,7 @@ export default defineSourceAdapter({adapters:screens,activate(context){
     if(!['selectTab','openEntry'].includes(command.name)||!isObject(command.payload)||typeof command.payload.key!=='string')return;
     const target=targets.get(command.payload.key);if(!target||!target.element.isConnected||text(target.element,command.name==='selectTab'?100:command.payload.key.startsWith('notification-')?1800:700)!==target.text)return;
     if(command.name==='selectTab'&&target.element.getAttribute('role')!=='tab')return;
-    if(command.name==='openEntry'&&!target.element.matches('[data-testid="trend"],[data-testid="notification"]'))return;
+    if(command.name==='openEntry'&&!target.element.matches('[data-testid="trend"],[data-testid="notification"],[data-testid="listCell"][role="link"]'))return;
     target.element.click();clearTimeout(moreTimer);moreTimer=setTimeout(publish,500);
   });
   context.onDispose(()=>{clearTimeout(moreTimer);clearTimeout(publication);});
