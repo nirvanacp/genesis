@@ -16,7 +16,9 @@ export function currentHandle():string|null{
       const user=initial.entities?.users?.entities?.[initial.session?.user_id];
       if(validHandle(user?.screen_name)&&typeof user.name==="string")account={handle:user.screen_name.toLowerCase(),name:user.name};
     }catch{/* Unrecognized account state cannot authorize private records. */}
-    accounts.set(script,account);
+    // A streamed bootstrap script may be incomplete on the first observation.
+    // Only memoize a successfully parsed identity; retry unknown observations.
+    if(account)accounts.set(script,account);
   }
   const account=accounts.get(script);if(!account)return null;
   const mobile=document.querySelector('[data-testid="DashButton_ProfileIcon_Link"]');
