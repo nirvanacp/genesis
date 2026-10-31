@@ -83,7 +83,7 @@ Use `context.webViews.open({url})` for external articles, unsupported routes and
 
 Never reveal the source as a loading/error fallback. Unknown routes show an owned unsupported state with Retry, Back and Open website. Login, challenges, composer, uploads, settings, voting and other upstream state changes use website presentation unless a separately qualified action implementation exists. Do not reconstruct a POST as a GET or automatically repeat uncertain actions. A source route classified `website` produces an owned landing; foreground user intent opens the provider. Deep links and redirects do not grant adapter privileges.
 
-`source.command({name,payload?,epoch?})` delivers an applet-defined request to the current adapter's `source.onCommand` callback. It acknowledges dispatch, not the eventual website result. Limit it to read/navigation operations such as loading a feed window. Revalidate source DOM identity and epoch before acting. Upstream mutations require deliberate website interaction. Commands do not support durable background execution.
+`source.command({name,payload?,epoch})` delivers an applet-defined request to the current adapter's `source.onCommand` callback. Always pass the accepted snapshot.epoch; stale or missing epochs are rejected. It acknowledges dispatch, not the eventual website result. Limit it to read/navigation operations such as loading a feed window. Revalidate source DOM identity and epoch before acting. Upstream mutations require deliberate website interaction. Commands do not support durable background execution.
 
 ## Maintenance and acceptance
 
