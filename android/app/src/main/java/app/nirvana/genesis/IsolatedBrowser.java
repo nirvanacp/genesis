@@ -223,7 +223,7 @@ final class IsolatedBrowser {
     boolean handleUserEvent(JSONObject event) throws Exception {
         String type=event.getString("type");
         if((activity.getApplicationInfo().flags&android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE)!=0){
-            if("inspect".equals(type)){views.diagnostics("Isolated applet: "+appletId()+"\nGeneration: "+generation+"; source epoch: "+epoch+"\nForeground ready: "+foregroundReady+"; website view: "+website+"\nSource hidden: "+(!website||!adopted)+"; source channel count: "+channels.getOrDefault("source",Collections.emptyMap()).size());return true;}
+            if("inspect".equals(type)){WebView.setWebContentsDebuggingEnabled(true);views.diagnostics("Local WebView inspection enabled for this applet visit.\n"+"Isolated applet: "+appletId()+"\nGeneration: "+generation+"; source epoch: "+epoch+"\nForeground ready: "+foregroundReady+"; website view: "+website+"\nSource hidden: "+(!website||!adopted)+"; source channel count: "+channels.getOrDefault("source",Collections.emptyMap()).size());return true;}
             if("debugFailure".equals(type)){failure("Simulated applet failure. Retry to recreate its interface.");return true;}
             if("debugTerminate".equals(type)){
                 if(foreground!=null&&WebViewFeature.isFeatureSupported(WebViewFeature.GET_WEB_VIEW_RENDERER)){
@@ -274,5 +274,5 @@ final class IsolatedBrowser {
             default:throw new IllegalArgumentException("Unknown isolated host command");
         }
     }
-    void destroy(){if(destroyed)return;destroyed=true;main.removeCallbacksAndMessages(null);exitFullscreen();if(sourceScript!=null)sourceScript.remove();if(presentation!=null){presentation.dispose();views.browserSlot.removeView(presentation);}if(source!=null)source.destroy();if(foreground!=null)foreground.destroy();if(external!=null)external.destroy();channels.clear();}
+    void destroy(){if(destroyed)return;destroyed=true;WebView.setWebContentsDebuggingEnabled(false);main.removeCallbacksAndMessages(null);exitFullscreen();if(sourceScript!=null)sourceScript.remove();if(presentation!=null){presentation.dispose();views.browserSlot.removeView(presentation);}if(source!=null)source.destroy();if(foreground!=null)foreground.destroy();if(external!=null)external.destroy();channels.clear();}
 }
