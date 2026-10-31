@@ -1,7 +1,7 @@
 import {defineSourceAdapter} from '@genesis/sdk';
 import {currentHandle} from './source-account';
 import {extractPost} from './extract-post';
-import {safeLink,validHandle,isObject} from './domain';
+import {safeLink,postUrl,validHandle,isObject} from './domain';
 import {imageUrl,routeKind,screens,type XModel,type XPost,type XEntry} from './view-model';
 const text=(element:Element|null|undefined,max=1200)=>(element instanceof HTMLElement?element.innerText:element?.textContent??'').trim().slice(0,max);
 const destination=(value:string|null|undefined)=>{try{return value?safeLink(new URL(value,location.href).href):null;}catch{return null;}};
@@ -35,7 +35,7 @@ export default defineSourceAdapter({adapters:screens,activate(context){
       const post=extractPost(article);if(!post||model.posts.some(p=>p.postId===post.postId))continue;
       const metrics=[...article.querySelectorAll<HTMLElement>('[data-testid="reply"],[data-testid="retweet"],[data-testid="unretweet"],[data-testid="like"],[data-testid="unlike"],a[href$="/analytics"]')].filter(e=>e.closest('article')===article).map(e=>({label:(e.getAttribute('data-testid')??'views').replace(/^un/,''),value:text(e,120)||e.getAttribute('aria-label')?.slice(0,120)||'',active:['unlike','unretweet'].includes(e.getAttribute('data-testid')??'')})).slice(0,5);
       const quote=article.querySelector('[role="link"] [data-testid="tweetText"]'),quoteLink=quote?.closest('[role="link"]')?.querySelector<HTMLAnchorElement>('a[href*="/status/"]');
-      const item:XPost={...post,time:text(article.querySelector('time'),100),avatar:imageUrl(article.querySelector<HTMLImageElement>('[data-testid="Tweet-User-Avatar"] img')?.src),photos:[...article.querySelectorAll<HTMLImageElement>('[data-testid="tweetPhoto"] img')].filter(i=>{const href=destination(i.closest('a[href]')?.getAttribute('href'));if(!href)return false;const u=new URL(href),m=u.pathname.match(/\/status\/([0-9]+)\/photo\/[0-9]+$/);return u.origin==='https://x.com'&&m?.[1]===post.postId;}).map(i=>imageUrl(i.src)).filter((v):v is string=>!!v).slice(0,4),metrics,quote:quote?{text:text(quote,2500),url:destination(quoteLink?.getAttribute('href'))}:null};
+      const item:XPost={...post,time:text(article.querySelector('time'),100),avatar:imageUrl(article.querySelector<HTMLImageElement>('[data-testid="Tweet-User-Avatar"] img')?.src),photos:[...article.querySelectorAll<HTMLImageElement>('[data-testid="tweetPhoto"] img')].filter(i=>{const href=destination(i.closest('a[href]')?.getAttribute('href'));if(!href)return false;const u=new URL(href),m=u.pathname.match(/\/status\/([0-9]+)\/photo\/[0-9]+$/);return u.origin==='https://x.com'&&m?.[1]===post.postId;}).map(i=>imageUrl(i.src)).filter((v):v is string=>!!v).slice(0,4),metrics,quote:quote?{text:text(quote,2500),url:postUrl(destination(quoteLink?.getAttribute('href')))?.url??null}:null};
       if(quote&&item.quote){
         const container=quote.closest<HTMLElement>('[role="link"]');
         const name=container?.querySelector('[data-testid="User-Name"]');
