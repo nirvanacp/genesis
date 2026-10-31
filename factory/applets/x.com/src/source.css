@@ -11,3 +11,8 @@
   .genesis-x [data-testid="tweet"],
   .genesis-x [data-testid="app-text-transition-container"] { transition: none !important; }
 }
+
+/* X dims these active floating controls during scroll. Preserve its hidden/exit
+   opacity values and only correct the qualified .3 state, on the owner itself. */
+.genesis-x [data-testid="FloatingActionButtonBase"][style*="opacity: 0.3"]:not([hidden]):not([inert]):not([aria-hidden="true"]):has([data-testid="FloatingActionButtons_Tweet_Button"]:not([aria-disabled="true"])),
+.genesis-x [data-testid="toast"][role="alert"][style*="opacity: 0.3"]:not([hidden]):not([inert]):not([aria-hidden="true"]) { opacity: 1 !important; }

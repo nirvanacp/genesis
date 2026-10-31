@@ -36,6 +36,7 @@ export class FolderController {
   reset():void{this.capability=null;this.cancel();}
   begin(account:AccountSession,sourceId:string,sourceUrl:string,generation:number,post?:Post):Readonly<FolderIntent>|null{
     if(!account.handle)return null;
+    if(this.intent && ["armed","switching"].includes(this.intent.phase) && (this.clock()>=this.intent.expiresAtMs || this.clock()<this.intent.createdAtMs))this.cancel();
     if(this.intent&&["armed","native-open","switching","custom-open"].includes(this.intent.phase)){
       if(this.intent.accountEpoch===account.epoch&&this.intent.accountKey===account.handle)return null;
       this.cancel();
@@ -68,8 +69,8 @@ const controllers=new WeakMap<AppletContext,FolderController>();
 export function folderController(context:AppletContext):FolderController{
   let controller=controllers.get(context);if(controller)return controller;
   controller=new FolderController();controllers.set(context,controller);
-  context.navigation.onChange(()=>controller!.reset());
-  context.onFocus(()=>controller!.reset());
+  context.navigation.onChange(()=>controller!.cancel());
+  context.onFocus(()=>controller!.cancel());
   context.storage.onChanged(change=>{if(change.changes.some(c=>c.collection==="session"&&c.key==="account"))controller!.reset();});
   context.onDispose(()=>controller!.reset());return controller;
 }
