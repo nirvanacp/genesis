@@ -28,16 +28,17 @@ export interface MountOptions {
   render(container: HTMLElement): void | Dispose;
 }
 export type HostCall = <T = unknown>(method: string, params: unknown) => Promise<T>;
+export type SourceState = "loading" | "ready" | "empty" | "auth-required" | "challenge" | "unsupported" | "error";
 export interface SourceSnapshot<T = unknown> {
-  state: "loading" | "ready" | "empty" | "auth-required" | "challenge" | "unsupported" | "error" | "website" | "blocked";
+  state: SourceState | "website" | "blocked";
   data?: T; error?: { message: string }; url: string; sourceId: string; pageId: string; sectionId?: string; epoch: number;
   route?: {kind:string; routeId?:string; result?:{kind:string;screen?:string;adapter?:string}};
 }
 export interface AppletContext {
   source: {
-    publish(snapshot: {state: string; data?: unknown; error?: {message:string}}): Promise<void>;
+    publish(snapshot: {state: SourceState; data?: unknown; error?: {message:string}}): Promise<void>;
     subscribe(callback: (snapshot: SourceSnapshot) => void): Dispose;
-    command(command: { name: string; payload?: unknown; epoch?: number }): Promise<void>;
+    command(command: { name: string; payload?: unknown; epoch: number }): Promise<void>;
     onCommand(callback: (command: {name:string;payload?:unknown;epoch?:number}) => void): Dispose;
   };
   webViews: { open(options: {url:string}): Promise<{sessionId:string}>; close(sessionId?:string):Promise<void> };

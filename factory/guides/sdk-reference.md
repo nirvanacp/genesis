@@ -6,14 +6,14 @@ Current implementation uses SDK/tools `0.4.0`, runtime API `3`, manifest schema 
 
 `defineSourceAdapter({adapters:string[],activate(context)})` runs inside a hidden source. `defineForeground({screens:string[],mount(context,root)})` runs inside a packaged document and renders owned UI. `definePage` remains useful for internal owned screen modules. `defineApplet` is a legacy entry point, not a new-app starter. Register exactly the manifest's screen/adapter names. A mismatch fails activation. Mount must finish initial local layout within five seconds; source network loading runs separately.
 
-Source adapters use managed watchers, disposal and the source publish/command channel. The host rejects source storage/service/UI/navigation requests. Foregrounds own storage/services, modals, page navigation and explicit website presentation. The TypeScript context includes common helpers for reuse; host role checks enforce authority. Do not call private bridge globals/JNI or import host source.
+Source adapters use managed watchers, disposal and the source publish/command channel. The host rejects source storage/service/UI/navigation requests. Foregrounds own storage/services, modals, page navigation and explicit website presentation. SourceAdapterContext exposes observation, disposal, publication and read-command callbacks. Storage, services and UI helpers are absent from its authoring type; host role checks independently enforce authority. Do not call private bridge globals/JNI or import host source.
 
 | API | Contract |
 | --- | --- |
 | `context.source.publish({state,data?,error?})` | Source only. Coalesced bounded JSON snapshots; 192 KiB maximum data envelope. Returns queue acknowledgement, not completion of an upstream action. |
 | `context.source.subscribe(callback)` | Foreground receives the latest accepted `SourceSnapshot`, then replacements. Returns a disposer. |
 | `SourceSnapshot` | `state`, `data`, `error`, actual `url`, `sourceId`, internal `pageId`, optional `sectionId`, `epoch`, and resolved route. Values are document-bound; applet validates content fields. |
-| `context.source.command({name,payload?,epoch?})` | Foreground-to-current-adapter read/navigation request; promise acknowledges dispatch. No automatic mutation retry. |
+| `context.source.command({name,payload?,epoch})` | Foreground-to-current-adapter read/navigation request; promise acknowledges dispatch. No automatic mutation retry. |
 | `context.source.onCommand(callback)` | Source callback; revalidate DOM, content key, account and route before acting. Returns a disposer. |
 | `context.sources.open(sourceId,url?)` | Navigate a declared source inside the same applet. Exact source-origin permission required. |
 | `context.pages.open(pageId)` | Select a declared internal owned page. Foreground renders that page from the snapshot destination. |
