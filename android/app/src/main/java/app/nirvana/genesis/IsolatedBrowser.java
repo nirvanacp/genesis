@@ -19,13 +19,15 @@ final class IsolatedBrowser {
     private final HostViews.Events events;
     private final Handler main = new Handler(Looper.getMainLooper());
     private final Map<String, Map<Long, JavaScriptReplyProxy>> channels = new HashMap<>();
+    private final Set<WebView> popups = new HashSet<>();
     private long serial, generation, epoch, foregroundEpoch;
     private JSONObject pack, selection, sourceDefinition;
     private PackageAssets assets;
     private AppletPresentation presentation;
     private WebView foreground, source, external;
     private ScriptHandler sourceScript;
-    private boolean website, adopted, destroyed, foregroundCommitted, foregroundReady, foregroundFailed, providerPrompt, providerSourceVisited;
+    private String websiteSession;
+    private boolean website, adopted, destroyed, foregroundCommitted, foregroundReady, foregroundFailed, providerPrompt, providerSourceVisited, sourceChangedInReader;
     private String currentUrl = "", sourceId = "", leaveGuard;
     private View fullscreen;
     private WebChromeClient.CustomViewCallback fullscreenCallback;
@@ -40,8 +42,11 @@ final class IsolatedBrowser {
     private JSONObject event(String type) throws JSONException { return HostViews.event(type).put("generation",generation); }
     private void emit(String type, String key, Object value) { try {events.send(event(type).put("epoch",epoch).put(key,value));}catch(JSONException e){views.error("Could not report website state");} }
     private void failure(String message) {
-        foregroundFailed=true;
+        if(destroyed)return;
+        if(!foregroundFailed){foregroundFailed=true;emit("isolatedForegroundFailed","failed",true);}
+        leaveGuard=null;
         if(presentation!=null) presentation.foregroundFailed();
+        if(website)return;
         try {views.presentation(new JSONObject().put("state","failed").put("message",message).put("actions",new JSONArray()));}catch(JSONException ignored){}
     }
     @SuppressLint("SetJavaScriptEnabled")
@@ -58,28 +63,42 @@ final class IsolatedBrowser {
         view.setWebChromeClient(new WebChromeClient(){
             @Override public void onPermissionRequest(PermissionRequest request){request.deny();}
             @Override public boolean onShowFileChooser(WebView v, ValueCallback<Uri[]> callback, FileChooserParams params){
-                if(!website || (v!=source && v!=external)){callback.onReceiveValue(null);return true;}
-                long token=providerEpoch;activity.chooseFiles(params,callback,()->!destroyed&&website&&token==providerEpoch);return true;
+                if(destroyed||!website || v!=reader()){callback.onReceiveValue(null);return true;}
+                long token=providerEpoch;activity.chooseFiles(params,callback,()->!destroyed&&website&&reader()==v&&token==providerEpoch);return true;
             }
             @Override public void onShowCustomView(View v, CustomViewCallback callback){
-                if(!website||fullscreen!=null){callback.onCustomViewHidden();return;}
+                if(destroyed||!website||view!=reader()||fullscreen!=null){callback.onCustomViewHidden();return;}
                 fullscreen=v;fullscreenCallback=callback;views.fullscreen(v);
             }
-            @Override public void onHideCustomView(){exitFullscreen();}
+            @Override public void onHideCustomView(){if(!destroyed&&website&&view==reader())exitFullscreen();}
             @Override public boolean onCreateWindow(WebView v, boolean dialog, boolean gesture, android.os.Message message){
-                if(!website||!gesture)return false;
-                WebView popup=webView();
+                boolean appletPopup=!website&&v==foreground;
+                if(destroyed||!gesture||(!appletPopup&&(!website||v!=reader()))||popups.size()>=2)return false;
+                final long routeEpoch=epoch,readerEpoch=providerEpoch;
+                WebView popup=webView();popups.add(popup);
+                if(AppletPresentation.supported())WebViewCompat.setAudioMuted(popup,true);
                 popup.setWebViewClient(new WebViewClient(){
                     private boolean routed;
-                    private void route(String url){if(routed||!safeWebsite(url))return;routed=true;reader().loadUrl(url);popup.destroy();}
+                    private void route(String url){
+                        if(routed)return;
+                        boolean current=!destroyed&&(appletPopup?!website&&v==foreground&&epoch==routeEpoch:website&&v==reader()&&providerEpoch==readerEpoch);
+                        if(!current){routed=true;releasePopup(popup);return;}
+                        if(!safeWebsite(url)){if(!"about:blank".equals(url)){routed=true;releasePopup(popup);}return;}
+                        routed=true;
+                        if(appletPopup)emit("isolatedLink","url",url);else reader().loadUrl(url);
+                        releasePopup(popup);
+                    }
                     @Override public boolean shouldOverrideUrlLoading(WebView ignored,WebResourceRequest r){route(r.getUrl().toString());return true;}
                     @Override public void onPageStarted(WebView ignored,String url,android.graphics.Bitmap icon){route(url);}
+                    @Override public boolean onRenderProcessGone(WebView v,RenderProcessGoneDetail detail){releasePopup(popup);return true;}
                 });
+                main.postDelayed(()->releasePopup(popup),5000);
                 ((WebView.WebViewTransport)message.obj).setWebView(popup);message.sendToTarget();return true;
             }
         });
         return view;
     }
+    private void releasePopup(WebView popup){if(popups.remove(popup)){popup.stopLoading();popup.destroy();}}
     void create(JSONObject command) throws Exception {
         generation=command.getLong("generation");pack=command.getJSONObject("package");selection=command.getJSONObject("selection");
         if(!AppletPresentation.supported()||!WebViewFeature.isFeatureSupported(WebViewFeature.JS_INJECTION_IN_FRAME_AND_WORLD)
@@ -111,7 +130,7 @@ final class IsolatedBrowser {
             @Override public boolean shouldOverrideUrlLoading(WebView v,WebResourceRequest r){
                 String destination=r.getUrl().toString();
                 if(foregroundPath.equals(r.getUrl().getPath())&&"https://appassets.androidplatform.net".equals(origin(destination)))return false;
-                if(r.isForMainFrame()&&r.hasGesture()&&safeWebsite(destination))emit("isolatedLink","url",destination);
+                if(!destroyed&&!foregroundFailed&&!website&&r.isForMainFrame()&&r.hasGesture()&&safeWebsite(destination))emit("isolatedLink","url",destination);
                 return true;
             }
             @Override public void onPageCommitVisible(WebView v,String url){foregroundCommitted=true;reveal();}
@@ -125,15 +144,15 @@ final class IsolatedBrowser {
         generation=command.getLong("generation");pack=command.getJSONObject("package");selection=command.getJSONObject("selection");currentUrl=command.getString("url");
         assets=new PackageAssets(activity.packageStore,new JSONObject(command.toString()).put("localAssets",new JSONArray()));
         views.configureShell(command,assets);presentation=new AppletPresentation(activity);views.browserSlot.removeAllViews();views.browserSlot.addView(presentation,new FrameLayout.LayoutParams(-1,-1));
-        openWebsite(new JSONObject().put("url",currentUrl).put("adopt",false));
+        openWebsite(new JSONObject().put("sessionId",command.getString("sessionId")).put("url",currentUrl).put("adopt",false));
     }
-    private void reveal(){if(foregroundReady&&foregroundCommitted&&!destroyed){presentation.revealForeground(foregroundEpoch);views.reveal();}}
+    private void reveal(){if(foregroundReady&&foregroundCommitted&&!foregroundFailed&&!destroyed){presentation.revealForeground(foregroundEpoch);views.reveal();}}
     private ScriptHandler inject(WebView view,String role,Set<String> origins,String entry) throws Exception {
         JavaScriptExecutionWorld world=WebViewCompat.getExecutionWorld(view,"genesis.v3");
         Map<Long,JavaScriptReplyProxy> replies=new HashMap<>();channels.put(role,replies);
         IdentityHashMap<JavaScriptReplyProxy,Long> ids=new IdentityHashMap<>();
         WebViewCompat.addWebMessageListener(view,"genesisHost",origins,world,(v,message,origin,mainFrame,reply)->{
-            if(destroyed||("source".equals(role)&&view!=source)||("foreground".equals(role)&&view!=foreground)||!mainFrame||message.getType()!=WebMessageCompat.TYPE_STRING||("source".equals(role)&&website))return;
+            if(destroyed||("source".equals(role)&&view!=source)||("foreground".equals(role)&&(view!=foreground||foregroundFailed))||!mainFrame||message.getType()!=WebMessageCompat.TYPE_STRING||("source".equals(role)&&website&&(adopted||!Objects.equals(view.getUrl(),currentUrl))))return;
             String raw=message.getData();if(raw==null||raw.length()>262144)return;
             Long channel=ids.get(reply);if(channel==null){channel=++serial;ids.put(reply,channel);replies.put(channel,reply);}
             if(replies.size()>32){Long oldest=Collections.min(replies.keySet());JavaScriptReplyProxy retired=replies.remove(oldest);ids.remove(retired);}
@@ -158,7 +177,9 @@ final class IsolatedBrowser {
         source.setWebViewClient(new WebViewClient(){
             private String reported="";
             private void report(String url, boolean sameDocument){
-                if(destroyed||source!=current||navigation!=epoch||website||url.equals(reported))return;
+                if(destroyed||source!=current||navigation!=epoch)return;
+                if(website){if(reader()!=current&&!url.equals(currentUrl))sourceChangedInReader=true;return;}
+                if(url.equals(reported))return;
                 reported=url;currentUrl=url;try{events.send(event("isolatedSourceNavigation").put("epoch",epoch).put("url",url).put("sameDocument",sameDocument));}catch(JSONException ignored){}
             }
             @Override public boolean shouldOverrideUrlLoading(WebView v,WebResourceRequest r){
@@ -167,12 +188,12 @@ final class IsolatedBrowser {
                 if(!safeWebsite(r.getUrl().toString()))return true;
                 return false;
             }
-            @Override public void onPageStarted(WebView v,String url,android.graphics.Bitmap icon){report(url,false);if(website)providerStarting(url);}
-            @Override public void doUpdateVisitedHistory(WebView v,String url,boolean reload){report(url,true);if(website)providerNavigation(url);}
-            @Override public void onPageCommitVisible(WebView v,String url){report(url,false);if(website)providerRevealed(v,url);}
-            @Override public void onReceivedError(WebView v,WebResourceRequest r,WebResourceError e){if(!destroyed&&source==current&&navigation==epoch&&r.isForMainFrame()){if(website)views.websiteFailure("This website could not load");else emit("isolatedSourceError","message","Website unavailable");}}
-            @Override public void onReceivedHttpError(WebView v,WebResourceRequest r,WebResourceResponse response){if(!destroyed&&source==current&&navigation==epoch&&r.isForMainFrame()&&response.getStatusCode()>=400){if(website)views.websiteFailure("Website returned HTTP "+response.getStatusCode());else emit("isolatedSourceError","message","Website unavailable");}}
-            @Override public boolean onRenderProcessGone(WebView v,RenderProcessGoneDetail detail){if(!destroyed&&source==current&&navigation==epoch){if(website)closeWebsite(true);else emit("isolatedSourceError","message","Website renderer stopped");}return true;}
+            @Override public void onPageStarted(WebView v,String url,android.graphics.Bitmap icon){report(url,false);if(website&&reader()==v)providerStarting(url);}
+            @Override public void doUpdateVisitedHistory(WebView v,String url,boolean reload){report(url,true);if(website&&reader()==v)providerNavigation(url);}
+            @Override public void onPageCommitVisible(WebView v,String url){report(url,false);if(website&&reader()==v)providerRevealed(v,url);}
+            @Override public void onReceivedError(WebView v,WebResourceRequest r,WebResourceError e){if(!destroyed&&source==current&&navigation==epoch&&r.isForMainFrame()){if(website&&reader()==v)views.websiteFailure("This website could not load");else {if(website)sourceChangedInReader=true;emit("isolatedSourceError","message","Website unavailable");}}}
+            @Override public void onReceivedHttpError(WebView v,WebResourceRequest r,WebResourceResponse response){if(!destroyed&&source==current&&navigation==epoch&&r.isForMainFrame()&&response.getStatusCode()>=400){if(website&&reader()==v)views.websiteFailure("Website returned HTTP "+response.getStatusCode());else {if(website)sourceChangedInReader=true;emit("isolatedSourceError","message","Website unavailable");}}}
+            @Override public boolean onRenderProcessGone(WebView v,RenderProcessGoneDetail detail){if(!destroyed&&source==current&&navigation==epoch){if(website&&reader()==v)closeWebsite(true);else {if(website)sourceChangedInReader=true;emit("isolatedSourceError","message","Website renderer stopped");}}return true;}
         });
         presentation.addSource(sourceId,source);
         sourceScript=inject(source,"source",origins(sourceDefinition),sourceDefinition.getString("entry"));
@@ -182,18 +203,18 @@ final class IsolatedBrowser {
     private boolean safeWebsite(String url){try{Uri u=Uri.parse(url);return ("https".equals(u.getScheme())||"http".equals(u.getScheme()))&&u.getHost()!=null&&u.getUserInfo()==null&&!"appassets.androidplatform.net".equals(u.getHost());}catch(Exception e){return false;}}
     private String origin(String url){Uri u=Uri.parse(url);return u.getScheme()+"://"+u.getAuthority();}
     private WebView reader(){return adopted?source:external;}
-    private void providerNavigation(String url){if(sourceDefinition!=null&&origin(url).equals(origin(sourceDefinition.optString("startUrl"))))providerSourceVisited=true;WebView view=reader();if(view!=null)views.navigation(url,true,view.canGoBack(),view.canGoForward());}
-    private void providerStarting(String url){providerEpoch++;activity.cancelInvalidFiles();views.pageStarting();providerNavigation(url);}
-    private void providerRevealed(WebView view,String url){long token=providerEpoch;providerNavigation(url);view.postVisualStateCallback(token,new WebView.VisualStateCallback(){@Override public void onComplete(long id){if(!destroyed&&website&&reader()==view&&token==providerEpoch)views.reveal();}});}
+    private void providerNavigation(String url){if(destroyed||!website)return;if(sourceDefinition!=null&&origin(url).equals(origin(sourceDefinition.optString("startUrl"))))providerSourceVisited=true;WebView view=reader();if(view!=null)views.navigation(url,true,view.canGoBack(),view.canGoForward());}
+    private void providerStarting(String url){if(destroyed||!website||reader()==null)return;providerEpoch++;activity.cancelInvalidFiles();views.pageStarting();providerNavigation(url);}
+    private void providerRevealed(WebView view,String url){if(destroyed||!website||reader()!=view)return;long token=providerEpoch;providerNavigation(url);view.postVisualStateCallback(token,new WebView.VisualStateCallback(){@Override public void onComplete(long id){if(!destroyed&&website&&reader()==view&&token==providerEpoch)views.reveal();}});}
     private void openWebsite(JSONObject command) throws Exception {
-        if(website)closeWebsite(false);website=true;adopted=command.getBoolean("adopt");providerSourceVisited=adopted;providerEpoch++;
+        if(website)closeWebsite(false);websiteSession=command.getString("sessionId");website=true;adopted=command.getBoolean("adopt");providerSourceVisited=adopted;sourceChangedInReader=false;providerEpoch++;
         if(adopted){if(sourceScript!=null){sourceScript.remove();sourceScript=null;}channels.remove("source");presentation.adoptSource(sourceId);providerNavigation(currentUrl);views.reveal();}
         else{
             external=webView();external.setLayerType(View.LAYER_TYPE_NONE,null);
             external.setWebViewClient(new WebViewClient(){
                 @Override public boolean shouldOverrideUrlLoading(WebView v,WebResourceRequest r){return !safeWebsite(r.getUrl().toString());}
-                @Override public void onPageStarted(WebView v,String url,android.graphics.Bitmap icon){providerStarting(url);}
-                @Override public void onPageCommitVisible(WebView v,String url){providerRevealed(v,url);}
+                @Override public void onPageStarted(WebView v,String url,android.graphics.Bitmap icon){if(!destroyed&&website&&reader()==v)providerStarting(url);}
+                @Override public void onPageCommitVisible(WebView v,String url){if(!destroyed&&website&&reader()==v)providerRevealed(v,url);}
                 @Override public void onReceivedError(WebView v,WebResourceRequest r,WebResourceError error){if(!destroyed&&website&&reader()==v&&r.isForMainFrame()){views.reveal();views.websiteFailure("Website could not load");}}
                 @Override public boolean onRenderProcessGone(WebView v,RenderProcessGoneDetail detail){if(!destroyed&&website&&reader()==v)closeWebsite(true);return true;}
             });presentation.openExternal(external);providerStarting(command.getString("url"));external.loadUrl(command.getString("url"));
@@ -204,7 +225,8 @@ final class IsolatedBrowser {
         if(!website)return;exitFullscreen();providerEpoch++;activity.cancelInvalidFiles();boolean wasAdopted=adopted;
         presentation.closeWebsite();if(external!=null){external.destroy();external=null;}
         website=false;adopted=false;views.route(true,false);views.navigation(currentUrl,false,true,false);views.reveal();
-        if(notify)try{events.send(event("isolatedWebsiteClosed").put("epoch",epoch).put("adopted",wasAdopted).put("revalidate",providerSourceVisited));}catch(JSONException ignored){}
+        if(foregroundFailed)failure("The applet interface stopped. Retry to restore it.");
+        if(notify)try{events.send(event("isolatedWebsiteClosed").put("epoch",epoch).put("sessionId",websiteSession).put("adopted",wasAdopted).put("revalidate",providerSourceVisited||sourceChangedInReader));}catch(JSONException ignored){}
     }
     /** Only a boolean leaves the website. Form text, credentials and file paths stay in it. */
     private void requestWebsiteAction(Runnable action){
@@ -274,5 +296,5 @@ final class IsolatedBrowser {
             default:throw new IllegalArgumentException("Unknown isolated host command");
         }
     }
-    void destroy(){if(destroyed)return;destroyed=true;WebView.setWebContentsDebuggingEnabled(false);main.removeCallbacksAndMessages(null);exitFullscreen();if(sourceScript!=null)sourceScript.remove();if(presentation!=null){presentation.dispose();views.browserSlot.removeView(presentation);}if(source!=null)source.destroy();if(foreground!=null)foreground.destroy();if(external!=null)external.destroy();channels.clear();}
+    void destroy(){if(destroyed)return;destroyed=true;WebView.setWebContentsDebuggingEnabled(false);main.removeCallbacksAndMessages(null);for(WebView popup:new HashSet<>(popups))releasePopup(popup);exitFullscreen();if(sourceScript!=null)sourceScript.remove();if(presentation!=null){presentation.dispose();views.browserSlot.removeView(presentation);}if(source!=null)source.destroy();if(foreground!=null)foreground.destroy();if(external!=null)external.destroy();channels.clear();}
 }

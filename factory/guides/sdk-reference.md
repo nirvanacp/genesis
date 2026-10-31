@@ -18,7 +18,7 @@ Source adapters use managed watchers, disposal and the source publish/command ch
 | `context.sources.open(sourceId,url?)` | Navigate a declared source inside the same applet. Exact source-origin permission required. |
 | `context.pages.open(pageId)` | Select a declared internal owned page. Foreground renders that page from the snapshot destination. |
 | `context.webViews.open({url})` | Explicit user-requested website view. Current source URL adopts its live session; another HTTP(S) URL opens a bridge-free reader. Returns `{sessionId}`. |
-| `context.webViews.close(sessionId?)` | Close website presentation and restore/revalidate the owning applet. |
+| `context.webViews.close(sessionId?)` | Request Close and restore/revalidate the applet; the promise acknowledges dispatch, and Stay/Leave may still be pending. An expired session ID is rejected; owned navigation cannot replace an open reader. |
 | `context.ui.openModal(key,render)` | Owned foreground dialog with native Back, focus and cleanup. Render is synchronous; return an unmount disposer. |
 | `context.navigation.onBack(handler)` | Boolean or async boolean transient Back handler, with bounded native fallback. Return false to continue ordinary applet Back. |
 | `context.navigation.setLeaveGuard({message})` | Guard applet-owned unsaved changes; pass null to clear. Website forms retain website-owned behavior. |
