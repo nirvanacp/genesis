@@ -56,6 +56,7 @@ final class HostViews {
     private boolean isolatedApplet;
     private boolean appletActive;
     private JSONObject shell;
+    private JSONArray sourceEntries = new JSONArray();
     private String appletId, sourceId, pageId, sectionId;
     private LinearLayout appHeader, sections;
     private TextView brand;
@@ -143,6 +144,7 @@ final class HostViews {
         isolatedApplet=command.getJSONObject("package").getJSONObject("manifest").optInt("schemaVersion")==2;
         appletActive = true;
         JSONObject manifest = command.getJSONObject("package").getJSONObject("manifest");
+        sourceEntries = manifest.getJSONArray("sources");
         shell = manifest.optJSONObject("shell"); appletId = manifest.getString("id");
         palette(shell != null && "neutral".equals(shell.optString("colorScheme")));
         JSONObject selection = command.getJSONObject("selection");
@@ -222,7 +224,22 @@ final class HostViews {
         readerBack.setColorFilter(ink); readerForward.setColorFilter(ink);
     }
     private JSONObject openSection(JSONObject entry) {
-        JSONObject event = open(entry.optString("sourceId"), entry.isNull("pageId") ? null : entry.optString("pageId"), null);
+        String source = entry.optString("sourceId");
+        String page = entry.isNull("pageId") ? null : entry.optString("pageId");
+        String url = null;
+        if (isolatedApplet) {
+            // A primary tab opens its declared entry, rather than a remembered child.
+            // An explicit empty page also clears a remembered internal owned page.
+            if (page == null) page = "";
+            for (int i = 0; i < sourceEntries.length(); i++) {
+                JSONObject candidate = sourceEntries.optJSONObject(i);
+                if (candidate != null && source.equals(candidate.optString("id"))) {
+                    url = candidate.optString("startUrl");
+                    break;
+                }
+            }
+        }
+        JSONObject event = open(source, page, url);
         try { event.put("sectionId", entry.getString("id")); } catch (JSONException error) { throw new IllegalArgumentException(error); }
         return event;
     }
