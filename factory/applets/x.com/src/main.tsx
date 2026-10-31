@@ -74,7 +74,14 @@ export default defineSourceAdapter({adapters:screens,activate(context){
       const label=text(element,type==='notification'?1800:700);if(!label||model.entries.length>=60)return;
       const id=type+'-'+key(label),link=element.matches('a[href]')?element:element.querySelector('a[href]');
       const url=command?null:destination(link?.getAttribute('href'));if(model.entries.some(e=>e.key===id))return;
-      model.entries.push({key:id,kind:type,text:label,url,command,avatar:imageUrl(element.querySelector<HTMLImageElement>('img')?.src)});if(command&&element instanceof HTMLElement)nextTargets.set(id,{element,text:label});
+      const entry:XEntry={key:id,kind:type,text:label,url,command,avatar:imageUrl(element.querySelector<HTMLImageElement>('img')?.src)};
+      if(type==='person'&&url){
+        const handle=new URL(url).pathname.slice(1);
+        const name=[...element.querySelectorAll('a[href]')].find(a=>destination(a.getAttribute('href'))===url&&text(a,200)&&!text(a,200).startsWith('@'));
+        const description=[...element.querySelectorAll<HTMLElement>('[dir="auto"]')].filter(e=>(!e.closest('button,[role="button"]')||e.closest('button,[role="button"]')===element)&&getComputedStyle(e).display!=='none').at(-1);
+        if(validHandle(handle)&&name)entry.person={name:text(name,200),handle,description:(description?.textContent??'').trim().slice(0,700),verified:!!element.querySelector('[data-testid="icon-verified"]')};
+      }
+      model.entries.push(entry);if(command&&element instanceof HTMLElement)nextTargets.set(id,{element,text:label});
     };
     if(kind==='notifications')for(const e of primary.querySelectorAll('[data-testid="notification"]'))add(e,'notification',true);
     if(kind==='discovery')for(const e of primary.querySelectorAll('[data-testid="trend"]'))add(e,'trend',true);

@@ -85,3 +85,5 @@ button.quoted-post{width:100%;border-radius:16px;text-align:left;font-weight:400
 .entry-trend .entry-target{padding-right:56px}.entry-options{position:absolute;right:4px;top:4px;color:var(--muted)}
 .screen-title:has(.search){padding-left:12px;gap:0}.screen-title .search{flex:1;min-width:0;border:0;padding:4px 0}.screen-title .search-field{gap:8px}
 .post-notice{max-width:400px;margin:12vh auto;padding:32px}.post-notice h2{font-size:31px;line-height:36px;font-weight:800}.post-notice p{color:var(--muted);margin:16px 0 24px;line-height:20px}.post-notice>.primary{display:flex;align-items:center;justify-content:center;min-height:48px;padding:12px 20px;border-radius:999px}
+.person-name{display:flex;align-items:center;gap:4px;font-weight:700}.person-description{color:var(--ink);line-height:20px;margin-top:4px}
+.entry-person .entry-target{padding-right:16px}.entry-person .entry-copy{flex:1}.entry-person .follow-button{position:absolute;right:0;top:12px}.entry-person .person-name,.entry-person .entry-meta{padding-right:128px}
