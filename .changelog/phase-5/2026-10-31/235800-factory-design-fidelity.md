@@ -1,0 +1,6 @@
+# Factory design fidelity
+
+- Goal: Make source-product mobile design the default for applets built from scratch, unless the user provides a detailed alternative, and require interaction verification alongside appearance checks.
+- Changes: Added the portable factory design guide and linked it from the factory index, patterns, product-scope, verification and all three applet workflows. Added a phase-5 adoption note with X's explicit native-design and bottom-navigation decisions. The guide covers reference selection, tokens, owned rendering, coherent custom features, navigation ownership and acceptance evidence.
+- Decisions: The user chose native X with the mobile website as the fallback for uncertain details, retained the current bottom bar and requested all interactions be checked. The agent generalized the source-identity default for future applets while keeping explicit user designs authoritative. No AGENTS.md or platform capability changes were needed.
+- Verification: Local Markdown links passed across 13 guide/workflow files. The creator CLI exported the kit successfully, and byte comparisons confirmed the design guide and workflow references travel unchanged. Whitespace checks passed. Live X acceptance remains a separate required check and is not implied by a documentation/export pass.

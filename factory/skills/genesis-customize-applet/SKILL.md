@@ -5,6 +5,8 @@ description: Maintain or customize an existing Genesis applet, including website
 
 # Customize a Genesis applet
 
+For appearance changes, follow [design and interaction fidelity](../../guides/design.md). Preserve explicit user design/navigation decisions. Native mobile identity is the default, with the live mobile website as the reference for uncertain details, unless the user supplies a detailed alternative. Compare the existing and rebuilt screens and verify every changed control, including contextual menus and return paths.
+
 Read [the API-3 isolation contract](../../guides/isolated-applets.md), then [factory instructions](../../AGENTS.md), [product scope and clarification](../../guides/product-scope.md), the applet's own instructions and README, and [patterns](../../guides/patterns.md).
 
 1. Locate the behavior in the manifest, source adapter, owned page, record repository, or backend. Preserve unrelated changes. Extend the app's product brief with the requested observable difference and neighboring journeys to preserve. Keep its stable identity, complete requested scope and working sibling apps. Do not replace a complete app request with only the newest feature.

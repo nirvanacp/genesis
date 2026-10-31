@@ -15,6 +15,7 @@ Read [the isolated source/foreground architecture](guides/isolated-applets.md) f
 | Start an applet or understand the current workflow | [Getting started](guides/getting-started.md) |
 | Choose a capability or check a signature | [SDK and manifest reference](guides/sdk-reference.md) |
 | Adapt a website, build React UI, or combine sources | [Implementation patterns](guides/patterns.md) |
+| Match the source product's mobile design and verify interactions | [Applet design and interaction fidelity](guides/design.md) |
 | Store records or connect a backend | [Services and data](guides/services-and-data.md) |
 | Restart local applet backends after a reboot | [Local startup and port assignments](guides/services-and-data.md#local-startup-and-port-assignments) |
 | Check or debug the result | [Verification and maintenance](guides/verification.md) |

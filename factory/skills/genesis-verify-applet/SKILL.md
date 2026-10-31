@@ -5,6 +5,8 @@ description: Verify or diagnose a Genesis applet with package checks, TypeScript
 
 # Verify a Genesis applet
 
+Apply [design and interaction fidelity](../../guides/design.md) to visual work. Compare the agreed native/mobile reference with the actual applet under comparable conditions. Inventory all changed controls and verify their results, dismissal, persistence and Back/Close as applicable. Screenshots, static checks and synthetic previews do not establish real interaction parity. Keep blocked acceptance requirements pending.
+
 Read [the API-3 isolation contract](../../guides/isolated-applets.md), then [factory instructions](../../AGENTS.md), [product scope and clarification](../../guides/product-scope.md), and [verification](../../guides/verification.md). Use [SDK reference](../../guides/sdk-reference.md) to confirm expected behavior.
 
 1. Read the latest user requirements and applet brief before choosing checks. Identify intended apps/launcher entries, exact revisions, selected build, SDK version and device/provider. Ask about unresolved material scope or data semantics before assuming expected behavior. Use the standalone checker for this applet; the Genesis root checker covers only the current APK selection, not every dev-installed applet.

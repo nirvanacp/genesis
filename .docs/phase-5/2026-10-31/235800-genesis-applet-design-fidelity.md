@@ -1,0 +1,11 @@
+# Genesis applet design fidelity
+
+Phase-5 applets adopt the portable [design and interaction fidelity guide](../../../factory/guides/design.md). It supplements the [isolated applet maintenance guide](194740-genesis-isolated-applet-maintenance.md) and the current architecture. The factory build, customization and verification workflows link it so exported creator kits carry the same default.
+
+Unless a user supplies a detailed alternative design, applets retain their source product's mobile identity. Aim for the platform-appropriate native app design. Inspect the live mobile website for details that cannot be confirmed in the native app, and report the distinction. Reconstruct the design from validated models in the separate owned foreground. Source DOM and CSS remain hidden and cannot become the visible implementation or a recovery fallback.
+
+The user explicitly chose native X as the X applet's target and retained Genesis's existing bottom navigation. A primary left sidebar is excluded. Shared content screens adopt compact typography, inline author identity, icon actions, source tabs, profile imagery and coherent search/menu/sheet styling. Private Categories uses the same visual rules while retaining its existing independent backend authority. Website-provider boundaries for protected forms and social actions are preserved.
+
+Verification must cover appearance and all changed interactions separately. Compare equivalent screens at comparable widths/themes/text scales; walk from the actual launcher through tabs, search, details, quotes, profiles, media, contextual menus, category flows and website return. Package installation, still screenshots and synthetic previews do not prove these interactions. Record each required journey as passed, failed, blocked or not run. No post/message/account mutation is authorized merely by requesting verification.
+
+The X redesign is implemented and development-installed. Static checks passed, and current website structure was inspected in the authenticated browser. Live visual and interaction acceptance remains required pending a controllable emulator surface or explicit ADB UI authorization. This limitation does not waive acceptance or establish native feature parity. See the [X change record](../../../.changelog/phase-5/2026-10-31/234500-x-native-design.md).
