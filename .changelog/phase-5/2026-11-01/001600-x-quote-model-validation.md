@@ -1,0 +1,6 @@
+# X quote model validation
+
+- Goal: Restore the real Home feed discovered failing during the user-authorized ADB acceptance pass.
+- Changes: The source adapter now publishes a quoted-post URL only when it passes the existing canonical post-URL validator. A quote containing only a photo link retains a null URL and its identity-checked source navigation key. The foreground's strict presentation validation remains unchanged.
+- Decisions: The agent traced the failure to an actual mobile source row whose first descendant status link ended in `/photo/1`. The adapter had published that media URL as a quote URL, causing the complete feed model to fail validation. Reusing the canonical validator and existing quote-opening command preserves navigation without accepting an invalid contract or guessing another destination.
+- Verification: X TypeScript, manifest check/build and whitespace checks passed. Revision `8531ac83a25260b1118494cdad5ef5928a437f27256c52d2c3f66deba919be2b` was installed in place on emulator-5554. Reopening the actual X launcher now displays the authenticated owned feed, selected Following tab, compact post identity/actions and live photo content. Wider interaction acceptance continues separately. No upstream mutation or data reset was performed.
