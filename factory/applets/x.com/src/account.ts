@@ -3,6 +3,7 @@ import {validHandle,type Library} from "./domain";
 import {readLocal,writeLocal} from "./local-state";
 import {Backend,LibraryError} from "./backend";
 interface Ticket {nonce:string;phase:"requested"|"verified"|"consumed"|"failed";handle:string|null;epoch:string;createdAtMs:number;reason?:string}
+const libraryEpochs=new WeakMap<Library,string>();
 const accounts=new WeakMap<HTMLScriptElement,{handle:string;name:string}|null>();
 export function currentHandle():string|null{
   const link=document.querySelector<HTMLAnchorElement>('[data-testid="AppTabBar_Profile_Link"]');
@@ -31,11 +32,13 @@ export function currentHandle():string|null{
   return null;
 }
 export async function verifyAccount(context:AppletContext,backend:Backend):Promise<Library>{
-  const handle=currentHandle();
+  const observed=await observeAccount(context),handle=observed.handle;
   if(!handle)throw new LibraryError("SIGN_IN","Open X and sign in to verify your Categories account.");
   const library=await backend.library();
   if(context.signal.aborted||currentHandle()!==handle)throw new LibraryError("ACCOUNT_CHANGED","Your X account changed. Open Categories again.");
   if(library.expectedHandle.toLowerCase()!==handle)throw new LibraryError("ACCOUNT_MISMATCH",`Categories belongs to @${library.expectedHandle}. Switch to that X account to continue.`);
+  const session=await requireLibrarySession(context,library);
+  if(session.epoch!==observed.epoch)throw new LibraryError("ACCOUNT_CHANGED","Your X account changed during verification.");
   return library;
 }
 export async function openLibrary(context:AppletContext):Promise<void>{
@@ -51,6 +54,7 @@ export async function enterLibrary(context:AppletContext):Promise<Library|null>{
   if(ticket?.phase==="verified"&&session?.epoch===ticket.epoch&&session.handle===ticket.handle&&Date.now()>=ticket.createdAtMs&&Date.now()-ticket.createdAtMs<30000){
     await writeLocal(context,"session","library-entry",{...ticket,phase:"consumed"});
     if(ticket.handle!==library.expectedHandle.toLowerCase())throw new LibraryError("ACCOUNT_MISMATCH",`Categories belongs to @${library.expectedHandle}. Switch to that X account to continue.`);
+    libraryEpochs.set(library,session.epoch);
     return library;
   }
   if(ticket?.phase==="failed"&&Date.now()-ticket.createdAtMs<30000)throw new LibraryError("SIGN_IN",ticket.reason??"Sign in to X, then open Categories again.");
@@ -97,6 +101,9 @@ export async function observeAccount(context:AppletContext):Promise<AccountSessi
 export async function requireLibrarySession(context:AppletContext,library:Library):Promise<AccountSession>{
   const session=context.sourceId!==null?await observeAccount(context):await readLocal<AccountSession>(context,"session","account");
   if(!session?.handle||session.handle!==library.expectedHandle.toLowerCase())throw new LibraryError("ACCOUNT_CHANGED","Open X and verify the account for this library again.");
+  const bound=libraryEpochs.get(library);
+  if(bound&&bound!==session.epoch)throw new LibraryError("ACCOUNT_CHANGED","Reopen applet categories after switching accounts.");
+  libraryEpochs.set(library,session.epoch);
   return session;
 }
 export function watchAccount(context:AppletContext):void{

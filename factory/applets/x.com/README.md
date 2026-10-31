@@ -56,3 +56,12 @@ The packaged library verifies the signed-in X account through a one-use source r
 From this directory run `npx --no-install genesis-applet check . --json` and `npx --no-install genesis-applet build . --out /absolute/output --json`. Backend scripts support `node --check`. Static checks do not qualify source selectors, navigation, Android accessibility, service availability or source attachment handling. See the phase-4 qualification report for the actual device/provider coverage when available.
 
 No background collection, full media archive, automatic folder sync, chat passcode creation, calls/microphone integration or production distribution is supplied. Source actions and account changes require the user's intent. Preserve ordinary-site recovery for unsupported layouts.
+
+
+## Adaptive folder implementation status
+
+The [adaptive folder plan](../../../.plans/phase-4/2026-10-31/120656-x-adaptive-bookmark-folders-plan.md) is partially implemented. Account observations now carry epochs; library entry tickets and active library objects reject previous account sessions. Private rows clear and editors close on shared account-observation changes. Pending saves acquire a checked per-library slot, preserve receipt reconciliation and migrate matching legacy markers without dropping conflicting state. Library preferences now use library-specific keys.
+
+The independent `src/folder-capability.ts` policy supports unknown/native/custom evidence, bounded observation deadlines, provider pinning and stale-intent rejection. It is **not connected to X controls**. The emulator's inspected `/i/history` source exposed Bookmarks and Likes but no native folder control or Premium folder surface, so source interception remains blocked on qualification. Current category actions continue their existing behavior. Automatic paywall replacement, full-page redirect handling, native Premium picker qualification and multi-user provisioning are not delivered. The temporary API-2 build was not installed.
+
+Static checks/build and temporary policy/repository scenarios passed. Logical checks cover concurrent retained-view exclusion, stale cleanup, legacy marker migration, account mismatch and return-to-same-account rejection, capability expiry and contradictory evidence. Device account transitions and native folder routing remain unverified. No new repository test files were added.

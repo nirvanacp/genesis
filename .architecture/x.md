@@ -15,3 +15,10 @@ The user's 31 October correction supersedes the earlier plan's custom Me hub and
 The separately hosted Node 24/SQLite backend authenticates a personal library with its independently provisioned bearer token. It enforces normalized category uniqueness, empty-only deletion, 50 categories, 10 memberships per post, canonical decimal post IDs, bounded snapshots, literal substring search, cursor revision checks and atomic receipt-backed mutations. No backend modules or secrets enter frontend bundles. Production hosting/backups and multi-user authorization remain outside this implementation.
 
 The public SDK/services boundary supplies all browser-side capabilities. Rust and Android implement generic route, lifecycle, section, picker, shell and service contracts without X entities. [The operating guide](../.docs/phase-4/2026-10-30/210800-genesis-x-development-guide.md) describes build/import/service setup and the release gate.
+
+
+## Adaptive folder work in progress
+
+See the [active plan](../.plans/phase-4/2026-10-31/120656-x-adaptive-bookmark-folders-plan.md). Shared account observation epochs now bind library tickets and active library objects; account updates invalidate private UI. Pending operation acquisition/cleanup is checked and library-scoped. Legacy pending state is adopted atomically only for its recorded library. The DOM account observation remains accidental-mixing protection, not authentication or guaranteed freshness across retained source documents.
+
+A separate folder capability controller implements evidence and intent state without DOM selectors. It remains disconnected because native folder/denial controls were absent from the source document inspected on the emulator. No automatic Premium prompt replacement or native/custom source routing is delivered yet. Existing X/category authorities and personal-library service model remain intact.
