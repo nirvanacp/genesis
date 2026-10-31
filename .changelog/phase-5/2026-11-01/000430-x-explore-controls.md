@@ -1,0 +1,6 @@
+# X Explore controls
+
+- Goal: Finish the compact Explore header and ensure its visible options control has an actual action before live acceptance.
+- Changes: Moved Search X into the sticky screen header beside Settings, replacing the extra heading/search row. Trend options now has an accessible website-provider link and its own 48px target instead of a decorative ellipsis within the trend navigation button. Existing trend selection and search submission remain separate actions.
+- Decisions: The agent applied the user's native-X target and all-interactions requirement to these controls. Trend options deliberately opens the original website because the source owns its menu and any preference changes; the applet does not submit them. The user restarted Android Studio and launched the emulator after device access was lost.
+- Verification: X TypeScript, manifest check/build and whitespace checks passed. Final revision `7c61dfb907d9591681d2967663cbcbdfc5565a6b5cb7c1a5c1985135c042087c` was accepted on emulator-5554 after restart. Live acceptance is pending because the computer-use tool can capture the visible emulator but rejects coordinate input. Explicit ADB UI authorization has been requested; no alternative UI control has been used without it.
