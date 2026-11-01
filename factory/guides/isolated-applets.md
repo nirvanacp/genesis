@@ -1,6 +1,6 @@
 # Build applets with an owned foreground
 
-The API-3 architecture uses SDK/tools `0.4.1`, manifest schema `2`, data schema `1` and bundle format `1`. A source adapter runs inside a hidden website document. An owned foreground runs in a separate packaged document. The Android host owns an opaque barrier between them, native navigation, recovery and explicit website views. A new applet must declare both documents and a URL contract.
+The API-3 architecture uses SDK `0.4.1` / tools `0.4.2`, manifest schema `2`, data schema `1` and bundle format `1`. A source adapter runs inside a hidden website document. An owned foreground runs in a separate packaged document. The Android host owns an opaque barrier between them, native navigation, recovery and explicit website views. A new applet must declare both documents and a URL contract.
 
 ## Define the route inventory first
 

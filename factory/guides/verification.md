@@ -87,3 +87,5 @@ In a debuggable host, Developer tools / Inspect current document explicitly enab
 ## Transient recovery acceptance
 
 Follow [loading observations](patterns.md#loading-is-an-unresolved-observation). Record supported navigation from its initiating action through valid content, including slow SPA assembly after HTML completion. Normal loading must not display failure/Retry/website-demand UI. Check real offline/adapter failures and bounded timeout separately, including Back, later recovery and stale callbacks. Preserve native navigation, account-safe content and source isolation. Report recording/sampling and exact revisions; settled screenshots do not pass this requirement.
+
+Verify [default skeleton presentation](design.md#skeletons-are-the-default-pending-ui) on every asynchronous owned screen and dialog, including retained-content refresh and pagination. Capture pending and settled states; check hidden status labels, dark appearance, large text, cancellation, errors and return. Normal wait states must not display loading prose.
