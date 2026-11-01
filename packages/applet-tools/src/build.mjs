@@ -52,7 +52,8 @@ export async function buildApplet(directory, output) {
   const sdkRoot = path.dirname(path.dirname(await realpath(runtime)));
   const sdk = JSON.parse(await readFile(path.join(sdkRoot, 'package.json'), 'utf8'));
   const api = await import(resolver.resolve('@genesis/sdk/manifest'));
-  requireValue(api.RUNTIME_API_VERSION === 3, 'Installed SDK runtime API is unsupported');
+  const runtimeApi=original.schemaVersion>=2?original.schemaVersion+1:2;
+  requireValue((api.SUPPORTED_RUNTIME_API_VERSIONS??[api.RUNTIME_API_VERSION]).includes(runtimeApi===2?3:runtimeApi), 'Installed SDK does not support this manifest runtime API');
   const manifest = structuredClone(original), files = new Map();
   files.set("runtime/routes.js", Buffer.from(`${matchesRoute.toString()}\n${customizedRoute.toString()}`));
   for (const [kind, entries] of [['sources', manifest.sources], ['pages', manifest.pages]]) {
@@ -78,7 +79,7 @@ export async function buildApplet(directory, output) {
   let total = 0;
   for (const [name, bytes] of files) { total += bytes.length; requireValue(safePath(name) && bytes.length <= MAX_ASSET_BYTES && total <= MAX_BUNDLE_BYTES, 'Asset/bundle size limit exceeded'); }
   const assets = [...files].sort(([a],[b]) => a < b ? -1 : a > b ? 1 : 0).map(([name, bytes]) => ({ path: name, sha256: sha256(bytes) }));
-  const bundle = { formatVersion: 1, runtimeApiVersion: original.schemaVersion === 2 ? 3 : 2, sdkVersion: sdk.version, package: { manifest, revision: '', assets } };
+  const bundle = { formatVersion: 1, runtimeApiVersion: runtimeApi, sdkVersion: sdk.version, package: { manifest, revision: '', assets } };
   bundle.package.revision = bundleRevision(bundle); validateBundle(bundle);
   const staging = resolvedOutput + `.staging-${randomUUID()}`;
   try {

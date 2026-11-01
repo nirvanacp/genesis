@@ -3,7 +3,7 @@ import path from 'node:path';
 import { validRoutePattern, customizedRoute } from './routes.mjs';
 import { validateIsolatedManifest } from './isolated-manifest.mjs';
 import { createHash } from 'node:crypto';
-export const RUNTIME_API_VERSION = 3;
+export const RUNTIME_API_VERSION = 4;
 export const FORMAT_VERSION = 1;
 export const MAX_ASSET_BYTES = 4 * 1024 * 1024;
 export const MAX_BUNDLE_BYTES = 8 * 1024 * 1024;
@@ -119,11 +119,11 @@ export function bundleRevision(bundle) {
 }
 export function validateBundle(bundle) {
   object(bundle, ['formatVersion','runtimeApiVersion','sdkVersion','package']);
-  requireValue(bundle.formatVersion === FORMAT_VERSION && [1, 2, RUNTIME_API_VERSION].includes(bundle.runtimeApiVersion), 'Unsupported bundle/runtime API version');
+  requireValue(bundle.formatVersion === FORMAT_VERSION && [1, 2, 3, 4].includes(bundle.runtimeApiVersion), 'Unsupported bundle/runtime API version');
   requireValue(typeof bundle.sdkVersion === 'string' && /^\d+\.\d+\.\d+$/.test(bundle.sdkVersion), 'Invalid SDK version');
   object(bundle.package, ['manifest','revision','assets']);
   validateManifest(bundle.package.manifest);
-  requireValue((bundle.runtimeApiVersion === 3) === (bundle.package.manifest.schemaVersion === 2), "Schema 2 requires runtime API 3");
+  requireValue(bundle.package.manifest.schemaVersion===1 ? [1,2].includes(bundle.runtimeApiVersion) : bundle.runtimeApiVersion===bundle.package.manifest.schemaVersion+1, "Manifest schema/runtime API mismatch");
   requireValue(bundle.runtimeApiVersion >= 2 || !bundle.package.manifest.sources.some(s => s.customizedRoutes !== undefined || s.ordinaryRoutes !== undefined) && !bundle.package.manifest.shell?.colorScheme && !bundle.package.manifest.shell?.sections.some(s => s.icon === 'notifications'), 'These features require runtime API 2');
   const assets = array(bundle.package.assets);
   unique(assets.map(a => a.path), 'asset');

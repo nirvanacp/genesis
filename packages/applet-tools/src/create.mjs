@@ -6,17 +6,18 @@ import { creatorError } from './device.mjs';
 export async function createApplet(directory, options) {
   if (!identifier.test(options.id ?? '') || typeof options.name !== 'string' || !options.name.trim() || !options.source) throw creatorError('USAGE', 'create requires --id <stable-id> --name <display-name> --source <https-url>');
   const url = new URL(options.source);
-  const manifest = { schemaVersion: 2, id: options.id, name: options.name.trim(), dataSchemaVersion: 1,
+  const manifest = { schemaVersion: 3, id: options.id, name: options.name.trim(), dataSchemaVersion: 1,
     sources: [{ id: 'main', startUrl: url.href, entry: 'src/main.ts', homePaths: [url.pathname], routeContractId: 'site' }],
-    routeContracts: [{id:'site',origins:[url.origin],unmatched:'unsupported',routes:[{id:'home',path:url.pathname,result:{kind:'custom',screen:'home',adapter:'home'}}]}],
+    navigation:{external:{default:'website',origins:[]},uncoveredWebsiteRecovery:true},websiteActions:[],
+    routeContracts: [{id:'site',defaultSourceId:'main',origins:[url.origin],unmatched:'unsupported',routes:[{id:'home',path:url.pathname,result:{kind:'custom',screen:'home',adapter:'home',title:'Home'}}]}],
     foreground:{pageId:'app',screens:['home']},
     pages: [{ id: 'app', entry: options.react ? 'src/home.tsx' : 'src/home.ts' }], actions: [], capabilities: ['dom'] };
   validateManifest(manifest);
   const output = await emptyDirectory(directory); await mkdir(path.join(output, 'src'));
   const packageJson = { name: options.id, version: '0.1.0', private: true, type: 'module', engines: { node: '24.15.0' },
     scripts: { check: 'genesis-applet check .', build: 'genesis-applet build . --out dist' },
-    dependencies: { '@genesis/sdk': '0.4.1', ...(options.react ? { react: '19.3.1', 'react-dom': '19.3.1' } : {}) },
-    devDependencies: { '@genesis/applet-tools': '0.4.2', ...(options.react ? { '@types/react': '19.3.0', '@types/react-dom': '19.3.0' } : {}) } };
+    dependencies: { '@genesis/sdk': '0.5.0', ...(options.react ? { react: '19.3.1', 'react-dom': '19.3.1' } : {}) },
+    devDependencies: { '@genesis/applet-tools': '0.5.0', ...(options.react ? { '@types/react': '19.3.0', '@types/react-dom': '19.3.0' } : {}) } };
   const config = { compilerOptions: { strict: true, noEmit: true, target: 'ES2022', module: 'ESNext', moduleResolution: 'Bundler', lib: ['ES2022','DOM','DOM.Iterable'], jsx: 'react-jsx', skipLibCheck: true }, include: ['src'] };
   const files = { 'applet.json': JSON.stringify(manifest,null,2)+'\n', 'package.json': JSON.stringify(packageJson,null,2)+'\n', 'tsconfig.json': JSON.stringify(config,null,2)+'\n',
     '.gitignore': 'node_modules/\ndist/\n.env\n.env.*\n*.sqlite3\n*.sqlite3-*\n*.pem\n.genesis-private/\n',
@@ -28,7 +29,7 @@ export async function createApplet(directory, options) {
     'src/assets.d.ts': 'declare module "*.css" { const css: string; export default css; }\n' };
   files['src/styles.css'] = `body{line-height:1.6}:host{background:var(--applet-paper,#fff)!important;color:var(--applet-ink,#182026)!important}main{min-height:100dvh;padding:16px;background:var(--applet-paper,#fff);color:var(--applet-ink,#182026)}.skeleton{padding:16px 0}.skeleton-row{padding:20px 0;border-bottom:1px solid #e6e9ec}.skeleton-block{display:block;background:#eceff1;height:12px;border-radius:5px;margin:0 0 14px;max-width:100%}.skeleton-title{width:46%;height:16px}.skeleton-line{width:92%}.skeleton-short{width:66%}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}@media(prefers-color-scheme:dark){:host,main{--applet-paper:#171a1c;--applet-ink:#e7e9ea}.skeleton-block{background:#303438}.skeleton-row{border-color:#303438}}`;
   const statusText = `snapshot.state==='ready'?'Content is ready. Add your validated model renderer.':snapshot.state==='empty'?'Nothing here yet.':snapshot.state==='auth-required'?'Sign in on the website.':snapshot.state==='challenge'?'The website needs your attention.':snapshot.error?.message??'Continue on the website.'`;
-  if (!options.react) files['src/home.ts'] = `import {defineForeground} from '@genesis/sdk';
+  if (!options.react) files['src/home.ts'] = `import {defineForeground,createNavigationControl} from '@genesis/sdk';
 import css from './styles.css';
 export default defineForeground({screens:['home'],mount(context,root){
   const style=document.createElement('style');style.textContent=css;
@@ -36,19 +37,19 @@ export default defineForeground({screens:['home'],mount(context,root){
   const status=document.createElement('p');status.setAttribute('role','status');
   for(let i=0;i<3;i++){const row=document.createElement('div');row.className='skeleton-row';row.setAttribute('aria-hidden','true');for(const kind of ['title','line','short']){const block=document.createElement('span');block.className='skeleton-block skeleton-'+kind;row.append(block);}skeleton.append(row);}
   let currentUrl=${JSON.stringify(url.href)};
-  const open=document.createElement('button');open.hidden=true;open.textContent='Open website';open.onclick=()=>void context.webViews.open({url:currentUrl});
+  const open=createNavigationControl(context,{target:{kind:'url',url:currentUrl},label:'Continue'});open.hidden=true;
   root.append(style,skeleton,status,open);context.source.subscribe(snapshot=>{const pending=snapshot.state==='loading';currentUrl=snapshot.url;skeleton.hidden=!pending;status.hidden=pending;open.hidden=['loading','ready','empty','blocked'].includes(snapshot.state);root.setAttribute('aria-busy',String(pending));status.textContent=pending?'':${statusText};});
 }});
 `;
   if (options.react) files['src/home.tsx'] = `import {useEffect,useState} from 'react';
 import {defineForeground,type AppletContext,type SourceSnapshot} from '@genesis/sdk';
-import {mountReact} from '@genesis/sdk/react';
+import {mountReact,NavigationLink} from '@genesis/sdk/react';
 import css from './styles.css';
 function Skeleton(){return <section className="skeleton" role="status" aria-label="Loading content" aria-busy="true"><span className="sr-only">Loading content</span><div aria-hidden="true">{[0,1,2].map(i=><div className="skeleton-row" key={i}><span className="skeleton-block skeleton-title"/><span className="skeleton-block skeleton-line"/><span className="skeleton-block skeleton-short"/></div>)}</div></section>;}
 function App({context}:{context:AppletContext}){
   const [snapshot,setSnapshot]=useState<SourceSnapshot|null>(null);
   useEffect(()=>context.source.subscribe(setSnapshot),[context]);
-  return <main aria-busy={!snapshot||snapshot.state==='loading'}><style>{css}</style><h1>My applet</h1>{!snapshot||snapshot.state==='loading'?<Skeleton/>:<p role="status">{${statusText}}</p>}{snapshot&&!['loading','ready','empty','blocked'].includes(snapshot.state)&&<button onClick={()=>void context.webViews.open({url:snapshot.url})}>Open website</button>}</main>;
+  return <main aria-busy={!snapshot||snapshot.state==='loading'}><style>{css}</style><h1>My applet</h1>{!snapshot||snapshot.state==='loading'?<Skeleton/>:<p role="status">{${statusText}}</p>}{snapshot&&!['loading','ready','empty','blocked'].includes(snapshot.state)&&<NavigationLink context={context} target={{kind:'url',url:snapshot.url}}>Continue</NavigationLink>}</main>;
 }
 export default defineForeground({screens:['home'],mount(context,root){return mountReact(context,root,<App context={context}/>);}});
 `;
