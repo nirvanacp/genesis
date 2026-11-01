@@ -1,3 +1,6 @@
+import {PostActions,MutationButton} from './post-actions';
+import type {Interactions} from '../use-interactions';
+import {openShareSheet} from './share-sheet';
 import {useEffect,useRef,useState,type MouseEvent,type ReactNode} from 'react';
 import type {AppletContext,NavigationDecision} from '@genesis/sdk';
 import {websiteDestination} from '@genesis/sdk';
@@ -37,8 +40,8 @@ function PostText({post, open}: {post: XPost; open: OpenX}) {
   return <p className="post-text">{content}</p>;
 }
 
-export function Post({item, expanded, open, save, openQuote}: {
-  item: XPost; expanded: boolean; open: OpenX; save: () => void; openQuote: (key:string) => void;
+export function Post({item, expanded, open, save, openQuote, actions}: {
+  actions:Interactions; item: XPost; expanded: boolean; open: OpenX; save: () => void; openQuote: (key:string) => void;
 }) {
   const menu=useRef<HTMLDetailsElement>(null);
   useEffect(()=>{
@@ -59,10 +62,6 @@ export function Post({item, expanded, open, save, openQuote}: {
     const number=value.match(/[\d][\d,.]*(?:\s?[KMB])?/i)?.[0] ?? '';
     return number==='0'?'':number;
   };
-  const action = (name: IconName, label: string, value = '', website = true, active = false, url = item.url) =>
-    <XLink url={url} open={open} website={website} className={`post-action action-${name}${active ? ' active' : ''}`} label={`${label}${value ? `, ${value}` : ''}${website ? ' on X' : ''}`}>
-      <Icon name={name}/>{value && <span>{value}</span>}
-    </XLink>;
   const quotedContent=item.quote&&<>{item.quote.authorName?<span className="quote-heading">{item.quote.avatar&&<img src={item.quote.avatar} alt=""/>}<strong>{item.quote.authorName}</strong>{item.quote.verified&&<Icon name="verified"/>}<span>{item.quote.authorHandle&&'@'+item.quote.authorHandle}{item.quote.time&&' · '+item.quote.time}</span></span>:<span className="quoted-label">Quoted post</span>}<p>{item.quote.text}</p></>;
   const profile = `https://x.com/${item.snapshot.authorHandle}`;
   return <article className={`post${expanded ? ' expanded' : ''}`} id={`post-${item.postId}`}>
@@ -74,12 +73,12 @@ export function Post({item, expanded, open, save, openQuote}: {
       <div className="author"><XLink url={profile} open={open} className="author-name">{item.snapshot.authorName}</XLink>{item.verified && <Icon name="verified"/>}<span className="author-handle">@{item.snapshot.authorHandle}</span>{!expanded&&<XLink className="post-time" url={item.url} open={open} label={`Open post and discussion, ${item.time}`}>· {item.time}</XLink>}</div>
       <details className="post-menu" ref={menu}><summary role="button" aria-label={`More options for post by @${item.snapshot.authorHandle}`}><Icon name="more"/></summary><div className="post-menu-items">
         <button onClick={event => { event.currentTarget.closest('details')?.removeAttribute('open'); save(); }}><Icon name="folder"/>Save to category</button>
-        <XLink url={item.url} open={open} website><Icon name="bookmark"/>Bookmark on X</XLink>
+        <MutationButton entity={'post:'+item.postId} name="bookmark" actions={actions}/>
         <XLink url={item.url} open={open} website><Icon name="more"/>More on X</XLink>
       </div></details>
     </header>
     <div className="post-body" onClick={event => {
-      if (expanded || (event.target as Element).closest('a,button') || window.getSelection()?.toString()) return;
+      if (expanded || event.defaultPrevented || event.button!==0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.nativeEvent.composedPath().some(node=>node instanceof Element&&node.matches('a,button,input,summary,[role=button]')) || window.getSelection()?.toString()) return;
       open(item.url);
     }}>
       <PostText post={item} open={open}/>
@@ -92,12 +91,6 @@ export function Post({item, expanded, open, save, openQuote}: {
       {!item.snapshot.text && !item.photos.length && item.snapshot.media.kind === 'none' && <XLink url={item.url} open={open} website>View post on X</XLink>}
       {expanded && item.dateTime && <p className="post-date">{new Date(item.dateTime).toLocaleString(undefined, {hour: 'numeric', minute: '2-digit', month: 'short', day: 'numeric', year: 'numeric'})}</p>}
     </div>
-    <div className="post-actions" aria-label="Post actions">
-      {action('reply', 'Reply', count('reply'))}
-      {action('repost', metric('retweet')?.active ? 'Reposted, view repost options' : 'Repost', count('retweet'), true, !!metric('retweet')?.active)}
-      {action('like', metric('like')?.active ? 'Liked, view like options' : 'Like', count('like'), true, !!metric('like')?.active)}
-      {action('views', 'View post activity', count('views'), false, false, `${item.url}/analytics`)}
-      {action('share', 'Share post')}
-    </div>
+    <PostActions url={item.url} id={item.postId} open={open} actions={actions} count={count} share={()=>openShareSheet(open.context,item.url)}/>
   </article>;
 }
