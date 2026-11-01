@@ -9,17 +9,18 @@ import {Icon, type IconName} from './icon';
 
 export type OpenX = ((url: string, website?: boolean) => void)&{context:AppletContext};
 
-export function XLink({url,open,website=false,className='',label,children,tab=false,selected=false}:{url:string;open:OpenX;website?:boolean;className?:string;label?:string;children:ReactNode;tab?:boolean;selected?:boolean}){
+export function XLink({url,open,websiteActionId,className='',label,children,tab=false,selected=false}:{url:string;open:OpenX;websiteActionId?:string;className?:string;label?:string;children:ReactNode;tab?:boolean;selected?:boolean}){
+  const [failure,setFailure]=useState(false),[busy,setBusy]=useState(false);
   const [decision,setDecision]=useState<NavigationDecision|null>(null),[attempt,setAttempt]=useState(0);
   useEffect(()=>{let active=true,serial=0;const resolve=()=>{const current=++serial;setDecision(null);void(async()=>{
     let [value]=await open.context.navigation.resolve([{kind:'url',url}]);
-    if(website&&value.kind==='custom')[value]=await open.context.navigation.resolve([{kind:'url',url,websiteActionId:'original-x'}]);
+    if(websiteActionId&&value.kind==='custom')[value]=await open.context.navigation.resolve([{kind:'url',url,websiteActionId}]);
     if(active&&current===serial)setDecision(value);
-  })().catch(()=>{});};const dispose=open.context.navigation.subscribe(resolve);resolve();return()=>{active=false;dispose();};},[url,website,open.context,attempt]);
+  })().catch(()=>{if(active)setFailure(true);});};const dispose=open.context.navigation.subscribe(resolve);resolve();return()=>{active=false;dispose();};},[url,websiteActionId,open.context,attempt]);
   const opensWebsite=!!decision&&websiteDestination(decision);
-  return <a href={url} className={className} role={tab?'tab':undefined} aria-selected={tab?selected:undefined} aria-label={label?label+(opensWebsite?', opens website':''):undefined} aria-busy={!decision} onClick={event=>{
-    event.preventDefault();if(!decision)return;void open.context.navigation.activate({decision,intent:decision.kind==='website'||decision.kind==='external'?'open-website':'navigate'}).catch(()=>{setDecision(null);setAttempt(value=>value+1);});
-  }}>{children}{opensWebsite&&<><span className="website-cue" aria-hidden="true">↗</span>{!label&&<span className="visually-hidden"> opens website</span>}</>}</a>;
+  return <><a href={url} className={className} role={tab?'tab':undefined} aria-selected={tab?selected:undefined} aria-label={label?label+(opensWebsite?', opens website':''):undefined} aria-busy={!decision} onClick={event=>{
+    event.preventDefault();if(!decision||busy)return;setBusy(true);setFailure(false);void open.context.navigation.activate({decision,intent:decision.kind==='website'||decision.kind==='external'?'open-website':'navigate'}).catch(()=>{setDecision(null);setFailure(true);}).finally(()=>setBusy(false));
+  }}>{children}{opensWebsite&&<><span className="website-cue" aria-hidden="true">↗</span>{!label&&<span className="visually-hidden"> opens website</span>}</>}</a>{failure&&<button type="button" onClick={()=>{setFailure(false);setAttempt(v=>v+1);}}>Retry link</button>}</>;
 }
 
 function PostText({post, open}: {post: XPost; open: OpenX}) {
@@ -74,7 +75,7 @@ export function Post({item, expanded, open, save, openQuote, actions}: {
       <details className="post-menu" ref={menu}><summary role="button" aria-label={`More options for post by @${item.snapshot.authorHandle}`}><Icon name="more"/></summary><div className="post-menu-items">
         <button onClick={event => { event.currentTarget.closest('details')?.removeAttribute('open'); save(); }}><Icon name="folder"/>Save to category</button>
         <MutationButton entity={'post:'+item.postId} name="bookmark" actions={actions}/>
-        <XLink url={item.url} open={open} website><Icon name="more"/>More on X</XLink>
+        <XLink url={item.url} open={open} websiteActionId="original-x"><Icon name="more"/>More on X</XLink>
       </div></details>
     </header>
     <div className="post-body" onClick={event => {
@@ -82,13 +83,13 @@ export function Post({item, expanded, open, save, openQuote, actions}: {
       open(item.url);
     }}>
       <PostText post={item} open={open}/>
-      {expanded&&item.snapshot.textState==='excerpt'&&<XLink url={item.url} open={open} website className="read-more">Read full post on X website</XLink>}
+      {expanded&&item.snapshot.textState==='excerpt'&&<XLink url={item.url} open={open} websiteActionId="original-x" className="read-more">Read full post on X website</XLink>}
       {item.snapshot.textState === 'excerpt' && !expanded && <XLink url={item.url} open={open} className="read-more">Show more</XLink>}
       {item.photos.length > 0 && <div className={`photos count-${item.photos.length}`}>{item.photos.map((url, index) => <XLink key={url} url={`${item.url}/photo/${index + 1}`} open={open}><img src={url} alt={`Photo ${index + 1} in post by @${item.snapshot.authorHandle}`} loading="lazy"/></XLink>)}</div>}
-      {['video', 'mixed'].includes(item.snapshot.media.kind) && <XLink url={`${item.url}/video/1`} open={open} website className="media-action"><Icon name="play"/>Play video on X</XLink>}
+      {['video', 'mixed'].includes(item.snapshot.media.kind) && <XLink url={`${item.url}/video/1`} open={open} websiteActionId="original-x" className="media-action"><Icon name="play"/>Play video on X</XLink>}
       {item.quote && (item.quote.key?<button className="quoted-post" onClick={()=>openQuote(item.quote!.key!)}>{quotedContent}</button>:<XLink url={item.quote.url ?? item.url} open={open} className="quoted-post">{quotedContent}</XLink>)}
       {item.snapshot.links.filter(link => !item.snapshot.text.includes(link.text)).map((link, index) => <XLink key={index} url={link.href} open={open} className="post-link"><Icon name="link"/>{link.text}</XLink>)}
-      {!item.snapshot.text && !item.photos.length && item.snapshot.media.kind === 'none' && <XLink url={item.url} open={open} website>View post on X</XLink>}
+      {!item.snapshot.text && !item.photos.length && item.snapshot.media.kind === 'none' && <XLink url={item.url} open={open} websiteActionId="original-x">View post on X</XLink>}
       {expanded && item.dateTime && <p className="post-date">{new Date(item.dateTime).toLocaleString(undefined, {hour: 'numeric', minute: '2-digit', month: 'short', day: 'numeric', year: 'numeric'})}</p>}
     </div>
     <PostActions url={item.url} id={item.postId} open={open} actions={actions} count={count} share={()=>openShareSheet(open.context,item.url)}/>

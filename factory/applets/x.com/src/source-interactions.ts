@@ -14,7 +14,7 @@ export function sourceInteractions(context:SourceAdapterContext,changed:()=>void
   const control=(root:Element,name:ActionName)=>{
     const [off,on]=controls[name];
     return [...root.querySelectorAll<HTMLElement>('[data-testid]')].find(e=>{
-      const id=e.dataset.testid??'';return (name==='follow'?id.endsWith('-'+off)||id.endsWith('-'+on):id===off||id===on)&&(!root.matches('article')||e.closest('article')===root);
+      const id=e.dataset.testid??'';return (name==='follow'?id.endsWith('-'+off)||id.endsWith('-'+on):id===off||id===on)&&(!root.matches('article')||e.closest('article')===root)&&(!root.matches('[data-testid=primaryColumn]')||!e.closest('article,[data-testid=UserCell]'));
     });
   };
   const state=(el:HTMLElement,name:ActionName)=>name==='follow'?el.dataset.testid!.endsWith('-unfollow'):el.dataset.testid===controls[name][1];
