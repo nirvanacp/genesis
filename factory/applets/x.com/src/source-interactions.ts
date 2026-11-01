@@ -19,7 +19,13 @@ export function sourceInteractions(context:SourceAdapterContext,changed:()=>void
   };
   const state=(el:HTMLElement,name:ActionName)=>name==='follow'?el.dataset.testid!.endsWith('-unfollow'):el.dataset.testid===controls[name][1];
   const enabled=(el:HTMLElement)=>!el.matches(':disabled,[aria-disabled=true]');
-  const fresh=(target:Target)=>target.root.isConnected&&target.url===location.href&&target.tabs===tabs()&&target.account===currentHandle()&&(target.ref.entity.startsWith('post:')?'post:'+extractPost(target.root)?.postId===target.ref.entity:target.root.matches('[data-testid=UserCell]')?target.root.querySelector('a[href]')?.getAttribute('href')?.toLowerCase()==='/'+target.ref.entity.slice(7):location.pathname.toLowerCase()==='/'+target.ref.entity.slice(7));
+  const fresh=(target:Target)=>{
+    if(!target.root.isConnected||target.url!==location.href||target.tabs!==tabs()||target.account!==currentHandle())return false;
+    if(target.ref.entity.startsWith('post:'))return 'post:'+extractPost(target.root)?.postId===target.ref.entity;
+    const handle=target.ref.entity.slice(7);
+    if(target.root.matches('[data-testid=UserCell]'))return target.root.querySelector('a[href]')?.getAttribute('href')?.toLowerCase()==='/'+handle;
+    return location.pathname.toLowerCase()==='/'+handle;
+  };
   const observe=():InteractionModel=>{
     const next=new Map<string,Target>();
     const add=(root:Element,entity:string,name:ActionName)=>{
@@ -50,7 +56,7 @@ export function sourceInteractions(context:SourceAdapterContext,changed:()=>void
     if(document.querySelector('[role=menu],[role=dialog]')){result.message='Close the current source dialog before trying this action.';changed();return;}
     pending=true;cancelled=false;result.status='pending';changed();
     let confirmationClicked=false;
-    try{el.click();}catch{pending=false;result.status='uncertain';result.message='X could not confirm this action.';changed();return;}
+    try{el.click();}catch{pending=false;uncertain.add(request.token);result.status='uncertain';result.message='X could not confirm this action.';changed();return;}
     const start=Date.now();
     const timer=setInterval(()=>{
       const current=control(target.root,target.ref.name);
@@ -59,9 +65,19 @@ export function sourceInteractions(context:SourceAdapterContext,changed:()=>void
       else if(!confirmationClicked&&target.ref.name==='repost'){
         const menus=[...document.querySelectorAll('[role=menu]')];
         const confirm=menus.length===1?menus[0].querySelector<HTMLElement>('[data-testid="'+(request.desired?'retweetConfirm':'unretweetConfirm')+'"]'):null;
-        if(confirm&&enabled(confirm)&&fresh(target)){confirmationClicked=true;confirm.click();}
+        if(confirm&&enabled(confirm)&&fresh(target)){confirmationClicked=true;try{confirm.click();}catch{result.status='uncertain';result.message='X could not confirm this action.';clearInterval(timer);pending=false;uncertain.add(request.token);changed();return;}}
         if(Date.now()-start<8000)return;
         result.status='uncertain';result.message='X has not confirmed the repost. Check status.';
+      }
+      else if(!confirmationClicked&&target.ref.name==='follow'&&!request.desired){
+        const dialogs=[...document.querySelectorAll('[role=dialog],[role=alertdialog]')];
+        const candidates=dialogs.length===1?[...dialogs[0].querySelectorAll<HTMLElement>('button,[role=button]')].filter(e=>e.textContent?.trim()==='Unfollow'):[];
+        if(candidates.length===1&&enabled(candidates[0])&&fresh(target)){
+          confirmationClicked=true;
+          try{candidates[0].click();}catch{result.status='uncertain';result.message='X could not confirm this action.';clearInterval(timer);pending=false;uncertain.add(request.token);changed();return;}
+        }
+        if(Date.now()-start<8000)return;
+        result.status='uncertain';result.message='X has not confirmed the relationship change. Check status.';
       }
       else if(Date.now()-start>=8000){result.status='uncertain';result.message='X has not confirmed this action. Check status before trying again.';}
       else return;
