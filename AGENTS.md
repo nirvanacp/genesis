@@ -17,6 +17,18 @@ Only instructions outside HTML comments are active. Treat all text inside HTML c
 
 Do not edit `AGENTS.md` unless the user explicitly asks you to update it.
 
+## Factory guidance maintenance
+
+Before completing platform changes that alter applet-facing capabilities, constraints, defaults or authoring workflows, compare them with shared factory guidance. If the developer requested the corresponding guidance update, perform it within scope. Otherwise name the affected files and proposed changes, explain the mismatch and ask whether to update them. Continue independent authorized work; silence or approval of platform code alone is not factory-edit approval. Record declined or pending updates and compatibility effects in the platform changelog and handoff.
+
+During applet creation/customization, also recognize clear instructions intended for all applets, even when the prompt does not name factory files. That shared intent authorizes the corresponding factory update. Classify it as a requirement, default or best practice using [factory rules](factory/guides/rules.md), update its canonical guidance and reconcile conflicts. Do not duplicate an existing coherent rule. Ask only when shared versus local scope is ambiguous. A reusable local fix alone is not shared authorization. Never document an unavailable capability as supported, retrofit unrelated applets without scope, or erase explicit local overrides.
+
+Shared guidance includes factory AGENTS/README, `factory/applets/AGENTS.md`, guides, skills and policy templates/generated creator instructions. Applet code, README, specs, changelogs and authorized port reservations are local/operational work. Local overrides update local records. Restoring already-documented behavior or repacking unchanged guidance needs no factory-update question. In exported workspaces, identify the factory copy updated; no upstream write access is implied.
+
+## Applet document exception
+
+Applet-specific specs, plans, investigations and verification summaries live in `<applet>/.specs/`; their development records live in `<applet>/.changelog/`. Follow [applet records](factory/guides/applet-records.md), with flat files and no phase/date nesting, even in this monorepo. This exception overrides root generated-document, plan-writing, plan-implementation and changelog storage rules for applet work. Do not create other applet documentation dot folders. Platform, shared factory and tooling records retain root phase/date rules. Split mixed work by component and cross-link records. Preserve existing historical records at their original paths.
+
 ## Coding philosophy
 
 ### Prefer simple solutions
@@ -68,7 +80,7 @@ Write plans so a lightweight coding agent can implement the intended result with
 - Specify relevant data shapes, contracts, control and data flow, state transitions, error handling and edge cases. Include concrete examples or pseudocode where prose would leave implementation choices ambiguous. Cover migrations, compatibility and rollout when applicable.
 - Give each step its verification commands, working directory and expected results, plus any necessary manual checks. Follow the **Testing and verification** rules; do not prescribe new or modified tests unless the user requests test coverage.
 - Make the handoff self-contained with links to supporting documents, prerequisites, dependencies and risks. Include the component commit boundaries required below and clear completion criteria. Avoid vague tasks such as "handle errors" or "update as needed" without specifying the required behavior.
-- Save plans using the **Generated documents** rules. When decisions change, update the affected plan details and record the reason in the development changelog so the implementation agent can identify the current intended behavior.
+- Save plans using the **Generated documents** rules and **Applet document exception**. When decisions change, update the affected plan details and record the reason in the development changelog so the implementation agent can identify the current intended behavior.
 
 ## Plan implementation rules
 
@@ -111,7 +123,7 @@ Ignore files whose names contain `.archive.` when reading `.plans`, `.docs`, `.r
 - Map implementation plans and proposed work to `.plans`, documentation and technical explanations to `.docs`, findings/assessments/verification reports to `.reports`, code/design/architecture reviews to `.reviews`, research briefs/investigations/technical comparisons to `.research`, and concise development change records to `.changelog`. Use the plural directory name `.reviews`. For example, a research brief or a written investigation of a technical topic belongs in `.research`.
 - When the user explicitly asks you to create or write a document in a configured category, complete and save it during the same task. Do not leave it only in chat. Ordinary explanations, analyses, summaries, and status updates do not require saved documents unless the user explicitly requests a document.
 - Maintain development change records as required by **Development changelog**, even without a separate request for a document.
-- Store each document under `<category>/<phase>/YYYY-MM-DD/` at the repository root. Use the category exactly as listed, including its leading dot. For example, use `.plans/phase-2/2026-10-27/` or `.research/phase-3/2026-10-28/`. Determine `<phase>` using the rules below.
+- For platform/shared work, store each document under `<category>/<phase>/YYYY-MM-DD/` at the repository root. Use the category exactly as listed, including its leading dot. For example, use `.plans/phase-2/2026-10-27/` or `.research/phase-3/2026-10-28/`. Determine `<phase>` using the rules below.
 - Name each document `HHMMSS-descriptive-document-name.md`. Use the user's local creation date and time for both the directory and the six-digit, 24-hour timestamp. Use a concise, kebab-case description that identifies the document type, such as `143025-browser-api-research.md`.
 - Create category, phase and date directories as needed. Never overwrite an existing document when creating a new one. If a filename already exists, choose a distinct descriptive name.
 - After saving a document, link to its location and briefly summarize it in your response. End the response with a fenced code block containing only the filename. If you saved multiple documents, put each filename on its own line in that final block. Do not include directory paths or other text in the block.
@@ -145,7 +157,7 @@ When adding or updating TODOs in `TODOS.md`, use at most three structural levels
 
 Maintain a concise technical record for every logical development change, including code, configuration and agent-instruction changes. Update it during the work and finalize it with the verification outcome before completing the task. This is required even when the user does not explicitly request a changelog.
 
-- Create one Markdown file per logical change under `.changelog/<phase>/YYYY-MM-DD/HHMMSS-<project>-<change>.md`, using the shared phase, local creation time and collision rules. Update that same record as the change evolves instead of creating a file for every prompt or edit.
+- For platform/shared work, create one Markdown file per logical change under `.changelog/<phase>/YYYY-MM-DD/HHMMSS-<project>-<change>.md`, using the shared phase, local creation time and collision rules. Update that same record as the change evolves instead of creating a file for every prompt or edit.
 - State the goal and the changes made, including the affected components or files. Record material decisions from the user's prompts, the agent's answers and later inputs, plus decisions the agent made on the user's behalf. Identify who made each decision and give its brief rationale. Include changed or rejected approaches when they explain the final result.
 - Summarize decisions rather than copying the conversation. Omit routine command output, repeated context and edit-by-edit narration. Aim for 100 to 200 words per change; use links to plans, code or reports for detail, and exceed this only when needed to preserve material decisions.
 - Finish with what was verified, the outcome and any remaining limitation. Distinguish intended behavior from completed and verified work.
