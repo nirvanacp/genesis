@@ -25,6 +25,9 @@ pub struct IsolatedHost {
     snapshot: Value,
     history: Vec<(Value, String, String)>,
     sections: HashMap<String, (String, String)>,
+    source_live_url: String,
+    navigation_version: u64,
+    recovery: Option<(u64, NavigationDecision)>,
     website: bool,
     source_exposed: bool,
     website_session: Option<String>,
@@ -40,6 +43,47 @@ pub struct IsolatedHost {
 
 }
 impl IsolatedHost {
+    fn explicit_navigation(&self) -> bool { self.package.as_ref().is_some_and(|p|p.manifest.schema_version==3) }
+    fn decision(&self, target: NavigationTarget) -> Value {
+        use std::hash::{Hash, Hasher};
+        let Some(package)=self.package.as_ref() else {return Value::Null;};
+        let mut value=serde_json::to_value(crate::navigation::decide(&package.manifest,self.selection["sourceId"].as_str(),target)).unwrap();
+        value["binding"]=json!({"revision":package.revision,"generation":self.generation,"navigationVersion":self.navigation_version});
+        let mut hash=std::collections::hash_map::DefaultHasher::new();value.to_string().hash(&mut hash);
+        value["decisionKey"]=json!(format!("{:016x}",hash.finish()));value
+    }
+    fn navigation_snapshot(&self,out:&mut Vec<Value>) {
+        if !self.explicit_navigation(){return;}
+        let target=if self.page.is_empty(){NavigationTarget::Url{url:self.url.clone(),source_id:self.selection["sourceId"].as_str().map(str::to_owned),website_action_id:None}}else{NavigationTarget::Page{page_id:self.page.clone()}};
+        self.notify("foreground","navigation.snapshot",json!({"decision":self.decision(target),"navigationVersion":self.navigation_version,"mode":if self.website{"website"}else if self.recovery.is_some(){"recovery"}else{"applet"}}),out);
+    }
+    fn show_recovery(&mut self, decision: NavigationDecision, out:&mut Vec<Value>) {
+        self.navigation_version+=1;self.serial+=1;
+        self.recovery=Some((self.serial,decision.clone()));
+        out.push(json!({"type":"isolatedNavigationRecovery","generation":self.generation,"recoveryId":self.serial,"decision":decision,"retireSource":matches!(&decision.target,NavigationTarget::Url{url,..} if *url==self.source_live_url && *url!=self.url)}));
+        self.navigation_snapshot(out);
+    }
+    fn enter_website(&mut self,url:String,out:&mut Vec<Value>) {
+        let adopt=url==self.source_live_url;self.begin_website();self.source_exposed=adopt;
+        if adopt{self.cancel_deadline();self.notify("source","context.retired",Value::Null,out);self.documents.remove("source");}
+        out.push(json!({"type":"isolatedWebsite","sessionId":self.website_session,"generation":self.generation,"url":url,"adopt":adopt}));
+        self.navigation_snapshot(out);
+    }
+    fn activate_navigation(&mut self,target:NavigationTarget,website:bool,out:&mut Vec<Value>)->Result<&'static str,String>{
+        let decision:NavigationDecision=serde_json::from_value(self.decision(target.clone())).map_err(|e|e.to_string())?;
+        match (&decision.kind,target){
+            (DestinationKind::Custom,NavigationTarget::Url{url,..}) if !website=>{
+                let mut input=self.selection.clone();input["sourceId"]=json!(decision.source_id);input["url"]=json!(url);input["pageId"]=Value::Null;self.open(&input,true,out)?;
+            }
+            (DestinationKind::Page,NavigationTarget::Page{page_id}) if !website=>{
+                let mut input=self.selection.clone();input["url"]=json!(self.url);input["pageId"]=json!(page_id);self.open(&input,true,out)?;
+            }
+            (DestinationKind::Website|DestinationKind::External,NavigationTarget::Url{url,..}) if website=>{self.recovery=None;self.enter_website(url,out);}
+            _ if website=>return Err("Navigation does not permit website entry".into()),
+            _=>{self.show_recovery(decision,out);return Ok("recovery");}
+        }
+        Ok("dispatched")
+    }
     fn start_deadline(&mut self, duration: std::time::Duration, out: &mut Vec<Value>) {
         if self.deadline.is_some() || self.paused_remaining.is_some() || self.source_exposed { return; }
         self.deadline_token += 1;
@@ -83,7 +127,7 @@ impl IsolatedHost {
                     json!({"v":1,"documentId":doc.id,"requestId":request,"ok":true,"result":value})
                 }
                 Err(reason) => json!({"v":1,"documentId":doc.id,"requestId":request,"ok":false,
-                    "error":{"code":"INVALID_ARGUMENT","message":reason,"retryable":false}}),
+                    "error":{"code":if matches!(reason,"STALE_NAVIGATION"|"USE_DECLARED_NAVIGATION"){reason}else{"INVALID_ARGUMENT"},"message":reason,"retryable":false}}),
             };
             out.push(json!({"type":"isolatedReply","generation":self.generation,"role":role,"channel":doc.channel,"message":message}));
         }
@@ -121,7 +165,7 @@ impl IsolatedHost {
                 result: RouteResult::Website { .. },
                 ..
             } => "website",
-            RouteResolution::Blocked => "blocked",
+            RouteResolution::Blocked | RouteResolution::Matched { result: RouteResult::Blocked { .. }, .. } => "blocked",
             _ => "unsupported",
         };
         self.snapshot = json!({"state":state,"url":self.url,"sourceId":self.selection["sourceId"],"pageId":self.page,
@@ -136,6 +180,7 @@ impl IsolatedHost {
             out.push(self.command("isolatedDestroy"));
         }
         self.cancel_deadline();
+        self.recovery=None;self.navigation_version+=1;
         self.transitions.clear();
         self.diagnostic_start=None;
         self.package = None;
@@ -238,9 +283,11 @@ impl IsolatedHost {
         }
         self.selection = json!({"appletId":applet,"sourceId":source.id,"pageId":if page.is_empty(){Value::Null}else{json!(page)},"sectionId":section});
         self.url = url;
+        self.source_live_url=if package.manifest.schema_version>1 && matches!(crate::routes::resolve(package.manifest.route_contracts.iter().find(|c|Some(&c.id)==source.route_contract_id.as_ref()).unwrap_or_else(||package.manifest.route_contracts.first().unwrap()),&self.url),RouteResolution::Matched{result:RouteResult::Custom{..},..}){self.url.clone()}else{String::new()};
         self.page = page;
         self.cancel_deadline();
         self.epoch += 1;
+        self.navigation_version+=1;self.recovery=None;
         self.website = false;
         self.website_session = None;
         self.source_exposed = false;
@@ -277,14 +324,20 @@ impl IsolatedHost {
         let home = url::Url::parse(&self.url)
             .is_ok_and(|url| source.home_paths.iter().any(|path| path == url.path()));
         let detail = !self.page.is_empty() || (!self.history.is_empty() && !home);
-        out.push(json!({"type":"isolatedNavigate","generation":self.generation,"epoch":self.epoch,"url":self.url,"pageId":self.page,"selection":self.selection,"source":source,"detail":detail}));
+        out.push(json!({"type":"isolatedNavigate","generation":self.generation,"epoch":self.epoch,"url":self.url,"pageId":self.page,"selection":self.selection,"source":source,"detail":detail,"loadSource":!self.explicit_navigation()||!self.source_live_url.is_empty()}));
         self.route_state(out);
+        self.navigation_snapshot(out);
+        if self.explicit_navigation() && self.page.is_empty() {
+            let decision=crate::navigation::decide(&package.manifest,Some(&source.id),NavigationTarget::Url{url:self.url.clone(),source_id:Some(source.id.clone()),website_action_id:None});
+            if decision.kind!=DestinationKind::Custom {self.show_recovery(decision,out);}
+        }
         Ok(())
     }
     fn begin_website(&mut self) {
         self.serial += 1;
         self.website_session = Some(format!("website-{}-{}", self.generation, self.serial));
         self.website = true;
+        self.navigation_version+=1;
         self.pending_back = None;
     }
     fn back(&mut self, out: &mut Vec<Value>) -> Result<(), String> {
@@ -292,6 +345,7 @@ impl IsolatedHost {
             out.push(self.command("isolatedWebsiteBack"));
             return Ok(());
         }
+        if self.recovery.take().is_some(){self.navigation_version+=1;out.push(self.command("isolatedNavigationDismiss"));self.navigation_snapshot(out);return Ok(());}
         if self.modal {
             self.modal = false;
             self.notify("foreground", "ui.dismissModal", Value::Null, out);
@@ -397,9 +451,19 @@ impl IsolatedHost {
             "isolatedBackDeadline" => if self.pending_back.is_some() && event["token"].as_u64() == self.pending_back { self.pending_back=None; self.back_default(&mut out)?; },
             "isolatedForegroundFailed" => {self.documents.remove("foreground");self.modal=false;self.back_handler=false;self.pending_back=None;out.push(json!({"type":"modalState","open":false}));},
             "isolatedForegroundRetry" => {self.documents.remove("foreground");let mut input=self.selection.clone();input["url"]=json!(self.url);input["pageId"]=json!(self.page);self.open(&input,false,&mut out)?;},
+            "isolatedRecoveryContinue" => {
+                if !self.website && let Some((id,decision))=self.recovery.clone() && event["recoveryId"].as_u64()==Some(id) && decision.website_allowed && let NavigationTarget::Url{url,..}=decision.target {self.enter_website(url,&mut out);}
+            },
+            "isolatedWebsiteCheck" => {
+                if self.website && self.explicit_navigation() && event["sessionId"].as_str()==self.website_session.as_deref() {
+                    let d=crate::navigation::decide(&self.package.as_ref().unwrap().manifest,None,NavigationTarget::Url{url:event["url"].as_str().unwrap_or("").into(),source_id:None,website_action_id:None});
+                    if d.kind==DestinationKind::Blocked || d.kind==DestinationKind::Uncovered&&!d.website_allowed {out.push(self.command("isolatedWebsiteBlocked"));}
+                }
+            },
             "isolatedLink" => {
                 if self.website { return Ok(out); }
                 let url=event["url"].as_str().unwrap_or("");
+                if self.explicit_navigation(){self.activate_navigation(NavigationTarget::Url{url:url.into(),source_id:None,website_action_id:None},false,&mut out)?;return Ok(out);}
                 if matches!(self.resolution(url),RouteResolution::Matched{result:RouteResult::Custom{..},..}) {
                     let mut input=self.selection.clone();input["url"]=json!(url);input["pageId"]=Value::Null;self.open(&input,true,&mut out)?;
                 } else if url::Url::parse(url).is_ok_and(|u|["http","https"].contains(&u.scheme())&&u.username().is_empty()&&u.password().is_none()) {
@@ -407,7 +471,7 @@ impl IsolatedHost {
                     out.push(json!({"type":"isolatedWebsite","sessionId":self.website_session,"generation":self.generation,"url":url,"adopt":adopt}));
                 }
             },
-            "ordinary" => { self.begin_website(); self.source_exposed=true; self.cancel_deadline(); self.notify("source","context.retired",Value::Null,&mut out); self.documents.remove("source"); out.push(json!({"type":"isolatedWebsite","sessionId":self.website_session,"generation":self.generation,"url":self.url,"adopt":true})); },
+            "ordinary" => { if self.explicit_navigation(){return Ok(out);} self.begin_website(); self.source_exposed=true; self.cancel_deadline(); self.notify("source","context.retired",Value::Null,&mut out); self.documents.remove("source"); out.push(json!({"type":"isolatedWebsite","sessionId":self.website_session,"generation":self.generation,"url":self.url,"adopt":true})); },
             "retry" | "reload" => if self.website { out.push(self.command("isolatedWebsiteReload")); } else {
                 let mut input=self.selection.clone();input["url"]=json!(self.url);input["pageId"]=json!(self.page);self.open(&input,false,&mut out)?;
             },
@@ -415,17 +479,25 @@ impl IsolatedHost {
             "readerClose" => {out.push(self.command("isolatedWebsiteClose"));},
             "isolatedWebsiteClosed" => {
                 if !self.website || self.website_session.as_deref()!=event["sessionId"].as_str() { return Ok(out); }
-                self.website=false;self.source_exposed=false;self.website_session=None;
+                self.website=false;self.source_exposed=false;self.website_session=None;self.navigation_version+=1;
+                let recovery=self.recovery.clone();
                 if self.package.as_ref().is_some_and(|p|p.manifest.schema_version==1){self.launcher(&mut out);return Ok(out);}
                 if event["adopted"] == true || event["revalidate"] == true || !self.documents.contains_key("foreground") || !self.documents.get("source").is_some_and(|d|d.bound) || self.snapshot["state"]=="loading" {
                     let mut input=self.selection.clone();input["url"]=json!(self.url);input["pageId"]=json!(self.page);self.open(&input,false,&mut out)?;
                 }
+                if let Some((id,d))=recovery{self.recovery=Some((id,d.clone()));out.push(json!({"type":"isolatedNavigationRecovery","generation":self.generation,"recoveryId":id,"decision":d}));}
+                self.navigation_snapshot(&mut out);
                 self.notify("foreground","host.focused",Value::Null,&mut out);
             },
             "isolatedSourceNavigation" => {
                 if event["epoch"].as_u64()!=Some(self.epoch) { return Ok(out); }
                 let url=event["url"].as_str().unwrap_or("");
+                self.source_live_url=url.into();
                 if url != self.url {
+                    if self.explicit_navigation(){
+                        let d=crate::navigation::decide(&self.package.as_ref().unwrap().manifest,self.selection["sourceId"].as_str(),NavigationTarget::Url{url:url.into(),source_id:None,website_action_id:None});
+                        if d.kind!=DestinationKind::Custom {self.documents.remove("source");self.cancel_deadline();self.show_recovery(d,&mut out);return Ok(out);}
+                    }
                     if event["sameDocument"]==true && matches!(self.resolution(url),RouteResolution::Matched{result:RouteResult::Custom{..},..}) {
                         let mut input=self.selection.clone();input["url"]=json!(url);input["pageId"]=Value::Null;self.open(&input,true,&mut out)?;
                     }else{self.url=url.into();self.documents.remove("source");self.route_state(&mut out);}
@@ -537,7 +609,7 @@ impl IsolatedHost {
                     json!({"kind":"source","sourceId":source_id})
                 };
                 out.push(json!({"type":"isolatedReply","generation":self.generation,"role":role,"channel":channel,"message":{"type":"bound","nonce":doc.nonce,"documentId":doc.id,
-                    "context":{"runtimeApiVersion":3,"role":role,"instanceId":self.package.as_ref().unwrap().manifest.id,"appletId":self.package.as_ref().unwrap().manifest.id,"viewId":doc.id,"generation":self.generation,"binding":binding}}}));
+                    "context":{"runtimeApiVersion":self.package.as_ref().unwrap().runtime_api_version,"role":role,"instanceId":self.package.as_ref().unwrap().manifest.id,"appletId":self.package.as_ref().unwrap().manifest.id,"viewId":doc.id,"generation":self.generation,"binding":binding}}}));
             }
             return Ok(());
         }
@@ -704,7 +776,7 @@ impl IsolatedHost {
             return Ok(());
         }
         // A late owned-page callback cannot replace the user's visible website.
-        if self.website && matches!(method, "sources.open" | "pages.open" | "webViews.open") {
+        if self.website && matches!(method, "sources.open" | "pages.open" | "webViews.open" | "navigation.activate") {
             self.reply(
                 role,
                 request,
@@ -713,8 +785,36 @@ impl IsolatedHost {
             );
             return Ok(());
         }
+        if self.explicit_navigation(){
+            match method {
+                "navigation.resolve"=>{
+                    let targets=params["targets"].as_array();
+                    if targets.is_none_or(|t|t.len()>64)||params.to_string().len()>65536{self.reply(role,request,Err("Navigation batch exceeds bounds"),out);return Ok(());}
+                    let parsed:Result<Vec<NavigationTarget>,_>=targets.unwrap().iter().map(|v|serde_json::from_value(v.clone())).collect();
+                    match parsed{Ok(targets)=>self.reply(role,request,Ok(json!(targets.into_iter().map(|t|self.decision(t)).collect::<Vec<_>>())),out),Err(_)=>self.reply(role,request,Err("Invalid navigation target"),out)};return Ok(());
+                }
+                "navigation.subscribe"=>{self.navigation_snapshot(out);self.reply(role,request,Ok(Value::Null),out);return Ok(());}
+                "navigation.activate"=>{
+                    let target=serde_json::from_value::<NavigationTarget>(params["decision"]["target"].clone());
+                    if let Ok(target)=target {
+                        let expected=self.decision(target.clone());
+                        if params["decision"]["decisionKey"]!=expected["decisionKey"] || params["decision"]["binding"]!=expected["binding"] {self.reply(role,request,Err("STALE_NAVIGATION"),out);return Ok(());}
+                        if !matches!(params["intent"].as_str(),Some("navigate"|"open-website")){self.reply(role,request,Err("Invalid navigation intent"),out);return Ok(());}
+                        match self.activate_navigation(target,params["intent"]=="open-website",out){Ok(status)=>self.reply(role,request,Ok(json!({"status":status,"navigationVersion":self.navigation_version})),out),Err(_)=>self.reply(role,request,Err("Navigation intent is not permitted"),out)}
+                    }else{self.reply(role,request,Err("Invalid navigation target"),out);}return Ok(());
+                }
+                "webViews.open"=>{self.reply(role,request,Err("USE_DECLARED_NAVIGATION"),out);return Ok(());}
+                "sources.open"|"pages.open"=>{
+                    let target=if method=="pages.open"{NavigationTarget::Page{page_id:params["pageId"].as_str().unwrap_or("").into()}}else{
+                        let id=params["sourceId"].as_str().unwrap_or("");let url=params["url"].as_str().map(str::to_owned).or_else(||self.package.as_ref().unwrap().manifest.sources.iter().find(|s|s.id==id).map(|s|s.start_url.clone())).unwrap_or_default();
+                        NavigationTarget::Url{url,source_id:Some(id.into()),website_action_id:None}};
+                    match self.activate_navigation(target,false,out){Ok(_)=>self.reply(role,request,Ok(Value::Null),out),Err(_)=>self.reply(role,request,Err("Navigation failed"),out)}return Ok(());
+                }
+                _=>{}
+            }
+        }
         match method {
-            "runtime.ready"=>{out.push(self.command("isolatedForegroundReady"));self.notify(role,"source.snapshot",self.snapshot.clone(),out);},
+            "runtime.ready"=>{self.navigation_snapshot(out);out.push(self.command("isolatedForegroundReady"));self.notify(role,"source.snapshot",self.snapshot.clone(),out);},
             "runtime.phase"=>{},
             "runtime.error"=>out.push(json!({"type":"isolatedFailure","generation":self.generation,"message":"The applet could not prepare its interface. Retry or return to Apps."})),
             "source.subscribe"=>{self.notify(role,"source.snapshot",self.snapshot.clone(),out);self.reply(role,request,Ok(Value::Null),out);},
