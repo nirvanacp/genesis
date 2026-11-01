@@ -76,7 +76,7 @@ pub fn customized(source: &Source, path: &str) -> bool {
 }
 
 /// Validate before URL parsing can erase unsafe path segments.
-fn safe_url(value: &str) -> Option<url::Url> {
+pub(crate) fn safe_url(value: &str) -> Option<url::Url> {
     if value.len() > 8192 || value.bytes().any(|b| b <= 32 || b == 127 || b == b'\\') {
         return None;
     }
@@ -225,8 +225,10 @@ pub fn validate_manifest(manifest: &genesis_contracts::Manifest) -> Result<(), S
                 return Err("Invalid, duplicate or unreachable route rule".into());
             }
             match &rule.result {
-                RouteResult::Custom { screen, adapter } => {
-                    if !id(screen) || !id(adapter) || !foreground.screens.contains(screen) {
+                RouteResult::Custom { screen, adapter, title } => {
+                    if !id(screen) || !id(adapter) || !foreground.screens.contains(screen)
+                        || (manifest.schema_version == 3 && title.as_ref().is_none_or(|t| t.trim().is_empty() || t.len() > 100))
+                        || (manifest.schema_version == 2 && title.is_some()) {
                         return Err("Unknown foreground screen or adapter".into());
                     }
                 }
@@ -294,6 +296,7 @@ pub fn validate_manifest(manifest: &genesis_contracts::Manifest) -> Result<(), S
             }
         }
     }
+    crate::navigation::validate(manifest)?;
     Ok(())
 }
 

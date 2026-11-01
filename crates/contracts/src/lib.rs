@@ -54,6 +54,10 @@ pub struct Manifest {
     pub route_contracts: Vec<RouteContract>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub foreground: Option<Foreground>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub navigation: Option<NavigationPolicy>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub website_actions: Vec<WebsiteAction>,
     pub schema_version: u32,
     pub id: String,
     pub name: String,
@@ -103,6 +107,8 @@ pub struct RouteContract {
     pub origins: Vec<String>,
     pub routes: Vec<RouteRule>,
     pub unmatched: UnmatchedRoute,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_source_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -144,7 +150,7 @@ pub struct ExactValue {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
 pub enum RouteResult {
-    Custom { screen: String, adapter: String },
+    Custom { screen: String, adapter: String, #[serde(default, skip_serializing_if = "Option::is_none")] title: Option<String> },
     Website { reason: String },
     Blocked { reason: String },
 }
@@ -660,3 +666,65 @@ pub struct ServiceCompletion {
     pub channel: u64,
     pub response: serde_json::Value,
 }
+
+/// Schema-3 navigation policy. These declarations do not grant source extraction.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NavigationPolicy {
+    pub external: ExternalNavigation,
+    pub uncovered_website_recovery: bool,
+}
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExternalNavigation {
+    pub default: WebsiteDisposition,
+    pub origins: Vec<ExternalOrigin>,
+}
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub enum WebsiteDisposition { Website, Blocked }
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExternalOrigin {
+    pub origin: String,
+    pub result: WebsiteDisposition,
+    pub reason: String,
+}
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WebsiteAction {
+    pub id: String,
+    pub contract_id: String,
+    pub route_ids: Vec<String>,
+    pub label: String,
+    pub reason: String,
+}
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
+pub enum NavigationTarget {
+    Url { url: String, #[serde(rename="sourceId", default, skip_serializing_if="Option::is_none")] source_id: Option<String>, #[serde(rename="websiteActionId", default, skip_serializing_if="Option::is_none")] website_action_id: Option<String> },
+    Page { #[serde(rename="pageId")] page_id: String },
+}
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NavigationDecision {
+    pub target: NavigationTarget,
+    pub kind: DestinationKind,
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub source_id: Option<String>,
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub contract_id: Option<String>,
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub route_id: Option<String>,
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub screen: Option<String>,
+    pub title: String,
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub reason: Option<String>,
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub website_action_id: Option<String>,
+    pub website_allowed: bool,
+}
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub enum DestinationKind { Custom, Page, Website, External, Uncovered, Blocked }

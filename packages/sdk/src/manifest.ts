@@ -53,3 +53,22 @@ export interface IsolatedManifest extends Omit<Manifest, "schemaVersion" | "sour
   routeContracts: RouteContract[];
   foreground: { pageId: string; screens: string[] };
 }
+
+/** Schema-3/API-4 declarations. Not executable by API-3 hosts. */
+export interface NavigationPolicy {
+  external: {default:'website'|'blocked'; origins:{origin:string;result:'website'|'blocked';reason:string}[]};
+  uncoveredWebsiteRecovery:boolean;
+}
+export interface WebsiteAction {id:string;contractId:string;routeIds:string[];label:string;reason:string}
+export type NavigationTarget = {kind:'url';url:string;sourceId?:string;websiteActionId?:string}|{kind:'page';pageId:string};
+export type DestinationKind = 'custom'|'page'|'website'|'external'|'uncovered'|'blocked';
+export interface NavigationDecision {
+  target:NavigationTarget;kind:DestinationKind;sourceId?:string;contractId?:string;routeId?:string;screen?:string;
+  title:string;reason?:string;websiteActionId?:string;websiteAllowed:boolean;
+}
+export interface NavigationManifest extends Omit<IsolatedManifest,'schemaVersion'|'routeContracts'> {
+  schemaVersion:3;navigation:NavigationPolicy;websiteActions:WebsiteAction[];
+  routeContracts:(Omit<RouteContract,'routes'> & {defaultSourceId:string;routes:(Omit<RouteRule,'result'> & {
+    result:{kind:'custom';screen:string;adapter:string;title:string}|{kind:'website'|'blocked';reason:string}
+  })[]})[];
+}

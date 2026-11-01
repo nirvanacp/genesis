@@ -1,3 +1,4 @@
+import { validateNavigation } from './navigation.mjs';
 import { validRoutePattern, resolveRoute, safeRouteUrl } from './routes.mjs';
 
 const identifier = /^[a-z][a-z0-9-]{0,63}$/;
@@ -15,9 +16,9 @@ const text = value => requireValue(typeof value === 'string' && value.trim().len
 // legacy validator. It returns the original schema 2 shape, never a legacy bundle.
 export function validateIsolatedManifest(input, validateCommon) {
   const manifest = structuredClone(input);
-  shape(manifest, ['schemaVersion','id','name','dataSchemaVersion','sources','pages','actions','capabilities','services','shell','routeContracts','foreground'],
+  shape(manifest, ['schemaVersion','id','name','dataSchemaVersion','sources','pages','actions','capabilities','services','shell','routeContracts','foreground',...(manifest.schemaVersion===3?['navigation','websiteActions']:[])],
     ['schemaVersion','id','name','dataSchemaVersion','sources','pages','actions','capabilities','routeContracts','foreground']);
-  requireValue(manifest.schemaVersion === 2, 'Expected schema 2');
+  requireValue([2,3].includes(manifest.schemaVersion), 'Expected schema 2 or 3');
   shape(manifest.foreground, ['pageId','screens']); id(manifest.foreground.pageId);
   requireValue(Array.isArray(manifest.foreground.screens) && manifest.foreground.screens.length > 0 && manifest.foreground.screens.length <= 100, 'Foreground screens required');
   manifest.foreground.screens.forEach(id); unique(manifest.foreground.screens);
@@ -26,7 +27,7 @@ export function validateIsolatedManifest(input, validateCommon) {
     && Buffer.byteLength(JSON.stringify(manifest.routeContracts)) <= 131072, 'Invalid route contract bounds');
   unique(manifest.routeContracts.map(contract => contract.id));
   for (const contract of manifest.routeContracts) {
-    shape(contract, ['id','origins','routes','unmatched']); id(contract.id);
+    shape(contract, ['id','origins','routes','unmatched',...(manifest.schemaVersion===3?['defaultSourceId']:[])]); id(contract.id);
     requireValue(contract.unmatched === 'unsupported', 'Explicit unsupported policy required');
     requireValue(Array.isArray(contract.origins) && contract.origins.length > 0 && contract.origins.every(origin => {
       const url = safeRouteUrl(origin); return url && url.origin === origin && url.hostname !== 'appassets.androidplatform.net';
@@ -46,7 +47,8 @@ export function validateIsolatedManifest(input, validateCommon) {
       if (rule.fragment !== undefined) { shape(rule.fragment, ['equals']); requireValue(typeof rule.fragment.equals === 'string' && Buffer.byteLength(rule.fragment.equals) <= 1024, 'Invalid fragment'); }
       requireValue(rule.result && ['custom','website','blocked'].includes(rule.result.kind), 'Invalid route outcome');
       if (rule.result.kind === 'custom') {
-        shape(rule.result, ['kind','screen','adapter']); id(rule.result.screen); id(rule.result.adapter);
+        shape(rule.result, ['kind','screen','adapter',...(manifest.schemaVersion===3?['title']:[])]);
+        if(manifest.schemaVersion===3)requireValue(typeof rule.result.title==='string'&&rule.result.title.trim().length>0&&Buffer.byteLength(rule.result.title)<=100,'Invalid destination title'); id(rule.result.screen); id(rule.result.adapter);
         requireValue(manifest.foreground.screens.includes(rule.result.screen), 'Unknown foreground screen');
       } else { shape(rule.result, ['kind','reason']); text(rule.result.reason); }
       const predicate = JSON.stringify([rule.path, Object.entries(query).sort(([a],[b]) => a < b ? -1 : a > b ? 1 : 0), rule.fragment ?? null]);
@@ -57,7 +59,7 @@ export function validateIsolatedManifest(input, validateCommon) {
   }
   requireValue(Array.isArray(manifest.sources), 'Sources required');
   const common = { ...manifest, schemaVersion: 1 };
-  delete common.foreground; delete common.routeContracts;
+  delete common.foreground; delete common.routeContracts; delete common.navigation; delete common.websiteActions;
   common.sources = manifest.sources.map(source => {
     shape(source, ['id','startUrl','routeContractId','entry','homePaths'], ['id','startUrl','routeContractId','entry']); id(source.routeContractId);
     const contract = manifest.routeContracts.find(item => item.id === source.routeContractId);
@@ -74,6 +76,7 @@ export function validateIsolatedManifest(input, validateCommon) {
     const result = contract && resolveRoute(contract, choice.url);
     requireValue(result?.kind === 'matched' && result.result.kind !== 'blocked', 'Choice requires explicit custom or website route');
   }
+  validateNavigation(manifest);
   validateCommon(common);
   return manifest;
 }
