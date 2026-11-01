@@ -7,14 +7,14 @@ import {Icon, type IconName} from './icon';
 export type OpenX = ((url: string, website?: boolean) => void)&{context:AppletContext};
 
 export function XLink({url,open,website=false,className='',label,children,tab=false,selected=false}:{url:string;open:OpenX;website?:boolean;className?:string;label?:string;children:ReactNode;tab?:boolean;selected?:boolean}){
-  const [decision,setDecision]=useState<NavigationDecision|null>(null);
+  const [decision,setDecision]=useState<NavigationDecision|null>(null),[attempt,setAttempt]=useState(0);
   useEffect(()=>{let active=true,serial=0;const resolve=()=>{const current=++serial;setDecision(null);void(async()=>{
     let [value]=await open.context.navigation.resolve([{kind:'url',url}]);
     if(website&&value.kind==='custom')[value]=await open.context.navigation.resolve([{kind:'url',url,websiteActionId:'original-x'}]);
     if(active&&current===serial)setDecision(value);
-  })().catch(()=>{});};const dispose=open.context.navigation.subscribe(resolve);resolve();return()=>{active=false;dispose();};},[url,website,open.context]);
+  })().catch(()=>{});};const dispose=open.context.navigation.subscribe(resolve);resolve();return()=>{active=false;dispose();};},[url,website,open.context,attempt]);
   return <a href={url} className={className} role={tab?'tab':undefined} aria-selected={tab?selected:undefined} aria-label={label?label+(decision?navigationCue(decision):''):undefined} aria-busy={!decision} onClick={event=>{
-    event.preventDefault();if(!decision)return;void open.context.navigation.activate({decision,intent:decision.kind==='website'||decision.kind==='external'?'open-website':'navigate'}).catch(()=>setDecision(null));
+    event.preventDefault();if(!decision)return;void open.context.navigation.activate({decision,intent:decision.kind==='website'||decision.kind==='external'?'open-website':'navigate'}).catch(()=>{setDecision(null);setAttempt(value=>value+1);});
   }}>{children}{decision&&navigationCue(decision)}</a>;
 }
 
