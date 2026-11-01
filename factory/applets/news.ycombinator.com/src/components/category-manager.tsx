@@ -1,3 +1,4 @@
+import {PendingAction} from './skeleton';
 import { backendStorage } from "../backend";
 import { useEffect, useRef, useState } from "react";
 import type { AppletContext, StoredDocument } from "@genesis/sdk";

@@ -1,3 +1,4 @@
+import {Skeleton,PendingAction} from './skeleton';
 import { serviceMessage } from "@genesis/sdk";
 import { backendStorage } from "../backend";
 import { useEffect, useRef, useState } from "react";
@@ -98,10 +99,10 @@ function StoryDialog({ context, snapshot, close }: { context: AppletContext; sna
       <p className="muted">Creating a category saves it immediately, even if you cancel this bookmark.</p>
     </fieldset>}
     {previous && context.sourceId !== null && <label><input type="checkbox" checked={refresh} onChange={event => setRefresh(event.target.checked)} disabled={busy} /> Refresh title and link from this page</label>}
-    {loading && <p role="status">Loading saved state…</p>}
+    {loading && <Skeleton kind="form" label="Loading saved state"/>}
     {message && <p role="status" className="notice">{message}</p>}
     {readFailed && <button disabled={busy} onClick={() => setReload(value => value + 1)}>Reload saved state</button>}
-    </div><div className="actions main-actions"><button className="primary" disabled={busy || loading || readFailed} onClick={() => { void perform(false); }}>{busy ? "Working…" : previous ? "Save changes" : "Save to Genesis"}</button>
+    </div><div className="actions main-actions"><button className="primary" disabled={busy || loading || readFailed} onClick={() => { void perform(false); }}>{busy ? <PendingAction label="Saving changes"/> : previous ? "Save changes" : "Save to Genesis"}</button>
       <button disabled={busy} onClick={close}>Cancel</button>
       {previous && <button className="danger" disabled={busy || loading || readFailed} onClick={() => setConfirmRemove(true)}>Remove bookmark</button>}</div>
     {confirmRemove && <div className="confirm-remove" role="group" aria-label="Confirm removal"><p>Remove this saved story? This cannot be undone.</p><div className="actions"><button className="danger" disabled={busy} onClick={() => { void perform(true); }}>Remove story</button><button disabled={busy} onClick={() => setConfirmRemove(false)}>Keep story</button></div></div>}
