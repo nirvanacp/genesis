@@ -27,6 +27,7 @@ final class IsolatedBrowser {
     private WebView foreground, source, external;
     private ScriptHandler sourceScript;
     private String websiteSession;
+    private NavigationPresentation navigationRecovery;
     private boolean website, adopted, destroyed, foregroundCommitted, foregroundReady, foregroundFailed, providerPrompt, providerSourceVisited, sourceChangedInReader;
     private String currentUrl = "", sourceId = "", leaveGuard;
     private View fullscreen;
@@ -168,6 +169,7 @@ final class IsolatedBrowser {
         }throw new IllegalStateException("Unknown source contract");
     }
     void navigate(JSONObject command) throws Exception {
+        dismissNavigationRecovery();
         if(website)closeWebsite(false);
         epoch=command.getLong("epoch");selection=command.getJSONObject("selection");sourceDefinition=command.getJSONObject("source");currentUrl=command.getString("url");leaveGuard=null;
         views.modal(false);views.configureShell(new JSONObject().put("package",pack).put("selection",selection),assets);
@@ -196,17 +198,17 @@ final class IsolatedBrowser {
             @Override public boolean onRenderProcessGone(WebView v,RenderProcessGoneDetail detail){if(!destroyed&&source==current&&navigation==epoch){if(website&&reader()==v)closeWebsite(true);else {if(website)sourceChangedInReader=true;emit("isolatedSourceError","code","SOURCE_RENDERER_FAILED");}}return true;}
         });
         presentation.addSource(sourceId,source);
-        sourceScript=inject(source,"source",origins(sourceDefinition),sourceDefinition.getString("entry"));
-        source.loadUrl(currentUrl);
+        if(command.optBoolean("loadSource",true)){sourceScript=inject(source,"source",origins(sourceDefinition),sourceDefinition.getString("entry"));source.loadUrl(currentUrl);}else sourceScript=null;
 
     }
     private boolean safeWebsite(String url){try{Uri u=Uri.parse(url);return ("https".equals(u.getScheme())||"http".equals(u.getScheme()))&&u.getHost()!=null&&u.getUserInfo()==null&&!"appassets.androidplatform.net".equals(u.getHost());}catch(Exception e){return false;}}
     private String origin(String url){Uri u=Uri.parse(url);return u.getScheme()+"://"+u.getAuthority();}
     private WebView reader(){return adopted?source:external;}
     private void providerNavigation(String url){if(destroyed||!website)return;if(sourceDefinition!=null&&origin(url).equals(origin(sourceDefinition.optString("startUrl"))))providerSourceVisited=true;WebView view=reader();if(view!=null)views.navigation(url,true,view.canGoBack(),view.canGoForward());}
-    private void providerStarting(String url){if(destroyed||!website||reader()==null)return;providerEpoch++;activity.cancelInvalidFiles();views.pageStarting();providerNavigation(url);}
+    private void providerStarting(String url){if(destroyed||!website||reader()==null)return;try{events.send(event("isolatedWebsiteCheck").put("sessionId",websiteSession).put("url",url));}catch(JSONException ignored){}providerEpoch++;activity.cancelInvalidFiles();views.pageStarting();providerNavigation(url);}
     private void providerRevealed(WebView view,String url){if(destroyed||!website||reader()!=view)return;long token=providerEpoch;providerNavigation(url);view.postVisualStateCallback(token,new WebView.VisualStateCallback(){@Override public void onComplete(long id){if(!destroyed&&website&&reader()==view&&token==providerEpoch)views.reveal();}});}
     private void openWebsite(JSONObject command) throws Exception {
+        dismissNavigationRecovery();
         if(website)closeWebsite(false);websiteSession=command.getString("sessionId");website=true;adopted=command.getBoolean("adopt");providerSourceVisited=adopted;sourceChangedInReader=false;providerEpoch++;
         if(adopted){if(sourceScript!=null){sourceScript.remove();sourceScript=null;}channels.remove("source");presentation.adoptSource(sourceId);providerNavigation(currentUrl);views.reveal();}
         else{
@@ -223,7 +225,7 @@ final class IsolatedBrowser {
     private void exitFullscreen(){if(fullscreen!=null){views.exitFullscreen(fullscreen);fullscreen=null;if(fullscreenCallback!=null)fullscreenCallback.onCustomViewHidden();fullscreenCallback=null;}}
     private void closeWebsite(boolean notify){
         if(!website)return;exitFullscreen();providerEpoch++;activity.cancelInvalidFiles();boolean wasAdopted=adopted;
-        presentation.closeWebsite();if(external!=null){external.destroy();external=null;}
+        dismissNavigationRecovery();presentation.closeWebsite();if(external!=null){external.destroy();external=null;}
         website=false;adopted=false;views.route(true,false);views.navigation(currentUrl,false,true,false);views.reveal();
         if(foregroundFailed)failure("The applet interface stopped. Retry to restore it.");
         if(notify)try{events.send(event("isolatedWebsiteClosed").put("epoch",epoch).put("sessionId",websiteSession).put("adopted",wasAdopted).put("revalidate",providerSourceVisited||sourceChangedInReader));}catch(JSONException ignored){}
@@ -276,6 +278,15 @@ final class IsolatedBrowser {
         if(command.getLong("generation")!=generation||destroyed)return;
         switch(command.getString("type")){
             case "isolatedNavigate":navigate(command);break;
+            case "isolatedNavigationDismiss":dismissNavigationRecovery();break;
+            case "isolatedNavigationRecovery":{
+                dismissNavigationRecovery();
+                final long id=command.getLong("recoveryId");
+                if(command.optBoolean("retireSource")){if(sourceScript!=null){sourceScript.remove();sourceScript=null;}channels.remove("source");}
+                navigationRecovery=new NavigationPresentation(activity,command.getJSONObject("decision"),()->emit("back","recoveryId",id),()->emit("isolatedRecoveryContinue","recoveryId",id));
+                views.browserSlot.addView(navigationRecovery,new FrameLayout.LayoutParams(-1,-1));views.reveal();break;
+            }
+            case "isolatedWebsiteBlocked":if(reader()!=null){reader().stopLoading();dismissNavigationRecovery();JSONObject blocked=new JSONObject().put("title","Page unavailable").put("reason","This website destination is not permitted.").put("websiteAllowed",false);navigationRecovery=new NavigationPresentation(activity,blocked,()->requestWebsiteAction(()->closeWebsite(true)),()->{});views.browserSlot.addView(navigationRecovery,new FrameLayout.LayoutParams(-1,-1));views.reveal();}break;
             case "isolatedChallenge":{
                 String role=command.getString("role");JavaScriptReplyProxy reply=channels.getOrDefault(role,Collections.emptyMap()).get(command.getLong("channel"));
                 if(reply!=null)reply.executeJavaScript("globalThis.__genesisChallenge?.("+JSONObject.quote(command.getString("nonce"))+","+JSONObject.quote(command.getString("challenge"))+")",r->{});break;
@@ -301,5 +312,6 @@ final class IsolatedBrowser {
             default:throw new IllegalArgumentException("Unknown isolated host command");
         }
     }
-    void destroy(){if(destroyed)return;destroyed=true;WebView.setWebContentsDebuggingEnabled(false);main.removeCallbacksAndMessages(null);for(WebView popup:new HashSet<>(popups))releasePopup(popup);exitFullscreen();if(sourceScript!=null)sourceScript.remove();if(presentation!=null){presentation.dispose();views.browserSlot.removeView(presentation);}if(source!=null)source.destroy();if(foreground!=null)foreground.destroy();if(external!=null)external.destroy();channels.clear();}
+    private void dismissNavigationRecovery(){if(navigationRecovery!=null){views.browserSlot.removeView(navigationRecovery);navigationRecovery=null;}}
+    void destroy(){if(destroyed)return;dismissNavigationRecovery();destroyed=true;WebView.setWebContentsDebuggingEnabled(false);main.removeCallbacksAndMessages(null);for(WebView popup:new HashSet<>(popups))releasePopup(popup);exitFullscreen();if(sourceScript!=null)sourceScript.remove();if(presentation!=null){presentation.dispose();views.browserSlot.removeView(presentation);}if(source!=null)source.destroy();if(foreground!=null)foreground.destroy();if(external!=null)external.destroy();channels.clear();}
 }

@@ -38,12 +38,12 @@ pub fn validate(index: &PackageIndex) -> Result<(), String> {
     let mut ids = HashSet::new();
     for package in &index.packages {
         let manifest = &package.manifest;
-        if ![1, 2, 3].contains(&package.runtime_api_version) {
+        if ![1, 2, 3, 4].contains(&package.runtime_api_version) {
             return Err("Unsupported package runtime API".into());
         }
-        if manifest.schema_version == 2 {
-            if package.runtime_api_version != 3 {
-                return Err("Schema 2 requires runtime API 3".into());
+        if matches!(manifest.schema_version, 2 | 3) {
+            if package.runtime_api_version != manifest.schema_version + 1 {
+                return Err("Isolated schema/runtime API mismatch".into());
             }
             crate::routes::validate_manifest(manifest)?;
             let mut legacy = package.clone();
@@ -61,6 +61,7 @@ pub fn validate(index: &PackageIndex) -> Result<(), String> {
             }
             legacy.manifest.route_contracts.clear();
             legacy.manifest.foreground = None;
+            legacy.manifest.navigation = None;legacy.manifest.website_actions.clear();
             validate(&PackageIndex {
                 hidden_applet_ids: Vec::new(),
                 schema_version: 1,
@@ -72,10 +73,10 @@ pub fn validate(index: &PackageIndex) -> Result<(), String> {
             }
             continue;
         }
-        if package.runtime_api_version == 3 {
+        if matches!(package.runtime_api_version, 3 | 4) {
             return Err("API 3 requires schema 2".into());
         }
-        if !manifest.route_contracts.is_empty()
+        if manifest.navigation.is_some() || !manifest.website_actions.is_empty() || !manifest.route_contracts.is_empty()
             || manifest.foreground.is_some()
             || manifest
                 .sources
@@ -299,7 +300,7 @@ fn route(path: &str) -> bool {
 /// Validate the external shape before the Android store verifies bytes and canonical revision.
 pub fn validate_bundle(bundle: &AppletBundle) -> Result<(), String> {
     if bundle.format_version != BUNDLE_FORMAT_VERSION
-        || ![1, 2, RUNTIME_API_VERSION].contains(&bundle.runtime_api_version)
+        || ![1, 2, 3, 4].contains(&bundle.runtime_api_version)
     {
         return Err(format!(
             "Unsupported bundle/runtime API; supported {BUNDLE_FORMAT_VERSION}/{RUNTIME_API_VERSION}"

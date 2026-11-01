@@ -73,8 +73,8 @@ pub fn validate(manifest: &Manifest) -> Result<(), String> {
         }
     }
     for origin in &policy.external.origins {
-        if !safe_url(&origin.origin)
-            .is_some_and(|u| u.origin().ascii_serialization() == origin.origin)
+        if safe_url(&origin.origin)
+            .is_none_or(|u| u.origin().ascii_serialization() != origin.origin)
             || !origins.insert(origin.origin.clone())
             || !text(&origin.reason, 1024)
         {
@@ -128,12 +128,12 @@ pub fn decide(manifest: &Manifest, active_source: Option<&str>, target: Target) 
         ref website_action_id,
     } = target
     else {
-        if let Target::Page { ref page_id } = target {
-            if manifest.pages.iter().any(|p| p.id == *page_id) {
-                decision.kind = Kind::Page;
-                decision.title = "Applet page".into();
-                decision.reason = None;
-            }
+        if let Target::Page { ref page_id } = target
+            && manifest.pages.iter().any(|p| p.id == *page_id)
+        {
+            decision.kind = Kind::Page;
+            decision.title = "Applet page".into();
+            decision.reason = None;
         }
         return decision;
     };

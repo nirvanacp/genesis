@@ -1,0 +1,6 @@
+# Host navigation enforcement
+
+- Goal: Execute schema-3 navigation decisions while preserving existing API-3 applets and website sessions.
+- Changes: Added bound resolve/activate RPCs, native recovery and explicit Continue, source selection, stale-decision rejection, blocked provider navigation, separate return controls and API-4 package/status support. Unsupported passive navigation retires source authority without exposing it. Rust and Android retain the original API-3 path.
+- Decisions: The agent kept website history separate from applet history and preserved exact-source adoption and dirty-form departure checks. Recovery uses an opaque native view with a versioned Continue action. Runtime 4 is accepted only with schema 3; existing runtime 3 remains accepted.
+- Verification: Cargo check, Clippy with warnings denied and native Cargo tests passed; the native test target contains zero cases. Offline Android assembly/lint passed. Temporary real-reducer diagnostics exercised uncovered-link recovery, stale Continue, website entry, blocked destinations, Close and Back. The updated host installed in place and both existing applets opened under owned chrome; HN content was observed. API-4 source/SDK integration and full device acceptance remain subsequent stages.

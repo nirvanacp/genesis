@@ -46,6 +46,7 @@ final class HostViews {
     private final ImageButton floatingMenu;
     private final LinearLayout readerBar;
     private final TextView readerOrigin;
+    private final Button readerReturn;
     private final ImageButton readerBack, readerForward;
     private final ProgressBar pageProgress;
     private String readerUrl = "";
@@ -86,20 +87,25 @@ final class HostViews {
         });
         browserSlot = new FrameLayout(activity); content.addView(browserSlot, new FrameLayout.LayoutParams(-1, -1));
 
-        readerBar = new LinearLayout(activity); readerBar.setGravity(Gravity.CENTER_VERTICAL);
+        readerBar = new LinearLayout(activity); readerBar.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout readerControls=new LinearLayout(activity);readerControls.setGravity(Gravity.CENTER_VERTICAL);
         readerBar.setPadding(dp(8), 0, dp(8), 0); readerBar.setBackgroundColor(paper);
         readerBack = iconButton(R.drawable.ic_nav_back, "Back", () -> events.send(event("back")));
         readerForward = iconButton(R.drawable.ic_nav_forward, "Forward", () -> events.send(event("forward")));
         ImageButton close = iconButton(R.drawable.ic_nav_close, "Close reader", () -> events.send(event("readerClose")));
         readerOrigin = text("", 14); readerOrigin.setSingleLine(true); readerOrigin.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        readerBar.addView(readerBack, new LinearLayout.LayoutParams(dp(48), dp(48)));
-        readerBar.addView(readerForward, new LinearLayout.LayoutParams(dp(48), dp(48)));
-        readerBar.addView(readerOrigin, new LinearLayout.LayoutParams(0, -2, 1));
-        readerBar.addView(close, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        readerControls.addView(readerBack, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        readerControls.addView(readerForward, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        readerControls.addView(readerOrigin, new LinearLayout.LayoutParams(0, -2, 1));
+        readerControls.addView(close, new LinearLayout.LayoutParams(dp(48), dp(48)));
         ImageButton more = iconButton(R.drawable.ic_nav_more, "Reader options", () -> readerMenu());
-        readerBar.addView(more, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        readerControls.addView(more, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        readerBar.addView(readerControls,new LinearLayout.LayoutParams(-1,-2));
+        readerReturn=new Button(activity);readerReturn.setAllCaps(false);readerReturn.setText("Return to applet");readerReturn.setMinHeight(dp(48));readerReturn.setOnClickListener(v->events.send(event("readerClose")));
+        readerBar.addView(readerReturn,new LinearLayout.LayoutParams(-1,-2));
+        readerBar.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->{if(b-t!=ob-ot)alignContentInsets();});
         readerBar.setVisibility(View.GONE);
-        content.addView(readerBar, new FrameLayout.LayoutParams(-1, dp(READER_BAR_HEIGHT), Gravity.TOP));
+        content.addView(readerBar, new FrameLayout.LayoutParams(-1, -2, Gravity.TOP));
         pageProgress = new ProgressBar(activity, null, android.R.attr.progressBarStyleHorizontal);
         pageProgress.setMax(100); pageProgress.setIndeterminate(true); pageProgress.setVisibility(View.GONE);
         FrameLayout.LayoutParams progressLayout = new FrameLayout.LayoutParams(-1, dp(3), Gravity.TOP);
@@ -156,7 +162,8 @@ final class HostViews {
     }
 
     void configureShell(JSONObject command, PackageAssets assets) throws Exception {
-        isolatedApplet=command.getJSONObject("package").getJSONObject("manifest").optInt("schemaVersion")==2;
+        readerReturn.setText("Return to "+command.getJSONObject("package").getJSONObject("manifest").optString("name","applet"));
+        isolatedApplet=command.getJSONObject("package").getJSONObject("manifest").optInt("schemaVersion")>=2;
         appletActive = true;
         JSONObject manifest = command.getJSONObject("package").getJSONObject("manifest");
         sourceEntries = manifest.getJSONArray("sources");
@@ -382,7 +389,7 @@ final class HostViews {
         readerBack.setEnabled(canBack); readerForward.setEnabled(canForward);
         if (reader) {
             Uri parsed = Uri.parse(url);
-            readerOrigin.setText((parsed.getHost() == null ? "Web page" : parsed.getHost()) + (parsed.getPort() < 0 ? "" : ":" + parsed.getPort()));
+            readerOrigin.setText("Website · "+("http".equals(parsed.getScheme())?"HTTP · ":"")+(parsed.getHost() == null ? "Web page" : parsed.getHost()) + (parsed.getPort() < 0 ? "" : ":" + parsed.getPort()));
         }
         readerBar.setVisibility(reader ? View.VISIBLE : View.GONE);
         boolean app = shell != null && !reader;
@@ -408,7 +415,7 @@ final class HostViews {
     }
     private void alignContentInsets() {
         boolean app = appletActive && shell != null && !readerVisible;
-        int top = app ? dp(APP_HEADER_HEIGHT) : readerVisible ? dp(READER_BAR_HEIGHT) : 0;
+        int top = app ? dp(APP_HEADER_HEIGHT) : readerVisible ? Math.max(dp(READER_BAR_HEIGHT),readerBar.getHeight()) : 0;
         int bottom = app ? sectionBarHeight() : 0;
         browserSlot.setPadding(0, top, 0, bottom);
         FrameLayout.LayoutParams bounds = (FrameLayout.LayoutParams) cover.getLayoutParams();
