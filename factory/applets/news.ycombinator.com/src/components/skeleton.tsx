@@ -5,10 +5,10 @@ export function PendingAction({label}:{label:string}){return <><style>{css}</sty
 export function Skeleton({kind='feed',rows=3,label='Loading content'}:{kind?:PlaceholderKind;rows?:number;label?:string}){
   const row=(index:number):ReactNode=><div className="placeholder-row" key={index}>
     {(kind==='people'||kind==='form')&&<span className="placeholder-block placeholder-avatar"/>}
-    <div className="placeholder-copy"><span className="placeholder-block placeholder-title"/><span className="placeholder-block placeholder-line"/><span className="placeholder-block placeholder-short"/>{kind!=='form'&&<><span className="placeholder-block placeholder-meta"/><div className="placeholder-actions"><i className="placeholder-block"/><i className="placeholder-block"/><i className="placeholder-block"/></div></>}</div>
+    <div className="placeholder-copy"><span className="placeholder-block placeholder-title"/><span className="placeholder-block placeholder-line"/><span className="placeholder-block placeholder-short"/>{kind!=='form'&&kind!=='people'&&<><span className="placeholder-block placeholder-meta"/><div className="placeholder-actions"><i className="placeholder-block"/><i className="placeholder-block"/><i className="placeholder-block"/></div></>}</div>
   </div>;
   return <section className={'loading-placeholder placeholder-'+kind} role="status" aria-label={label} aria-busy="true"><style>{css}</style><span className="placeholder-sr">{label}</span><div aria-hidden="true">
-    {kind==='profile'&&<><div className="placeholder-block placeholder-banner"/><div className="placeholder-profile"><span className="placeholder-block placeholder-avatar"/><span className="placeholder-block placeholder-title"/><span className="placeholder-block placeholder-short"/></div></>}
+    {kind==='profile'&&<div className="placeholder-profile"><span className="placeholder-block placeholder-title"/><span className="placeholder-block placeholder-meta"/></div>}
     {kind==='media'?<div className="placeholder-block placeholder-media"/>:Array.from({length:rows},(_,i)=>row(i))}
   </div></section>;
 }
