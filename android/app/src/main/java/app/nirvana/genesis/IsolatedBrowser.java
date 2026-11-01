@@ -277,6 +277,15 @@ final class IsolatedBrowser {
     void execute(JSONObject command) throws Exception {
         if(command.getLong("generation")!=generation||destroyed)return;
         switch(command.getString("type")){
+            case "isolatedShare":{
+                boolean presented=false;
+                try {
+                    android.content.Intent send=new android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain").putExtra(android.content.Intent.EXTRA_TEXT,command.getString("url"));
+                    String title=command.optString("title");if(!title.isEmpty())send.putExtra(android.content.Intent.EXTRA_SUBJECT,title);
+                    activity.startActivity(android.content.Intent.createChooser(send,"Share link"));presented=true;
+                } catch(android.content.ActivityNotFoundException|SecurityException ignored){}
+                events.send(event("isolatedShareResult").put("requestId",command.getString("requestId")).put("presented",presented));break;
+            }
             case "isolatedNavigate":navigate(command);break;
             case "isolatedNavigationDismiss":dismissNavigationRecovery();break;
             case "isolatedNavigationRecovery":{
