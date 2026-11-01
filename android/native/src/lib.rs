@@ -1,5 +1,6 @@
 mod controller;
 mod isolated;
+mod navigation;
 mod packages;
 mod routes;
 mod sources;

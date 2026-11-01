@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Genesis applet manifest schemas",
-  "description": "Schema 2 declarations require isolated API 3 execution. The current host rejects their execution until that capability is implemented. Semantic validation checks origins, references, reachability and bounds.",
+  "description": "Schemas 1/2 are retained for compatibility; schema 3 declares API-4 navigation policy. Semantic validation additionally checks references, origin ownership and byte bounds.",
   "oneOf": [
     {
       "title": "Genesis applet manifest schema 1",
@@ -708,6 +708,531 @@
         "capabilities",
         "routeContracts",
         "foreground"
+      ]
+    },
+    {
+      "title": "Genesis applet manifest schema 3",
+      "description": "Structural schema. The Genesis semantic validator also checks exact HTTPS origins, references, contained files, and byte limits.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {
+          "const": 3
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,63}$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "dataSchemaVersion": {
+          "const": 1
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,63}$"
+              },
+              "startUrl": {
+                "type": "string",
+                "minLength": 1
+              },
+              "entry": {
+                "type": "string",
+                "pattern": "^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?/)[^\\u0000]+$"
+              },
+              "homePaths": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "routeContractId": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,63}$"
+              }
+            },
+            "required": [
+              "id",
+              "startUrl",
+              "entry",
+              "routeContractId"
+            ]
+          },
+          "minItems": 1
+        },
+        "pages": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,63}$"
+              },
+              "entry": {
+                "type": "string",
+                "pattern": "^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?/)[^\\u0000]+$"
+              }
+            },
+            "required": [
+              "id",
+              "entry"
+            ]
+          }
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,63}$"
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1
+              },
+              "pageId": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,63}$"
+              }
+            },
+            "required": [
+              "id",
+              "label",
+              "pageId"
+            ]
+          }
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "dom",
+              "navigation-policy",
+              "storage",
+              "services"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "services": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{0,63}$"
+          },
+          "uniqueItems": true
+        },
+        "shell": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 79
+            },
+            "brandAsset": {
+              "type": "string",
+              "pattern": "^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?/)[^\\u0000]+$"
+            },
+            "sections": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9-]{0,63}$"
+                  },
+                  "label": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "sourceId": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9-]{0,63}$"
+                  },
+                  "pageId": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^[a-z][a-z0-9-]{0,63}$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "icon": {
+                    "enum": [
+                      "home",
+                      "search",
+                      "post",
+                      "bookmark",
+                      "person",
+                      "notifications"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "label",
+                  "sourceId"
+                ]
+              },
+              "minItems": 1,
+              "maxItems": 5
+            },
+            "choices": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "label": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "url": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "sourceId": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9-]{0,63}$"
+                  }
+                },
+                "required": [
+                  "label",
+                  "url"
+                ]
+              }
+            },
+            "colorScheme": {
+              "enum": [
+                "default",
+                "neutral"
+              ]
+            }
+          },
+          "required": [
+            "title",
+            "brandAsset",
+            "sections"
+          ]
+        },
+        "foreground": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "pageId": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]{0,63}$"
+            },
+            "screens": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,63}$"
+              },
+              "minItems": 1,
+              "maxItems": 100,
+              "uniqueItems": true
+            }
+          },
+          "required": [
+            "pageId",
+            "screens"
+          ]
+        },
+        "routeContracts": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,63}$"
+              },
+              "origins": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string"
+                }
+              },
+              "routes": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 100,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "pattern": "^[a-z][a-z0-9-]{0,63}$"
+                    },
+                    "path": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256
+                    },
+                    "query": {
+                      "type": "object",
+                      "maxProperties": 16,
+                      "propertyNames": {
+                        "minLength": 1,
+                        "maxLength": 256
+                      },
+                      "additionalProperties": {
+                        "oneOf": [
+                          {
+                            "const": "present"
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "equals": {
+                                "type": "string",
+                                "maxLength": 1024
+                              }
+                            },
+                            "required": [
+                              "equals"
+                            ]
+                          }
+                        ]
+                      }
+                    },
+                    "fragment": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "equals": {
+                          "type": "string",
+                          "maxLength": 1024
+                        }
+                      },
+                      "required": [
+                        "equals"
+                      ]
+                    },
+                    "result": {
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "kind": {
+                              "const": "custom"
+                            },
+                            "screen": {
+                              "type": "string",
+                              "pattern": "^[a-z][a-z0-9-]{0,63}$"
+                            },
+                            "adapter": {
+                              "type": "string",
+                              "pattern": "^[a-z][a-z0-9-]{0,63}$"
+                            },
+                            "title": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 100
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "screen",
+                            "adapter",
+                            "title"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "kind": {
+                              "enum": [
+                                "website",
+                                "blocked"
+                              ]
+                            },
+                            "reason": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 1024
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "reason"
+                          ]
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "path",
+                    "result"
+                  ]
+                }
+              },
+              "unmatched": {
+                "const": "unsupported"
+              },
+              "defaultSourceId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "origins",
+              "routes",
+              "unmatched",
+              "defaultSourceId"
+            ]
+          }
+        },
+        "navigation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "external",
+            "uncoveredWebsiteRecovery"
+          ],
+          "properties": {
+            "uncoveredWebsiteRecovery": {
+              "type": "boolean"
+            },
+            "external": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "default",
+                "origins"
+              ],
+              "properties": {
+                "default": {
+                  "enum": [
+                    "website",
+                    "blocked"
+                  ]
+                },
+                "origins": {
+                  "type": "array",
+                  "maxItems": 64,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "origin",
+                      "result",
+                      "reason"
+                    ],
+                    "properties": {
+                      "origin": {
+                        "type": "string"
+                      },
+                      "result": {
+                        "enum": [
+                          "website",
+                          "blocked"
+                        ]
+                      },
+                      "reason": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 1024
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "websiteActions": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "contractId",
+              "routeIds",
+              "label",
+              "reason"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1024
+              },
+              "contractId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1024
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1024
+              },
+              "routeIds": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 100,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "id",
+        "name",
+        "dataSchemaVersion",
+        "sources",
+        "pages",
+        "actions",
+        "capabilities",
+        "routeContracts",
+        "foreground",
+        "navigation",
+        "websiteActions"
       ]
     }
   ]

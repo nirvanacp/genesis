@@ -35,7 +35,7 @@ function httpsUrl(value) {
 function route(value) { return typeof value === 'string' && /^\/[a-zA-Z0-9/.\-]*$/.test(value) && !value.includes('..'); }
 /** Validate authoring or compiled manifests; only readApplet performs filesystem checks. */
 export function validateManifest(input) {
-  if (input?.schemaVersion === 2) return validateIsolatedManifest(input, validateManifest);
+  if ([2,3].includes(input?.schemaVersion)) return validateIsolatedManifest(input, validateManifest);
   const manifest = structuredClone(input);
   object(manifest, ['schemaVersion','id','name','dataSchemaVersion','sources','pages','actions','capabilities','services','shell'], ['schemaVersion','id','name','dataSchemaVersion','sources','pages','actions','capabilities']);
   requireValue(manifest.schemaVersion === 1 && manifest.dataSchemaVersion === 1, 'Unsupported manifest/data schema version');
