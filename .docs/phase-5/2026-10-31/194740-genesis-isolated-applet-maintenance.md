@@ -70,4 +70,6 @@ Tools prepack refreshes its portable factory kit. Verify both React and vanilla 
 
 ## Current qualified revision
 
+The [November X UX repair report](../../../.reports/phase-5/2026-11-01/065059-x-ux-repair-verification.md) qualifies the updated host's primary-entry/viewport and scalable-footer behavior together with X's pull-to-refresh, epoch-bound transient Back and shared typography. Check these connected journeys after changing source lifecycle or chrome; the older per-route acceptance did not cover them.
+
 The [31 October acceptance report](../../../.reports/phase-5/2026-10-31/231100-genesis-isolated-applets-verification.md) records both installed revisions, real and synthetic journeys, creator archive checks and explicit gaps. Source watcher batches must progress without animation frames because their WebViews are deliberately occluded. Provider sessions are unique; an expired close ID cannot close another reader, and owned navigation cannot replace a currently open website. Wait until the applet returns before opening another destination.
