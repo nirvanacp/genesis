@@ -53,7 +53,7 @@
 .post.expanded>.post-actions{grid-column:1/-1;border-top:1px solid var(--line);margin-top:12px;margin-inline:0}
 .post-date{color:var(--muted);padding-top:16px;min-height:40px}
 .state{padding:32px;max-width:440px;margin:0 auto}.state h2{font-size:26px;line-height:32px}.state p{color:var(--muted);margin:12px 0 20px}
-.skeleton{height:100px;background:var(--wash);margin:16px 0;border-radius:12px}
+
 .profile-banner{display:block;aspect-ratio:3;background:var(--wash)}.profile-banner img{display:block;width:100%;height:100%;object-fit:cover}
 .profile-body{padding:0 16px 4px}.profile-toolbar{display:flex;align-items:flex-start;justify-content:space-between;min-height:72px;gap:12px}
 .profile-avatar-link{margin-top:-12%;position:relative}.profile-avatar{width:clamp(80px,22vw,134px);height:clamp(80px,22vw,134px);border:4px solid var(--paper);border-radius:50%;object-fit:cover;display:flex}
@@ -94,3 +94,5 @@ button.quoted-post{width:100%;border-radius:16px;text-align:left;font-weight:400
 .entry-person .entry-target{padding-right:16px}.entry-person .entry-copy{flex:1}.entry-person .follow-button{position:absolute;right:0;top:12px}.entry-person .person-name,.entry-person .entry-meta{padding-right:128px}
 
 .entry-person .entry-meta{font-size:var(--body-size);line-height:var(--body-line)}
+
+.photos img,.profile-banner img,.profile-avatar,.media-stage img{background-color:#eceff1}@media(prefers-color-scheme:dark){.photos img,.profile-banner img,.profile-avatar,.media-stage img{background-color:#303438}}
