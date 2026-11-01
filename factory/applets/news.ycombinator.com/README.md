@@ -75,3 +75,5 @@ Story headings share `src/components/story-heading.tsx` and `src/story.css`. Hom
 Static TypeScript and applet check/build pass. Physical-device/TalkBack and the complete signed-in/source-route matrix remain unqualified. Backend startup is still operator-owned; connection recovery does not authorize starting a new service or resetting records.
 
 Review repairs: failed-refresh retention is restricted to public feeds and discussions. Private lists, profiles and account screens require fresh source data. Comment disclosure now collapses the entire reply branch using nested native details elements.
+
+Same-page comment references expand the linked comment and all collapsed ancestor branches before scrolling. Explicit website links and missing-target navigation retain their existing behavior.
