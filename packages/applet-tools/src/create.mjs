@@ -3,6 +3,11 @@ import path from 'node:path';
 import { emptyDirectory, exportKit } from './kit.mjs';
 import { identifier, validateManifest } from './manifest.mjs';
 import { creatorError } from './device.mjs';
+// Escape user-supplied scalars so generated records cannot introduce Markdown structure.
+function markdownValue(value) {
+  return JSON.stringify(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/[\\`*_{}\[\]()#+.!|~-]/g, character => '\\' + character);
+}
 export async function createApplet(directory, options) {
   if (!identifier.test(options.id ?? '') || typeof options.name !== 'string' || !options.name.trim() || !options.source) throw creatorError('USAGE', 'create requires --id <stable-id> --name <display-name> --source <https-url>');
   const url = new URL(options.source);
@@ -13,7 +18,13 @@ export async function createApplet(directory, options) {
     foreground:{pageId:'app',screens:['home']},
     pages: [{ id: 'app', entry: options.react ? 'src/home.tsx' : 'src/home.ts' }], actions: [], capabilities: ['dom'] };
   validateManifest(manifest);
-  const output = await emptyDirectory(directory); await mkdir(path.join(output, 'src'));
+  const output = await emptyDirectory(directory);
+  for (const name of ['src', '.specs', '.changelog']) await mkdir(path.join(output, name));
+  const created = new Date();
+  const local = new Date(created.getTime() - created.getTimezoneOffset() * 60000).toISOString();
+  const stamp = local.slice(0, 10) + '-' + local.slice(11, 19).replaceAll(':', '');
+  const displayName = markdownValue(options.name.trim());
+  const sourceLabel = markdownValue(url.href);
   const packageJson = { name: options.id, version: '0.1.0', private: true, type: 'module', engines: { node: '24.15.0' },
     scripts: { check: 'genesis-applet check .', build: 'genesis-applet build . --out dist' },
     dependencies: { '@genesis/sdk': '0.5.1', ...(options.react ? { react: '19.3.1', 'react-dom': '19.3.1' } : {}) },
@@ -22,8 +33,63 @@ export async function createApplet(directory, options) {
   const files = { 'applet.json': JSON.stringify(manifest,null,2)+'\n', 'package.json': JSON.stringify(packageJson,null,2)+'\n', 'tsconfig.json': JSON.stringify(config,null,2)+'\n',
     '.gitignore': 'node_modules/\ndist/\n.env\n.env.*\n*.sqlite3\n*.sqlite3-*\n*.pem\n.genesis-private/\n',
     'start.sh': '#!/usr/bin/env bash\nset -euo pipefail\napplet_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"\nif [[ -d "$applet_dir/backend" ]]; then\n  printf "%s\\n" "Backend added: update start.sh to start every required service. See factory/guides/services-and-data.md." >&2\n  exit 1\nfi\nprintf "%s\\n" "No local backend required by this applet."\n',
-    'AGENTS.md': '# Applet workspace\n\nRead and follow [factory/AGENTS.md](factory/AGENTS.md) for all applet changes. This workspace owns application code and data; it consumes the Genesis SDK and tools.\n',
-    'README.md': `# ${options.name.trim()}\n\nSource: ${url.origin}. This starter separates a hidden source adapter from an owned foreground and declares an explicit URL contract. Inspect the actual source DOM before implementing extraction or controls.\n\nRead [factory/AGENTS.md](factory/AGENTS.md). Install the matching SDK/tools artifacts supplied by the Genesis maintainer, then run npm run check and npm run build. See [the workflow](factory/guides/getting-started.md) for development installation into a compatible prebuilt debug host. Dependencies are not yet published to a public registry.\n\nDocument the desired screens/actions, supported routes, data authority, service setup, and verified behavior here as the applet develops. The source adapter is an explicit unimplemented placeholder. Implement inspected readiness, empty, failure and loading observations before delivery; ready data still needs its own validated foreground renderer. No backend or persistent records are configured by this starter.\n`,
+    'AGENTS.md': '# Applet workspace\n\nRead and follow [factory/AGENTS.md](factory/AGENTS.md) for all applet changes. Read .specs/current.md and relevant decisions first; maintain flat .specs and .changelog records under factory rules. This workspace owns application code and data; it consumes the Genesis SDK and tools.\n',
+    'README.md': `# ${displayName}
+
+Source: ${sourceLabel}. Read [current specs](.specs/current.md), [decisions](.specs/decisions.md) and [factory instructions](factory/AGENTS.md).
+
+Install matching maintainer-supplied SDK/tools archives and generated dependencies, then run npm run check and npm run build. See [setup](factory/guides/getting-started.md). Packages are not published to a public registry. The adapter is unimplemented; no backend or persistent records are configured. Configure the native shell/menu default during authoring unless explicitly overridden.
+`,
+    '.specs/current.md': `# Current applet specification
+
+## Identity and context
+
+Name: ${displayName}. Stable ID: ${options.id}. Base/canonical source candidate: ${sourceLabel}. Origin: ${markdownValue(url.origin)}. Source main, foreground page app, route contract site, home screen/adapter. No services. SDK 0.5.1, tools 0.5.0, runtime API 4, manifest schema 3, data/bundle schema 1. Kit metadata: factory/kit.json. Created ${local}; website canonical destination and user timezone must be confirmed from context.
+
+## Product scope
+
+Product features, preserved workflows, account/data authority, delivery target and exclusions are not yet established. One applet identity is scaffolded. No user-approved exclusions or completed website inspection are recorded.
+
+## Applied defaults and overrides
+
+| Rule ID | Current choice | Origin and reason | Decision / limit |
+| --- | --- | --- | --- |
+| default-platform-menu | Configure shell/menu during authoring; absent from scaffold | Factory default | decision-0001; no menu positioning API |
+| default-pending-skeletons | Static themed placeholders included | Factory default | Adapt shapes to inspected routes |
+
+No explicit user overrides recorded. Apply remaining [defaults](../factory/guides/defaults.md) when implementing the product.
+
+## Route inventory
+
+| Journey/example URL | Rule/source | Adapter/model/renderer | Evidence and cue | Back/Return | Implementation | Verification |
+| --- | --- | --- | --- | --- | --- | --- |
+| Supplied entry: ${sourceLabel} | site/home, main | home adapter / owned app page | Readiness unimplemented; original-page website recovery declaration | Must verify opener return | planned | not-run |
+
+## Interaction inventory
+
+| Control/entity | Result/owner | Authorization | Pending/error/uncertainty | Back/Return | Implementation | Verification |
+| --- | --- | --- | --- | --- | --- | --- |
+| Open original website | Explicit original-page navigation / host | User click only, no submission | Scaffold recovery only | Host Return | implemented scaffold | not-run |
+
+## Current work and verification
+
+Inspect authorized website, establish product scope and inventories, implement validated adapter/model/renderer, configure native shell/menu unless overridden, and verify actual journeys. Adapter reports ADAPTER_NOT_IMPLEMENTED. Scaffold code exists; product implementation is planned. All verification is not-run. No source, device, account or backend behavior is qualified.
+`,
+    '.specs/decisions.md': `# Applet decisions
+
+## decision-0001: Scaffold baseline
+
+- Date and origin: ${local}, creator-generated baseline using supplied name/ID/URL; no inferred user design approval.
+- Choice and rationale: Separate hidden source and owned foreground under schema 3/API 4. Shell/menu default remains to be configured during authoring. Preserve stable ID ${options.id}.
+- Evidence and supersession: applet.json and source files; adapter unimplemented, checks not run. Supersedes none. Record later product choices here and keep current.md authoritative.
+`,
+    ['.changelog/' + stamp + '-scaffold.md']: `# Initial scaffold
+
+- Goal: Initialize applet ${options.id} from supplied source ${sourceLabel}.
+- Changes: Created source/foreground placeholders, manifest, operator start script, factory guidance and current specifications/decision records.
+- Decisions: Creator baseline at ${local}, linked in [decision-0001](../.specs/decisions.md). No product exclusions or user design overrides inferred; native menu awaits authoring configuration.
+- Verification: Not run. Adapter unimplemented; no live source, device or backend qualification. Follow [current work](../.specs/current.md).
+`,
     'src/main.ts': `import { defineSourceAdapter } from '@genesis/sdk';\n\n// Inspect the website and publish a validated content model. Never mount foreground UI here.\nexport default defineSourceAdapter({adapters:['home'],activate(context) {\n  void context.source.publish({state:'unsupported',error:{code:'ADAPTER_NOT_IMPLEMENTED',retryable:false,message:'This applet adapter has not been implemented yet.'}});\n}});\n`,
     'src/styles.css': 'body { line-height: 1.6; }\n',
     'src/assets.d.ts': 'declare module "*.css" { const css: string; export default css; }\n' };
