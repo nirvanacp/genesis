@@ -1,3 +1,4 @@
+import {HnLink} from './components/navigation-link';
 import {Skeleton,PendingAction} from './components/skeleton';
 import { serviceMessage } from "@genesis/sdk";
 import { backendStorage } from "./backend";
@@ -135,10 +136,7 @@ function Library({ context }: { context: AppletContext }) {
     {query && !loading && loaded && !message && !rows.some(record => record.value.title.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())) && <p className="notice">No matches in loaded stories.{!done && " Load more to search the next page."}</p>}
     <ol className="stories">{rows.filter(record => record.value.title.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())).map(record => {
       const value = record.value, memberships = categories ? activeMembership(value.categoryIds, categories) : [];
-      return <li key={value.itemId} className="story-card" onClick={event => tileClick(event.nativeEvent, () => { void openDiscussion(value.discussionUrl); })}><h2><a className="story-link" href={value.articleUrl ?? value.discussionUrl} onClick={event => {
-        if (!value.articleUrl) { event.preventDefault(); void openDiscussion(value.discussionUrl); }
-        else if(context.binding.runtimeApiVersion===3){event.preventDefault();void context.webViews.open({url:value.articleUrl});}
-      }}>{value.title}</a></h2>
+      return <li key={value.itemId} className="story-card" onClick={event => tileClick(event.nativeEvent, () => { void openDiscussion(value.discussionUrl); })}><h2><HnLink context={context} className="story-link" url={value.articleUrl??value.discussionUrl}>{value.title}</HnLink></h2>
         <div className="story-meta">{memberships.map(id => <span className="tag" key={id}>{categories?.categories.find(category => category.value.id === id)?.value.name}</span>)}
           <span>{value.articleUrl ? new URL(value.articleUrl).hostname : "news.ycombinator.com"}</span><span>Saved {new Date(value.savedAtMs).toLocaleDateString()}</span></div>
         <div className="row-actions"><button onClick={() => { void openDiscussion(value.discussionUrl); }}>Discussion</button>

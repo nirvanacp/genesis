@@ -31,3 +31,20 @@ Missing content anchors and unfinished profile/discussion markup remain loading 
 The [source loading repair qualification](../../../.reports/phase-5/2026-11-01/091700-genesis-loading-repair-verification.md) records installed SDK 0.4.1 and tools 0.4.2 revisions, repeated X navigation, genuine recovery and shared-host checks. It supersedes earlier loading/recovery qualification for those journeys and states the remaining device/transport/accessibility limits.
 
 Gray content skeletons are the default for source transitions, account/library/dialog reads and pagination. Pending operations retain hidden accessible status and real errors remain explicit. See [skeleton verification](../../../.reports/phase-5/2026-11-01/093559-genesis-skeleton-loading-verification.md) for installed revisions and limits.
+
+## Explicit navigation coverage
+
+Schema 3/API 4 with SDK 0.5.0 delegates URL classification to the host. The manifest declares custom feed/discussion/profile/information routes, original-site form routes, the `original-hn` current-page action, external website policy and unsupported recovery. The foreground no longer maintains a separate form-path classifier. Article title links and Saved article links carry visible website cues.
+
+| Journey | Policy / rendering | Return and verification |
+| --- | --- | --- |
+| Feed → discussion | Declared custom item rule, bounded owned comments | Passed real emulator feed with 30 stories and discussion with 100 comments |
+| Profile, feed filters, More | Manifest custom route IDs; no local presentation regex | Existing extraction preserved; full route sweep remains unqualified |
+| Comment fragment | Existing owned anchor scrolls locally; missing bounded comment navigates to its custom item permalink | Static wiring checked; no website fallback |
+| External article | External decision and visible Website cue | Device entry/Return restored owned discussion |
+| Login/reply/vote/post/account forms | Declared website routes; native Return | Original session behavior retained; no submissions performed |
+| Current page / more original content | `original-hn` website action on declared custom routes | Explicit original-site entry, separate from normal reading |
+| Unknown internal URL | Native unsupported recovery with explicit website option | Host policy component checked |
+| Saved/Search | Existing owned pages and service authority | Search placeholder preserved; records unchanged |
+
+Device qualification used the migrated development override because the existing emulator already had an HN override. APK-selected HN is also rebuilt from this manifest. Refer to the final phase-5 navigation delivery record for exact revisions and unperformed checks. No authentication, account, bookmark or category data was reset.
