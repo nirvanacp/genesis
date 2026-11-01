@@ -27,7 +27,7 @@ export { RUNTIME_API_VERSION } from "./manifest";
 export type { Manifest, Source, AppletBundle } from "./manifest";
 export interface ServiceResponse<T = unknown> { status: number; body: T }
 
-export type { SourceSnapshot, SourceState } from "./runtime";
+export type { SourceSnapshot, SourceState, SourceProblem, SourcePublication } from "./runtime";
 export type { IsolatedManifest, RouteContract, RouteRule } from "./manifest";
 export function defineForeground(entry: PageEntry & { screens: string[] }): AppletEntry {
   return { ...definePage(entry), registration: {screens:entry.screens} };
