@@ -1,3 +1,4 @@
+import {Skeleton,PendingAction} from './components/skeleton';
 import { serviceMessage } from "@genesis/sdk";
 import { backendStorage } from "./backend";
 import { useEffect, useRef, useState } from "react";
@@ -118,12 +119,14 @@ function Library({ context }: { context: AppletContext }) {
       <p className="muted">Good stories, kept for later.</p></header>
     {section === "saved" && <><label className="search"><Icon name="search" /><input type="search" aria-label="Filter this page" placeholder="Filter this page" value={query} onChange={event => setQuery(event.target.value)} /></label>
       <p className="filter-note">Filters stories loaded below. Use Load more to include older saves.</p></>}
+    {section === "categories"&&!categories&&loading&&<Skeleton kind="form" label="Loading categories"/>}
+    {message&&section==="categories"&&<p role="alert" className="notice">{message}</p>}
     {categories && section === "categories" && <CategoryManager context={context} snapshot={categories} changed={() => setVersion(value => value + 1)} />}
     {section === "saved" && <><nav className="filters" aria-label="Bookmark filters">
       {[{ id: "all", name: "All" }, { id: "uncategorized", name: "Uncategorized" }, ...sortedCategories.map(record => record.value)]
         .map(category => <button key={category.id} aria-pressed={filter === category.id} onClick={() => selectFilter(category.id)}>{category.name}</button>)}
     </nav>
-    <div className="library-status" role="status">{loading ? `Updating saved stories${scanned ? ` · ${scanned} checked` : ""}…` : !loaded || message ? "" : `${rows.length} saved stories loaded${done ? "" : " · More available"}`}</div>
+    {loading?<Skeleton rows={rows.length?1:3} label="Updating saved stories"/>:<div className="library-status" role="status">{!loaded||message?"":`${rows.length} saved stories loaded${done?"":" · More available"}`}</div>}
     {message && <p role="alert" className="notice">{message} <button onClick={() => setVersion(value => value + 1)}>Reload library</button></p>}
     {missing > 0 && <p className="notice">Skipped {missing} missing index targets. Existing data has been preserved.</p>}
     {!loading && done && rows.length === 0 && !message && <section className="empty"><h2>{filter === "all" ? "A place for the next good read" : "No stories in this filter"}</h2>
@@ -143,7 +146,7 @@ function Library({ context }: { context: AppletContext }) {
           <button onClick={() => setRemoveId(value.itemId)}>Remove</button></div>
         {removeId === value.itemId && <div className="remove-prompt" role="group" aria-label={`Remove ${value.title}`}>
           <span>Remove this saved story?</span>
-          <button disabled={removing} onClick={() => { void removeStory(record); }}>Remove story</button>
+          <button disabled={removing} onClick={() => { void removeStory(record); }}>{removing?<PendingAction label="Removing saved story"/>:"Remove story"}</button>
           <button disabled={removing} onClick={() => setRemoveId(null)}>Keep story</button>
         </div>}
       </li>;
