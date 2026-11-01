@@ -2,7 +2,7 @@ import {defineSourceAdapter} from '@genesis/sdk';
 import {currentHandle,resetAccountConfirmation} from './source-account';
 import {extractPost} from './extract-post';
 import {safeLink,postUrl,validHandle,isObject} from './domain';
-import {imageUrl,routeKind,screens,type XModel,type XPost,type XEntry} from './view-model';
+import {imageUrl,routeKind,screens,hasContent,matchesDestination,type XModel,type XPost,type XEntry} from './view-model';
 const text=(element:Element|null|undefined,max=1200)=>(element instanceof HTMLElement?element.innerText:element?.textContent??'').trim().slice(0,max);
 const destination=(value:string|null|undefined)=>{try{return value?safeLink(new URL(value,location.href).href):null;}catch{return null;}};
 const key=(value:string)=>{let hash=2166136261;for(let i=0;i<value.length;i++)hash=Math.imul(hash^value.charCodeAt(i),16777619);return(hash>>>0).toString(36);};
@@ -10,6 +10,7 @@ export default defineSourceAdapter({adapters:screens,activate(context){
   resetAccountConfirmation();
   let targets=new Map<string,{element:HTMLElement;text:string}>(),moreTimer:ReturnType<typeof setTimeout>|undefined,publication:ReturnType<typeof setTimeout>|undefined;
   const publish=()=>{
+    targets.clear();
     const kind=routeKind(location.pathname);if(!kind){void context.source.publish({state:'unsupported'});return;}
     const handle=currentHandle(),signedOut=!!document.querySelector('[data-testid="loginButton"]');
     if(context.sourceId==='account'&&location.pathname==='/home'&&handle){location.replace(`https://x.com/${handle}`);return;}
@@ -38,7 +39,7 @@ export default defineSourceAdapter({adapters:screens,activate(context){
       }
     }
     const primary=document.querySelector('[data-testid="primaryColumn"]');
-    if(!primary){void context.source.publish({state:signedOut?'auth-required':document.readyState==='complete'?'unsupported':'loading'});return;}
+    if(!primary){void context.source.publish({state:signedOut?'auth-required':'loading'});return;}
     const model:XModel={kind,title:kind==='timeline'?'Home':kind==='saved'?'Saved':kind==='discovery'?'Explore':kind==='conversation'?'Post':kind==='post-metadata'?'Post activity':kind==='media'?'Media':kind==='people'?'People':kind==='collection'?'Collections':kind==='notifications'?'Notifications':'Profile',account:{status:handle?'signed-in':signedOut?'signed-out':'unknown',handle},tabs:[],posts:[],entries:[],partial:false,emptyText:null};
     if(['notifications','saved'].includes(kind)&&signedOut){void context.source.publish({state:'auth-required',data:model});return;}
     const nextTargets=new Map<string,{element:HTMLElement;text:string}>();
@@ -93,7 +94,7 @@ export default defineSourceAdapter({adapters:screens,activate(context){
     }
     const profileName=primary.querySelector('[data-testid="UserName"]');
     const profileHandle=location.pathname.split('/')[1];
-    if(kind==='profile'&&profileName&&validHandle(profileHandle)){
+    if(kind==='profile'&&profileName&&validHandle(profileHandle)&&text(profileName,400).toLowerCase().includes('@'+profileHandle.toLowerCase())){
       model.title=text(profileName,200).split('\n')[0];model.profile={handle:profileHandle,name:model.title,description:text(primary.querySelector('[data-testid="UserDescription"]'),4000),details:text(primary.querySelector('[data-testid="UserProfileHeader_Items"]'),1000),links:[...primary.querySelectorAll<HTMLAnchorElement>('a[href]')].filter(a=>new RegExp(`^/${profileHandle}/(following|followers|verified_followers)$`,'i').test(a.getAttribute('href')??'')).slice(0,3).map(a=>({label:text(a,100),url:a.href})),avatar:imageUrl(primary.querySelector<HTMLImageElement>(`a[href="/${profileHandle}/photo"] img`)?.src),banner:imageUrl(primary.querySelector<HTMLImageElement>(`a[href="/${profileHandle}/header_photo"] img`)?.src),verified:!!profileName.querySelector('[data-testid="icon-verified"]')};
     }
     const empty=primary.querySelector('[data-testid="emptyState"]');if(empty)model.emptyText=text(empty,1800);
@@ -101,12 +102,13 @@ export default defineSourceAdapter({adapters:screens,activate(context){
       const heading=[...primary.querySelectorAll('h1,h2,h3')].map(e=>text(e,180)).find(t=>/nothing|no (posts|results|notifications)|haven.t|not (available|exist)|doesn.t exist/i.test(t));if(heading)model.emptyText=heading;
     }
     const errors=[...primary.querySelectorAll('[role="alert"],button')].map(e=>text(e,250)).find(t=>/something went wrong|try again|retry|rate limit/i.test(t));
-    if(errors&&!model.posts.length&&!model.entries.length){void context.source.publish({state:'error',data:model,error:{message:errors}});return;}
+    if(errors&&!hasContent(model)){void context.source.publish({state:'error',data:model,error:{code:'UPSTREAM_FAILURE',retryable:true,message:'X could not load this page. Try again in a moment.'}});return;}
     if(kind==='post-metadata'&&!model.posts.length){model.information=[...primary.querySelectorAll('[data-testid="cellInnerDiv"],h2')].filter(e=>!e.querySelector('input,textarea,article')).map(e=>text(e,800)).filter(Boolean).slice(0,15).join('\n').slice(0,6000);}
     targets=nextTargets;
     while(new TextEncoder().encode(JSON.stringify(model)).length>150000){model.partial=true;if(model.entries.length)model.entries.pop();else if(model.posts.length>1)model.posts.pop();else break;}
-    const ready=model.posts.length||model.entries.length||model.profile||model.information;
-    void context.source.publish({state:ready?'ready':model.emptyText?'empty':primary.querySelector('[role="progressbar"]')?'loading':signedOut?'auth-required':'unsupported',data:model});
+    model.contentIdentity={url:location.href,selectedTabKey:model.tabs.filter(t=>t.selected).map(t=>t.key).join(','),postId:focusedId,profileHandle:model.profile?.handle};
+    const ready=hasContent(model)&&matchesDestination(model,location.href);
+    void context.source.publish({state:ready?(model.emptyText&&!model.posts.length&&!model.entries.length&&!model.profile?'empty':'ready'):'loading',data:model});
   };
   const schedule=()=>{if(!publication)publication=setTimeout(()=>{publication=undefined;publish();},300);};
   publish();context.watchElements('x-content',{selector:'body',attributes:['href','src','aria-selected','data-testid'],text:true,limit:1,contentKey:()=>location.href},{enter:schedule,update:schedule});
