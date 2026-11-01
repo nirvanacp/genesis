@@ -73,3 +73,5 @@ Story headings share `src/components/story-heading.tsx` and `src/story.css`. Hom
 | Narrow/dark | 320-CSS-pixel foreground check had no horizontal overflow; dark theme tokens applied and Save target remained 48px |
 
 Static TypeScript and applet check/build pass. Physical-device/TalkBack and the complete signed-in/source-route matrix remain unqualified. Backend startup is still operator-owned; connection recovery does not authorize starting a new service or resetting records.
+
+Review repairs: failed-refresh retention is restricted to public feeds and discussions. Private lists, profiles and account screens require fresh source data. Comment disclosure now collapses the entire reply branch using nested native details elements.

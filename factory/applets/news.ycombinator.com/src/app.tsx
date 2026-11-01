@@ -6,7 +6,7 @@ import {Skeleton} from './components/skeleton';
 import {useEffect,useRef,useState} from 'react';
 import {defineForeground,createOwnedScope,type AppletContext,type SourceSnapshot} from '@genesis/sdk';
 import {mountReact} from '@genesis/sdk/react';
-import {safeUrl,type HnModel,type TextPart,type Story} from './view-model';
+import {safeUrl,type HnModel,type TextPart,type Story,type Comment} from './view-model';
 import {tileClick} from './story-interaction';
 import {openStoryDialog} from './components/story-dialog';
 import library from './library';
@@ -19,10 +19,11 @@ function App({context}:{context:AppletContext}){
   const owned=useRef<HTMLDivElement>(null),positions=useRef(new Map<string,number>()),previous=useRef(''),lastPages=useRef(new Map<string,HnModel>());
   useEffect(()=>context.source.subscribe(value=>{
     const cacheKey=value.sourceId+':'+value.url;
-    if(['ready','empty'].includes(value.state)&&validModel(value.data)&&value.data.kind!=='account'){
+    if(['ready','empty'].includes(value.state)&&validModel(value.data)&&cacheablePage(value.url,value.data)){
       lastPages.current.set(cacheKey,value.data);if(lastPages.current.size>16)lastPages.current.delete(lastPages.current.keys().next().value!);
     }
-    const cached=value.state==='error'?lastPages.current.get(cacheKey):undefined;
+    const retained=lastPages.current.get(cacheKey);
+    const cached=value.state==='error'&&retained&&cacheablePage(value.url,retained)?retained:undefined;
     setSnapshot(old=>{if(old&&(old.pageId||old.url)!==(value.pageId||value.url)){const key=old.pageId||old.url;positions.current.set(key,window.scrollY);}return cached?{...value,data:cached}:value;});
   }),[context]);
   const model=validModel(snapshot?.data)?snapshot!.data as HnModel:null;
@@ -48,6 +49,7 @@ function App({context}:{context:AppletContext}){
     </StoryHeading>
     <button type="button" className="story-save" aria-label={'Save story: '+item.snapshot.title} title="Save story" onClick={()=>openStoryDialog(context,item.snapshot)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-6-4-6 4z"/></svg></button>
   </article>;
+  const renderComments=(branches:CommentBranch[]):React.ReactNode=>branches.map(({comment,replies})=><details className="comment" id={`comment-${comment.id}`} open key={comment.id}><summary><HnLink context={context} url={`${origin}/user?id=${encodeURIComponent(comment.author)}`}><strong>{comment.author}</strong></HnLink><span className="meta">{comment.age}</span></summary><div className="rich">{rich(comment.parts)}</div><div className="actions">{link(comment.contextUrl,'Permalink')}{comment.links.map(l=><span key={l.url}>{link(l.url,l.label)}</span>)}{comment.replyUrl&&link(comment.replyUrl,'Reply on website',true)}</div>{renderComments(replies)}</details>);
   const ready=!!model&&['ready','empty','error'].includes(snapshot?.state??'');
   return <><style>{theme}{css}{storyCss}</style><main>{error&&<p role="alert">{error}</p>}{snapshot?.pageId?<div ref={owned}/>:<>
     <h1>{ready?(model!.title==='Hacker News'?'Top stories':model!.title):'Hacker News'}</h1>
@@ -58,7 +60,7 @@ function App({context}:{context:AppletContext}){
       {model!.parts.length>0&&<section className="rich">{rich(model!.parts)}</section>}
       {model!.kind==='discussion'&&<div className="actions">{link(snapshot.url,'Open discussion on HN website',true)}</div>}
       {model!.profile&&<section><dl>{model!.profile.fields.map(field=><div key={field.label}><dt><strong>{field.label}</strong></dt><dd className="rich">{rich(field.parts)}</dd></div>)}</dl><div className="actions">{model!.profile.links.map(l=><span key={l.url}>{link(l.url,l.label)}</span>)}</div></section>}
-      {model!.comments.map(comment=><details className="comment" id={`comment-${comment.id}`} open key={comment.id} style={{marginLeft:Math.min(comment.depth,4)*8}}><summary><HnLink context={context} url={`${origin}/user?id=${encodeURIComponent(comment.author)}`}><strong>{comment.author}</strong></HnLink><span className="meta">{comment.age}</span></summary><div className="rich">{rich(comment.parts)}</div><div className="actions">{link(comment.contextUrl,'Permalink')}{comment.links.map(l=><span key={l.url}>{link(l.url,l.label)}</span>)}{comment.replyUrl&&link(comment.replyUrl,'Reply on website',true)}</div></details>)}
+      {renderComments(commentBranches(model!.comments))}
       {snapshot.state==='empty'&&<p className="notice">No items on this page.</p>}
       {model!.partial&&<p className="banner">More comments are available on the website. {link(snapshot.url,'Continue reading',true)}</p>}
       {model!.nextUrl&&<div className="actions">{link(model!.nextUrl,'More')}</div>}
@@ -70,4 +72,22 @@ function App({context}:{context:AppletContext}){
 function validModel(value:unknown):value is HnModel {
   const model=value as HnModel|undefined;
   return !!model&&['feed','discussion','profile','information','account'].includes(model.kind)&&Array.isArray(model.stories)&&Array.isArray(model.comments)&&Array.isArray(model.parts)&&model.stories.length<=200&&model.comments.length<=100;
+}
+
+// Only known public reading routes may survive a failed refresh. Account-dependent
+// lists and profiles can contain private content even when their model is a feed.
+function cacheablePage(url:string,model:HnModel):boolean {
+  const path=new URL(url).pathname;
+  return model.kind==='discussion'&&path==='/item'||model.kind==='feed'&&['/','/news','/newest','/front','/newcomments','/ask','/show','/shownew','/asknew','/jobs','/best','/active','/from'].includes(path);
+}
+interface CommentBranch {comment:Comment;replies:CommentBranch[]}
+function commentBranches(comments:Comment[]):CommentBranch[] {
+  const roots:CommentBranch[]=[],parents:CommentBranch[]=[];
+  for(const comment of comments){
+    while(parents.length&&parents[parents.length-1].comment.depth>=comment.depth)parents.pop();
+    const branch:CommentBranch={comment,replies:[]};
+    (parents.length?parents[parents.length-1].replies:roots).push(branch);
+    parents.push(branch);
+  }
+  return roots;
 }
