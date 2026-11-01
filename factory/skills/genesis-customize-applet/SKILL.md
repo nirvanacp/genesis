@@ -24,3 +24,10 @@ Require a route-to-owned-screen/provider inventory for changed behavior. Verify 
 Require [evidence-based loading](../../guides/patterns.md#loading-is-an-unresolved-observation). Define readiness, empty, auth/challenge and failure evidence per route. Missing selectors or HTML completion never prove failure. Verify recorded transitions through slow initialization and real failures, including repeated navigation and provider return. Ordinary loading must not ask for Retry; compilation and final screenshots cannot qualify this behavior. Platform faults require a minimal sanitized reproduction; keep website selectors in applets.
 
 Use [skeletons by default](../../guides/design.md#skeletons-are-the-default-pending-ui) across source transitions, owned libraries, account verification, pagination and dialog reads. Replace visible loading prose with destination-shaped neutral placeholders; keep assistive status, useful existing content and real failure/empty/confirmation copy. Verify a pending frame, completion, errors and Back/Close. This is a default design requirement, not a question the user must answer.
+
+
+## Explicit navigation requirement
+
+Read [navigation](../../guides/navigation.md). New work uses schema 3/API 4 and SDK/tools 0.5.0. Build establishes the route/action inventory before rendering. Customization updates the manifest, adapter/model, renderer and README acceptance table together. Verification exercises actual links, unknown tabs, redirects, query/hash changes, original-site actions, external pages, website Back and Return.
+
+Do not maintain an independent presentation regex or use unknown/missing content as a website fallback. Resolve observed URL tabs and label website controls before activation. Use host route metadata for source screen selection. Preserve required custom workflows; inaccessible content stays required/blocked. Direct webViews.open examples elsewhere apply only to legacy API 3. A route/typecheck pass is not live navigation or source qualification. Never submit protected actions just to verify entry/return.

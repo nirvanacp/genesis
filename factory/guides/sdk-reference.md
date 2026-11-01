@@ -1,6 +1,8 @@
 # SDK and manifest reference
 
-Current implementation uses SDK `0.4.1` / tools `0.4.2`, runtime API `3`, manifest schema `2`, data schema `1` and bundle format `1`. Read [the isolated architecture and contract](isolated-applets.md) before building or changing an applet. Packages are supplied as packed artifacts, not a published registry service. The supported imports are `@genesis/sdk`, `@genesis/sdk/react` and `@genesis/sdk/manifest`. Bootstrap/runtime exports are tooling-only.
+Read [explicit navigation](navigation.md) for schema-3/API-4 URL coverage, website actions, SDK controls and Return behavior. SDK/tools 0.5.0 use the host policy for new applets. Schema-2/API-3 examples below remain legacy compatibility reference wherever they use direct `webViews.open`; migrate those calls through resolve/activate or the navigation controls before using API 4.
+
+Current implementation uses SDK `0.5.0` / tools `0.5.0`, runtime API `3`, manifest schema `2`, data schema `1` and bundle format `1`. Read [the isolated architecture and contract](isolated-applets.md) before building or changing an applet. Packages are supplied as packed artifacts, not a published registry service. The supported imports are `@genesis/sdk`, `@genesis/sdk/react` and `@genesis/sdk/manifest`. Bootstrap/runtime exports are tooling-only.
 
 ## Entry points and ownership
 

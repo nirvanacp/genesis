@@ -81,3 +81,5 @@ Source adapters publish bounded validated data and perform only revalidated read
 The emulator migration checks cover real HN/X browsing, account-observed Categories, save/read-back/cleanup, internal/external return paths, media/notification variants, failed refresh, draft Stay/Leave and renderer recovery. Exact builds and unverified boundaries are recorded in the [final acceptance report](.reports/phase-5/2026-10-31/231100-genesis-isolated-applets-verification.md); historical reports qualify only their recorded environments.
 
 Use [current maintenance](.docs/phase-5/2026-10-31/194740-genesis-isolated-applet-maintenance.md), [architecture](.architecture/README.md), [the implementation plan](.plans/phase-5/2026-10-31/171848-genesis-isolated-applet-architecture-plan.md) and [factory getting started](factory/guides/getting-started.md). Earlier phase-3/4 plans/guides are background where superseded by this API-3 contract.
+
+Applet navigation coverage and website handoffs are described in [the factory navigation guide](factory/guides/navigation.md). New applets use schema 3/API 4 with SDK/tools 0.5.0; the host retains API-3 compatibility.

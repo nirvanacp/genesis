@@ -1,5 +1,7 @@
 # Applet agent skills
 
+Start with [explicit navigation](../guides/navigation.md) for SDK/tools 0.5.0, schema 3/API 4, route coverage and marked website actions. Existing schema-2/API-3 packages retain compatibility.
+
 Read [../AGENTS.md](../AGENTS.md) first. These skills guide work on applets, not Genesis internals. They can be read directly by any coding agent; installation into a particular agent's skill registry is optional and agent-specific.
 
 | Skill | Use when |

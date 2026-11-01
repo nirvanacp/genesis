@@ -53,3 +53,5 @@ A public app store, production app distribution, and built-in coding-agent conne
 These pages explain the product and the decisions you make. The [creator kit](../factory/README.md) contains the implementation instructions, SDK reference, and verification guides your agent needs.
 
 You do not need Genesis's Android or Rust source to build an applet.
+
+Applet navigation coverage and website handoffs are described in [the factory navigation guide](../factory/guides/navigation.md). New applets use schema 3/API 4 with SDK/tools 0.5.0; the host retains API-3 compatibility.

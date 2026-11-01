@@ -1,5 +1,7 @@
 # Genesis applet factory
 
+Start with [explicit navigation](guides/navigation.md) for SDK/tools 0.5.0, schema 3/API 4, route coverage and marked website actions. Existing schema-2/API-3 packages retain compatibility.
+
 Build an application around the websites you use. Describe the screens and behavior you want to your coding agent; the agent uses this kit to implement the website adapters, custom UI, and application data. You do not need to know how Genesis's Android or Rust code works.
 
 An applet can combine several websites. Each source runs in its own browser document; an applet can extract permitted data there, save applet records, and present a shared page. It cannot read another source's DOM through a global browser object. Genesis runs and navigates the websites, supplies native controls, and provides the SDK used by the applet.
@@ -31,7 +33,7 @@ Agents should work from an ordinary product request without requiring a technica
 
 In this monorepo, run `./factory/start-applet-servers.sh` from the Genesis root to start all local applet backends. For Android access after a computer/device restart, run `./factory/start-applet-servers.sh --device <adb-serial>` to restore tunnels and service connections too. Each applet also has its own `start.sh`. These are operator commands. Coding agents maintain them and use static checks; agents must not execute startup scripts or start services unless the user explicitly asks them to run services. See the services guide for prerequisites, storage, shutdown and port reservations.
 
-This kit matches SDK `0.4.1` / tools `0.4.2`, runtime API `3`, bundle format `1` and manifest schema `2`. TypeScript, managed DOM effects, optional React pages, native manifest sections, applet-local documents, declared HTTPS services, and multiple sources are available.
+This kit matches SDK `0.5.0` / tools `0.5.0`, runtime API `4`, bundle format `1` and manifest schema `3`. TypeScript, managed DOM effects, optional React pages, native manifest sections, applet-local documents, declared HTTPS services, and multiple sources are available.
 
 The standalone `genesis-applet` CLI creates, checks, and builds applets without Rust or Android compilers. A compatible prebuilt debug host accepts explicit development installation over authorized adb, including code updates and rollback. Applet code and data keep a stable ID. Release hosts load bundled packages only. Production publisher trust, public distribution, and coding-agent connectors remain future work.
 

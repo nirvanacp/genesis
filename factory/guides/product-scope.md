@@ -1,5 +1,7 @@
 # Product scope and clarification
 
+Read [explicit navigation](navigation.md) for schema-3/API-4 URL coverage, website actions, SDK controls and Return behavior. SDK/tools 0.5.0 use the host policy for new applets. Schema-2/API-3 examples below remain legacy compatibility reference wherever they use direct `webViews.open`; migrate those calls through resolve/activate or the navigation controls before using API 4.
+
 Use this workflow with [factory instructions](../AGENTS.md) and the selected [applet skill](../skills/README.md). It applies to new applications, feature additions and maintenance. It travels with the creator kit and requires no access to the Genesis monorepo or its historical plans.
 
 ## Keep the requested application intact
@@ -83,3 +85,7 @@ These are manual reasoning examples, not executable tests or promised tool capab
 | A QA applet remains in the launcher | Treat this as unfinished delivery cleanup, even if its individual UI checks passed. |
 
 The product brief must include the mandatory route inventory with owned-screen/adapter mapping, website-provider actions and unknown-route recovery. See [isolated applets](isolated-applets.md). A route match is not evidence of valid loaded source content.
+
+## Route and action inventory
+
+Before implementation, record each normal link/tab, same-URL website action, external destination and return path. The README or governing plan table must name example URL, manifest rule/source, screen/adapter or action, readiness/empty/gated/error evidence, visible handoff cue, expected Back/Return and actual verification status. Keep inaccessible required journeys marked blocked; declarations alone are not acceptance.

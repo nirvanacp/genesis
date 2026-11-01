@@ -1,6 +1,8 @@
 # Build applets with an owned foreground
 
-The API-3 architecture uses SDK `0.4.1` / tools `0.4.2`, manifest schema `2`, data schema `1` and bundle format `1`. A source adapter runs inside a hidden website document. An owned foreground runs in a separate packaged document. The Android host owns an opaque barrier between them, native navigation, recovery and explicit website views. A new applet must declare both documents and a URL contract.
+Read [explicit navigation](navigation.md) for schema-3/API-4 URL coverage, website actions, SDK controls and Return behavior. SDK/tools 0.5.0 use the host policy for new applets. Schema-2/API-3 examples below remain legacy compatibility reference wherever they use direct `webViews.open`; migrate those calls through resolve/activate or the navigation controls before using API 4.
+
+The API-3 architecture uses SDK `0.5.0` / tools `0.5.0`, manifest schema `3`, data schema `1` and bundle format `1`. A source adapter runs inside a hidden website document. An owned foreground runs in a separate packaged document. The Android host owns an opaque barrier between them, native navigation, recovery and explicit website views. A new applet must declare both documents and a URL contract.
 
 ## Define the route inventory first
 
