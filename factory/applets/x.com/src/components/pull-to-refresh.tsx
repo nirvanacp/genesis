@@ -12,6 +12,20 @@ export function PullToRefresh({enabled,busy,onRefresh,resetKey,children}:{
   refresh.current=onRefresh;
   useEffect(()=>{
     const element=root.current;if(!element)return;
+    const observed=new Set<Element>();
+    const measure=()=>{
+      const header=element.querySelector('.screen-title,.library-title'),tabs=element.querySelector('.mode');
+      for(const node of [header,tabs])if(node&&!observed.has(node)){observed.add(node);sizes.observe(node);}
+      const headerHeight=header?.getBoundingClientRect().height??0,tabHeight=tabs?.getBoundingClientRect().height??0;
+      element.style.setProperty('--screen-header-height',headerHeight+'px');
+      element.style.setProperty('--refresh-top',headerHeight+tabHeight+'px');
+    };
+    const sizes=new ResizeObserver(measure),children=new MutationObserver(measure);
+    children.observe(element,{childList:true});measure();
+    return()=>{sizes.disconnect();children.disconnect();};
+  },[resetKey]);
+  useEffect(()=>{
+    const element=root.current;if(!element)return;
     let gesture:{x:number;y:number;distance:number}|null=null;
     setDistance(0);
     const start=(event:TouchEvent)=>{
@@ -54,7 +68,7 @@ export function PullToRefresh({enabled,busy,onRefresh,resetKey,children}:{
     };
   },[enabled,busy,resetKey]);
   return <div className="refresh-region" ref={root}>
-    {(busy||distance>0)&&<div className={'refresh-feedback'+(busy?' refreshing':'')} role="status" style={{top:Math.max(8,distance-32)}}><Icon name="refresh"/><span>{busy?'Refreshing…':distance>=threshold?'Release to refresh':'Pull to refresh'}</span></div>}
+    {(busy||distance>0)&&<div className={'refresh-feedback'+(busy?' refreshing':'')} role="status" style={{top:`calc(var(--refresh-top, 106px) + ${Math.max(0,distance-32)}px)`}}><Icon name="refresh"/><span>{busy?'Refreshing…':distance>=threshold?'Release to refresh':'Pull to refresh'}</span></div>}
     {children}
   </div>;
 }
