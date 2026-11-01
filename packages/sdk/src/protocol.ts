@@ -1,4 +1,5 @@
 export interface ExecutionContext {
+  features?: string[];
   runtimeApiVersion?: number;
   role?: "foreground" | "source";
   route?: import("./manifest").RouteResolution;
