@@ -6,7 +6,7 @@ export default defineSourceAdapter({adapters:['feed','discussion','profile','inf
   const publish=()=>{
     const url=new URL(location.href),path=url.pathname;
     if(document.querySelector('input[type="password"]')||/please log in|you have to be logged in/i.test(document.body.textContent?.trim().slice(0,300)??'')){void context.source.publish({state:'auth-required'});return;}
-    if(!document.querySelector('#hnmain')&&!['/formatdoc','/newsfaq.html','/newsguidelines.html'].includes(path)){void context.source.publish({state:'unsupported'});return;}
+    if(!document.querySelector('#hnmain')&&!['/formatdoc','/newsfaq.html','/newsguidelines.html'].includes(path)){void context.source.publish({state:'loading'});return;}
     const account=document.querySelector('.pagetop a[href^="user?id="]')?.textContent?.trim()??null;
     const model:HnModel={kind:'feed',title:'Hacker News',account,logoutUrl:null,stories:[],comments:[],parts:[],nextUrl:null,partial:false};
     if(context.sourceId==='me'&&['/','/news'].includes(path)){model.kind='account';model.title='Me';}
@@ -20,7 +20,7 @@ export default defineSourceAdapter({adapters:['feed','discussion','profile','inf
         const cells=row.children;if(cells.length!==2)return[];const label=cells[0].textContent?.trim().replace(/:$/,'');
         return label&&['user','created','karma','about'].includes(label)?[{label,parts:richText(cells[1],location.href)}]:[];
       });
-      if(!fields.length){void context.source.publish({state:'unsupported'});return;}
+      if(!fields.length){void context.source.publish({state:'loading'});return;}
       model.profile={name,fields,links:['submitted','threads','favorites'].map(route=>({label:route==='submitted'?'Submissions':route==='threads'?'Comments':'HN favorites',url:`https://news.ycombinator.com/${route}?id=${encodeURIComponent(name)}`}))};
     }else if(['/lists','/leaders','/formatdoc','/newsfaq.html','/newsguidelines.html'].includes(path)){
       model.kind='information';model.title=path==='/lists'?'Lists':document.title||'Hacker News';model.parts=richText(document.querySelector('#bigbox')??document.querySelector('body center table')??document.body,location.href,16000);
@@ -50,10 +50,10 @@ export default defineSourceAdapter({adapters:['feed','discussion','profile','inf
       model.nextUrl=safeUrl(document.querySelector<HTMLAnchorElement>('a.morelink')?.getAttribute('href')??'',location.href);
       if(!document.querySelector('a.morelink'))model.nextUrl=null;
       if(!model.stories.length&&!model.comments.length&&model.kind==='discussion'&&!model.parts.length){
-        const top=document.querySelector('tr.athing[id]');if(!top){void context.source.publish({state:'unsupported'});return;}
+        const top=document.querySelector('tr.athing[id]');if(!top){void context.source.publish({state:'loading'});return;}
       }
     }
-    if(model.kind==='feed'&&!model.stories.length&&!model.comments.length&&!document.querySelector('table.itemlist')){void context.source.publish({state:'unsupported'});return;}
+    if(model.kind==='feed'&&!model.stories.length&&!model.comments.length&&!document.querySelector('table.itemlist')){void context.source.publish({state:'loading'});return;}
     if(model.kind==='feed')model.title=document.title.replace(/\s*\|\s*Hacker News$/,'')||'Hacker News';
     void context.source.publish({state:model.stories.length||model.comments.length||!['feed','discussion'].includes(model.kind)?'ready':'empty',data:model});
   };

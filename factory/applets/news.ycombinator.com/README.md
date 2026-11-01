@@ -25,3 +25,5 @@ The phase-5 emulator checks cover owned feed/discussion, new-comments/parent/con
 Post, reply, authentication and account forms remain original website forms in the framework provider. Native Stay/Leave protects a live edited form. Legacy public draft records are preserved in host storage but are not injected into original forms; durable form restoration after process death is not supplied. The obsolete source-style/account/draft-injection modules were removed so new customization work follows the active source/foreground contract.
 
 Historical API-2 checks and older phone reports qualify only their recorded revisions, not this migration. Search remains the documented placeholder. Real posting/voting/account mutations are not routine QA actions.
+
+Missing content anchors and unfinished profile/discussion markup remain loading until validated content or the framework deadline. Invalid route parameters still produce unsupported outcomes; successful empty structures remain distinct from failed reads.
