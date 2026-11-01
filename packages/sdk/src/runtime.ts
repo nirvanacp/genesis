@@ -49,6 +49,7 @@ export interface SourceSnapshot<T = unknown> {
   route?: RouteResolution;
 }
 export interface AppletContext {
+  sharing: {readonly supported:boolean; shareUrl(options:{url:string;title?:string}):Promise<{status:"presented"}>};
   source: {
     publish(snapshot: SourcePublication): Promise<void>;
     subscribe(callback: (snapshot: SourceSnapshot) => void): Dispose;
@@ -139,6 +140,10 @@ export class ManagedRuntime {
     this.navigationClient=new NavigationClient(call,this.abort.signal);
     this.sourceScheduling = [3,4].includes(binding.runtimeApiVersion??0) && binding.role === "source";
     this.context = {
+      sharing: {
+        supported: binding.role==='foreground'&&!!binding.features?.includes('share-url'),
+        shareUrl: options => binding.role==='foreground'&&binding.features?.includes('share-url')?this.call('sharing.shareUrl',options):Promise.reject(new Error('Native sharing is unavailable on this host')),
+      },
       source: {
         publish: snapshot => {
           this.publishValue = snapshot;
