@@ -2,7 +2,7 @@ import {useEffect,useRef,useState,type FormEvent} from 'react';
 import {defineForeground,createOwnedScope,type AppletContext,type SourceSnapshot} from '@genesis/sdk';
 import {mountReact} from '@genesis/sdk/react';
 import {safeLink,validHandle} from './domain';
-import {validModel,routeKind,screens,hasContent,matchesDestination,type XModel} from './view-model';
+import {validModel,screens,hasContent,matchesDestination,type XModel} from './view-model';
 import {recordAccountObservation} from './account';
 import {openCategorySheet} from './components/category-sheet';
 import library from './library';
@@ -25,7 +25,7 @@ function App({context}:{context:AppletContext}){
     if(epoch.current!==value.epoch){epoch.current=value.epoch;setAccountReady(false);setError('');setMore(false);}
     setSnapshot(value);
     // During navigation the old document may publish before the replacement binds.
-    const incoming=validModel(value.data)&&matchesDestination(value.data,value.url)?value.data:null;
+    const incoming=validModel(value.data)&&matchesDestination(value.data,value.url,value.route?.kind==='matched'&&value.route.result.kind==='custom'?value.route.result.screen:undefined)?value.data:null;
     const pending=pendingRefresh.current;
     if(pending&&(value.sourceId!==pending.sourceId||value.url!==pending.url||!!value.pageId||value.epoch!==pending.epoch&&value.state!=='loading'))pending.finish();
     const confirmed=!!incoming&&incoming.account.status==='signed-in';
@@ -74,12 +74,14 @@ function App({context}:{context:AppletContext}){
     pendingRefresh.current=request;
     void context.sources.open(current.sourceId,current.url).catch(request.finish);
   };
-  const open=(raw:string,website=false)=>{
-    const url=safeLink(raw);if(!url)return;const parsed=new URL(url);
-    if(website||parsed.origin!=='https://x.com'||!routeKind(parsed.pathname)){run(context.webViews.open({url}));return;}
-    run(context.sources.open(snapshot?.sourceId??'primary',url));
-  };
-  const link=(url:string,label:string,website=false,className='')=><a className={className} href={url} onClick={e=>{if(!e.ctrlKey&&!e.metaKey&&!e.shiftKey){e.preventDefault();open(url,website);}}}>{label}</a>;
+  const open=Object.assign((raw:string,website=false)=>{
+    const url=safeLink(raw);if(!url)return;
+    run((async()=>{let [decision]=await context.navigation.resolve([{kind:'url',url}]);
+      if(website&&decision.kind==='custom')[decision]=await context.navigation.resolve([{kind:'url',url,websiteActionId:'original-x'}]);
+      await context.navigation.activate({decision,intent:decision.kind==='website'||decision.kind==='external'?'open-website':'navigate'});
+    })());
+  },{context});
+  const link=(url:string,label:string,website=false,className='')=><XLink className={className} url={url} open={open} website={website}>{label}</XLink>;
   const command=(name:string,key?:string)=>{if(!snapshot)return;run(context.source.command({name,payload:key?{key}:undefined,epoch:snapshot.epoch}));};
   const searchSubmit=(event:FormEvent)=>{event.preventDefault();if(search.trim())open(`https://x.com/search?q=${encodeURIComponent(search.trim())}&src=typed_query`);};
   const entries=()=>!model||!snapshot?null:model.entries.length>0&&<section aria-label={model.kind==='notifications'?'Notifications':model.kind==='discovery'?'Discover':'People and collections'}>{model.entries.map(entry=>{
@@ -88,13 +90,13 @@ function App({context}:{context:AppletContext}){
     const content=<>{entry.kind!=='trend'&&entry.avatar?<img className="avatar" src={entry.avatar} alt="" loading="lazy"/>:null}<span className="entry-copy">{entry.person?<><span className="person-name">{entry.person.name}{entry.person.verified&&<Icon name="verified"/>}</span><span className="entry-meta">@{entry.person.handle}</span>{entry.person.description&&<span className="person-description">{entry.person.description}</span>}</>:lines.map((line,index)=><span key={index} className={index===titleIndex?'entry-title':'entry-meta'}>{line}</span>)}</span></>;
     return <article className={'entry entry-'+entry.kind} key={entry.key}>{entry.command?<button className="entry-target" onClick={()=>command('openEntry',entry.key)}>{content}</button>:entry.url?<XLink className="entry-target" url={entry.url} open={open}>{content}</XLink>:<div className="entry-target">{content}</div>}{entry.kind==='trend'&&<XLink className="icon-button entry-options" url={snapshot.url} open={open} website label="Trend options on X"><Icon name="more"/></XLink>}{entry.kind==='person'&&entry.url&&<XLink className="primary follow-button" url={entry.url} open={open} website>Follow on X</XLink>}</article>;
   })}</section>;
-  const sourceTabs=()=>!!model?.tabs.length&&<div className="mode source-tabs" role="tablist" aria-label={model.title+' tabs'}>{model.tabs.map(t=><button key={t.key} role="tab" aria-selected={t.selected} onClick={()=>t.url?open(t.url):command('selectTab',t.key)}><span>{t.label}</span></button>)}</div>;
-  const destinationKind=snapshot?routeKind(new URL(snapshot.url).pathname):null;
+  const sourceTabs=()=>!!model?.tabs.length&&<div className="mode source-tabs" role="tablist" aria-label={model.title+' tabs'}>{model.tabs.map(t=>t.url?<XLink key={t.key} url={t.url} open={open} tab selected={t.selected}><span>{t.label}</span></XLink>:<button key={t.key} role="tab" aria-selected={t.selected} onClick={()=>command('selectTab',t.key)}><span>{t.label}</span></button>)}</div>;
+  const destinationKind=snapshot?.route?.kind==='matched'&&snapshot.route.result.kind==='custom'?snapshot.route.result.screen:null;
   const isLibrary=snapshot?.pageId==='library',refreshing=snapshot?.state==='loading'&&!!model&&(model.posts.length>0||model.entries.length>0||!!model.profile),ready=!!model&&(['ready','empty','error'].includes(snapshot?.state??'')||refreshing);
   const isMedia=ready&&model?.kind==='media'&&!!model.media,emptyLines=model?.emptyText?.split('\n').map(line=>line.trim()).filter(Boolean)??[];
   const searchForm=<form className="search" role="search" onSubmit={searchSubmit}><label className="search-field"><Icon name="search"/><input type="search" aria-label="Search X" placeholder="Search X" value={search} maxLength={200} onChange={e=>setSearch(e.target.value)}/></label><button className="icon-button search-submit" type="submit" aria-label="Search"><Icon name="search"/></button></form>;
   return <><style>{theme+css}</style><main className={'x-app'+(isMedia?' media-surface':'')}><PullToRefresh enabled={!!snapshot&&!isLibrary&&!isMedia&&!reloading} busy={reloading} onRefresh={refreshSource} resetKey={(snapshot?.sourceId??'')+'|'+(snapshot?.url??'')}>{error&&<p className="error banner" role="alert">{error}</p>}{isLibrary?<>{accountReady?<div ref={owned}/>:<section className="state"><h1>Categories</h1>{snapshot?.state==='loading'||validModel(snapshot?.data)&&snapshot.data.account.status==='signed-in'?<Skeleton kind="feed" label="Verifying your X account"/>:<><p>Open X and verify the account for your Categories library.</p>{link(snapshot?.url??'https://x.com/i/history','Open X',true,'secondary')}</>}</section>}</>:<>
-    {!isMedia&&<header className="screen-title">{destinationKind==='discovery'?searchForm:<h1>{ready?model!.title:snapshot?.sectionId==='alerts'?'Notifications':snapshot?.sectionId==='saved'?'Saved':snapshot?.sectionId==='me'?'Profile':snapshot?.sectionId==='explore'?'Explore':'Home'}</h1>}<div className="header-actions">{destinationKind!=='discovery'&&<XLink url="https://x.com/i/chat" open={open} website className="icon-button" label="Messages on X"><Icon name="mail"/></XLink>}<button className="icon-button" aria-label="Refresh" disabled={!snapshot||reloading} onClick={refreshSource}><Icon name="refresh"/></button><XLink url="https://x.com/settings/account" open={open} website className="icon-button" label="Account settings on X"><Icon name="settings"/></XLink></div></header>}
+    {!isMedia&&<header className="screen-title">{destinationKind==='discovery'?searchForm:<h1>{ready?model!.title:snapshot?.route?.kind==='matched'&&snapshot.route.result.kind==='custom'?snapshot.route.result.title??'X':snapshot?.sectionId==='alerts'?'Notifications':snapshot?.sectionId==='saved'?'Saved':snapshot?.sectionId==='me'?'Profile':snapshot?.sectionId==='explore'?'Explore':'Home'}</h1>}<div className="header-actions">{destinationKind!=='discovery'&&<XLink url="https://x.com/i/chat" open={open} website className="icon-button" label="Messages on X"><Icon name="mail"/></XLink>}<button className="icon-button" aria-label="Refresh" disabled={!snapshot||reloading} onClick={refreshSource}><Icon name="refresh"/></button><XLink url="https://x.com/settings/account" open={open} website className="icon-button" label="Account settings on X"><Icon name="settings"/></XLink></div></header>}
     {['collection','people'].includes(model?.kind??'')&&snapshot&&<div className="page-actions">{link(snapshot.url,model?.kind==='collection'?'Create or manage on X':'People actions on X',true,'secondary')}</div>}
     {model?.kind==='saved'?<div className="mode" role="tablist" aria-label="Saved location"><button role="tab" aria-selected={!snapshot?.url.includes('/likes')} onClick={()=>open('https://x.com/i/history')}><span>Bookmarks</span></button><button role="tab" aria-selected={!!snapshot?.url.includes('/likes')} onClick={()=>open('https://x.com/i/history/likes')}><span>Likes</span></button><button role="tab" aria-selected={false} onClick={()=>run(context.pages.open('library'))}><span>Categories</span></button></div>:model?.kind!=='profile'&&sourceTabs()}
     {!snapshot||snapshot.state==='loading'&&!refreshing?<Skeleton kind={destinationKind==='profile'?'profile':destinationKind==='people'?'people':destinationKind==='media'?'media':'feed'} label="Loading X"/>:!ready?<section className="state"><h2>{snapshot.state==='auth-required'?'Sign in to X':snapshot.state==='challenge'?'X needs your attention':snapshot.state==='error'?'X is unavailable':snapshot.state==='website'?'Continue on X':snapshot.state==='blocked'?'Page unavailable':'Continue on the website'}</h2><p>{snapshot.error?.message??'This page needs the original X website. Your applet will stay here while you use it.'}</p><div className="row">{snapshot.state!=='blocked'&&link(snapshot.url,'Open website',true,'secondary')}{snapshot.state==='error'&&snapshot.error?.retryable!==false&&<button className="secondary" onClick={refreshSource}>Retry</button>}</div></section>:<>
@@ -108,7 +110,7 @@ function App({context}:{context:AppletContext}){
       {model!.kind==='profile'&&sourceTabs()}
       {model!.kind!=='profile'&&entries()}
       {model!.postNotice&&<section className="post-notice"><h2>{model!.postNotice.title}</h2><p>{model!.postNotice.description.split(model!.postNotice.help.label).map((part,index)=><span key={index}>{index>0&&<XLink url={model!.postNotice!.help.url} open={open}>{model!.postNotice!.help.label}</XLink>}{part}</span>)}</p><XLink className="primary" url={model!.postNotice.postUrl} open={open}>Back to post</XLink></section>}
-      {model!.information&&<p className="information">{model!.information}</p>}
+      {model!.information&&<section className="information"><p>{model!.information}</p>{snapshot.url.endsWith('/subs')&&link(snapshot.url,'Review subscription on X website',true,'secondary')}</section>}
       {model!.kind==='media'&&!model!.media&&<section className="state"><p>Use X for full media playback and controls.</p>{link(snapshot.url,'Open original media on X',true,'secondary')}</section>}
       {model!.kind==='media'&&model!.media&&<section className="media-view" aria-label="Post media">
         <header className="media-toolbar"><XLink className="icon-button" url={model!.media.postUrl} open={open} label="View post"><Icon name="close"/></XLink><h2>{model!.media.image?'Photo '+model!.media.index:'Media'}</h2><XLink className="icon-button" url={snapshot.url} open={open} website label="Open original media on X"><Icon name="more"/></XLink></header>

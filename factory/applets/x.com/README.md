@@ -83,3 +83,19 @@ Incomplete website markup remains loading, including after HTML document complet
 The [source loading repair qualification](../../../.reports/phase-5/2026-11-01/091700-genesis-loading-repair-verification.md) records installed SDK 0.4.1 and tools 0.4.2 revisions, repeated X navigation, genuine recovery and shared-host checks. It supersedes earlier loading/recovery qualification for those journeys and states the remaining device/transport/accessibility limits.
 
 Gray content skeletons are the default for source transitions, account/library/dialog reads and pagination. Pending operations retain hidden accessible status and real errors remain explicit. See [skeleton verification](../../../.reports/phase-5/2026-11-01/093559-genesis-skeleton-loading-verification.md) for installed revisions and limits.
+
+## Explicit navigation policy
+
+Schema 3/API 4 with SDK 0.5.0 uses the host's route decision for every URL link and source tab. `applet.json` declares the internal `x` contract, default source, external website policy, unsupported fallback and the `original-x` action. Source extraction uses the host-bound route screen; the separate pathname presentation router is removed. Website controls visibly include a Website cue. Uncovered internal destinations retain native recovery with explicit Continue; ordinary navigation never directly opens a website because a path is unknown.
+
+| Journey | Declaration and rendering | Return / qualification |
+| --- | --- | --- |
+| Profile Replies → Subs | `profile-subs`, owned profile; observed subscription gate stays owned with a marked website action | Passed authenticated emulator; no subscription submitted |
+| Posts/Replies/Reposts/Media | Existing custom route IDs and profile renderer | Existing content extraction preserved; Replies/Subs transition rechecked |
+| Future profile tab | Unmatched unsupported; native owned recovery | Policy verified; every future source layout is not qualified |
+| Profile photo/banner | Declared website routes; visible website cue | Native Return restores opener; photo flow qualified in the earlier investigation |
+| Show more | Custom post detail, with a separate explicit full-text website link if still excerpted | Static wiring checked; live long-post qualification pending |
+| Social/media/current page controls | `original-x`, applicable only to declared custom route IDs | Opens original controls; never reports a submitted action |
+| Categories | Existing owned `library` page and backend authority | No record/schema migration |
+
+The installed API-4 migration preserves applet/source/page/service identity and account validation. The subscription gate was inspected from the actual public Subs source, including selected-tab identity and the visible “Unlock more with Subscriptions” heading. Subscriber-authorized posts, paid actions and all account/layout variations remain unqualified. Check the final phase-5 navigation delivery report for exact package/host revisions and remaining acceptance limits.

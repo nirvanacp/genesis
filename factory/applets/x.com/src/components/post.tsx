@@ -1,18 +1,21 @@
-import {useEffect,useRef,type MouseEvent,type ReactNode} from 'react';
+import {useEffect,useRef,useState,type MouseEvent,type ReactNode} from 'react';
+import type {AppletContext,NavigationDecision} from '@genesis/sdk';
+import {navigationCue} from '@genesis/sdk';
 import type {XPost} from '../view-model';
 import {Icon, type IconName} from './icon';
 
-export type OpenX = (url: string, website?: boolean) => void;
+export type OpenX = ((url: string, website?: boolean) => void)&{context:AppletContext};
 
-export function XLink({url, open, website = false, className = '', label, children}: {
-  url: string; open: OpenX; website?: boolean; className?: string; label?: string; children: ReactNode;
-}) {
-  const follow = (event: MouseEvent<HTMLAnchorElement>) => {
-    if (event.button || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
-    event.preventDefault();
-    open(url, website);
-  };
-  return <a href={url} className={className} aria-label={label} onClick={follow}>{children}</a>;
+export function XLink({url,open,website=false,className='',label,children,tab=false,selected=false}:{url:string;open:OpenX;website?:boolean;className?:string;label?:string;children:ReactNode;tab?:boolean;selected?:boolean}){
+  const [decision,setDecision]=useState<NavigationDecision|null>(null);
+  useEffect(()=>{let active=true,serial=0;const resolve=()=>{const current=++serial;setDecision(null);void(async()=>{
+    let [value]=await open.context.navigation.resolve([{kind:'url',url}]);
+    if(website&&value.kind==='custom')[value]=await open.context.navigation.resolve([{kind:'url',url,websiteActionId:'original-x'}]);
+    if(active&&current===serial)setDecision(value);
+  })().catch(()=>{});};const dispose=open.context.navigation.subscribe(resolve);resolve();return()=>{active=false;dispose();};},[url,website,open.context]);
+  return <a href={url} className={className} role={tab?'tab':undefined} aria-selected={tab?selected:undefined} aria-label={label?label+(decision?navigationCue(decision):''):undefined} aria-busy={!decision} onClick={event=>{
+    event.preventDefault();if(!decision)return;void open.context.navigation.activate({decision,intent:decision.kind==='website'||decision.kind==='external'?'open-website':'navigate'}).catch(()=>setDecision(null));
+  }}>{children}{decision&&navigationCue(decision)}</a>;
 }
 
 function PostText({post, open}: {post: XPost; open: OpenX}) {
@@ -79,7 +82,8 @@ export function Post({item, expanded, open, save, openQuote}: {
       open(item.url);
     }}>
       <PostText post={item} open={open}/>
-      {item.snapshot.textState === 'excerpt' && <XLink url={item.url} open={open} website className="read-more">Show more</XLink>}
+      {expanded&&item.snapshot.textState==='excerpt'&&<XLink url={item.url} open={open} website className="read-more">Read full post on X website</XLink>}
+      {item.snapshot.textState === 'excerpt' && !expanded && <XLink url={item.url} open={open} className="read-more">Show more</XLink>}
       {item.photos.length > 0 && <div className={`photos count-${item.photos.length}`}>{item.photos.map((url, index) => <XLink key={url} url={`${item.url}/photo/${index + 1}`} open={open}><img src={url} alt={`Photo ${index + 1} in post by @${item.snapshot.authorHandle}`} loading="lazy"/></XLink>)}</div>}
       {['video', 'mixed'].includes(item.snapshot.media.kind) && <XLink url={`${item.url}/video/1`} open={open} website className="media-action"><Icon name="play"/>Play video on X</XLink>}
       {item.quote && (item.quote.key?<button className="quoted-post" onClick={()=>openQuote(item.quote!.key!)}>{quotedContent}</button>:<XLink url={item.quote.url ?? item.url} open={open} className="quoted-post">{quotedContent}</XLink>)}
