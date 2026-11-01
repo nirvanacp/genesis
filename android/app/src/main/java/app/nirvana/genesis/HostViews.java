@@ -40,7 +40,7 @@ final class HostViews {
     private final FrameLayout content;
     private final ScrollView cover;
     private final TextView coverTitle, coverMessage;
-    private final LinearLayout loadingSkeleton;
+    private final LinearLayout loadingSkeleton, notice;
     private final LinearLayout recovery;
     private final LinearLayout siteRecovery;
     private final ImageButton floatingMenu;
@@ -105,7 +105,7 @@ final class HostViews {
         FrameLayout.LayoutParams progressLayout = new FrameLayout.LayoutParams(-1, dp(3), Gravity.TOP);
         content.addView(pageProgress, progressLayout);
 
-        LinearLayout notice = new LinearLayout(activity); notice.setOrientation(LinearLayout.VERTICAL);
+        notice = new LinearLayout(activity); notice.setOrientation(LinearLayout.VERTICAL);
         notice.setGravity(Gravity.CENTER); notice.setPadding(dp(28), dp(28), dp(28), dp(88));
         coverTitle = text("", 24); coverTitle.setTypeface(null, Typeface.BOLD); coverTitle.setGravity(Gravity.CENTER);
         coverMessage = text("", 16); coverMessage.setGravity(Gravity.CENTER); coverMessage.setPadding(0, dp(12), 0, dp(20));
@@ -437,6 +437,7 @@ final class HostViews {
         if (progress > 0) pageProgress.setProgress(progress);
     }
     private void skeletonLoading(boolean loading) {
+        notice.setGravity(loading?Gravity.TOP:Gravity.CENTER);
         coverTitle.setVisibility(loading?View.GONE:View.VISIBLE);coverMessage.setVisibility(loading?View.GONE:View.VISIBLE);
         loadingSkeleton.setVisibility(loading?View.VISIBLE:View.GONE);
         boolean dark=(activity.getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK)==android.content.res.Configuration.UI_MODE_NIGHT_YES;
