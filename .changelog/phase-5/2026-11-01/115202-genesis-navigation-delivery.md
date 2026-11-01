@@ -1,0 +1,6 @@
+# Explicit navigation delivery
+
+- Goal: Deliver the approved framework navigation architecture, migrated applets and portable authoring guidance with honest verification evidence.
+- Changes: Synchronized workspace lockfile for SDK/tools 0.5.0 and migrated X/HN dependencies, packed creator archives, installed final host/applet revisions in place, and saved the navigation verification report. Current applet/architecture guidance links to that evidence.
+- Decisions: The agent retained the existing HN development override and updated it rather than resetting device state. Generic declared original-page actions preserve current protected workflow boundaries; they do not execute mutations. No AGENTS, test, backend or user-data changes were made.
+- Verification: Final workspace/app/native checks passed; real X Replies/Subs/gate/provider Return and HN feed/discussion/external Return/unknown recovery passed on emulator-5554. Packed external React/vanilla workflows passed, including a fresh final packed starter. Physical devices, full accessibility/layout/account/error matrix and protected submissions remain unqualified. Diagnostic forward/device dumps were removed and Genesis launcher restored.

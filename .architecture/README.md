@@ -12,3 +12,5 @@ API-1/2-only indexes retain the legacy controller for maintenance. An index cont
 ## Explicit navigation migration
 
 Schema 3/API 4 adds host-owned presentation decisions, declared website actions for custom URLs, native uncovered recovery and explicit website Return. SDK/tools 0.5.0 supply resolve/activate/subscribe, controls and route inspection. Existing schema-2/API-3 packages retain their execution behavior. Current X/HN use schema 3; the source receives its accepted route rather than choosing presentation with a second pathname router. See [portable navigation](../factory/guides/navigation.md). Website mode retains its own history and never automatically becomes custom on a matching URL. This policy is not outbound network confinement or malicious-author isolation.
+
+Current navigation delivery and qualification limits: [verification report](../.reports/phase-5/2026-11-01/115202-genesis-explicit-navigation-verification.md).

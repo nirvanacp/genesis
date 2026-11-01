@@ -48,3 +48,5 @@ Schema 3/API 4 with SDK 0.5.0 delegates URL classification to the host. The mani
 | Saved/Search | Existing owned pages and service authority | Search placeholder preserved; records unchanged |
 
 Device qualification used the migrated development override because the existing emulator already had an HN override. APK-selected HN is also rebuilt from this manifest. Refer to the final phase-5 navigation delivery record for exact revisions and unperformed checks. No authentication, account, bookmark or category data was reset.
+
+Current delivery evidence: [explicit navigation verification](../../../.reports/phase-5/2026-11-01/115202-genesis-explicit-navigation-verification.md). Earlier reports qualify their recorded revisions only.

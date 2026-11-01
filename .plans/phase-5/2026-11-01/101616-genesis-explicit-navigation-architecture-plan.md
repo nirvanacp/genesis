@@ -1,6 +1,6 @@
 # Genesis explicit navigation and presentation architecture
 
-Status: implementation in progress; contracts, host, SDK/tooling and applet migrations committed. Final artifact qualification is underway. Project: Genesis platform, SDK/tools, factory, X and Hacker News. Phase: phase-5. Created 1 November 2026, Asia/Kolkata.
+Status: implemented and delivered; observed integrated journeys and remaining qualification gaps are recorded in the final verification report. Project: Genesis platform, SDK/tools, factory, X and Hacker News. Phase: phase-5. Created 1 November 2026, Asia/Kolkata.
 
 ## Goal and governing context
 
@@ -346,3 +346,5 @@ The user authorized implementation after planning. Shared contracts, host enforc
 The installed TypeScript 7 compiler uses its pinned `unstable/sync` and AST APIs for direct-provider diagnostics, rather than the older compiler API. Generated React/vanilla projects were checked and built after correcting this difference. Live public X Subs inspection identified its actual subscription gate, which now stays owned. HN's pre-existing development override was replaced in place for qualification, while APK-selected assets were rebuilt separately. No new tests, AGENTS edits, data resets or backend changes were made.
 
 Recovery rendering uses a focused native `NavigationPresentation` view. Native website chrome always shows a separate Return row whose measured height determines content insets. The final acceptance report distinguishes component/static verification, real integrated journeys and unperformed environment/accessibility cases.
+
+Delivery evidence: [navigation verification](../../../.reports/phase-5/2026-11-01/115202-genesis-explicit-navigation-verification.md). Unperformed acceptance cases remain explicitly unqualified rather than passed.

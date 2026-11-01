@@ -1,6 +1,6 @@
 # X applet
 
-X is one applet with native Home, Explore, Notifications, Saved and Profile sections. It uses SDK 0.4.1 and tools 0.4.2, runtime API 3 and manifest schema 2. Stable applet/source/page/service IDs and both existing bookmark stores are preserved.
+X is one applet with native Home, Explore, Notifications, Saved and Profile sections. It uses SDK/tools 0.5.0, runtime API 4 and manifest schema 3. Stable applet/source/page/service IDs and both existing bookmark stores are preserved.
 
 ## Product and rendering
 
@@ -99,3 +99,5 @@ Schema 3/API 4 with SDK 0.5.0 uses the host's route decision for every URL link 
 | Categories | Existing owned `library` page and backend authority | No record/schema migration |
 
 The installed API-4 migration preserves applet/source/page/service identity and account validation. The subscription gate was inspected from the actual public Subs source, including selected-tab identity and the visible “Unlock more with Subscriptions” heading. Subscriber-authorized posts, paid actions and all account/layout variations remain unqualified. Check the final phase-5 navigation delivery report for exact package/host revisions and remaining acceptance limits.
+
+Current delivery evidence: [explicit navigation verification](../../../.reports/phase-5/2026-11-01/115202-genesis-explicit-navigation-verification.md). Earlier reports qualify their recorded revisions only.
