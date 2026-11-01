@@ -82,3 +82,7 @@ The [skeleton delivery report](../../../.reports/phase-5/2026-11-01/093559-genes
 ## API-4 navigation maintenance
 
 New schema-3 packages require a host reporting runtimeApiVersions including 4 and SDK/tools 0.5.0. Keep schema-2/API-3 package acceptance and old SDK build support. Install compatible host first, then migrate applets in place; rollback code without resetting records. Inspect routes with the standalone routes list/inspect commands and verify active package revisions to detect development overrides of APK-selected applets. The host resolves source metadata, explicit website actions and uncovered recovery. Debug inspection remains visit-scoped and content-free lifecycle diagnostics remain bounded. Use the [navigation guide](../../../factory/guides/navigation.md) for controls, history and Return qualification.
+
+## Interaction maintenance
+
+Use SDK 0.5.1 with tools 0.5.0/API 4/schema 3 for current X/HN. Follow the factory interaction contract. Native sharing is optional and feature-detected. Dispatch acknowledgement is separate from observed website state and durable mutation read-back. Install the share-capable host before qualifying the chooser; never reset applet/backend records.

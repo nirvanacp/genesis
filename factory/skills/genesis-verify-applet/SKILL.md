@@ -31,3 +31,8 @@ Use [skeletons by default](../../guides/design.md#skeletons-are-the-default-pend
 Read [navigation](../../guides/navigation.md). New work uses schema 3/API 4 and SDK/tools 0.5.0. Build establishes the route/action inventory before rendering. Customization updates the manifest, adapter/model, renderer and README acceptance table together. Verification exercises actual links, unknown tabs, redirects, query/hash changes, original-site actions, external pages, website Back and Return.
 
 Do not maintain an independent presentation regex or use unknown/missing content as a website fallback. Resolve observed URL tabs and label website controls before activation. Use host route metadata for source screen selection. Preserve required custom workflows; inaccessible content stays required/blocked. Direct webViews.open examples elsewhere apply only to legacy API 3. A route/typecheck pass is not live navigation or source qualification. Never submit protected actions just to verify entry/return.
+
+
+## Required interaction semantics
+
+Read [actions and navigation](../../guides/interactions.md). Establish each control's expected result and execution owner. Keep source mutations separate from URL navigation and protected website editors. A Like, Follow, Bookmark or Share icon cannot be implemented as a generic containing-page link. Revalidate live targets, disabled/account/visit state and retained action results. Audit shared renderers, cached/recycled rows, nested controls, failure/uncertainty and provider cancellation. Verify the promised outcome; a destination-opening check does not qualify a mutation. Do not submit real social actions without explicit mutation scope. Keep unsupported variants and blocked read-back qualification explicit.

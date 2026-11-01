@@ -95,3 +95,8 @@ Verify [default skeleton presentation](design.md#skeletons-are-the-default-pendi
 ## Navigation acceptance
 
 Verify declared custom/website/action/uncovered/external/blocked decisions independently from real-source rendering. Exercise ordinary anchors, target-blank, redirects and query/hash updates as well as SDK controls. Check wrong-action/source rejection, stale decisions, missing owned anchors, website history versus Return, dirty-form Stay/Leave and source-origin account revalidation. A typecheck, route match or package receipt cannot qualify these connected journeys. Record unperformed cases explicitly.
+
+
+## Interaction contract
+
+Follow [actions and navigation](interactions.md). Inventory buttons, local menus, source mutations and protected editor workflows separately from URL coverage. Opening a containing page cannot qualify the action its icon promises. Source actions require current identity, observed results and uncertainty handling. SDK 0.5.1 adds optional native sharing on capable API-4 hosts.

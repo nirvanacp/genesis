@@ -18,3 +18,7 @@ Missing content anchors and unfinished profile/discussion markup remain loading 
 ## Explicit navigation migration
 
 Schema 3/API 4 adds host-owned presentation decisions, declared website actions for custom URLs, native uncovered recovery and explicit website Return. SDK/tools 0.5.0 supply resolve/activate/subscribe, controls and route inspection. Existing schema-2/API-3 packages retain their execution behavior. Current X/HN use schema 3; the source receives its accepted route rather than choosing presentation with a second pathname router. See [portable navigation](../factory/guides/navigation.md). Website mode retains its own history and never automatically becomes custom on a matching URL. This policy is not outbound network confinement or malicious-author isolation.
+
+## Action execution update
+
+The interaction contract separates navigation from source actions. X now publishes visit-bound action descriptors and retained results for owned controls. Like/Bookmark execute desired states; Repost uses a scoped confirmation and Follow uses observed relationship controls. Source rollback and unobserved results remain distinct from durable server confirmation. Editors remain contextual website workflows. SDK 0.5.1 exposes optional native sharing without provider entry. HN preserves local Save/collapse and restricts local fragment scrolling to ordinary same-document navigation. See factory/guides/interactions.md and the current verification report for unqualified variants.

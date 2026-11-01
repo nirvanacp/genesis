@@ -35,3 +35,8 @@ For updates add `--replace`. Permission-origin/capability/service changes also r
 Use `--application <host-id>` for a separate QA host and `--adb <path>` when necessary. Release hosts ignore developer imports. Do not clear app data to repair a package or delete evidence packages that contain user records. Prefer disposable QA applets in a separate installation. Run the complete [verification workflow](verification.md) before delivery.
 
 Every applet keeps `start.sh` current for its backend dependencies and reserves ports under the [services guide](services-and-data.md). Source sessions, accounts, forms and protected media use explicit website views with return navigation. A backend remains separately operated and is never bundled into the phone as a Node process.
+
+
+## Interaction contract
+
+Follow [actions and navigation](interactions.md). Inventory buttons, local menus, source mutations and protected editor workflows separately from URL coverage. Opening a containing page cannot qualify the action its icon promises. Source actions require current identity, observed results and uncertainty handling. SDK 0.5.1 adds optional native sharing on capable API-4 hosts.

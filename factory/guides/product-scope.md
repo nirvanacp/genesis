@@ -89,3 +89,8 @@ The product brief must include the mandatory route inventory with owned-screen/a
 ## Route and action inventory
 
 Before implementation, record each normal link/tab, same-URL website action, external destination and return path. The README or governing plan table must name example URL, manifest rule/source, screen/adapter or action, readiness/empty/gated/error evidence, visible handoff cue, expected Back/Return and actual verification status. Keep inaccessible required journeys marked blocked; declarations alone are not acceptance.
+
+
+## Interaction contract
+
+Follow [actions and navigation](interactions.md). Inventory buttons, local menus, source mutations and protected editor workflows separately from URL coverage. Opening a containing page cannot qualify the action its icon promises. Source actions require current identity, observed results and uncertainty handling. SDK 0.5.1 adds optional native sharing on capable API-4 hosts.

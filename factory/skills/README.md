@@ -15,3 +15,8 @@ Read only the guides needed by the task. All guides travel with this kit. The re
 All three skills use [product scope and clarification](../guides/product-scope.md). Build establishes the intended app and its journeys, customization preserves them while making the requested change, and verification checks the delivered experience against them. Ask before unresolved material product choices; do not require a routine approval gate or ask the user to design technical internals.
 
 All three workflows use [the isolated source/foreground contract](../guides/isolated-applets.md). Build declares route coverage before extraction, customization updates the contract and owned renderer together, and verification checks hidden-source isolation plus website-provider return.
+
+
+## Interaction contract
+
+Follow [actions and navigation](../guides/interactions.md). Inventory buttons, local menus, source mutations and protected editor workflows separately from URL coverage. Opening a containing page cannot qualify the action its icon promises. Source actions require current identity, observed results and uncertainty handling. SDK 0.5.1 adds optional native sharing on capable API-4 hosts.

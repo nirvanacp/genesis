@@ -55,3 +55,8 @@ Do not show visible "Loading…", "Verifying…", "Updating…" or "Working…" 
 Expose one concise pending status to assistive technology with `role="status"` and `aria-busy`, using visually hidden status text or an accessible label. Hide decorative shapes with `aria-hidden`, do not make them focusable, and remove them when the actual operation settles. Do not announce every row or repeated observation. Keep Close/Back working during reads and preserve existing mutation/receipt safeguards. Use known progress information when it is meaningful; visually hidden loading status is allowed.
 
 React and vanilla creator projects include this treatment from the first render. Authors must adapt the placeholder shape to their route inventory, including owned pages and dialogs, without requiring the user to ask for it. Verification must inspect a pending frame as well as final content, actual read failures and return/cancellation, light/dark and enlarged text. Static component previews may exercise forced pending states, but must be labeled separately from real source/service checks.
+
+
+## Interaction contract
+
+Follow [actions and navigation](interactions.md). Inventory buttons, local menus, source mutations and protected editor workflows separately from URL coverage. Opening a containing page cannot qualify the action its icon promises. Source actions require current identity, observed results and uncertainty handling. SDK 0.5.1 adds optional native sharing on capable API-4 hosts.

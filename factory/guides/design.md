@@ -76,3 +76,8 @@ For an isolated foreground, check computed colors on the owned canvas as well as
 ## Navigation presentation
 
 Apply the navigation guide to every content tab, image, inline link and icon action. Custom navigation keeps native primary sections visible. Original-site controls carry a visible website cue before activation; Return is separate from website Back. Pending headings use declared destination titles. Unknown tabs remain discoverable with owned recovery. Do not rely on color alone or hide the return action at large text.
+
+
+## Interaction contract
+
+Follow [actions and navigation](interactions.md). Inventory buttons, local menus, source mutations and protected editor workflows separately from URL coverage. Opening a containing page cannot qualify the action its icon promises. Source actions require current identity, observed results and uncertainty handling. SDK 0.5.1 adds optional native sharing on capable API-4 hosts.
