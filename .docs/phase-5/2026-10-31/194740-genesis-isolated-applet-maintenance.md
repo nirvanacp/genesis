@@ -1,6 +1,6 @@
 # Genesis phase-5 isolated applet maintenance
 
-This is the current operating guide for SDK/tools 0.4.0, runtime API 3 and manifest schema 2. Use [the architecture](../../../.architecture/README.md), [factory instructions](../../../factory/AGENTS.md) and [the applet contract](../../../factory/guides/isolated-applets.md). Earlier phase-3/4 guides are historical background where this guide supersedes rendering, SDK versions and entrypoints.
+This is the current operating guide for SDK/tools 0.4.1, runtime API 3 and manifest schema 2. Use [the architecture](../../../.architecture/README.md), [factory instructions](../../../factory/AGENTS.md) and [the applet contract](../../../factory/guides/isolated-applets.md). Earlier phase-3/4 guides are historical background where this guide supersedes rendering, SDK versions and entrypoints.
 
 ## Development boundaries
 

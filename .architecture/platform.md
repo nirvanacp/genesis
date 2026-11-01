@@ -14,7 +14,7 @@ Use root AGENTS.md for platform work and factory/AGENTS.md for applets. Native c
 
 An applet is one stable application identity with any declared sources/pages/services. Source adapters observe one website document. A separate persistent foreground coordinates the active visit and owns storage/services. The host currently keeps one active hidden source, one foreground and at most one website reader. Navigation may recreate a source; there is no permanent background coordinator or cross-source DOM API.
 
-SDK/tools 0.4.0 export public root/React/manifest APIs plus a tooling-only runtime. New projects declare all known routes with an unsupported default. SourceAdapterContext excludes foreground capabilities; native checks enforce authority independently. Changing an applet's feature does not require adding a host command.
+SDK/tools 0.4.1 export public root/React/manifest APIs plus a tooling-only runtime. New projects declare all known routes with an unsupported default. SourceAdapterContext excludes foreground capabilities; native checks enforce authority independently. Changing an applet's feature does not require adding a host command.
 
 Debug PackageStore accepts compatible bundle format 1/runtime APIs 1/2/3, validates declarations/assets/revisions/permissions and atomically selects immutable code. Schema 2 requires API 3. Updates and rollback preserve records; corrupt revisions fall back to compatible previous/bundled code. Release hosts use APK selection only. HN remains selected by `genesis.packages.json`; X is separately development-installed. Integrity hashes are not publisher authentication.
 

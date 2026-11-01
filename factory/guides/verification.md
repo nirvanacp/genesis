@@ -83,3 +83,7 @@ Verify actual internal links, query/hash changes, section switches, Saved/detail
 ## Isolated runtime diagnostics
 
 In a debuggable host, Developer tools / Inspect current document explicitly enables local WebView inspection for the current applet visit. Leaving disables it. Keep diagnostic forwarding local and remove it afterward. Simulate creator failure and Terminate renderer should retain a native opaque recovery screen, with Retry recreating the foreground. The legacy 20-reload control is not available for API 3. Source-only schema-1 packages in a mixed API-3 host use ordinary website presentation; they are not isolated custom applets.
+
+## Transient recovery acceptance
+
+Follow [loading observations](patterns.md#loading-is-an-unresolved-observation). Record supported navigation from its initiating action through valid content, including slow SPA assembly after HTML completion. Normal loading must not display failure/Retry/website-demand UI. Check real offline/adapter failures and bounded timeout separately, including Back, later recovery and stale callbacks. Preserve native navigation, account-safe content and source isolation. Report recording/sampling and exact revisions; settled screenshots do not pass this requirement.

@@ -1,6 +1,6 @@
 # Genesis architecture
 
-Current phase-5 architecture uses SDK/tools 0.4.0, runtime API 3 and manifest schema 2. HN and X have separate hidden source adapters and owned foregrounds. Website DOM never supplies the customized foreground layout. The framework owns an opaque native barrier, explicit website views, lifecycle and recovery.
+Current phase-5 architecture uses SDK/tools 0.4.1, runtime API 3 and manifest schema 2. HN and X have separate hidden source adapters and owned foregrounds. Website DOM never supplies the customized foreground layout. The framework owns an opaque native barrier, explicit website views, lifecycle and recovery.
 
 Read [platform ownership](platform.md), [runtime and protocol](browser-runtime.md), [services/data](services-and-data.md), [HN](hacker-news.md) and [X](x.md). Applet authors use [factory](../factory/README.md), including its portable instructions and build/customize/verify skills. The [implementation plan](../.plans/phase-5/2026-10-31/171848-genesis-isolated-applet-architecture-plan.md) records requirements and material migration decisions.
 

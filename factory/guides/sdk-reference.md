@@ -1,6 +1,6 @@
 # SDK and manifest reference
 
-Current implementation uses SDK/tools `0.4.0`, runtime API `3`, manifest schema `2`, data schema `1` and bundle format `1`. Read [the isolated architecture and contract](isolated-applets.md) before building or changing an applet. Packages are supplied as packed artifacts, not a published registry service. The supported imports are `@genesis/sdk`, `@genesis/sdk/react` and `@genesis/sdk/manifest`. Bootstrap/runtime exports are tooling-only.
+Current implementation uses SDK/tools `0.4.1`, runtime API `3`, manifest schema `2`, data schema `1` and bundle format `1`. Read [the isolated architecture and contract](isolated-applets.md) before building or changing an applet. Packages are supplied as packed artifacts, not a published registry service. The supported imports are `@genesis/sdk`, `@genesis/sdk/react` and `@genesis/sdk/manifest`. Bootstrap/runtime exports are tooling-only.
 
 ## Entry points and ownership
 
@@ -41,3 +41,5 @@ The host derives applet, package, source, generation, document/channel and navig
 Storage supports `get(collection,key)`, `list(collection,{limit,afterKey?})`, `commit({checks,puts,deletes})`, and `onChanged`. Check records carry `expectedRevision:number|null`; puts carry `{collection,key,value}`. Stored documents have key/value/revision/update time. Retain collection keys and data authority during rendering migrations. Use [services and data](services-and-data.md) for provisioning, server startup, secrets, backend authority and uncertain-write recovery.
 
 No always-running source context, cross-source DOM access, independent cookie jars, public publisher trust, camera/microphone access or automatic authentication-popup compatibility is promised. Protected website interactions require real provider qualification. Report unsupported workflows explicitly instead of changing the requested product.
+
+`SourcePublication<T>` and `SourceProblem` are public types. `error` has required safe `message`, optional fixed `code` and `retryable`; accepted snapshots include host-assigned `origin: "host" | "adapter"`. Codes are NETWORK, HTTP, SOURCE_TIMEOUT, ADAPTER_FAILED, SOURCE_RENDERER_FAILED, UNSUPPORTED_ROUTE, CONTENT_UNRECOGNIZED, UPSTREAM_FAILURE and ADAPTER_NOT_IMPLEMENTED. The existing state/method contract is unchanged. API-3 hosts bound unresolved content independently of source activation. See [observation semantics](patterns.md#loading-is-an-unresolved-observation).

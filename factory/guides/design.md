@@ -54,3 +54,7 @@ Expected mobile gestures are part of the interaction design. Include pull-to-ref
 Opening a form does not authorize submitting a post, message, follow, purchase or account change. Verify protected forms without submission unless that action was separately requested. Record that limit. Check loading and failed reads without treating them as empty results. Repeated navigation must not duplicate controls, retain stale content identities or leak hidden source content into pixels, accessibility, focus or sound.
 
 Report each required journey as passed, failed, blocked or not run, with its evidence or reason. Missing credentials, an unavailable device surface or a stopped backend leaves the affected requirement pending; it does not approve a narrower deliverable. Finish independent work, preserve the pending requirement and explain the exact dependency needed to complete acceptance.
+
+## Transient recovery acceptance
+
+Follow [loading observations](patterns.md#loading-is-an-unresolved-observation). Record supported navigation from its initiating action through valid content, including slow SPA assembly after HTML completion. Normal loading must not display failure/Retry/website-demand UI. Check real offline/adapter failures and bounded timeout separately, including Back, later recovery and stale callbacks. Preserve native navigation, account-safe content and source isolation. Report recording/sampling and exact revisions; settled screenshots do not pass this requirement.

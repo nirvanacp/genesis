@@ -1,6 +1,6 @@
 # Build applets with an owned foreground
 
-The API-3 architecture uses SDK/tools `0.4.0`, manifest schema `2`, data schema `1` and bundle format `1`. A source adapter runs inside a hidden website document. An owned foreground runs in a separate packaged document. The Android host owns an opaque barrier between them, native navigation, recovery and explicit website views. A new applet must declare both documents and a URL contract.
+The API-3 architecture uses SDK/tools `0.4.1`, manifest schema `2`, data schema `1` and bundle format `1`. A source adapter runs inside a hidden website document. An owned foreground runs in a separate packaged document. The Android host owns an opaque barrier between them, native navigation, recovery and explicit website views. A new applet must declare both documents and a URL contract.
 
 ## Define the route inventory first
 
@@ -90,3 +90,29 @@ API-3 source observation uses bounded timer batches rather than animation frames
 A screen change must update its route inventory, model validation, owned renderer and documented provider actions together. Preserve applet/source/page/service IDs and data authority. SDK/tools/schema compatibility is checked on build/install. Schema-1 packages remain maintainable, but a mixed API-3 host gives them ordinary website presentation; migrate both rendering roles to gain customization. An API-3 package never falls back to the legacy mixed document.
 
 Run the actual launcher-to-feed/detail/Back, section, Saved, account/provider and external-reader journeys. Test slow/offline source loading, changed markup, redirect/query/hash changes, repeated navigation, stale replies, empty feeds, failed services and account changes. Verify hidden source content never appears in frames, accessibility trees, keyboard focus or sound. Check large text, TalkBack, light/dark, reduced motion and provider Close focus. Check Android touch targets and list responsiveness. Qualify real website flows separately from synthetic component checks. See [verification](verification.md).
+
+## Loading is an unresolved observation
+
+HTML document completion does not prove that a website has rendered its content. Missing selectors, missing progress indicators and temporarily empty structures remain `loading` on a supported route. Only validated content is `ready`; an affirmative empty marker or validated completed empty structure is `empty`. Explicit sign-out, challenge, upstream error and unsupported-content evidence produce their own outcomes. A route match grants extraction permission, not readiness.
+
+The host bounds each unresolved loading interval at 15 seconds and preserves real failures until a new visit or affirmative recovery. Repeated observations do not extend that deadline. Source activation runs without animation frames; it is separate from content readiness. The foreground mounts immediately with its destination shell, keeps navigation usable and shows a loader until valid content arrives. Do not debounce all errors, automatically open the website, or ask users to Retry during ordinary initialization.
+
+Use optional `error.code` and `error.retryable` with fixed safe copy for real failures. The host assigns `error.origin`. Never use raw exception text, page bodies or a button label as error copy. Legacy message-only publications remain compatible. Retain prior content only for the same destination/tab and a currently permitted account; an empty model shell is not prior content. Source Retry and explicit website presentation are separate actions.
+
+A source observer should follow this order, using site-specific functions implemented from inspected DOM:
+
+```ts
+function observe() {
+  const problem = inspectExplicitProblem();
+  if (problem) return context.source.publish(problem);
+  const model = extractValidatedDestination();
+  if (model) return context.source.publish({state:'ready', data:model});
+  const empty = inspectConfirmedEmpty();
+  if (empty) return context.source.publish({state:'empty', data:empty});
+  return context.source.publish({state:'loading'});
+}
+```
+
+The function names above are illustrative applet helpers, not SDK APIs. Do not replace them with guessed selectors. Managed observations must continue across DOM mutations and be disposed with the source. Route inventories must list content identity, readiness, empty and failure evidence. An unimplemented starter reports `ADAPTER_NOT_IMPLEMENTED`; that deliberate development placeholder is not the pattern for normal missing content.
+
+Verify transitions with recordings or sanitized traces on the actual delivered host. Exercise HTML completion before SPA content, repeated warm/cold navigation, same-document tabs, source/provider return, offline recovery and delayed content on both sides of the deadline. Check that ordinary loading never paints Retry or unsupported recovery. Inspect actual errors separately. A settled screenshot or typecheck does not establish transition correctness.
