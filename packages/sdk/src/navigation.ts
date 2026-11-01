@@ -15,6 +15,7 @@ export class NavigationClient {
   private listeners=new Set<(s:NavigationSnapshot)=>void>();
   private latest:NavigationSnapshot|undefined;
   private queued=false;
+  private subscribed=false;
   constructor(private call:HostCall,private signal:AbortSignal){signal.addEventListener('abort',()=>{for(const p of this.pending.values())p.reject(new Error('Navigation disposed'));this.pending.clear();this.cache.clear();this.listeners.clear();},{once:true});}
   receive(snapshot:NavigationSnapshot):void{
     if(this.version!==snapshot.navigationVersion){this.version=snapshot.navigationVersion;this.cache.clear();}
@@ -22,7 +23,7 @@ export class NavigationClient {
   }
   subscribe(callback:(snapshot:NavigationSnapshot)=>void):Dispose{
     this.listeners.add(callback);if(this.latest)callback(this.latest);
-    void this.call('navigation.subscribe',{}).catch(()=>{});return()=>this.listeners.delete(callback);
+    if(!this.subscribed){this.subscribed=true;void this.call('navigation.subscribe',{}).catch(()=>{this.subscribed=false;});}return()=>this.listeners.delete(callback);
   }
   resolve(targets:NavigationTarget[]):Promise<NavigationDecision[]>{
     if(this.signal.aborted)return Promise.reject(new Error('Navigation disposed'));
