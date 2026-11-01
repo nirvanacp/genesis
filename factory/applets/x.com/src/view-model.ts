@@ -1,9 +1,11 @@
+import {validInteractions,type InteractionModel} from './interactions';
 import {isObject,validHandle,validSnapshot,postUrl,safeLink,type Post} from './domain';
 export const screens=['timeline','discovery','profile','people','conversation','post-metadata','media','notifications','saved','collection'];
 export interface XPost extends Post {context?:{text:string;url:string};time:string;dateTime?:string;verified?:boolean;avatar:string|null;photos:string[];metrics:{label:string;value:string;active?:boolean}[];quote:{text:string;url:string|null;key?:string;authorName?:string;authorHandle?:string;avatar?:string|null;time?:string;verified?:boolean}|null}
 export interface XEntry {key:string;kind:'trend'|'person'|'notification'|'collection';text:string;url:string|null;command:boolean;avatar?:string|null;person?:{name:string;handle:string;description:string;verified:boolean}}
 export interface XTab {key:string;label:string;url:string|null;selected:boolean}
 export interface XModel {
+  interactions?:InteractionModel;
   contentIdentity?:{url:string;selectedTabKey:string;postId?:string;profileHandle?:string};
   kind:string;title:string;account:{status:'signed-in'|'signed-out'|'unknown';handle:string|null};
   tabs:XTab[];posts:XPost[];entries:XEntry[];partial:boolean;emptyText:string|null;
@@ -17,6 +19,7 @@ export function imageUrl(value:unknown):string|null {
 }
 export function validModel(value:unknown):value is XModel {
   if(!isObject(value)||!screens.includes(String(value.kind))||typeof value.title!=='string'||value.title.length>300||!isObject(value.account)||!['signed-in','signed-out','unknown'].includes(String(value.account.status)))return false;
+  if(value.interactions!==undefined&&!validInteractions(value.interactions))return false;
   if(value.contentIdentity!==undefined){const c=value.contentIdentity;if(!isObject(c)||!safeLink(c.url)||String(c.url).length>8192||typeof c.selectedTabKey!=='string'||c.selectedTabKey.length>500||(c.postId!==undefined&&!/^[0-9]{1,25}$/.test(String(c.postId)))||(c.profileHandle!==undefined&&!validHandle(c.profileHandle)))return false;}
   if(value.media!==undefined&&(!isObject(value.media)||!postUrl(value.media.postUrl)||!Number.isInteger(value.media.index)||Number(value.media.index)<1||Number(value.media.index)>16||!['photo','video'].includes(String(value.media.kind))||(value.media.image!==null&&!imageUrl(value.media.image))))return false;
   if(value.account.handle!==null&&!validHandle(value.account.handle))return false;
