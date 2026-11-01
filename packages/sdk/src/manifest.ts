@@ -40,7 +40,7 @@ export interface RouteRule {
   path: string;
   query?: Record<string, "present" | { equals: string }>;
   fragment?: { equals: string };
-  result: { kind: "custom"; screen: string; adapter: string }
+  result: { kind: "custom"; screen: string; adapter: string; title?:string }
     | { kind: "website" | "blocked"; reason: string };
 }
 export type RouteResolution = { kind: "matched"; routeId: string; result: RouteRule["result"] }

@@ -609,7 +609,7 @@ impl IsolatedHost {
                     json!({"kind":"source","sourceId":source_id})
                 };
                 out.push(json!({"type":"isolatedReply","generation":self.generation,"role":role,"channel":channel,"message":{"type":"bound","nonce":doc.nonce,"documentId":doc.id,
-                    "context":{"runtimeApiVersion":self.package.as_ref().unwrap().runtime_api_version,"role":role,"instanceId":self.package.as_ref().unwrap().manifest.id,"appletId":self.package.as_ref().unwrap().manifest.id,"viewId":doc.id,"generation":self.generation,"binding":binding}}}));
+                    "context":{"runtimeApiVersion":self.package.as_ref().unwrap().runtime_api_version,"role":role,"instanceId":self.package.as_ref().unwrap().manifest.id,"appletId":self.package.as_ref().unwrap().manifest.id,"viewId":doc.id,"generation":self.generation,"route":self.resolution(&self.url),"binding":binding}}}));
             }
             return Ok(());
         }

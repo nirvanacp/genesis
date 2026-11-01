@@ -1,6 +1,7 @@
 export interface ExecutionContext {
   runtimeApiVersion?: number;
   role?: "foreground" | "source";
+  route?: import("./manifest").RouteResolution;
   instanceId: string;
   appletId: string;
   viewId: string;
