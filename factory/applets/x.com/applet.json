@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "id": "x-bookmarks",
   "name": "X",
   "dataSchemaVersion": 1,
@@ -341,7 +341,8 @@
           "result": {
             "kind": "custom",
             "screen": "timeline",
-            "adapter": "timeline"
+            "adapter": "timeline",
+            "title": "Timeline"
           }
         },
         {
@@ -350,7 +351,8 @@
           "result": {
             "kind": "custom",
             "screen": "discovery",
-            "adapter": "discovery"
+            "adapter": "discovery",
+            "title": "Discovery"
           }
         },
         {
@@ -359,7 +361,8 @@
           "result": {
             "kind": "custom",
             "screen": "discovery",
-            "adapter": "discovery"
+            "adapter": "discovery",
+            "title": "Discovery"
           }
         },
         {
@@ -368,7 +371,8 @@
           "result": {
             "kind": "custom",
             "screen": "discovery",
-            "adapter": "discovery"
+            "adapter": "discovery",
+            "title": "Discovery"
           }
         },
         {
@@ -377,7 +381,8 @@
           "result": {
             "kind": "custom",
             "screen": "notifications",
-            "adapter": "notifications"
+            "adapter": "notifications",
+            "title": "Notifications"
           }
         },
         {
@@ -386,7 +391,8 @@
           "result": {
             "kind": "custom",
             "screen": "notifications",
-            "adapter": "notifications"
+            "adapter": "notifications",
+            "title": "Notifications"
           }
         },
         {
@@ -395,7 +401,8 @@
           "result": {
             "kind": "custom",
             "screen": "saved",
-            "adapter": "saved"
+            "adapter": "saved",
+            "title": "Saved"
           }
         },
         {
@@ -404,7 +411,8 @@
           "result": {
             "kind": "custom",
             "screen": "saved",
-            "adapter": "saved"
+            "adapter": "saved",
+            "title": "Saved"
           }
         },
         {
@@ -413,7 +421,8 @@
           "result": {
             "kind": "custom",
             "screen": "saved",
-            "adapter": "saved"
+            "adapter": "saved",
+            "title": "Saved"
           }
         },
         {
@@ -422,7 +431,8 @@
           "result": {
             "kind": "custom",
             "screen": "collection",
-            "adapter": "collection"
+            "adapter": "collection",
+            "title": "Collection"
           }
         },
         {
@@ -431,7 +441,8 @@
           "result": {
             "kind": "custom",
             "screen": "collection",
-            "adapter": "collection"
+            "adapter": "collection",
+            "title": "Collection"
           }
         },
         {
@@ -440,7 +451,8 @@
           "result": {
             "kind": "custom",
             "screen": "people",
-            "adapter": "people"
+            "adapter": "people",
+            "title": "People"
           }
         },
         {
@@ -449,7 +461,8 @@
           "result": {
             "kind": "custom",
             "screen": "post-metadata",
-            "adapter": "post-metadata"
+            "adapter": "post-metadata",
+            "title": "Post Metadata"
           }
         },
         {
@@ -458,7 +471,8 @@
           "result": {
             "kind": "custom",
             "screen": "post-metadata",
-            "adapter": "post-metadata"
+            "adapter": "post-metadata",
+            "title": "Post Metadata"
           }
         },
         {
@@ -467,7 +481,8 @@
           "result": {
             "kind": "custom",
             "screen": "media",
-            "adapter": "media"
+            "adapter": "media",
+            "title": "Media"
           }
         },
         {
@@ -476,7 +491,8 @@
           "result": {
             "kind": "custom",
             "screen": "media",
-            "adapter": "media"
+            "adapter": "media",
+            "title": "Media"
           }
         },
         {
@@ -485,7 +501,8 @@
           "result": {
             "kind": "custom",
             "screen": "conversation",
-            "adapter": "conversation"
+            "adapter": "conversation",
+            "title": "Conversation"
           }
         },
         {
@@ -494,7 +511,8 @@
           "result": {
             "kind": "custom",
             "screen": "people",
-            "adapter": "people"
+            "adapter": "people",
+            "title": "People"
           }
         },
         {
@@ -503,7 +521,8 @@
           "result": {
             "kind": "custom",
             "screen": "people",
-            "adapter": "people"
+            "adapter": "people",
+            "title": "People"
           }
         },
         {
@@ -512,7 +531,8 @@
           "result": {
             "kind": "custom",
             "screen": "people",
-            "adapter": "people"
+            "adapter": "people",
+            "title": "People"
           }
         },
         {
@@ -521,7 +541,8 @@
           "result": {
             "kind": "custom",
             "screen": "collection",
-            "adapter": "collection"
+            "adapter": "collection",
+            "title": "Collection"
           }
         },
         {
@@ -530,7 +551,8 @@
           "result": {
             "kind": "custom",
             "screen": "collection",
-            "adapter": "collection"
+            "adapter": "collection",
+            "title": "Collection"
           }
         },
         {
@@ -539,7 +561,8 @@
           "result": {
             "kind": "custom",
             "screen": "profile",
-            "adapter": "profile"
+            "adapter": "profile",
+            "title": "Profile"
           }
         },
         {
@@ -548,7 +571,8 @@
           "result": {
             "kind": "custom",
             "screen": "profile",
-            "adapter": "profile"
+            "adapter": "profile",
+            "title": "Profile"
           }
         },
         {
@@ -557,7 +581,18 @@
           "result": {
             "kind": "custom",
             "screen": "profile",
-            "adapter": "profile"
+            "adapter": "profile",
+            "title": "Profile"
+          }
+        },
+        {
+          "id": "profile-subs",
+          "path": "/:handle/subs",
+          "result": {
+            "kind": "custom",
+            "screen": "profile",
+            "adapter": "profile",
+            "title": "Subscribers"
           }
         },
         {
@@ -566,10 +601,56 @@
           "result": {
             "kind": "custom",
             "screen": "profile",
-            "adapter": "profile"
+            "adapter": "profile",
+            "title": "Profile"
           }
         }
-      ]
+      ],
+      "defaultSourceId": "primary"
+    }
+  ],
+  "navigation": {
+    "external": {
+      "default": "website",
+      "origins": []
+    },
+    "uncoveredWebsiteRecovery": true
+  },
+  "websiteActions": [
+    {
+      "id": "original-x",
+      "contractId": "x",
+      "routeIds": [
+        "home",
+        "explore",
+        "search",
+        "hashtag",
+        "notifications",
+        "mentions",
+        "bookmarks",
+        "likes",
+        "bookmarks-alias",
+        "lists",
+        "communities",
+        "connect",
+        "post-quotes",
+        "post-analytics",
+        "post-photo",
+        "post-video",
+        "post",
+        "following",
+        "followers",
+        "verified-followers",
+        "profile-lists",
+        "profile-communities",
+        "replies",
+        "reposts",
+        "profile-media",
+        "profile-subs",
+        "profile"
+      ],
+      "label": "Open original X website",
+      "reason": "Use the original X page for account, social and media controls"
     }
   ]
 }

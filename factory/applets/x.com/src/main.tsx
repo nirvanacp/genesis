@@ -2,7 +2,7 @@ import {defineSourceAdapter} from '@genesis/sdk';
 import {currentHandle,resetAccountConfirmation} from './source-account';
 import {extractPost} from './extract-post';
 import {safeLink,postUrl,validHandle,isObject} from './domain';
-import {imageUrl,routeKind,screens,hasContent,matchesDestination,type XModel,type XPost,type XEntry} from './view-model';
+import {imageUrl,screens,hasContent,matchesDestination,type XModel,type XPost,type XEntry} from './view-model';
 const text=(element:Element|null|undefined,max=1200)=>(element instanceof HTMLElement?element.innerText:element?.textContent??'').trim().slice(0,max);
 const destination=(value:string|null|undefined)=>{try{return value?safeLink(new URL(value,location.href).href):null;}catch{return null;}};
 const key=(value:string)=>{let hash=2166136261;for(let i=0;i<value.length;i++)hash=Math.imul(hash^value.charCodeAt(i),16777619);return(hash>>>0).toString(36);};
@@ -11,7 +11,7 @@ export default defineSourceAdapter({adapters:screens,activate(context){
   let targets=new Map<string,{element:HTMLElement;text:string}>(),moreTimer:ReturnType<typeof setTimeout>|undefined,publication:ReturnType<typeof setTimeout>|undefined;
   const publish=()=>{
     targets.clear();
-    const kind=routeKind(location.pathname);if(!kind){void context.source.publish({state:'unsupported'});return;}
+    const route=context.binding.route;const kind=route?.kind==='matched'&&route.result.kind==='custom'?route.result.screen:null;if(!kind){void context.source.publish({state:'unsupported'});return;}
     const handle=currentHandle(),signedOut=!!document.querySelector('[data-testid="loginButton"]');
     if(context.sourceId==='account'&&location.pathname==='/home'&&handle){location.replace(`https://x.com/${handle}`);return;}
     if(kind==='post-metadata'&&location.pathname.endsWith('/analytics')){
@@ -107,7 +107,10 @@ export default defineSourceAdapter({adapters:screens,activate(context){
     targets=nextTargets;
     while(new TextEncoder().encode(JSON.stringify(model)).length>150000){model.partial=true;if(model.entries.length)model.entries.pop();else if(model.posts.length>1)model.posts.pop();else break;}
     model.contentIdentity={url:location.href,selectedTabKey:model.tabs.filter(t=>t.selected).map(t=>t.key).join(','),postId:focusedId,profileHandle:model.profile?.handle};
-    const ready=hasContent(model)&&matchesDestination(model,location.href);
+    const subscriptions=location.pathname.endsWith('/subs');
+    const selectedDestination=model.tabs.some(t=>t.selected&&t.url===location.href);
+    if(subscriptions&&selectedDestination&&[...primary.querySelectorAll('h1,h2,h3')].some(e=>text(e,180)==='Unlock more with Subscriptions'))model.information='Subscription posts require access through X. You can review the subscription on the original website.';
+    const ready=(!subscriptions||selectedDestination&&!!(model.posts.length||model.emptyText||model.information))&&hasContent(model)&&matchesDestination(model,location.href,kind);
     void context.source.publish({state:ready?(model.emptyText&&!model.posts.length&&!model.entries.length&&!model.profile?'empty':'ready'):'loading',data:model});
   };
   const schedule=()=>{if(!publication)publication=setTimeout(()=>{publication=undefined;publish();},300);};

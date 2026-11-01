@@ -1,0 +1,6 @@
+# X explicit navigation migration
+
+- Goal: Prevent normal X browsing from silently entering the mobile website and repair the recorded Subs flow.
+- Changes: Migrated X to schema 3/API 4, declared external/website action policy, removed the duplicated pathname presentation router, used host route metadata in extraction/model validation, resolved URL tabs/links and labeled website controls. Added custom Subs with an inspected subscription gate. Show more now opens custom detail; excerpted detail has a separate original-site action.
+- Decisions: The agent preserved existing social/media website boundaries, one applet identity and both bookmark stores. The actual public Subs page supplied selected-tab/gate evidence; no subscription was submitted. The generic original-x declaration opens controls and does not execute mutations.
+- Verification: Standalone check/build and route inspection passed. Final revision 11a6ebd5447c527a95e67b0c163b6421e401804f913b8505eb94d69e077d835a installed in place; custom Subs gate and website cue were observed on the authenticated emulator, and Replies/Subs navigation exercised. Subscriber access, long-post data and exhaustive device/account/layout cases remain unqualified.
