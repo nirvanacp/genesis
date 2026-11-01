@@ -1,6 +1,6 @@
 import {useEffect,useRef,useState,type MouseEvent,type ReactNode} from 'react';
 import type {AppletContext,NavigationDecision} from '@genesis/sdk';
-import {navigationCue} from '@genesis/sdk';
+import {websiteDestination} from '@genesis/sdk';
 import type {XPost} from '../view-model';
 import {Icon, type IconName} from './icon';
 
@@ -13,9 +13,10 @@ export function XLink({url,open,website=false,className='',label,children,tab=fa
     if(website&&value.kind==='custom')[value]=await open.context.navigation.resolve([{kind:'url',url,websiteActionId:'original-x'}]);
     if(active&&current===serial)setDecision(value);
   })().catch(()=>{});};const dispose=open.context.navigation.subscribe(resolve);resolve();return()=>{active=false;dispose();};},[url,website,open.context,attempt]);
-  return <a href={url} className={className} role={tab?'tab':undefined} aria-selected={tab?selected:undefined} aria-label={label?label+(decision?navigationCue(decision):''):undefined} aria-busy={!decision} onClick={event=>{
+  const opensWebsite=!!decision&&websiteDestination(decision);
+  return <a href={url} className={className} role={tab?'tab':undefined} aria-selected={tab?selected:undefined} aria-label={label?label+(opensWebsite?', opens website':''):undefined} aria-busy={!decision} onClick={event=>{
     event.preventDefault();if(!decision)return;void open.context.navigation.activate({decision,intent:decision.kind==='website'||decision.kind==='external'?'open-website':'navigate'}).catch(()=>{setDecision(null);setAttempt(value=>value+1);});
-  }}>{children}{decision&&navigationCue(decision)}</a>;
+  }}>{children}{opensWebsite&&<><span className="website-cue" aria-hidden="true">↗</span>{!label&&<span className="visually-hidden"> opens website</span>}</>}</a>;
 }
 
 function PostText({post, open}: {post: XPost; open: OpenX}) {

@@ -86,7 +86,7 @@ Gray content skeletons are the default for source transitions, account/library/d
 
 ## Explicit navigation policy
 
-Schema 3/API 4 with SDK 0.5.0 uses the host's route decision for every URL link and source tab. `applet.json` declares the internal `x` contract, default source, external website policy, unsupported fallback and the `original-x` action. Source extraction uses the host-bound route screen; the separate pathname presentation router is removed. Website controls visibly include a Website cue. Uncovered internal destinations retain native recovery with explicit Continue; ordinary navigation never directly opens a website because a path is unknown.
+Schema 3/API 4 with SDK 0.5.0 uses the host's route decision for every URL link and source tab. `applet.json` declares the internal `x` contract, default source, external website policy, unsupported fallback and the `original-x` action. Source extraction uses the host-bound route screen; the separate pathname presentation router is removed. Website controls show a compact ↗ cue and expose "opens website" to accessibility services. Routed source tabs use the same spacing and selected state as command tabs. Uncovered internal destinations retain native recovery with explicit Continue; ordinary navigation never directly opens a website because a path is unknown.
 
 | Journey | Declaration and rendering | Return / qualification |
 | --- | --- | --- |
@@ -101,3 +101,5 @@ Schema 3/API 4 with SDK 0.5.0 uses the host's route decision for every URL link 
 The installed API-4 migration preserves applet/source/page/service identity and account validation. The subscription gate was inspected from the actual public Subs source, including selected-tab identity and the visible “Unlock more with Subscriptions” heading. Subscriber-authorized posts, paid actions and all account/layout variations remain unqualified. Check the final phase-5 navigation delivery report for exact package/host revisions and remaining acceptance limits.
 
 Current delivery evidence: [explicit navigation verification](../../../.reports/phase-5/2026-11-01/115202-genesis-explicit-navigation-verification.md). Earlier reports qualify their recorded revisions only.
+
+The 2026-11-01 UI repair was checked with the API-4 emulator build. Home and Explore headers rendered without the former Website text collision. The X source did not settle during this check, so live feed actions, trends and routed source tabs remain unqualified on this revision; their shared renderer and CSS passed the applet check and build.
