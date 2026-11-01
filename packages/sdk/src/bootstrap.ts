@@ -55,6 +55,8 @@ export function bootstrap(config: BootstrapConfig, entry: AppletEntry): void {
     const acceptedDocument = documentId;
     const activation = new AbortController();
     abort = activation;
+    const hiddenSource = binding.runtimeApiVersion === 3 && binding.role === "source";
+    if (hiddenSource && timer) clearTimeout(timer);
     try {
       phases.runtime = true;
       rpc("runtime.phase", { phase: "typescript" });
@@ -62,6 +64,7 @@ export function bootstrap(config: BootstrapConfig, entry: AppletEntry): void {
         document.addEventListener("DOMContentLoaded", () => resolve(), { once: true, signal: activation.signal });
       });
       if (activation.signal.aborted || documentId !== acceptedDocument) return;
+      if (hiddenSource) timer = setTimeout(() => fail(new Error("Adapter activation exceeded five seconds")), 5000);
       scope = new PageScope(qualificationCss, binding.binding.kind === "page");
       phases.style = true;
       phases.mount = scope.root().isConnected;
@@ -79,7 +82,7 @@ export function bootstrap(config: BootstrapConfig, entry: AppletEntry): void {
       if (typeof disposer === "function") runtime.context.onDispose(disposer);
       runtime.flushInitial();
       if (activation.signal.aborted || failed) return;
-      await initialLayout();
+      if (!hiddenSource) await initialLayout();
       if (activation.signal.aborted || failed || documentId !== acceptedDocument) return;
       phases.mount = scope.root().isConnected;
       phases.creator = true;

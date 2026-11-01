@@ -29,14 +29,26 @@ export interface MountOptions {
 }
 export type HostCall = <T = unknown>(method: string, params: unknown) => Promise<T>;
 export type SourceState = "loading" | "ready" | "empty" | "auth-required" | "challenge" | "unsupported" | "error";
+export interface SourceProblem {
+  message: string;
+  code?: 'NETWORK' | 'HTTP' | 'SOURCE_TIMEOUT' | 'ADAPTER_FAILED' | 'SOURCE_RENDERER_FAILED'
+    | 'UNSUPPORTED_ROUTE' | 'CONTENT_UNRECOGNIZED' | 'UPSTREAM_FAILURE' | 'ADAPTER_NOT_IMPLEMENTED';
+  retryable?: boolean;
+  origin?: 'host' | 'adapter';
+}
+export interface SourcePublication<T = unknown> {
+  state: SourceState;
+  data?: T;
+  error?: Omit<SourceProblem, 'origin'>;
+}
 export interface SourceSnapshot<T = unknown> {
   state: SourceState | "website" | "blocked";
-  data?: T; error?: { message: string }; url: string; sourceId: string; pageId: string; sectionId?: string; epoch: number;
+  data?: T; error?: SourceProblem; url: string; sourceId: string; pageId: string; sectionId?: string; epoch: number;
   route?: {kind:string; routeId?:string; result?:{kind:string;screen?:string;adapter?:string}};
 }
 export interface AppletContext {
   source: {
-    publish(snapshot: {state: SourceState; data?: unknown; error?: {message:string}}): Promise<void>;
+    publish(snapshot: SourcePublication): Promise<void>;
     subscribe(callback: (snapshot: SourceSnapshot) => void): Dispose;
     command(command: { name: string; payload?: unknown; epoch: number }): Promise<void>;
     onCommand(callback: (command: {name:string;payload?:unknown;epoch?:number}) => void): Dispose;
