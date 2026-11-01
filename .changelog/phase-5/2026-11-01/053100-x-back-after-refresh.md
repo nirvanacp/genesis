@@ -1,0 +1,6 @@
+# X Back after source refresh
+
+- Goal: Keep Android Back dismissing the current post menu after a source refresh instead of leaving X.
+- Changes: Re-register the browsing transient Back handler when the accepted source epoch changes, in addition to the existing internal-page ownership boundary. Categories continues to own its scoped handler while active.
+- Decisions: The agent reproduced a successful refresh followed by opening More and pressing Back exiting to Genesis. The native runtime resets transient handler registration on a source visit; the persistent foreground's effect previously depended only on page ID, which stays empty across source refreshes. Provider return alone had passed and did not reveal this sequence. Adding the epoch dependency restores the existing contract without intercepting ordinary navigation.
+- Verification: X TypeScript/check/build passed; revision `8163dc6d6bda9a40989fcd2b80e550915d8d05a3cca44c53d6006dddb01d4a43` was installed. Refresh, More, Back now closes only the menu and leaves the feed visible. Categories, Home, More, Back also passes. A transient Android UI-inspection process failure interrupted the first library check; the resumed sequence passed. No test files or data changes.

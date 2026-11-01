@@ -56,7 +56,7 @@ function App({context}:{context:AppletContext}){
     const menu=root.querySelector<HTMLDetailsElement>('.post-menu[open]');
     if(!menu)return false;menu.open=false;menu.querySelector('summary')?.focus();return true;
     });
-  },[context,snapshot?.pageId]);
+  },[context,snapshot?.pageId,snapshot?.epoch]);
   const run=(action:Promise<unknown>)=>{setError('');void action.catch(e=>setError(String(e)));};
   const refreshSource=()=>{
     if(!snapshot||snapshot.pageId||pendingRefresh.current)return;
