@@ -10,7 +10,7 @@ export function useInteractions(context:AppletContext){
   const sequence=useRef(0),pending=useRef<number|null>(null),timer=useRef<ReturnType<typeof setTimeout>|undefined>(undefined);
   const clear=()=>{clearTimeout(timer.current);pending.current=null;setBusy(false);};
   useEffect(()=>{
-    const source=context.source.subscribe(snapshot=>{
+    const acceptSnapshot=(snapshot:SourceSnapshot)=>{
       if(latest.current&&(latest.current.epoch!==snapshot.epoch||latest.current.sourceId!==snapshot.sourceId))clear();
       latest.current=snapshot;
       if(mode.current!=='applet'||!validModel(snapshot.data)||!snapshot.data.interactions||snapshot.state!=='ready'||!snapshot.data.account.handle){setState(null);clear();return;}
@@ -18,8 +18,9 @@ export function useInteractions(context:AppletContext){
       setState({snapshot,model,account:snapshot.data.account.handle});
       const result=model.results.find(r=>r.requestId===pending.current);
       if(result&&result.status!=='pending'){clear();setMessage(result.status==='observed'?'':result.message??'The action could not be confirmed. Check status.');}
-    });
-    const nav=context.navigation.subscribe(s=>{mode.current=s.mode;if(s.mode!=='applet'){const snapshot=latest.current;if(snapshot)void context.source.command({name:'x.cancelInteraction',epoch:snapshot.epoch}).catch(()=>{});setState(null);clear();}});
+    };
+    const source=context.source.subscribe(acceptSnapshot);
+    const nav=context.navigation.subscribe(s=>{const previousMode=mode.current;mode.current=s.mode;if(s.mode==='applet'&&previousMode!=='applet'&&latest.current)acceptSnapshot(latest.current);if(s.mode!=='applet'){const snapshot=latest.current;if(snapshot)void context.source.command({name:'x.cancelInteraction',epoch:snapshot.epoch}).catch(()=>{});setState(null);clear();}});
     return()=>{source();nav();clearTimeout(timer.current);};
   },[context]);
   const perform=(ref:ActionRef)=>{
