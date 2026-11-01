@@ -193,12 +193,18 @@ final class HostViews {
         content.addView(appHeader, new FrameLayout.LayoutParams(-1, dp(APP_HEADER_HEIGHT), Gravity.TOP));
         alignHeaderInsets();
         sections = new LinearLayout(activity); sections.setBackgroundColor(paper);
+        sections.setMinimumHeight(dp(SECTION_BAR_HEIGHT));
+        sections.addOnLayoutChangeListener((view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+            if (bottom - top != oldBottom - oldTop) alignContentInsets();
+        });
         sections.setPadding(dp(8), dp(4), dp(8), dp(4));
         JSONArray entries = shell.optJSONArray("sections");
         for (int i = 0; i < entries.length(); i++) {
             JSONObject entry = entries.getJSONObject(i);
             Button tab = button(entry.getString("label"), () -> events.send(openSection(entry)));
-            tab.setTextSize(11); tab.setPadding(0, dp(4), 0, dp(4)); tab.setGravity(Gravity.CENTER); tab.setSingleLine(true);
+            tab.setTextSize(11); tab.setPadding(0, dp(4), 0, dp(4));
+            tab.setGravity(activity.getResources().getConfiguration().fontScale > 1.3f ? Gravity.TOP | Gravity.CENTER_HORIZONTAL : Gravity.CENTER);
+            tab.setSingleLine(false); tab.setMaxLines(2); tab.setEllipsize(android.text.TextUtils.TruncateAt.END);
             boolean selected = !sectionId.isEmpty() ? sectionId.equals(entry.optString("id")) : sourceId.equals(entry.optString("sourceId")) && pageId.equals(entry.isNull("pageId") ? "" : entry.optString("pageId"));
             tab.setSelected(selected); tab.setTextColor(selected ? accent : ink); tab.setTypeface(null, selected ? Typeface.BOLD : Typeface.NORMAL); tab.setContentDescription(entry.getString("label") + (selected ? ", selected" : ""));
             styleChromeControl(tab, selected ? wash : Color.TRANSPARENT, 16);
@@ -211,7 +217,25 @@ final class HostViews {
             LinearLayout.LayoutParams tabLayout = new LinearLayout.LayoutParams(0, -1, 1);
             tabLayout.setMargins(dp(2), 0, dp(2), 0); sections.addView(tab, tabLayout);
         }
-        content.addView(sections, new FrameLayout.LayoutParams(-1, dp(SECTION_BAR_HEIGHT), Gravity.BOTTOM));
+        int available = content.getWidth() - content.getPaddingLeft() - content.getPaddingRight();
+        if (available <= 0) available = dp(activity.getResources().getConfiguration().screenWidthDp);
+        int tabWidth = (available - dp(16) - entries.length() * dp(4)) / Math.max(1, entries.length());
+        boolean allHaveIcons = true, labelsNeedSpace = false;
+        for (int i = 0; i < sections.getChildCount(); i++) {
+            Button tab = (Button) sections.getChildAt(i);
+            allHaveIcons &= tab.getCompoundDrawables()[1] != null;
+            labelsNeedSpace |= tab.getPaint().measureText(tab.getText().toString()) + dp(8) > tabWidth;
+        }
+        if (activity.getResources().getConfiguration().fontScale > 1.3f && allHaveIcons && labelsNeedSpace) {
+            for (int i = 0; i < sections.getChildCount(); i++) {
+                Button tab = (Button) sections.getChildAt(i);
+                tab.setTooltipText(entries.getJSONObject(i).getString("label"));
+                tab.setText(""); tab.setGravity(Gravity.CENTER); tab.setCompoundDrawablePadding(0);
+                android.graphics.drawable.Drawable icon = tab.getCompoundDrawables()[1];
+                icon.setBounds(0, 0, dp(28), dp(28)); tab.setCompoundDrawables(null, icon, null, null);
+            }
+        }
+        content.addView(sections, new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM));
     }
     private void palette(boolean neutral) {
         boolean dark = (activity.getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES;
@@ -360,9 +384,21 @@ final class HostViews {
             }
             choices.setContentDescription("View: " + choices.getText() + ". Choose view");
         }
-        browserSlot.setPadding(0, app ? dp(APP_HEADER_HEIGHT) : reader ? dp(READER_BAR_HEIGHT) : 0, 0, app ? dp(SECTION_BAR_HEIGHT) : 0);
-        FrameLayout.LayoutParams bounds = (FrameLayout.LayoutParams) cover.getLayoutParams(); bounds.topMargin = app ? dp(APP_HEADER_HEIGHT) : reader ? dp(READER_BAR_HEIGHT) : 0; bounds.bottomMargin = app ? dp(SECTION_BAR_HEIGHT) : 0; cover.setLayoutParams(bounds);
+        alignContentInsets();
         readerBar.bringToFront(); pageProgress.bringToFront(); updateFloatingMenu();
+    }
+    private int sectionBarHeight() {
+        return Math.max(dp(SECTION_BAR_HEIGHT), sections == null ? 0 : sections.getHeight());
+    }
+    private void alignContentInsets() {
+        boolean app = appletActive && shell != null && !readerVisible;
+        int top = app ? dp(APP_HEADER_HEIGHT) : readerVisible ? dp(READER_BAR_HEIGHT) : 0;
+        int bottom = app ? sectionBarHeight() : 0;
+        browserSlot.setPadding(0, top, 0, bottom);
+        FrameLayout.LayoutParams bounds = (FrameLayout.LayoutParams) cover.getLayoutParams();
+        if (bounds.topMargin != top || bounds.bottomMargin != bottom) {
+            bounds.topMargin = top; bounds.bottomMargin = bottom; cover.setLayoutParams(bounds);
+        }
     }
     private void alignHeaderInsets() {
         if (appHeader == null) return;
@@ -375,7 +411,7 @@ final class HostViews {
     private void updateFloatingMenu() {
         floatingMenu.setVisibility(!appletActive || fullscreen || readerVisible || shell != null ? View.GONE : View.VISIBLE);
         FrameLayout.LayoutParams bounds = (FrameLayout.LayoutParams) floatingMenu.getLayoutParams();
-        int bottom = dp(shell != null && !readerVisible ? SECTION_BAR_HEIGHT + 16 : 16);
+        int bottom = shell != null && !readerVisible ? sectionBarHeight() + dp(16) : dp(16);
         if (bounds.bottomMargin != bottom) { bounds.bottomMargin = bottom; floatingMenu.setLayoutParams(bounds); }
         floatingMenu.bringToFront();
     }
