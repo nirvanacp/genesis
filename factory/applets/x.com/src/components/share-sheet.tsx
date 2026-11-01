@@ -11,5 +11,5 @@ export function openShareSheet(context:AppletContext,url:string){
 }
 function Share({context,url,close}:{context:AppletContext;url:string;close:()=>void}){
   const [message,setMessage]=useState('');
-  return <><h2>Share post</h2><input aria-label="Post link" readOnly value={url} onFocus={e=>e.target.select()}/><button type="button" onClick={()=>{void navigator.clipboard.writeText(url).then(()=>setMessage('Copied')).catch(()=>setMessage('Could not copy. Select the link to copy it.'));}}>Copy link</button><button type="button" onClick={close}>Close</button><p role="status">{message}</p></>;
+  return <><h2>Share post</h2><input aria-label="Post link" readOnly value={url} onFocus={e=>e.target.select()}/><button type="button" onClick={()=>{void navigator.clipboard.writeText(url).then(()=>setMessage('Copied')).catch(()=>setMessage('Could not copy. Select the link to copy it.'));}}>Copy link</button>{context.sharing.supported&&<button type="button" onClick={()=>{void context.sharing.shareUrl({url}).then(()=>setMessage('Share chooser opened')).catch(()=>setMessage('Sharing is unavailable. You can copy the link.'));}}>Share link</button>}<button type="button" onClick={close}>Close</button><p role="status">{message}</p></>;
 }
