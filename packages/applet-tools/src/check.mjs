@@ -3,7 +3,6 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import {API} from 'typescript/unstable/sync';
 import {isCallExpression,isPropertyAccessExpression} from 'typescript/unstable/ast';
-import {readdir,readFile} from 'node:fs/promises';
 import { readApplet, requireValue, containedFile } from './manifest.mjs';
 const require = createRequire(import.meta.url);
 export async function checkApplet(directory) {
