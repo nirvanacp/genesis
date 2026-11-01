@@ -1,3 +1,5 @@
+import {NavigationClient,type NavigationDecision,type NavigationSnapshot,type NavigationActivation} from './navigation';
+import type {NavigationTarget,RouteResolution} from './manifest';
 import { storageApi, type AppletStorage, type StorageChange } from "./storage";
 import type { ExecutionContext } from "./protocol";
 
@@ -44,7 +46,7 @@ export interface SourcePublication<T = unknown> {
 export interface SourceSnapshot<T = unknown> {
   state: SourceState | "website" | "blocked";
   data?: T; error?: SourceProblem; url: string; sourceId: string; pageId: string; sectionId?: string; epoch: number;
-  route?: {kind:string; routeId?:string; result?:{kind:string;screen?:string;adapter?:string}};
+  route?: RouteResolution;
 }
 export interface AppletContext {
   source: {
@@ -66,6 +68,9 @@ export interface AppletContext {
     openModal(key: string, render: (container: HTMLElement) => void | Dispose): Dispose;
   };
   navigation: {
+    resolve(targets:NavigationTarget[]):Promise<NavigationDecision[]>;
+    activate(options:NavigationActivation):Promise<{status:'dispatched'|'recovery';navigationVersion:number}>;
+    subscribe(callback:(snapshot:NavigationSnapshot)=>void):Dispose;
     armReturn(options: {key:string;destinationPaths:string[];returnUrl:string;ttlMs:number;state:unknown}): Promise<{token:string}>;
     cancelReturn(token:string): Promise<void>;
     takeReturn(key:string): Promise<{token:string;matchedPath:string;state:unknown}|null>;
@@ -111,6 +116,7 @@ export class ManagedRuntime {
   private readonly focusListeners = new Set<() => void>();
   private readonly routes = new Set<(url: string) => void>();
   private readonly observer: MutationObserver;
+  private readonly navigationClient:NavigationClient;
   private backHandler: (() => boolean | Promise<boolean>) | undefined;
   private modal: Dispose | undefined;
   private frame = 0;
@@ -130,7 +136,8 @@ export class ManagedRuntime {
 
   constructor(binding: ExecutionContext, root: HTMLElement, private readonly call: HostCall,
     private readonly fatal: (error: unknown) => void) {
-    this.sourceScheduling = binding.runtimeApiVersion === 3 && binding.role === "source";
+    this.navigationClient=new NavigationClient(call,this.abort.signal);
+    this.sourceScheduling = [3,4].includes(binding.runtimeApiVersion??0) && binding.role === "source";
     this.context = {
       source: {
         publish: snapshot => {
@@ -161,6 +168,9 @@ export class ManagedRuntime {
       ui: { mountAt: (key, anchor, options) => this.mount(key, anchor, options),
         openModal: (key, render) => this.openModal(key, render) },
       navigation: {
+        resolve:targets=>this.navigationClient.resolve(targets),
+        activate:options=>this.navigationClient.activate(options),
+        subscribe:callback=>this.track(this.navigationClient.subscribe(callback)),
         armReturn: options => this.call("navigation.armReturn", options),
         cancelReturn: token => this.call("navigation.cancelReturn", {token}),
         takeReturn: key => this.call("navigation.takeReturn", {key}),
@@ -205,6 +215,7 @@ export class ManagedRuntime {
     const poll = setInterval(() => { if (this.sourceScheduling || !document.hidden) this.route(); }, 250);
     this.track(() => clearInterval(poll));
   }
+  navigationSnapshot(snapshot:NavigationSnapshot):void{this.navigationClient.receive(snapshot);}
   sourceSnapshot(snapshot: SourceSnapshot): void {
     this.latestSnapshot = snapshot;
     for(const callback of this.sourceListeners) this.invoke(()=>callback(snapshot));

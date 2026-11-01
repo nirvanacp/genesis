@@ -1,5 +1,6 @@
 /** Compatibility of the document API, independent of npm package semver. */
-export const RUNTIME_API_VERSION = 3;
+export const RUNTIME_API_VERSION = 4;
+export const SUPPORTED_RUNTIME_API_VERSIONS = [3,4] as const;
 export interface Manifest {
   schemaVersion: 1;
   id: string;
@@ -23,8 +24,8 @@ export interface Source {
   navigationRules?: { id: string; pathPrefix: string; action: 'block'; fallbackUrl: string }[];
 }
 export interface AppletBundle {
-  formatVersion: 1; runtimeApiVersion: 1 | 2 | 3; sdkVersion: string;
-  package: { manifest: Manifest | IsolatedManifest; revision: string; assets: { path: string; sha256: string }[] };
+  formatVersion: 1; runtimeApiVersion: 1 | 2 | 3 | 4; sdkVersion: string;
+  package: { manifest: Manifest | IsolatedManifest | NavigationManifest; revision: string; assets: { path: string; sha256: string }[] };
 }
 
 /** API 3 authoring types. Runtime API 2 hosts cannot execute these packages. */
