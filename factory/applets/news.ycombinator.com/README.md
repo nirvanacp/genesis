@@ -27,3 +27,5 @@ Post, reply, authentication and account forms remain original website forms in t
 Historical API-2 checks and older phone reports qualify only their recorded revisions, not this migration. Search remains the documented placeholder. Real posting/voting/account mutations are not routine QA actions.
 
 Missing content anchors and unfinished profile/discussion markup remain loading until validated content or the framework deadline. Invalid route parameters still produce unsupported outcomes; successful empty structures remain distinct from failed reads.
+
+The [source loading repair qualification](../../../.reports/phase-5/2026-11-01/091700-genesis-loading-repair-verification.md) records installed SDK/tools 0.4.1 revisions, repeated X navigation, genuine recovery and shared-host checks. It supersedes earlier loading/recovery qualification for those journeys and states the remaining device/transport/accessibility limits.
