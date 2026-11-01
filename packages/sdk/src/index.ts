@@ -42,8 +42,11 @@ export type SourceAdapterContext = Pick<AppletContext,'binding'|'signal'|'watchE
 export interface SourceAdapterEntry {adapters:string[];activate(context:SourceAdapterContext):void|Dispose|Promise<void|Dispose>;inspect?():unknown}
 export function defineSourceAdapter(entry:SourceAdapterEntry):AppletEntry {
   return {registration:{adapters:entry.adapters},inspect:entry.inspect,activate(context){
-    if(context.binding.runtimeApiVersion!==3||context.binding.role!=='source'||context.sourceId===null)throw new Error('Source adapters require an isolated source context');
+    if(![3,4].includes(context.binding.runtimeApiVersion??0)||context.binding.role!=='source'||context.sourceId===null)throw new Error('Source adapters require an isolated source context');
     return entry.activate(context as SourceAdapterContext);
   }};
 }
 export {createOwnedScope} from './owned-scope';
+
+export {createNavigationControl,navigationCue,websiteDestination} from './navigation';
+export type {NavigationDecision,NavigationTarget,NavigationSnapshot,NavigationActivation,DestinationKind} from './navigation';

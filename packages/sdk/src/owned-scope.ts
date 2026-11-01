@@ -12,7 +12,7 @@ export function createOwnedScope(parent:AppletContext,root:HTMLElement):{context
   const context:AppletContext={...parent,root,signal:abort.signal,onDispose:callback=>{track(callback);},
     onFocus:callback=>track(parent.onFocus(callback)),
     storage:{...parent.storage,onChanged:callback=>track(parent.storage.onChanged(callback))},
-    navigation:{...parent.navigation,onChange:callback=>track(parent.navigation.onChange(callback)),onBack:callback=>track(parent.navigation.onBack(callback))},
+    navigation:{...parent.navigation,subscribe:callback=>track(parent.navigation.subscribe(callback)),onChange:callback=>track(parent.navigation.onChange(callback)),onBack:callback=>track(parent.navigation.onBack(callback))},
     source:{...parent.source,subscribe:callback=>track(parent.source.subscribe(callback)),onCommand:callback=>track(parent.source.onCommand(callback))},
     ui:{...parent.ui,openModal:(key,render)=>track(parent.ui.openModal(key,render)),mountAt:(key,anchor,options)=>track(parent.ui.mountAt(key,anchor,options))},
   };
