@@ -1,0 +1,6 @@
+# Interaction delivery
+
+- Goal: Deliver X action/navigation separation, HN corrections and portable authoring guidance while preserving mandatory owned rendering.
+- Changes: Installed the share-capable host and final X/HN code in place. Updated the governing plan and verification report with component commits, installed revisions, actual observations and gaps. Existing identities, sessions and independent stores remain intact.
+- Decisions: Use existing source transport with retained results and explicit uncertainty. Keep protected editors website-owned. Native Share reports chooser presentation only. Load more uses observed content rather than another transport. The user did not authorize routine social-write QA.
+- Verification: Workspace TypeScript/package checks, both applet check/builds, Rust clippy, Cargo compilation, Android assemble/lint, portable links and packed React/vanilla creator checks passed. Live owned action roles, contextual Reply cancellation and native chooser open/cancel passed on the integration artifact. Final revisions installed successfully. Social persistence, Quote/private/inverse/localized variants, full HN journeys and physical-device accessibility remain unqualified; details are in the report. Diagnostic forwarding/device dump were removed.

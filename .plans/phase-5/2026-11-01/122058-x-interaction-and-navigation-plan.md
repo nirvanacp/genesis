@@ -1,6 +1,6 @@
 # X interactions without weakening route isolation
 
-Status: proposed implementation plan; no application changes made. Project: Genesis X applet, followed by Hacker News and portable factory guidance. Phase: phase-5. Created 1 November 2026, 12:20:58 Asia/Kolkata. Repository baseline: `18a16a3` on `proto/phase-5`.
+Status: implemented in component commits; static checks and sampled device behavior passed, with qualification gaps recorded below. Project: Genesis X applet, followed by Hacker News and portable factory guidance. Phase: phase-5. Created 1 November 2026, 12:20:58 Asia/Kolkata. Repository baseline: `18a16a3` on `proto/phase-5`.
 
 ## Outcome and decisions
 
@@ -363,3 +363,7 @@ Completion requires real action controls across all X renderers, qualified conte
 ## Planning verification
 
 This task inspected current manifests, applet renderers/adapters/models, public SDK signatures, native command dispatch/provider adoption/sharing code, factory instructions/skills and active-phase documents. Read-only live DOM inspection confirmed the X source-button/foreground-link mismatch and one disabled Repost state. It did not click controls, submit anything, change account/backend data, install packages or change app code. The temporary local inspector forward was removed; pre-existing inspection state was preserved. HN findings are from code inspection. Implementation checks and social-write qualification remain future work. Local document links and whitespace are checked before the planning commit.
+
+## Implementation outcome
+
+The user authorized implementation after planning. Applet action execution, owned controls, contextual Reply, optional native sharing, HN fragment correction and factory guidance are implemented and installed. See [delivery verification](../../../.reports/phase-5/2026-11-01/144631-x-interactions-verification.md) for exact revisions, component commits, observations and unperformed cases. Existing read commands remain the public transport; load-more completion uses foreground observation rather than an additional read-result protocol. Social persistence, Quote context, private/inverse/localized confirmations and the full accessibility/HN device matrix remain unqualified. No real social mutation or record reset was performed.
