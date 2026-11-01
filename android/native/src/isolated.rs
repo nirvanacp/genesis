@@ -32,8 +32,41 @@ pub struct IsolatedHost {
     back_handler: bool,
     pending_back: Option<u64>,
     last_publish: Option<std::time::Instant>,
+    deadline: Option<std::time::Instant>,
+    deadline_token: u64,
+    paused_remaining: Option<std::time::Duration>,
+    transitions: std::collections::VecDeque<Value>,
+    diagnostic_start: Option<std::time::Instant>,
+
 }
 impl IsolatedHost {
+    fn start_deadline(&mut self, duration: std::time::Duration, out: &mut Vec<Value>) {
+        if self.deadline.is_some() || self.paused_remaining.is_some() || self.source_exposed { return; }
+        self.deadline_token += 1;
+        self.deadline = Some(std::time::Instant::now() + duration);
+        out.push(json!({"type":"isolatedSourceDeadline","generation":self.generation,"epoch":self.epoch,
+            "token":self.deadline_token,"delayMs":duration.as_millis() as u64}));
+    }
+    fn cancel_deadline(&mut self) {
+        self.deadline = None;
+        self.paused_remaining = None;
+        self.deadline_token += 1;
+    }
+    fn publish_snapshot(&mut self, out: &mut Vec<Value>) {
+        if self.transitions.len() == 64 { self.transitions.pop_front(); }
+        let elapsed=self.diagnostic_start.get_or_insert_with(std::time::Instant::now).elapsed().as_millis() as u64;
+        let previous=self.transitions.back().map(|v|v["state"].clone()).unwrap_or(Value::Null);
+        self.transitions.push_back(json!({"elapsedMs":elapsed,"role":"source","previous":previous,"epoch":self.epoch,"generation":self.generation,
+            "state":self.snapshot["state"],"routeId":self.snapshot["route"]["routeId"],
+            "code":self.snapshot["error"]["code"],"origin":self.snapshot["error"]["origin"]}));
+        self.notify("foreground", "source.snapshot", self.snapshot.clone(), out);
+    }
+    fn source_failure(&mut self, code: &str, message: &str, out: &mut Vec<Value>) {
+        self.cancel_deadline();
+        self.snapshot["state"] = json!("error");
+        self.snapshot["error"] = json!({"message":message,"code":code,"origin":"host","retryable":true});
+        self.publish_snapshot(out);
+    }
     fn command(&self, kind: &str) -> Value {
         json!({"type":kind,"generation":self.generation})
     }
@@ -93,12 +126,18 @@ impl IsolatedHost {
         };
         self.snapshot = json!({"state":state,"url":self.url,"sourceId":self.selection["sourceId"],"pageId":self.page,
             "sectionId":self.selection["sectionId"],"route":self.resolution(&self.url),"epoch":self.epoch});
-        self.notify("foreground", "source.snapshot", self.snapshot.clone(), out);
+        if state == "loading" { self.start_deadline(std::time::Duration::from_secs(15), out); }
+        else { self.cancel_deadline(); }
+        if state == "unsupported" { self.snapshot["error"] = json!({"code":"UNSUPPORTED_ROUTE","origin":"host","retryable":false,"message":"This page needs the website."}); }
+        self.publish_snapshot(out);
     }
     fn launcher(&mut self, out: &mut Vec<Value>) {
         if self.package.is_some() {
             out.push(self.command("isolatedDestroy"));
         }
+        self.cancel_deadline();
+        self.transitions.clear();
+        self.diagnostic_start=None;
         self.package = None;
         self.documents.clear();
         self.history.clear();
@@ -200,6 +239,7 @@ impl IsolatedHost {
         self.selection = json!({"appletId":applet,"sourceId":source.id,"pageId":if page.is_empty(){Value::Null}else{json!(page)},"sectionId":section});
         self.url = url;
         self.page = page;
+        self.cancel_deadline();
         self.epoch += 1;
         self.website = false;
         self.website_session = None;
@@ -363,11 +403,11 @@ impl IsolatedHost {
                 if matches!(self.resolution(url),RouteResolution::Matched{result:RouteResult::Custom{..},..}) {
                     let mut input=self.selection.clone();input["url"]=json!(url);input["pageId"]=Value::Null;self.open(&input,true,&mut out)?;
                 } else if url::Url::parse(url).is_ok_and(|u|["http","https"].contains(&u.scheme())&&u.username().is_empty()&&u.password().is_none()) {
-                    self.begin_website();let adopt=url==self.url;self.source_exposed=adopt;if adopt{self.notify("source","context.retired",Value::Null,&mut out);self.documents.remove("source");}
+                    self.begin_website();let adopt=url==self.url;self.source_exposed=adopt;if adopt{self.cancel_deadline();self.notify("source","context.retired",Value::Null,&mut out);self.documents.remove("source");}
                     out.push(json!({"type":"isolatedWebsite","sessionId":self.website_session,"generation":self.generation,"url":url,"adopt":adopt}));
                 }
             },
-            "ordinary" => { self.begin_website(); self.source_exposed=true; self.notify("source","context.retired",Value::Null,&mut out); self.documents.remove("source"); out.push(json!({"type":"isolatedWebsite","sessionId":self.website_session,"generation":self.generation,"url":self.url,"adopt":true})); },
+            "ordinary" => { self.begin_website(); self.source_exposed=true; self.cancel_deadline(); self.notify("source","context.retired",Value::Null,&mut out); self.documents.remove("source"); out.push(json!({"type":"isolatedWebsite","sessionId":self.website_session,"generation":self.generation,"url":self.url,"adopt":true})); },
             "retry" | "reload" => if self.website { out.push(self.command("isolatedWebsiteReload")); } else {
                 let mut input=self.selection.clone();input["url"]=json!(self.url);input["pageId"]=json!(self.page);self.open(&input,false,&mut out)?;
             },
@@ -392,16 +432,15 @@ impl IsolatedHost {
                 }
             },
             "isolatedSourceTimeout" => {
-                if event["epoch"].as_u64()==Some(self.epoch)&&self.snapshot["state"]=="loading" {
-                    self.snapshot["state"]=json!("error");self.snapshot["error"]=json!({"message":"The website is taking too long. Retry or open the website."});
-                    self.notify("foreground","source.snapshot",self.snapshot.clone(),&mut out);
+                if event["epoch"].as_u64()==Some(self.epoch) && event["token"].as_u64()==Some(self.deadline_token) && self.deadline.is_some() && self.snapshot["state"]=="loading" {
+                    self.source_failure("SOURCE_TIMEOUT", "This page is taking too long. Try again or open the website.", &mut out);
                 }
             },
             "configureServices" => out.push(json!({"type":"configureServices","appletId":self.package.as_ref().unwrap().manifest.id,"services":self.package.as_ref().unwrap().manifest.services})),
             "isolatedSourceError" => {
                 if event["epoch"].as_u64()!=Some(self.epoch) { return Ok(out); }
-                self.snapshot["state"]=json!("error");self.snapshot["error"]=json!({"message":"The website could not be loaded. Check your connection and retry."});
-                self.notify("foreground","source.snapshot",self.snapshot.clone(),&mut out);
+                let code = match event["code"].as_str() { Some("HTTP") => "HTTP", Some("SOURCE_RENDERER_FAILED") => "SOURCE_RENDERER_FAILED", _ => "NETWORK" };
+                self.source_failure(code, "The website could not load. Check your connection and try again.", &mut out);
             },
             "isolatedMessage" => self.message(&event,&mut out)?,
             "storageCompleted" | "serviceCompleted" => {
@@ -413,8 +452,13 @@ impl IsolatedHost {
                     }
                 }
             },
-            "suspended" => out.push(self.command("isolatedPause")),
-            "resumed" => {out.push(self.command("isolatedResume"));self.notify("foreground","host.focused",Value::Null,&mut out);},
+            "isolatedInspect" => out.push(json!({"type":"isolatedDiagnostics","generation":self.generation,"transitions":self.transitions})),
+            "suspended" => {
+                let remaining=self.deadline.map(|d|d.saturating_duration_since(std::time::Instant::now()));
+                self.cancel_deadline();self.paused_remaining=remaining;
+                out.push(self.command("isolatedPause"));
+            },
+            "resumed" => {if let Some(remaining)=self.paused_remaining.take(){self.start_deadline(remaining,&mut out);}out.push(self.command("isolatedResume"));self.notify("foreground","host.focused",Value::Null,&mut out);},
             "detach" => {out.push(self.command("isolatedDestroy"));self.documents.clear();self.package=None;},
             "saveSession" => out.push(json!({"type":"retainSession","snapshot":{"selection":self.selection,"currentUrl":self.url}})),
             _ => {},
@@ -590,12 +634,30 @@ impl IsolatedHost {
                         self.reply(role, request, Err("Invalid snapshot state"), out);
                         return Ok(());
                     }
+                    let mut problem = Value::Null;
+                    if !params["error"].is_null() {
+                        let e=&params["error"];
+                        let codes=["NETWORK","HTTP","SOURCE_TIMEOUT","ADAPTER_FAILED","SOURCE_RENDERER_FAILED","UNSUPPORTED_ROUTE","CONTENT_UNRECOGNIZED","UPSTREAM_FAILURE","ADAPTER_NOT_IMPLEMENTED"];
+                        if !["error","unsupported","auth-required","challenge"].contains(&params["state"].as_str().unwrap_or(""))
+                            || e["message"].as_str().is_none_or(|m|m.chars().count()>1024)
+                            || (!e["code"].is_null() && !codes.contains(&e["code"].as_str().unwrap_or("")))
+                            || (!e["retryable"].is_null() && !e["retryable"].is_boolean()) {
+                            self.reply(role,request,Err("Invalid source problem"),out);return Ok(());
+                        }
+                        problem=json!({"message":e["message"],"origin":"adapter"});
+                        if !e["code"].is_null(){problem["code"]=e["code"].clone();}
+                        if !e["retryable"].is_null(){problem["retryable"]=e["retryable"].clone();}
+                    }
+                    if params["state"]=="loading" {
+                        if self.snapshot["state"]=="error" {self.reply(role,request,Ok(Value::Null),out);return Ok(());}
+                        self.start_deadline(std::time::Duration::from_secs(15),out);
+                    } else {self.cancel_deadline();}
                     let mut snapshot = self.snapshot.clone();
                     snapshot["state"] = params["state"].clone();
                     snapshot["data"] = params["data"].clone();
-                    snapshot["error"] = params["error"].clone();
+                    snapshot["error"] = problem;
                     self.snapshot = snapshot;
-                    self.notify("foreground", "source.snapshot", self.snapshot.clone(), out);
+                    self.publish_snapshot(out);
                     self.reply(role, request, Ok(Value::Null), out);
                 }
                 "source.route" => {
@@ -629,8 +691,8 @@ impl IsolatedHost {
                     self.reply(role, request, Ok(Value::Null), out)
                 }
                 "runtime.error" => {
-                    self.snapshot["state"] = json!("unsupported");
-                    self.notify("foreground", "source.snapshot", self.snapshot.clone(), out);
+                    self.source_failure("ADAPTER_FAILED", "This page could not be prepared. Try again or open the website.", out);
+                    self.documents.remove("source");
                 }
                 _ => self.reply(
                     role,
@@ -673,7 +735,7 @@ impl IsolatedHost {
                 let url=params["url"].as_str().unwrap_or("");
                 let valid=url::Url::parse(url).is_ok_and(|u|["http","https"].contains(&u.scheme())&&u.username().is_empty()&&u.password().is_none()&&u.host_str()!=Some("appassets.androidplatform.net"));
                 if !valid {self.reply(role,request,Err("Invalid website URL"),out);return Ok(());}
-                let url=url.to_owned();let adopt=url==self.url;self.begin_website();self.source_exposed=adopt;if adopt{self.notify("source","context.retired",Value::Null,out);self.documents.remove("source");}
+                let url=url.to_owned();let adopt=url==self.url;self.begin_website();self.source_exposed=adopt;if adopt{self.cancel_deadline();self.notify("source","context.retired",Value::Null,out);self.documents.remove("source");}
                 out.push(json!({"type":"isolatedWebsite","sessionId":self.website_session,"generation":self.generation,"url":url,"adopt":adopt}));self.reply(role,request,Ok(json!({"sessionId":self.website_session})),out);
             },
             "webViews.close"=>{if let Some(session)=params["sessionId"].as_str() && self.website_session.as_deref()!=Some(session){self.reply(role,request,Err("Website session is no longer current"),out);return Ok(());}out.push(self.command("isolatedWebsiteClose"));self.reply(role,request,Ok(Value::Null),out);},

@@ -191,14 +191,14 @@ final class IsolatedBrowser {
             @Override public void onPageStarted(WebView v,String url,android.graphics.Bitmap icon){report(url,false);if(website&&reader()==v)providerStarting(url);}
             @Override public void doUpdateVisitedHistory(WebView v,String url,boolean reload){report(url,true);if(website&&reader()==v)providerNavigation(url);}
             @Override public void onPageCommitVisible(WebView v,String url){report(url,false);if(website&&reader()==v)providerRevealed(v,url);}
-            @Override public void onReceivedError(WebView v,WebResourceRequest r,WebResourceError e){if(!destroyed&&source==current&&navigation==epoch&&r.isForMainFrame()){if(website&&reader()==v)views.websiteFailure("This website could not load");else {if(website)sourceChangedInReader=true;emit("isolatedSourceError","message","Website unavailable");}}}
-            @Override public void onReceivedHttpError(WebView v,WebResourceRequest r,WebResourceResponse response){if(!destroyed&&source==current&&navigation==epoch&&r.isForMainFrame()&&response.getStatusCode()>=400){if(website&&reader()==v)views.websiteFailure("Website returned HTTP "+response.getStatusCode());else {if(website)sourceChangedInReader=true;emit("isolatedSourceError","message","Website unavailable");}}}
-            @Override public boolean onRenderProcessGone(WebView v,RenderProcessGoneDetail detail){if(!destroyed&&source==current&&navigation==epoch){if(website&&reader()==v)closeWebsite(true);else {if(website)sourceChangedInReader=true;emit("isolatedSourceError","message","Website renderer stopped");}}return true;}
+            @Override public void onReceivedError(WebView v,WebResourceRequest r,WebResourceError e){if(!destroyed&&source==current&&navigation==epoch&&r.isForMainFrame()){if(website&&reader()==v)views.websiteFailure("This website could not load");else {if(website)sourceChangedInReader=true;emit("isolatedSourceError","code","NETWORK");}}}
+            @Override public void onReceivedHttpError(WebView v,WebResourceRequest r,WebResourceResponse response){if(!destroyed&&source==current&&navigation==epoch&&r.isForMainFrame()&&response.getStatusCode()>=400){if(website&&reader()==v)views.websiteFailure("Website returned HTTP "+response.getStatusCode());else {if(website)sourceChangedInReader=true;emit("isolatedSourceError","code","HTTP");}}}
+            @Override public boolean onRenderProcessGone(WebView v,RenderProcessGoneDetail detail){if(!destroyed&&source==current&&navigation==epoch){if(website&&reader()==v)closeWebsite(true);else {if(website)sourceChangedInReader=true;emit("isolatedSourceError","code","SOURCE_RENDERER_FAILED");}}return true;}
         });
         presentation.addSource(sourceId,source);
         sourceScript=inject(source,"source",origins(sourceDefinition),sourceDefinition.getString("entry"));
         source.loadUrl(currentUrl);
-        main.postDelayed(()->{if(!destroyed&&source==current&&navigation==epoch&&!website)emit("isolatedSourceTimeout","url",currentUrl);},15000);
+
     }
     private boolean safeWebsite(String url){try{Uri u=Uri.parse(url);return ("https".equals(u.getScheme())||"http".equals(u.getScheme()))&&u.getHost()!=null&&u.getUserInfo()==null&&!"appassets.androidplatform.net".equals(u.getHost());}catch(Exception e){return false;}}
     private String origin(String url){Uri u=Uri.parse(url);return u.getScheme()+"://"+u.getAuthority();}
@@ -245,7 +245,7 @@ final class IsolatedBrowser {
     boolean handleUserEvent(JSONObject event) throws Exception {
         String type=event.getString("type");
         if((activity.getApplicationInfo().flags&android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE)!=0){
-            if("inspect".equals(type)){WebView.setWebContentsDebuggingEnabled(true);views.diagnostics("Local WebView inspection enabled for this applet visit.\n"+"Isolated applet: "+appletId()+"\nGeneration: "+generation+"; source epoch: "+epoch+"\nForeground ready: "+foregroundReady+"; website view: "+website+"\nSource hidden: "+(!website||!adopted)+"; source channel count: "+channels.getOrDefault("source",Collections.emptyMap()).size());return true;}
+            if("inspect".equals(type)){WebView.setWebContentsDebuggingEnabled(true);emit("isolatedInspect","inspect",true);return true;}
             if("debugFailure".equals(type)){failure("Simulated applet failure. Retry to recreate its interface.");return true;}
             if("debugTerminate".equals(type)){
                 if(foreground!=null&&WebViewFeature.isFeatureSupported(WebViewFeature.GET_WEB_VIEW_RENDERER)){
@@ -290,6 +290,11 @@ final class IsolatedBrowser {
             case "isolatedFailure":failure(command.getString("message"));break;
             case "isolatedLeaveGuard":leaveGuard=command.isNull("message")?null:command.getString("message");break;
             case "isolatedBackDeadline":{long token=command.getLong("token");main.postDelayed(()->emit("isolatedBackDeadline","token",token),300);break;}
+            case "isolatedDiagnostics":views.diagnostics("Local WebView inspection enabled for this applet visit.\nSource transitions (no page content):\n"+command.getJSONArray("transitions").toString(2));break;
+            case "isolatedSourceDeadline":{
+                final long visit=command.getLong("epoch"), token=command.getLong("token");
+                main.postDelayed(()->{if(!destroyed&&epoch==visit)try{events.send(event("isolatedSourceTimeout").put("epoch",visit).put("token",token));}catch(JSONException ignored){}},command.getLong("delayMs"));break;
+            }
             case "isolatedPause":if(source!=null)source.onPause();if(foreground!=null)foreground.onPause();if(external!=null)external.onPause();break;
             case "isolatedResume":if(source!=null)source.onResume();if(foreground!=null)foreground.onResume();if(external!=null)external.onResume();break;
             case "isolatedDestroy":destroy();break;
