@@ -1,0 +1,14 @@
+{"ms":66,"role":"owned","state":"ready","epoch":7,"path":"/:account/following","kind":"people","loading":false,"retry":0,"headings":[]}
+{"ms":68,"role":"source","path":"/:account/following","readyState":"complete","primary":true,"progress":false,"posts":0,"empty":false,"signedOut":false,"error":false,"profile":false}
+{"ms":2546,"role":"owned","state":"loading","epoch":8,"path":"/:profile","loading":true,"retry":0,"headings":[]}
+{"ms":2671,"role":"source","path":"/:profile","readyState":"interactive","primary":false,"progress":false,"empty":false,"signedOut":false,"error":false,"profile":false}
+{"ms":2792,"role":"source","path":"/:profile","readyState":"complete","primary":false,"progress":false,"empty":false,"signedOut":false,"error":false,"profile":false}
+{"ms":3273,"role":"source","path":"/:profile","readyState":"complete","primary":true,"progress":true,"posts":0,"empty":false,"signedOut":false,"error":false,"profile":false}
+{"ms":3273,"role":"owned","state":"unsupported","epoch":8,"path":"/:profile","loading":false,"retry":1,"headings":["Continue on the website"]}
+{"ms":3991,"role":"source","path":"/:profile","readyState":"complete","primary":true,"progress":true,"posts":0,"empty":false,"signedOut":false,"error":false,"profile":true}
+{"ms":4164,"role":"owned","state":"unsupported","epoch":8,"path":"/:profile","loading":true,"retry":0,"headings":[]}
+{"ms":4276,"role":"owned","state":"loading","epoch":8,"path":"/:profile","kind":"profile","loading":true,"retry":0,"headings":[]}
+{"ms":4450,"role":"owned","state":"ready","epoch":8,"path":"/:profile","kind":"profile","loading":false,"retry":0,"headings":[]}
+{"ms":5541,"role":"source","path":"/:profile","readyState":"complete","primary":true,"progress":true,"posts":1,"empty":false,"signedOut":false,"error":false,"profile":true}
+{"ms":5880,"role":"source","path":"/:profile","readyState":"complete","primary":true,"progress":false,"posts":1,"empty":false,"signedOut":false,"error":false,"profile":true}
+{"ms":6132,"role":"source","path":"/:profile","readyState":"complete","primary":true,"progress":false,"posts":5,"empty":false,"signedOut":false,"error":false,"profile":true}

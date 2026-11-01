@@ -1,0 +1,20 @@
+{"ms":370,"role":"owned","state":"ready","epoch":10,"path":"/:profile","kind":"profile","loading":true,"retry":0,"headings":[]}
+{"ms":1102,"role":"owned","state":"loading","epoch":11,"path":"/:account/following","loading":true,"retry":0,"headings":[]}
+{"ms":1116,"role":"source","path":"/:account/following","readyState":"interactive","primary":false,"progress":false,"empty":false,"signedOut":false,"error":false,"profile":false}
+{"ms":1457,"role":"source","path":"/:account/following","readyState":"interactive","primary":true,"progress":true,"posts":0,"empty":false,"signedOut":false,"error":false,"profile":false}
+{"ms":1600,"role":"source","path":"/:account/following","readyState":"complete","primary":true,"progress":true,"posts":0,"empty":false,"signedOut":false,"error":false,"profile":false}
+{"ms":2163,"role":"owned","state":"loading","epoch":11,"path":"/:account/following","kind":"people","loading":false,"retry":0,"headings":[]}
+{"ms":2835,"role":"source","path":"/:account/following","readyState":"complete","primary":true,"progress":false,"posts":0,"empty":false,"signedOut":false,"error":false,"profile":false}
+{"ms":3639,"role":"owned","state":"ready","epoch":11,"path":"/:account/following","kind":"people","loading":false,"retry":0,"headings":[]}
+{"ms":6301,"role":"owned","state":"loading","epoch":12,"path":"/:profile","loading":true,"retry":0,"headings":[]}
+{"ms":7187,"role":"source","path":"/:profile","readyState":"complete","primary":false,"progress":false,"empty":false,"signedOut":false,"error":false,"profile":false}
+{"ms":7189,"role":"owned","state":"unsupported","epoch":12,"path":"/:profile","loading":false,"retry":1,"headings":["Continue on the website"]}
+{"ms":7681,"role":"source","path":"/:profile","readyState":"complete","primary":true,"progress":true,"posts":0,"empty":false,"signedOut":false,"error":false,"profile":false}
+{"ms":8360,"role":"source","path":"/:profile","readyState":"complete","primary":true,"progress":true,"posts":0,"empty":false,"signedOut":false,"error":false,"profile":true}
+{"ms":8360,"role":"owned","state":"loading","epoch":12,"path":"/:profile","kind":"profile","loading":true,"retry":0,"headings":[]}
+{"ms":8993,"role":"owned","state":"loading","epoch":12,"path":"/:profile","kind":"profile","loading":false,"retry":0,"headings":[]}
+{"ms":9130,"role":"owned","state":"ready","epoch":12,"path":"/:profile","kind":"profile","loading":false,"retry":0,"headings":[]}
+{"ms":10128,"role":"source","path":"/:profile","readyState":"complete","primary":true,"progress":true,"posts":1,"empty":false,"signedOut":false,"error":false,"profile":true}
+{"ms":10505,"role":"source","path":"/:profile","readyState":"complete","primary":true,"progress":false,"posts":1,"empty":false,"signedOut":false,"error":false,"profile":true}
+{"ms":11049,"role":"source","path":"/:profile","readyState":"complete","primary":true,"progress":false,"posts":4,"empty":false,"signedOut":false,"error":false,"profile":true}
+{"ms":11185,"role":"source","path":"/:profile","readyState":"complete","primary":true,"progress":false,"posts":5,"empty":false,"signedOut":false,"error":false,"profile":true}

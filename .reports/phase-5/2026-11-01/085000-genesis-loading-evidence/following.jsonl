@@ -1,0 +1,8 @@
+{"ms":79,"role":"owned","state":"ready","epoch":6,"path":"/:account","kind":"profile","loading":false,"retry":0,"headings":[]}
+{"ms":80,"role":"source","path":"/:account","readyState":"complete","primary":true,"progress":false,"posts":1,"empty":false,"signedOut":false,"error":false,"profile":true}
+{"ms":2416,"role":"owned","state":"loading","epoch":7,"path":"/:account/following","loading":true,"retry":0,"headings":[]}
+{"ms":3392,"role":"source","path":"/:account/following","readyState":"interactive","primary":false,"progress":false,"empty":false,"signedOut":false,"error":false,"profile":false}
+{"ms":3650,"role":"source","path":"/:account/following","readyState":"complete","primary":true,"progress":true,"posts":0,"empty":false,"signedOut":false,"error":false,"profile":false}
+{"ms":4256,"role":"owned","state":"loading","epoch":7,"path":"/:account/following","kind":"people","loading":true,"retry":0,"headings":[]}
+{"ms":4619,"role":"source","path":"/:account/following","readyState":"complete","primary":true,"progress":false,"posts":0,"empty":false,"signedOut":false,"error":false,"profile":false}
+{"ms":5144,"role":"owned","state":"ready","epoch":7,"path":"/:account/following","kind":"people","loading":false,"retry":0,"headings":[]}

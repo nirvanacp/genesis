@@ -1,0 +1,13 @@
+{"ms":97,"role":"source","path":"/explore","readyState":"complete","primary":true,"progress":false,"posts":3,"empty":false,"signedOut":false,"error":false,"profile":false}
+{"ms":98,"role":"owned","state":"ready","epoch":15,"path":"/explore","kind":"discovery","loading":false,"retry":0,"headings":[]}
+{"ms":2549,"role":"owned","state":"loading","epoch":16,"path":"/search","loading":true,"retry":0,"headings":[]}
+{"ms":2577,"role":"source","path":"/search","readyState":"loading","primary":false,"progress":false,"empty":false,"signedOut":false,"error":false,"profile":false}
+{"ms":2710,"role":"source","path":"/search","readyState":"interactive","primary":false,"progress":false,"empty":false,"signedOut":false,"error":false,"profile":false}
+{"ms":3093,"role":"source","path":"/search","readyState":"complete","primary":false,"progress":false,"empty":false,"signedOut":false,"error":false,"profile":false}
+{"ms":3431,"role":"owned","state":"unsupported","epoch":16,"path":"/search","loading":false,"retry":1,"headings":["Continue on the website"]}
+{"ms":3691,"role":"source","path":"/search","readyState":"complete","primary":true,"progress":true,"posts":0,"empty":false,"signedOut":false,"error":false,"profile":false}
+{"ms":4146,"role":"owned","state":"unsupported","epoch":16,"path":"/search","loading":true,"retry":0,"headings":[]}
+{"ms":4444,"role":"owned","state":"loading","epoch":16,"path":"/search","kind":"discovery","loading":true,"retry":0,"headings":[]}
+{"ms":5694,"role":"source","path":"/search","readyState":"complete","primary":true,"progress":true,"posts":3,"empty":false,"signedOut":false,"error":false,"profile":false}
+{"ms":5997,"role":"source","path":"/search","readyState":"complete","primary":true,"progress":false,"posts":3,"empty":false,"signedOut":false,"error":false,"profile":false}
+{"ms":6674,"role":"owned","state":"ready","epoch":16,"path":"/search","kind":"discovery","loading":false,"retry":0,"headings":[]}
