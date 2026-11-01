@@ -1,0 +1,6 @@
+# X compact navigation cues
+
+- **Goal:** Repair the crowded Home, Explore and post controls shown in the user's Android screenshots, and cover the same shared link component on other X screens.
+- **Changes:** `XLink` now renders a small visible external arrow with an accessible "opens website" name when the host resolves a website destination. CSS places the arrow inside icon controls and post actions. Routed source tabs now receive the same spacing and selected indicator as command tabs. The X README records the new behavior and verification boundary.
+- **Decisions:** The user requested a broad UI repair across both applets. I kept the host's destination decision and visible handoff cue, but replaced the full inline Website word in X's compact controls because it broke their layout. I changed only the applet renderer and styles; the shared SDK behavior stays available to other applets.
+- **Verification:** TypeScript, applet check, build and `git diff --check` passed. Revision `ce79e5b3a380be268e4fb7811d30b276f5dff4d74f15beb9fb9feb5cf765c5b6` installed on the API-4 emulator. Home and Explore headers rendered without cue collisions. The X source remained in loading, so feed actions, trends and routed tabs were not visually qualified on this revision.
