@@ -1,0 +1,26 @@
+/* Shared compact story hierarchy. Text links wrap; standalone actions retain 48px targets. */
+:host,:root{--hn-font:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;--hn-title-size:15px;--hn-title-line:21px;--hn-meta-size:12px;--hn-meta-line:18px}
+.story,.story-card{position:relative;padding:10px 0;border-bottom:1px solid var(--line);border-top:0}
+.story-heading{display:flex;align-items:flex-start;gap:8px;padding-inline-end:48px}
+.story-rank{flex:0 0 20px;text-align:right;color:var(--muted);font:400 var(--hn-meta-size)/var(--hn-title-line) var(--hn-font);padding-top:1px;font-variant-numeric:tabular-nums}
+.story-copy{flex:1;min-width:0}
+.story-copy h2,.story-card .story-copy h2{margin:0;font:600 var(--hn-title-size)/var(--hn-title-line) var(--hn-font);letter-spacing:0}
+.story-title-link{display:inline;color:var(--ink);text-decoration:none;overflow-wrap:anywhere;font:inherit}
+.story-title-link:hover{text-decoration:underline}
+.story-domain{display:inline;color:var(--muted);font:400 var(--hn-meta-size)/var(--hn-meta-line) var(--hn-font);overflow-wrap:anywhere}
+.story-metadata,.story-meta{display:flex;flex-wrap:wrap;align-items:center;gap:0 8px;margin-top:5px;color:var(--muted);font:400 var(--hn-meta-size)/var(--hn-meta-line) var(--hn-font)}
+.story-metadata a{color:inherit;text-decoration:none;display:inline}
+.story-metadata a:hover{text-decoration:underline}
+.story-save{position:absolute;inset-inline-end:0;top:4px;display:flex;align-items:center;justify-content:center;width:48px;min-height:48px;padding:0;border:0;background:transparent;color:var(--muted);border-radius:8px;font:inherit}
+.story-save svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.7}
+.story-save:hover{background:var(--wash)}
+.story-card .row-actions{display:flex;flex-wrap:wrap;gap:0 12px;margin:2px 0 0;font:500 13px/20px var(--hn-font)}
+.story-card .row-actions button{min-height:48px;padding:0;border:0;border-radius:4px;background:transparent;color:var(--accent);font:inherit}
+.story-card .remove-prompt{margin-top:8px}
+.story-card .remove-prompt button{min-height:48px}
+.story-card .tag{font-size:11px;padding:0 6px;line-height:18px}
+.story-card .website-cue,.story .website-cue{font-size:10px;vertical-align:baseline}
+@media(max-width:359px){.story-heading{gap:6px}.story-rank{flex-basis:17px}.story-metadata{gap:0 6px}}
+.story-card .story-heading{padding-inline-end:0}
+
+.story .story-copy h2 a{display:inline;min-height:0}.story-copy h2 .story-domain{font:400 var(--hn-meta-size)/var(--hn-meta-line) var(--hn-font);color:var(--muted)}.story-metadata .story-comments{color:var(--accent);font-weight:600}

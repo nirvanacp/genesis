@@ -58,3 +58,18 @@ The 2026-11-01 UI repair was checked on the API-4 emulator. Feed story links, ac
 Current code uses SDK 0.5.1 with API 4/schema 3. Follow [the interaction contract](../../guides/interactions.md). X social buttons no longer use the generic original-post handoff: supported live controls dispatch visit/account-bound desired-state operations, while cached rows require a live post. Share opens an owned sheet with Copy and optional Android chooser. Reply opens the contextual original editor. HN retains local Save/category/collapse actions; explicit website entry cannot be swallowed by local comment scrolling. Existing private stores remain independent of upstream bookmarks/favorites.
 
 TypeScript/package/build checks pass. Real mutation persistence, inverse confirmation variants, private/requested Follow and physical-device accessibility remain unqualified. See [current verification](../../../.reports/phase-5/2026-11-01/144631-x-interactions-verification.md). Earlier blanket social-provider statements are superseded for these controls; forms, login, settings, uploads and protected playback remain provider-owned.
+
+## Compact HN interface and startup repair
+
+The foreground uses the existing navigation subscription for comment-link identity. Links do not create individual source subscriptions, which previously saturated the bridge and prevented a populated feed from opening.
+
+Story headings share `src/components/story-heading.tsx` and `src/story.css`. Home/feed filters, discussion story headers and Saved use the same system font, 15px/21px title scale, compact domain and metadata styling, separators and wrapping. Article titles open their destination with the existing website cue; comments remain internal navigation. Feed Save is a labeled 48px bookmark button. Saved retains Discussion/Edit/Remove and its existing confirmation/data rules. Comment headers/actions and source skeletons use compact spacing. No route or data-schema change is required.
+
+| Screen | Design and verification |
+| --- | --- |
+| Home and feed families | Shared compact story renderer; actual 30-story Home loaded, with 8 rows visible and 7 fully visible at 411x734 CSS pixels, compared with 3 visible before the change |
+| Discussion | Same story heading and metadata; actual discussion loaded 100 comments, and Back restored Home |
+| Saved | Shared heading/domain and 15px title style; existing saved record rendered after restoring the tunnel to the running backend; no writes performed |
+| Narrow/dark | 320-CSS-pixel foreground check had no horizontal overflow; dark theme tokens applied and Save target remained 48px |
+
+Static TypeScript and applet check/build pass. Physical-device/TalkBack and the complete signed-in/source-route matrix remain unqualified. Backend startup is still operator-owned; connection recovery does not authorize starting a new service or resetting records.

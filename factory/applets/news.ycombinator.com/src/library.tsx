@@ -1,3 +1,5 @@
+import {StoryHeading} from './components/story-heading';
+import storyCss from './story.css';
 import {HnLink} from './components/navigation-link';
 import {Skeleton,PendingAction} from './components/skeleton';
 import { serviceMessage } from "@genesis/sdk";
@@ -114,10 +116,10 @@ function Library({ context }: { context: AppletContext }) {
     } finally { setRemoving(false); }
   };
   const sortedCategories = [...(categories?.categories ?? [])].sort((a, b) => a.value.name.localeCompare(b.value.name));
-  return <><style>{theme}{sharedCss}{libraryCss}</style><main className="library">
+  return <><style>{theme}{sharedCss}{libraryCss}{storyCss}</style><main className="library">
     <header><h1>{section === "categories" ? "Categories" : filter === "all" ? "Saved" : filter === "uncategorized" ? "Uncategorized" : categories?.categories.find(c => c.value.id === filter)?.value.name ?? "Saved"}</h1>
       <button className="manage-link" onClick={() => setSection(section === "saved" ? "categories" : "saved")}>{section === "saved" ? "Manage categories" : "Back to saved"}</button>
-      <p className="muted">Good stories, kept for later.</p></header>
+</header>
     {section === "saved" && <><label className="search"><Icon name="search" /><input type="search" aria-label="Filter this page" placeholder="Filter this page" value={query} onChange={event => setQuery(event.target.value)} /></label>
       <p className="filter-note">Filters stories loaded below. Use Load more to include older saves.</p></>}
     {section === "categories"&&!categories&&loading&&<Skeleton kind="form" label="Loading categories"/>}
@@ -136,12 +138,12 @@ function Library({ context }: { context: AppletContext }) {
     {query && !loading && loaded && !message && !rows.some(record => record.value.title.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())) && <p className="notice">No matches in loaded stories.{!done && " Load more to search the next page."}</p>}
     <ol className="stories">{rows.filter(record => record.value.title.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())).map(record => {
       const value = record.value, memberships = categories ? activeMembership(value.categoryIds, categories) : [];
-      return <li key={value.itemId} className="story-card" onClick={event => tileClick(event.nativeEvent, () => { void openDiscussion(value.discussionUrl); })}><h2><HnLink context={context} className="story-link" url={value.articleUrl??value.discussionUrl}>{value.title}</HnLink></h2>
+      return <li key={value.itemId} className="story-card" onClick={event => tileClick(event.nativeEvent, () => { void openDiscussion(value.discussionUrl); })}><StoryHeading context={context} title={value.title} url={value.discussionUrl} articleUrl={value.articleUrl}>
         <div className="story-meta">{memberships.map(id => <span className="tag" key={id}>{categories?.categories.find(category => category.value.id === id)?.value.name}</span>)}
-          <span>{value.articleUrl ? new URL(value.articleUrl).hostname : "news.ycombinator.com"}</span><span>Saved {new Date(value.savedAtMs).toLocaleDateString()}</span></div>
+          <span>Saved {new Date(value.savedAtMs).toLocaleDateString()}</span></div>
         <div className="row-actions"><button onClick={() => { void openDiscussion(value.discussionUrl); }}>Discussion</button>
           <button onClick={() => openStoryDialog(context, value)}>Edit</button>
-          <button onClick={() => setRemoveId(value.itemId)}>Remove</button></div>
+          <button onClick={() => setRemoveId(value.itemId)}>Remove</button></div></StoryHeading>
         {removeId === value.itemId && <div className="remove-prompt" role="group" aria-label={`Remove ${value.title}`}>
           <span>Remove this saved story?</span>
           <button disabled={removing} onClick={() => { void removeStory(record); }}>{removing?<PendingAction label="Removing saved story"/>:"Remove story"}</button>
