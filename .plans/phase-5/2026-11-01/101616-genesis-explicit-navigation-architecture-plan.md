@@ -1,6 +1,6 @@
 # Genesis explicit navigation and presentation architecture
 
-Status: proposed implementation plan, not implemented APIs. Project: Genesis platform, SDK/tools, factory, X and Hacker News. Phase: phase-5. Created 1 November 2026, Asia/Kolkata.
+Status: implementation in progress; contracts, host, SDK/tooling and applet migrations committed. Final artifact qualification is underway. Project: Genesis platform, SDK/tools, factory, X and Hacker News. Phase: phase-5. Created 1 November 2026, Asia/Kolkata.
 
 ## Goal and governing context
 
@@ -337,3 +337,12 @@ Implementation is complete only when the new policy is enforced across entry poi
 ## Plan validation performed
 
 This planning task checked existing filenames, local document links, current public API signatures, runtime/schema compatibility branches and the original investigation. The proposed signatures and new files are explicitly identified above. No application code, factory instruction, package, service or device state was changed by this planning task. No implementation/build/device verification is claimed. Local Markdown-link and whitespace checks passed before the documentation commit.
+
+
+## Implementation decisions recorded 1 November 2026
+
+The user authorized implementation after planning. Shared contracts, host enforcement, SDK/tooling and X/HN migrations are implemented in component commits. The adapters receive accepted route metadata through `ExecutionContext.route`; this is the read-only route context described above. X uses a single declared `original-x` action and HN `original-hn` for original-page controls, each limited to their declared custom route IDs. These generic original-page actions preserve the existing open-page behavior; they do not execute reply/follow/share. This avoids falsely claiming action-specific automation the provider does not implement. Visible caller labels still describe the workflow.
+
+The installed TypeScript 7 compiler uses its pinned `unstable/sync` and AST APIs for direct-provider diagnostics, rather than the older compiler API. Generated React/vanilla projects were checked and built after correcting this difference. Live public X Subs inspection identified its actual subscription gate, which now stays owned. HN's pre-existing development override was replaced in place for qualification, while APK-selected assets were rebuilt separately. No new tests, AGENTS edits, data resets or backend changes were made.
+
+Recovery rendering uses a focused native `NavigationPresentation` view. Native website chrome always shows a separate Return row whose measured height determines content insets. The final acceptance report distinguishes component/static verification, real integrated journeys and unperformed environment/accessibility cases.

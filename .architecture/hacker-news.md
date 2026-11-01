@@ -1,6 +1,6 @@
 # Hacker News applet architecture
 
-`factory/applets/news.ycombinator.com` is the schema-2/API-3 HN reference applet, stable ID `hn-bookmarks`. Native Home, Search, Post, Saved and Me IDs are preserved. Its backend remains a separate Node/SQLite process; existing bookmarks/categories and host records are not reset by rendering migration.
+`factory/applets/news.ycombinator.com` is the schema-3/API-4 HN reference applet, stable ID `hn-bookmarks`. Native Home, Search, Post, Saved and Me IDs are preserved. Its backend remains a separate Node/SQLite process; existing bookmarks/categories and host records are not reset by rendering migration.
 
 The shared route inventory maps feeds, discussions/comments, users/lists and information to owned renderers, and forms/account actions to explicit website presentation. `src/main.ts` publishes bounded validated stories, comments, rich-text parts, profile fields and observed account state. It recognizes both discussion comment rows and standalone new-comments rows. Parent/context/story/author links retain safe canonical identities; hidden form tokens and logout URLs are not published.
 
@@ -13,3 +13,8 @@ Post/reply/login/account forms stay in the website provider, preserving exact se
 The service is a personal single-token database with HTTPS and operator-managed startup/tunnels. It is not a production multi-user account system. Existing import/migration tools preserve explicit data authority. See factory services guidance and the applet README for setup. Phase-5 reports record actual feed/comment/profile/Saved/provider/offline checks; older phone/API-2 reports apply only to their recorded revisions.
 
 Missing content anchors and unfinished profile/discussion markup remain loading until validated content or the framework deadline. Invalid route parameters still produce unsupported outcomes; successful empty structures remain distinct from failed reads.
+
+
+## Explicit navigation migration
+
+Schema 3/API 4 adds host-owned presentation decisions, declared website actions for custom URLs, native uncovered recovery and explicit website Return. SDK/tools 0.5.0 supply resolve/activate/subscribe, controls and route inspection. Existing schema-2/API-3 packages retain their execution behavior. Current X/HN use schema 3; the source receives its accepted route rather than choosing presentation with a second pathname router. See [portable navigation](../factory/guides/navigation.md). Website mode retains its own history and never automatically becomes custom on a matching URL. This policy is not outbound network confinement or malicious-author isolation.

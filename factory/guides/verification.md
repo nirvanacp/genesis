@@ -1,5 +1,7 @@
 # Verify and maintain an applet
 
+Read [explicit navigation](navigation.md) for schema-3/API-4 URL coverage, website actions, SDK controls and Return behavior. SDK/tools 0.5.0 use the host policy for new applets. Schema-2/API-3 examples below remain legacy compatibility reference wherever they use direct `webViews.open`; migrate those calls through resolve/activate or the navigation controls before using API 4.
+
 Read [the isolated architecture](isolated-applets.md) and its route inventory first. Check the owned foreground, hidden adapter and explicit website provider independently, then together.
 
 Start with the requested behavior and the selected applet, not the entire platform. Record SDK/package version, source routes, host build, and device/provider for live checks. Follow [factory instructions](../AGENTS.md); do not create or modify test files without a coverage request.
@@ -89,3 +91,7 @@ In a debuggable host, Developer tools / Inspect current document explicitly enab
 Follow [loading observations](patterns.md#loading-is-an-unresolved-observation). Record supported navigation from its initiating action through valid content, including slow SPA assembly after HTML completion. Normal loading must not display failure/Retry/website-demand UI. Check real offline/adapter failures and bounded timeout separately, including Back, later recovery and stale callbacks. Preserve native navigation, account-safe content and source isolation. Report recording/sampling and exact revisions; settled screenshots do not pass this requirement.
 
 Verify [default skeleton presentation](design.md#skeletons-are-the-default-pending-ui) on every asynchronous owned screen and dialog, including retained-content refresh and pagination. Capture pending and settled states; check hidden status labels, dark appearance, large text, cancellation, errors and return. Normal wait states must not display loading prose.
+
+## Navigation acceptance
+
+Verify declared custom/website/action/uncovered/external/blocked decisions independently from real-source rendering. Exercise ordinary anchors, target-blank, redirects and query/hash updates as well as SDK controls. Check wrong-action/source rejection, stale decisions, missing owned anchors, website history versus Return, dirty-form Stay/Leave and source-origin account revalidation. A typecheck, route match or package receipt cannot qualify these connected journeys. Record unperformed cases explicitly.

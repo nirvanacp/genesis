@@ -77,3 +77,8 @@ The [31 October acceptance report](../../../.reports/phase-5/2026-10-31/231100-g
 The [loading repair report](../../../.reports/phase-5/2026-11-01/091700-genesis-loading-repair-verification.md) qualifies the 0.4.1 source activation, failure classification, repeated X transitions and shared HN smoke. Missing source anchors on custom routes remain loading; do not replace this with document-ready or missing-spinner failure heuristics. Deadline ordering has component evidence; consult the report before claiming device timeout or complete accessibility qualification.
 
 The [skeleton delivery report](../../../.reports/phase-5/2026-11-01/093559-genesis-skeleton-loading-verification.md) records the default owned/native pending presentation and tools/kit 0.4.2 with SDK 0.4.1. Follow the portable design guide's skeleton default for future customization.
+
+
+## API-4 navigation maintenance
+
+New schema-3 packages require a host reporting runtimeApiVersions including 4 and SDK/tools 0.5.0. Keep schema-2/API-3 package acceptance and old SDK build support. Install compatible host first, then migrate applets in place; rollback code without resetting records. Inspect routes with the standalone routes list/inspect commands and verify active package revisions to detect development overrides of APK-selected applets. The host resolves source metadata, explicit website actions and uncovered recovery. Debug inspection remains visit-scoped and content-free lifecycle diagnostics remain bounded. Use the [navigation guide](../../../factory/guides/navigation.md) for controls, history and Return qualification.

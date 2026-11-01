@@ -2,7 +2,7 @@
 
 ## Rendering and lifecycle
 
-MainActivity loads the effective bundled/development index and selects the isolated reducer when it contains a schema-2 applet. `android/native/src/isolated.rs` owns the API-3 state machine. Legacy-only indexes retain controller.rs; legacy packages in a mixed index open as ordinary websites.
+MainActivity loads the effective bundled/development index and selects the isolated reducer when it contains a schema-2 or schema-3 applet. `android/native/src/isolated.rs` owns the API-3 state machine. Legacy-only indexes retain controller.rs; legacy packages in a mixed index open as ordinary websites.
 
 IsolatedBrowser creates a packaged foreground and a separate source WebView. AppletPresentation keeps an opaque native barrier above the source even when foreground content is transparent, loading, removed or failed. The source remains laid out for website virtualization but is not an input/accessibility surface. SourceView suppresses WebView virtual accessibility nodes, focus and text-editor behavior independently of importance flags. Hidden media is muted with a required provider feature and requires a gesture. Unsupported providers fail visibly rather than exposing source UI.
 
@@ -39,3 +39,8 @@ Core files are IsolatedBrowser.java, AppletPresentation.java, MainActivity.java,
 The provider owns callbacks by exact WebView identity. A hidden source cannot change another reader's origin/loading UI or request its file picker/fullscreen. Independent readers leave exact-current hidden source publication active; hidden URL changes are deferred and revalidated on Close. Owned-page navigation cannot replace an open provider. Opening a provider cancels pending owned Back tokens. If the foreground dies behind a healthy reader, the reader stays usable and Close recreates the owned interface. User-activated ordinary target-blank links are routed through bounded, muted, five-second transient views; general opener-dependent authentication popup protocols are not guaranteed.
 
 Source content loading uses reducer-issued 15-second intervals, independent of adapter activation. Repeated loading cannot extend the interval. Tokens and epochs reject retired callbacks; suspension pauses remaining time. A settled error remains until a new visit or affirmative result. Source runtime exceptions produce ADAPTER_FAILED rather than unsupported. Accepted problem metadata has a fixed code, bounded message, retryability and host-assigned origin. Debug inspection exposes at most 64 content-free transitions. Hidden sources never wait for visual frames to finish activation.
+
+
+## Explicit navigation migration
+
+Schema 3/API 4 adds host-owned presentation decisions, declared website actions for custom URLs, native uncovered recovery and explicit website Return. SDK/tools 0.5.0 supply resolve/activate/subscribe, controls and route inspection. Existing schema-2/API-3 packages retain their execution behavior. Current X/HN use schema 3; the source receives its accepted route rather than choosing presentation with a second pathname router. See [portable navigation](../factory/guides/navigation.md). Website mode retains its own history and never automatically becomes custom on a matching URL. This policy is not outbound network confinement or malicious-author isolation.

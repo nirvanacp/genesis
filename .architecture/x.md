@@ -1,8 +1,8 @@
 # X applet architecture
 
-`factory/applets/x.com` is one schema-2/API-3 X application with stable ID `x-bookmarks`. Home, Explore, Notifications, Saved and Profile remain native sections. X is development-installed; HN remains APK-selected. The previous source-CSS, injected controls, source-to-library tickets and premium-folder interception are retired.
+`factory/applets/x.com` is one schema-3/API-4 X application with stable ID `x-bookmarks`. Home, Explore, Notifications, Saved and Profile remain native sections. X is development-installed; HN remains APK-selected. The previous source-CSS, injected controls, source-to-library tickets and premium-folder interception are retired.
 
-The shared `x` URL contract maps timelines/discovery/search, profiles/people, conversations, metadata/media, notifications, saved feeds and collections to owned screens. Reserved login/settings/chat/composer/account routes precede dynamic handles and use explicit website presentation. Unknown routes remain owned unsupported states. `src/main.tsx` observes actual source structure, publishes bounded models and validates read commands against live elements. Standalone media overlays have their own inspected extraction; they do not require a primary content column.
+The shared `x` URL contract maps timelines/discovery/search, profiles/people, conversations, metadata/media, notifications, saved feeds and collections to owned screens. Reserved login/settings/chat/composer/account routes precede dynamic handles and use explicit website presentation. Unknown routes reach native owned unsupported recovery. `src/main.tsx` observes actual source structure, publishes bounded models and validates read commands against live elements. Standalone media overlays have their own inspected extraction; they do not require a primary content column.
 
 `src/app.tsx` owns browsing, text/links, thumbnails/media, actual notification navigation and source tabs. Full social actions, protected playback, account forms, composer and uploads use the website provider with native return navigation. A bounded account-matched feed cache improves refresh continuity; unverified private data is hidden. Models preserve viewed profile identity separately from the signed-in account.
 
@@ -15,3 +15,8 @@ Saved has one Bookmarks/Likes/Categories row. Existing library, category sheet/m
 See the applet README for operator setup, factory guides for authoring and phase-5 reports for actual emulator checks. Earlier phase-4 premium-folder and source-style qualification does not qualify this rendering architecture. Real posts/messages/account/subscription changes, localized/Premium-only layouts, physical-device accessibility and production multi-user provisioning require separate qualification.
 
 Incomplete website markup remains loading, including after HTML document completion. Validated route content determines readiness; missing spinners/selectors do not imply unsupported content. Empty model shells never count as retained content after failure. Refresh retains only destination/account-matched valid content, and genuine failures expose source Retry separately from explicit website presentation.
+
+
+## Explicit navigation migration
+
+Schema 3/API 4 adds host-owned presentation decisions, declared website actions for custom URLs, native uncovered recovery and explicit website Return. SDK/tools 0.5.0 supply resolve/activate/subscribe, controls and route inspection. Existing schema-2/API-3 packages retain their execution behavior. Current X/HN use schema 3; the source receives its accepted route rather than choosing presentation with a second pathname router. See [portable navigation](../factory/guides/navigation.md). Website mode retains its own history and never automatically becomes custom on a matching URL. This policy is not outbound network confinement or malicious-author isolation.

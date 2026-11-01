@@ -1,5 +1,7 @@
 # Applet implementation patterns
 
+Read [explicit navigation](navigation.md) for schema-3/API-4 URL coverage, website actions, SDK controls and Return behavior. SDK/tools 0.5.0 use the host policy for new applets. Schema-2/API-3 examples below remain legacy compatibility reference wherever they use direct `webViews.open`; migrate those calls through resolve/activate or the navigation controls before using API 4.
+
 Use the [isolated applet architecture](isolated-applets.md), [SDK reference](sdk-reference.md) and [factory instructions](../AGENTS.md). Current applets use an owned foreground and a hidden source adapter. Website DOM is an extraction input, not the layout users interact with.
 
 Follow [design and interaction fidelity](design.md) before choosing an applet's appearance. Unless the user provides a detailed alternative, preserve the source product's mobile identity, aiming for its native app conventions and using its live mobile website where native details are uncertain. Rebuild that design in owned code. Keep the native primary navigation, compare connected screens, and apply the same tokens to applet-only features. Verify every changed interaction separately from visual comparison.

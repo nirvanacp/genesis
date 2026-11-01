@@ -1,5 +1,7 @@
 # Applet design and interaction fidelity
 
+Read [explicit navigation](navigation.md) for schema-3/API-4 URL coverage, website actions, SDK controls and Return behavior. SDK/tools 0.5.0 use the host policy for new applets. Schema-2/API-3 examples below remain legacy compatibility reference wherever they use direct `webViews.open`; migrate those calls through resolve/activate or the navigation controls before using API 4.
+
 Use this guide when building an applet from scratch or changing its visual design. Read it with [product scope](product-scope.md), [implementation patterns](patterns.md) and [verification](verification.md). The applet owns its interface code; the source website supplies observed application data and protected workflows.
 
 ## Choose the reference before choosing the style
@@ -70,3 +72,7 @@ Expose one concise pending status to assistive technology with `role="status"` a
 React and vanilla creator projects include this treatment from the first render. Authors must adapt the placeholder shape to their route inventory, including owned pages and dialogs, without requiring the user to ask for it. Verification must inspect a pending frame as well as final content, actual read failures and return/cancellation, light/dark and enlarged text. Static component previews may exercise forced pending states, but must be labeled separately from real source/service checks.
 
 For an isolated foreground, check computed colors on the owned canvas as well as the skeleton blocks. A generic SDK backing can win over normal Shadow DOM host styles. Give the applet canvas explicit themed colors; starter host colors use deliberate priority so dark placeholders are not shown on an unintended light backing.
+
+## Navigation presentation
+
+Apply the navigation guide to every content tab, image, inline link and icon action. Custom navigation keeps native primary sections visible. Original-site controls carry a visible website cue before activation; Return is separate from website Back. Pending headings use declared destination titles. Unknown tabs remain discoverable with owned recovery. Do not rely on color alone or hide the return action at large text.
