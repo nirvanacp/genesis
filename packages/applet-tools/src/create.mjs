@@ -8,7 +8,7 @@ export async function createApplet(directory, options) {
   const url = new URL(options.source);
   const manifest = { schemaVersion: 3, id: options.id, name: options.name.trim(), dataSchemaVersion: 1,
     sources: [{ id: 'main', startUrl: url.href, entry: 'src/main.ts', homePaths: [url.pathname], routeContractId: 'site' }],
-    navigation:{external:{default:'website',origins:[]},uncoveredWebsiteRecovery:true},websiteActions:[],
+    navigation:{external:{default:'website',origins:[]},uncoveredWebsiteRecovery:true},websiteActions:[{id:'original-page',contractId:'site',routeIds:['home'],label:'Open original website',reason:'Continue on the original website while this custom screen is unavailable'}],
     routeContracts: [{id:'site',defaultSourceId:'main',origins:[url.origin],unmatched:'unsupported',routes:[{id:'home',path:url.pathname,result:{kind:'custom',screen:'home',adapter:'home',title:'Home'}}]}],
     foreground:{pageId:'app',screens:['home']},
     pages: [{ id: 'app', entry: options.react ? 'src/home.tsx' : 'src/home.ts' }], actions: [], capabilities: ['dom'] };
@@ -37,7 +37,7 @@ export default defineForeground({screens:['home'],mount(context,root){
   const status=document.createElement('p');status.setAttribute('role','status');
   for(let i=0;i<3;i++){const row=document.createElement('div');row.className='skeleton-row';row.setAttribute('aria-hidden','true');for(const kind of ['title','line','short']){const block=document.createElement('span');block.className='skeleton-block skeleton-'+kind;row.append(block);}skeleton.append(row);}
   let currentUrl=${JSON.stringify(url.href)};
-  const open=createNavigationControl(context,{target:{kind:'url',url:currentUrl},label:'Continue'});open.hidden=true;
+  const open=createNavigationControl(context,{target:{kind:'url',url:currentUrl,websiteActionId:'original-page'},label:'Open original website'});open.hidden=true;
   root.append(style,skeleton,status,open);context.source.subscribe(snapshot=>{const pending=snapshot.state==='loading';currentUrl=snapshot.url;skeleton.hidden=!pending;status.hidden=pending;open.hidden=['loading','ready','empty','blocked'].includes(snapshot.state);root.setAttribute('aria-busy',String(pending));status.textContent=pending?'':${statusText};});
 }});
 `;
@@ -49,7 +49,7 @@ function Skeleton(){return <section className="skeleton" role="status" aria-labe
 function App({context}:{context:AppletContext}){
   const [snapshot,setSnapshot]=useState<SourceSnapshot|null>(null);
   useEffect(()=>context.source.subscribe(setSnapshot),[context]);
-  return <main aria-busy={!snapshot||snapshot.state==='loading'}><style>{css}</style><h1>My applet</h1>{!snapshot||snapshot.state==='loading'?<Skeleton/>:<p role="status">{${statusText}}</p>}{snapshot&&!['loading','ready','empty','blocked'].includes(snapshot.state)&&<NavigationLink context={context} target={{kind:'url',url:snapshot.url}}>Continue</NavigationLink>}</main>;
+  return <main aria-busy={!snapshot||snapshot.state==='loading'}><style>{css}</style><h1>My applet</h1>{!snapshot||snapshot.state==='loading'?<Skeleton/>:<p role="status">{${statusText}}</p>}{snapshot&&!['loading','ready','empty','blocked'].includes(snapshot.state)&&<NavigationLink context={context} target={{kind:'url',url:snapshot.url,websiteActionId:snapshot.route?.kind==='matched'&&snapshot.route.result.kind==='custom'?'original-page':undefined}}>Open original website</NavigationLink>}</main>;
 }
 export default defineForeground({screens:['home'],mount(context,root){return mountReact(context,root,<App context={context}/>);}});
 `;
