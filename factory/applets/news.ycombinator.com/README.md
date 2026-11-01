@@ -1,6 +1,6 @@
 # Hacker News applet
 
-HN now uses manifest schema 2, SDK/tools 0.4.0 and runtime API 3. Its upstream document stays hidden behind a native opaque layer. The source adapter publishes validated story/comment/profile/information models; `src/app.tsx` renders the owned foreground. This supersedes the source-table styling described in historical phase-4 records below. Keep stable ID `hn-bookmarks`, source/section/page IDs, service `bookmarks` and all existing record keys.
+HN now uses manifest schema 2, SDK/tools 0.4.1 and runtime API 3. Its upstream document stays hidden behind a native opaque layer. The source adapter publishes validated story/comment/profile/information models; `src/app.tsx` renders the owned foreground. This supersedes the source-table styling described in historical phase-4 records below. Keep stable ID `hn-bookmarks`, source/section/page IDs, service `bookmarks` and all existing record keys.
 
 Home/feed families, discussion, public profiles/lists and informational pages have owned renderers. The manifest contains the exact route contract, including required item/profile query IDs and explicit unmatched handling. Me shows observed account state in the foreground. Saved reuses the existing backend/category components with an owned screen lifetime. Search retains its documented placeholder.
 

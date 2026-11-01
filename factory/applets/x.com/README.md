@@ -1,6 +1,6 @@
 # X applet
 
-X is one applet with native Home, Explore, Notifications, Saved and Profile sections. It uses SDK/tools 0.4.0, runtime API 3 and manifest schema 2. Stable applet/source/page/service IDs and both existing bookmark stores are preserved.
+X is one applet with native Home, Explore, Notifications, Saved and Profile sections. It uses SDK/tools 0.4.1, runtime API 3 and manifest schema 2. Stable applet/source/page/service IDs and both existing bookmark stores are preserved.
 
 ## Product and rendering
 
