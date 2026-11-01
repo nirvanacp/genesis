@@ -4,6 +4,7 @@ export interface XPost extends Post {context?:{text:string;url:string};time:stri
 export interface XEntry {key:string;kind:'trend'|'person'|'notification'|'collection';text:string;url:string|null;command:boolean;avatar?:string|null;person?:{name:string;handle:string;description:string;verified:boolean}}
 export interface XTab {key:string;label:string;url:string|null;selected:boolean}
 export interface XModel {
+  contentIdentity?:{url:string;selectedTabKey:string;postId?:string;profileHandle?:string};
   kind:string;title:string;account:{status:'signed-in'|'signed-out'|'unknown';handle:string|null};
   tabs:XTab[];posts:XPost[];entries:XEntry[];partial:boolean;emptyText:string|null;
   profile?:{handle:string;name:string;description:string;details:string;links:{label:string;url:string}[];avatar?:string|null;banner?:string|null;verified?:boolean};
@@ -16,6 +17,7 @@ export function imageUrl(value:unknown):string|null {
 }
 export function validModel(value:unknown):value is XModel {
   if(!isObject(value)||!screens.includes(String(value.kind))||typeof value.title!=='string'||value.title.length>300||!isObject(value.account)||!['signed-in','signed-out','unknown'].includes(String(value.account.status)))return false;
+  if(value.contentIdentity!==undefined){const c=value.contentIdentity;if(!isObject(c)||!safeLink(c.url)||String(c.url).length>8192||typeof c.selectedTabKey!=='string'||c.selectedTabKey.length>500||(c.postId!==undefined&&!/^[0-9]{1,25}$/.test(String(c.postId)))||(c.profileHandle!==undefined&&!validHandle(c.profileHandle)))return false;}
   if(value.media!==undefined&&(!isObject(value.media)||!postUrl(value.media.postUrl)||!Number.isInteger(value.media.index)||Number(value.media.index)<1||Number(value.media.index)>16||!['photo','video'].includes(String(value.media.kind))||(value.media.image!==null&&!imageUrl(value.media.image))))return false;
   if(value.account.handle!==null&&!validHandle(value.account.handle))return false;
   if(value.postNotice!==undefined){const n=value.postNotice;if(!isObject(n)||typeof n.title!=='string'||n.title.length>200||typeof n.description!=='string'||n.description.length>1800||!postUrl(n.postUrl)||!isObject(n.help)||typeof n.help.label!=='string'||n.help.label.length>100||!safeLink(n.help.url))return false;}
@@ -36,4 +38,17 @@ export function routeKind(path:string):string|null {
   if(/^\/i\/(lists|communities)(\/|$)/.test(path)||/^\/[A-Za-z0-9_]{1,15}\/(lists|communities)(\/|$)/.test(path))return'collection';
   if(/^\/[A-Za-z0-9_]{1,15}(\/(with_replies|reposts|media))?$/.test(path))return'profile';
   return null;
+}
+
+/** Structural validity alone does not prove that a destination has usable content. */
+export function hasContent(model:XModel):boolean {
+  return !!(model.posts.length||model.entries.length||model.profile||model.information||model.postNotice||model.media||model.emptyText);
+}
+export function matchesDestination(model:XModel,raw:string):boolean {
+  const url=new URL(raw);
+  if(model.kind!==routeKind(url.pathname)||model.contentIdentity&&model.contentIdentity.url!==raw)return false;
+  if(model.kind==='conversation')return !!model.emptyText||model.posts.some(p=>p.postId===url.pathname.match(/\/status\/([0-9]+)/)?.[1]);
+  if(model.kind==='profile')return !!model.emptyText||model.profile?.handle.toLowerCase()===url.pathname.split('/')[1].toLowerCase();
+  if(model.kind==='media')return !!model.media&&model.media.postUrl===raw.replace(/\/(photo|video)\/[0-9]+(?:[?#].*)?$/,'')&&model.media.index===Number(url.pathname.split('/').at(-1));
+  return true;
 }
