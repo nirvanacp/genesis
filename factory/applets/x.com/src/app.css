@@ -98,3 +98,5 @@ button.quoted-post{width:100%;border-radius:16px;text-align:left;font-weight:400
 .entry-person .entry-meta{font-size:var(--body-size);line-height:var(--body-line)}
 
 .photos img,.profile-banner img,.profile-avatar,.media-stage img{background-color:#eceff1}@media(prefers-color-scheme:dark){.photos img,.profile-banner img,.profile-avatar,.media-stage img{background-color:#303438}}
+
+button.post-action{border:0;background:transparent;font-family:inherit}button.post-action:disabled{opacity:.5;cursor:default}.post-action:active{background:var(--accent-wash)}
