@@ -2,7 +2,7 @@ import { access, mkdir, cp, readdir, writeFile, lstat } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { creatorError } from './device.mjs';
-export const KIT_VERSION = '0.4.2';
+export const KIT_VERSION = '0.5.0';
 export async function emptyDirectory(directory) {
   const target = path.resolve(directory);
   try {
@@ -18,6 +18,6 @@ export async function exportKit(directory) {
   try { await access(path.join(source, 'AGENTS.md')); }
   catch { source = packed; }
   for (const name of ['AGENTS.md','README.md','guides','skills']) await cp(path.join(source, name), path.join(output, name), { recursive: true, errorOnExist: true, force: false });
-  await writeFile(path.join(output, 'kit.json'), JSON.stringify({ kitVersion: KIT_VERSION, sdkVersion: '0.4.1', toolsVersion: '0.4.2', runtimeApiVersion: 3, bundleFormatVersion: 1 }, null, 2) + '\n');
-  return { output, kitVersion: KIT_VERSION, runtimeApiVersion: 3 };
+  await writeFile(path.join(output, 'kit.json'), JSON.stringify({ kitVersion: KIT_VERSION, sdkVersion: '0.5.0', toolsVersion: '0.5.0', runtimeApiVersion: 4, bundleFormatVersion: 1 }, null, 2) + '\n');
+  return { output, kitVersion: KIT_VERSION, runtimeApiVersion: 4 };
 }

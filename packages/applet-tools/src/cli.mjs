@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import {readApplet} from './manifest.mjs';
+import {decideNavigation} from './navigation.mjs';
 import { checkApplet } from './check.mjs';
 import { buildApplet } from './build.mjs';
 import { Device, installApplet, rollbackApplet, setAppletVisibility } from './device.mjs';
@@ -22,6 +24,8 @@ let command = args[0] ?? 'help';
 const help = `Genesis applet tools
   create <directory> --id <id> --name <name> --source <https-url> [--react] [--json]
   kit export --out <directory> [--json]
+  routes list <directory> [--json]
+  routes inspect <directory> --url <url> [--source <id>] [--action <id>] [--json]
   check <directory> [--json]
   build <directory> --out <directory> [--json]
   dev install <bundle-directory> --device <serial> [--replace] [--allow-permission-change] [--json]
@@ -42,6 +46,12 @@ try {
       command = 'kit export';
       const { positional: p, options: o } = parse(args.slice(2), ['json','out']);
       if (args[1] !== 'export' || p.length || !o.out) throw new UsageError('Use kit export --out <directory>'); result = await exportKit(o.out);
+    } else if (command === 'routes') {
+      const action=args[1];const {positional:p,options:o}=parse(args.slice(2),['json','url','source','action']);
+      if(p.length!==1||!['list','inspect'].includes(action))throw new UsageError('Use routes list|inspect <directory>');
+      const {manifest}=await readApplet(p[0]);command+=' '+action;
+      if(action==='list')result={contracts:manifest.routeContracts??[],websiteActions:manifest.websiteActions??[],navigation:manifest.navigation??null,verification:'Declared coverage only; see applet acceptance evidence'};
+      else{if(!o.url)throw new UsageError('routes inspect requires --url');if(manifest.schemaVersion!==3)throw new UsageError('Navigation inspection requires schema 3');result=decideNavigation(manifest,o.source,{kind:'url',url:o.url,...(o.source?{sourceId:o.source}:{}),...(o.action?{websiteActionId:o.action}:{})});}
     } else if (command === 'check' || command === 'build') {
       const { positional: p, options: o } = parse(args.slice(1), command === 'build' ? ['json','out'] : ['json']);
       if (p.length !== 1) throw new UsageError('Expected one applet directory');
