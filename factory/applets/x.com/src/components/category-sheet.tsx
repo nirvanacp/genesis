@@ -1,3 +1,4 @@
+import {Skeleton,PendingAction} from './skeleton';
 import {useEffect,useState} from "react";
 import {createRoot} from "react-dom/client";
 import type {AppletContext} from "@genesis/sdk";
@@ -51,7 +52,7 @@ function CategorySheet({context,post,close,verifiedLibrary}:{context:AppletConte
   return <div className="category-sheet">
     <header className="sheet-header"><button onClick={close} aria-label="Close category editor">✕</button><h2>Save to category</h2></header>
     <div className="sheet-body"><div className="preview"><strong>@{post.snapshot.authorHandle}</strong><p>{post.snapshot.text||(post.snapshot.media.kind==='none'?'Post without a text preview':`${post.snapshot.media.kind} post`)}</p></div>
-      {loading?<p role="status" className="status">Loading your categories…</p>:<>
+      {loading?<Skeleton kind="form" label="Loading your categories"/>:<>
         {library&&<><label className="field"><span>Find a category</span><input type="search" aria-label="Find a category" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search categories"/></label>
         <div className="categories">{categories.filter(c=>c.name.toLowerCase().includes(query.toLowerCase())).map(c=><label className="check" key={c.id}><input type="checkbox" aria-label={c.name} checked={selected.includes(c.id)} disabled={busy||pending||!selected.includes(c.id)&&selected.length>=10} onChange={e=>{setConfirmRemove(false);setSelected(ids=>e.target.checked?[...ids,c.id]:ids.filter(id=>id!==c.id));}}/><span>{c.name}</span></label>)}{!categories.length&&<p className="muted">Create your first category to keep this post organized.</p>}</div>
         {creating?<div className="field"><label htmlFor="new-category">New category</label><input id="new-category" value={name} onChange={e=>setName(e.target.value)} maxLength={160} autoFocus placeholder="e.g. Design"/><div className="row"><button className="secondary" onClick={()=>void create()} disabled={busy||pending}>Create category</button><button onClick={()=>setCreating(false)}>Cancel</button></div></div>:<button className="secondary" onClick={()=>setCreating(true)} disabled={busy||pending||categories.length>=50}>＋ New category</button>}
@@ -61,6 +62,6 @@ function CategorySheet({context,post,close,verifiedLibrary}:{context:AppletConte
       {pending&&library&&<div className="field"><p className="muted">A change is still unconfirmed.</p><button className="secondary" onClick={()=>void repo.retry(library).then(load).catch(e=>setError(errorMessage(e)))}>Check or retry the same change</button><button onClick={()=>void repo.abandon(library).then(load).catch(e=>setError(errorMessage(e)))}>Refresh state and abandon pending change</button></div>}
       {!library&&!loading&&<button className="secondary" onClick={()=>void load()}>Try again</button>}
     </div>
-    <footer className="sheet-footer">{confirmRemove&&<p role="alert" className="error">Remove this post from Categories? Its X bookmark will stay unchanged.</p>}<button onClick={close}>Cancel</button><button className="primary" onClick={()=>void save()} disabled={loading||busy||pending||!library||!membership&&!selected.length}>{busy?"Saving…":membership&&!selected.length?confirmRemove?"Confirm removal":"Remove from Categories":"Save changes"}</button></footer>
+    <footer className="sheet-footer">{confirmRemove&&<p role="alert" className="error">Remove this post from Categories? Its X bookmark will stay unchanged.</p>}<button onClick={close}>Cancel</button><button className="primary" onClick={()=>void save()} disabled={loading||busy||pending||!library||!membership&&!selected.length}>{busy?<PendingAction label="Saving changes"/>:membership&&!selected.length?confirmRemove?"Confirm removal":"Remove from Categories":"Save changes"}</button></footer>
   </div>;
 }

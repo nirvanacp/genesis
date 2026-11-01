@@ -1,3 +1,4 @@
+import {PendingAction} from './skeleton';
 import {useEffect,useRef,useState,type ReactNode} from 'react';
 import {Icon} from './icon';
 
@@ -68,7 +69,7 @@ export function PullToRefresh({enabled,busy,onRefresh,resetKey,children}:{
     };
   },[enabled,busy,resetKey]);
   return <div className="refresh-region" ref={root}>
-    {(busy||distance>0)&&<div className={'refresh-feedback'+(busy?' refreshing':'')} role="status" style={{top:`calc(var(--refresh-top, 106px) + ${Math.max(0,distance-32)}px)`}}><Icon name="refresh"/><span>{busy?'Refreshing…':distance>=threshold?'Release to refresh':'Pull to refresh'}</span></div>}
+    {(busy||distance>0)&&<div className={'refresh-feedback'+(busy?' refreshing':'')} role="status" style={{top:`calc(var(--refresh-top, 106px) + ${Math.max(0,distance-32)}px)`}}><Icon name="refresh"/>{busy?<PendingAction label="Refreshing content"/>:<span>{distance>=threshold?'Release to refresh':'Pull to refresh'}</span>}</div>}
     {children}
   </div>;
 }
