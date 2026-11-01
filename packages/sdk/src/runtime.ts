@@ -1,3 +1,5 @@
+import {NavigationClient,type NavigationDecision,type NavigationSnapshot,type NavigationActivation} from './navigation';
+import type {NavigationTarget,RouteResolution} from './manifest';
 import { storageApi, type AppletStorage, type StorageChange } from "./storage";
 import type { ExecutionContext } from "./protocol";
 
@@ -28,7 +30,34 @@ export interface MountOptions {
   render(container: HTMLElement): void | Dispose;
 }
 export type HostCall = <T = unknown>(method: string, params: unknown) => Promise<T>;
+export type SourceState = "loading" | "ready" | "empty" | "auth-required" | "challenge" | "unsupported" | "error";
+export interface SourceProblem {
+  message: string;
+  code?: 'NETWORK' | 'HTTP' | 'SOURCE_TIMEOUT' | 'ADAPTER_FAILED' | 'SOURCE_RENDERER_FAILED'
+    | 'UNSUPPORTED_ROUTE' | 'CONTENT_UNRECOGNIZED' | 'UPSTREAM_FAILURE' | 'ADAPTER_NOT_IMPLEMENTED';
+  retryable?: boolean;
+  origin?: 'host' | 'adapter';
+}
+export interface SourcePublication<T = unknown> {
+  state: SourceState;
+  data?: T;
+  error?: Omit<SourceProblem, 'origin'>;
+}
+export interface SourceSnapshot<T = unknown> {
+  state: SourceState | "website" | "blocked";
+  data?: T; error?: SourceProblem; url: string; sourceId: string; pageId: string; sectionId?: string; epoch: number;
+  route?: RouteResolution;
+}
 export interface AppletContext {
+  sharing: {readonly supported:boolean; shareUrl(options:{url:string;title?:string}):Promise<{status:"presented"}>};
+  source: {
+    publish(snapshot: SourcePublication): Promise<void>;
+    subscribe(callback: (snapshot: SourceSnapshot) => void): Dispose;
+    command(command: { name: string; payload?: unknown; epoch: number }): Promise<void>;
+    onCommand(callback: (command: {name:string;payload?:unknown;epoch?:number}) => void): Dispose;
+  };
+  webViews: { open(options: {url:string}): Promise<{sessionId:string}>; close(sessionId?:string):Promise<void> };
+
   readonly binding: ExecutionContext;
   readonly signal: AbortSignal;
   readonly root: HTMLElement;
@@ -40,6 +69,9 @@ export interface AppletContext {
     openModal(key: string, render: (container: HTMLElement) => void | Dispose): Dispose;
   };
   navigation: {
+    resolve(targets:NavigationTarget[]):Promise<NavigationDecision[]>;
+    activate(options:NavigationActivation):Promise<{status:'dispatched'|'recovery';navigationVersion:number}>;
+    subscribe(callback:(snapshot:NavigationSnapshot)=>void):Dispose;
     armReturn(options: {key:string;destinationPaths:string[];returnUrl:string;ttlMs:number;state:unknown}): Promise<{token:string}>;
     cancelReturn(token:string): Promise<void>;
     takeReturn(key:string): Promise<{token:string;matchedPath:string;state:unknown}|null>;
@@ -85,20 +117,54 @@ export class ManagedRuntime {
   private readonly focusListeners = new Set<() => void>();
   private readonly routes = new Set<(url: string) => void>();
   private readonly observer: MutationObserver;
+  private readonly navigationClient:NavigationClient;
   private backHandler: (() => boolean | Promise<boolean>) | undefined;
   private modal: Dispose | undefined;
   private frame = 0;
+  private readonly sourceScheduling: boolean;
   private serial = 0;
   private revision = 0;
   private url = location.href;
   private disposed = false;
+  private sourceListeners = new Set<(snapshot: SourceSnapshot) => void>();
+  private commandListeners = new Set<(command: {name:string;payload?:unknown;epoch?:number}) => void>();
+  private latestSnapshot: SourceSnapshot | undefined;
+  private publishTimer: ReturnType<typeof setTimeout> | undefined;
+  private publishValue: unknown;
   private missingKeys = 0;
   private conflicts = 0;
   private batches: number[] = [];
 
   constructor(binding: ExecutionContext, root: HTMLElement, private readonly call: HostCall,
     private readonly fatal: (error: unknown) => void) {
+    this.navigationClient=new NavigationClient(call,this.abort.signal);
+    this.sourceScheduling = [3,4].includes(binding.runtimeApiVersion??0) && binding.role === "source";
     this.context = {
+      sharing: {
+        supported: binding.role==='foreground'&&!!binding.features?.includes('share-url'),
+        shareUrl: options => binding.role==='foreground'&&binding.features?.includes('share-url')?this.call('sharing.shareUrl',options):Promise.reject(new Error('Native sharing is unavailable on this host')),
+      },
+      source: {
+        publish: snapshot => {
+          this.publishValue = snapshot;
+          if (!this.publishTimer) {
+            this.publishTimer = setTimeout(() => {
+              this.publishTimer = undefined;
+              if (!this.disposed) void this.call("source.publish",this.publishValue).catch(error => this.fatal(error));
+            },250);
+          }
+          return Promise.resolve();
+        },
+        subscribe: callback => {
+          this.sourceListeners.add(callback);
+          if(this.latestSnapshot) callback(this.latestSnapshot);
+          void this.call("source.subscribe",{}).catch(error=>this.fatal(error));
+          return this.track(()=>this.sourceListeners.delete(callback));
+        },
+        command: command => this.call("source.command",command),
+        onCommand: callback => { this.commandListeners.add(callback); return this.track(()=>this.commandListeners.delete(callback)); },
+      },
+      webViews: { open: options => this.call("webViews.open",options), close: sessionId => this.call("webViews.close",{sessionId}) },
       onFocus: callback => { this.focusListeners.add(callback); return this.track(() => this.focusListeners.delete(callback)); },
       binding, root, signal: this.abort.signal,
       sourceId: binding.binding.kind === "source" ? binding.binding.sourceId : null,
@@ -107,6 +173,9 @@ export class ManagedRuntime {
       ui: { mountAt: (key, anchor, options) => this.mount(key, anchor, options),
         openModal: (key, render) => this.openModal(key, render) },
       navigation: {
+        resolve:targets=>this.navigationClient.resolve(targets),
+        activate:options=>this.navigationClient.activate(options),
+        subscribe:callback=>this.track(this.navigationClient.subscribe(callback)),
         armReturn: options => this.call("navigation.armReturn", options),
         cancelReturn: token => this.call("navigation.cancelReturn", {token}),
         takeReturn: key => this.call("navigation.takeReturn", {key}),
@@ -148,8 +217,16 @@ export class ManagedRuntime {
     for (const name of ["popstate", "hashchange", "pageshow"]) {
       window.addEventListener(name, () => this.route(), { signal: this.abort.signal });
     }
-    const poll = setInterval(() => { if (!document.hidden) this.route(); }, 250);
+    const poll = setInterval(() => { if (this.sourceScheduling || !document.hidden) this.route(); }, 250);
     this.track(() => clearInterval(poll));
+  }
+  navigationSnapshot(snapshot:NavigationSnapshot):void{this.navigationClient.receive(snapshot);}
+  sourceSnapshot(snapshot: SourceSnapshot): void {
+    this.latestSnapshot = snapshot;
+    for(const callback of this.sourceListeners) this.invoke(()=>callback(snapshot));
+  }
+  sourceCommand(command: {name:string;payload?:unknown;epoch?:number}):void {
+    for(const callback of this.commandListeners) this.invoke(()=>callback(command));
   }
   private assertActive(): void { if (this.disposed) throw new Error("EXPIRED_CONTEXT: runtime disposed"); }
   private track(callback: Dispose): Dispose {
@@ -165,7 +242,8 @@ export class ManagedRuntime {
       ...(attributes.length ? { attributes: true, attributeFilter: attributes } : {}) });
   }
   private schedule(): void {
-    if (!this.frame && !this.disposed) this.frame = requestAnimationFrame(() => {
+    if (this.frame || this.disposed) return;
+    const reconcile = () => {
       this.frame = 0; const start = performance.now();
       this.route();
       for (const effect of [...this.effects.values()]) {
@@ -181,7 +259,10 @@ export class ManagedRuntime {
       }
       for (const watcher of [...this.watchers.values()]) if (!this.disposed && watcher.dirty) this.reconcile(watcher);
       this.batches.push(performance.now() - start); if (this.batches.length > 200) this.batches.shift();
-    });
+    };
+    // A deliberately occluded source has no display-frame guarantee. DOM work
+    // must progress independently of the foreground compositor.
+    this.frame = this.sourceScheduling ? window.setTimeout(reconcile, 32) : requestAnimationFrame(reconcile);
   }
   private watch(key: string, options: WatchOptions, handlers: ElementHandlers): Dispose {
     this.assertActive();
@@ -346,9 +427,13 @@ export class ManagedRuntime {
       routeRevision: this.revision, batchesMs: this.batches.slice(-100) };
   }
   dispose(): void {
+    clearTimeout(this.publishTimer); this.sourceListeners.clear(); this.commandListeners.clear();
     if (this.disposed) return;
     this.disposed = true; this.abort.abort(); this.modal?.();
-    if (this.frame) cancelAnimationFrame(this.frame); this.frame = 0;
+    if (this.frame) {
+      if (this.sourceScheduling) clearTimeout(this.frame); else cancelAnimationFrame(this.frame);
+    }
+    this.frame = 0;
     // Each registered callback runs once; exceptions cannot skip remaining cleanup.
     for (const dispose of [...this.disposers].reverse()) dispose();
     this.observer.disconnect(); this.watchers.clear(); this.effects.clear(); this.routes.clear(); this.storageListeners.clear();

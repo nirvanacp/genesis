@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 3,
   "id": "hn-bookmarks",
   "name": "Hacker News",
   "dataSchemaVersion": 1,
@@ -7,9 +7,6 @@
     {
       "id": "primary",
       "startUrl": "https://news.ycombinator.com/",
-      "origins": [
-        "https://news.ycombinator.com"
-      ],
       "entry": "src/main.ts",
       "homePaths": [
         "/",
@@ -21,131 +18,26 @@
         "/show",
         "/jobs"
       ],
-      "navigationRules": [],
-      "customizedPaths": [
-        "/",
-        "/news",
-        "/newest",
-        "/front",
-        "/newcomments",
-        "/ask",
-        "/show",
-        "/shownew",
-        "/asknew",
-        "/jobs",
-        "/item",
-        "/reply",
-        "/user",
-        "/submitted",
-        "/threads",
-        "/favorites",
-        "/hidden",
-        "/upvoted",
-        "/login",
-        "/logout",
-        "/forgot",
-        "/changepw",
-        "/submit",
-        "/formatdoc",
-        "/newsfaq.html",
-        "/newsguidelines.html",
-        "/lists",
-        "/best",
-        "/active",
-        "/leaders",
-        "/from"
-      ]
+      "routeContractId": "hn"
     },
     {
       "id": "post",
       "startUrl": "https://news.ycombinator.com/submit",
-      "origins": [
-        "https://news.ycombinator.com"
-      ],
       "entry": "src/main.ts",
       "homePaths": [
         "/submit"
       ],
-      "navigationRules": [],
-      "customizedPaths": [
-        "/",
-        "/news",
-        "/newest",
-        "/front",
-        "/newcomments",
-        "/ask",
-        "/show",
-        "/shownew",
-        "/asknew",
-        "/jobs",
-        "/item",
-        "/reply",
-        "/user",
-        "/submitted",
-        "/threads",
-        "/favorites",
-        "/hidden",
-        "/upvoted",
-        "/login",
-        "/logout",
-        "/forgot",
-        "/changepw",
-        "/submit",
-        "/formatdoc",
-        "/newsfaq.html",
-        "/newsguidelines.html",
-        "/lists",
-        "/best",
-        "/active",
-        "/leaders",
-        "/from"
-      ]
+      "routeContractId": "hn"
     },
     {
       "id": "me",
       "startUrl": "https://news.ycombinator.com/news",
-      "origins": [
-        "https://news.ycombinator.com"
-      ],
       "entry": "src/main.ts",
       "homePaths": [
         "/",
         "/news"
       ],
-      "navigationRules": [],
-      "customizedPaths": [
-        "/",
-        "/news",
-        "/newest",
-        "/front",
-        "/newcomments",
-        "/ask",
-        "/show",
-        "/shownew",
-        "/asknew",
-        "/jobs",
-        "/item",
-        "/reply",
-        "/user",
-        "/submitted",
-        "/threads",
-        "/favorites",
-        "/hidden",
-        "/upvoted",
-        "/login",
-        "/logout",
-        "/forgot",
-        "/changepw",
-        "/submit",
-        "/formatdoc",
-        "/newsfaq.html",
-        "/newsguidelines.html",
-        "/lists",
-        "/best",
-        "/active",
-        "/leaders",
-        "/from"
-      ]
+      "routeContractId": "hn"
     }
   ],
   "pages": [
@@ -156,6 +48,10 @@
     {
       "id": "search",
       "entry": "src/search.tsx"
+    },
+    {
+      "id": "app",
+      "entry": "src/app.tsx"
     }
   ],
   "actions": [
@@ -247,5 +143,443 @@
         "sourceId": "primary"
       }
     ]
-  }
+  },
+  "routeContracts": [
+    {
+      "id": "hn",
+      "origins": [
+        "https://news.ycombinator.com"
+      ],
+      "unmatched": "unsupported",
+      "routes": [
+        {
+          "id": "website-0",
+          "path": "/changepw",
+          "result": {
+            "kind": "website",
+            "reason": "Use the original Hacker News form or account action"
+          }
+        },
+        {
+          "id": "website-1",
+          "path": "/comment",
+          "result": {
+            "kind": "website",
+            "reason": "Use the original Hacker News form or account action"
+          }
+        },
+        {
+          "id": "website-2",
+          "path": "/delete",
+          "result": {
+            "kind": "website",
+            "reason": "Use the original Hacker News form or account action"
+          }
+        },
+        {
+          "id": "website-3",
+          "path": "/edit",
+          "result": {
+            "kind": "website",
+            "reason": "Use the original Hacker News form or account action"
+          }
+        },
+        {
+          "id": "website-4",
+          "path": "/fave",
+          "result": {
+            "kind": "website",
+            "reason": "Use the original Hacker News form or account action"
+          }
+        },
+        {
+          "id": "website-5",
+          "path": "/forgot",
+          "result": {
+            "kind": "website",
+            "reason": "Use the original Hacker News form or account action"
+          }
+        },
+        {
+          "id": "website-6",
+          "path": "/login",
+          "result": {
+            "kind": "website",
+            "reason": "Use the original Hacker News form or account action"
+          }
+        },
+        {
+          "id": "website-7",
+          "path": "/logout",
+          "result": {
+            "kind": "website",
+            "reason": "Use the original Hacker News form or account action"
+          }
+        },
+        {
+          "id": "website-8",
+          "path": "/r",
+          "result": {
+            "kind": "website",
+            "reason": "Use the original Hacker News form or account action"
+          }
+        },
+        {
+          "id": "website-9",
+          "path": "/reply",
+          "result": {
+            "kind": "website",
+            "reason": "Use the original Hacker News form or account action"
+          }
+        },
+        {
+          "id": "website-10",
+          "path": "/submit",
+          "result": {
+            "kind": "website",
+            "reason": "Use the original Hacker News form or account action"
+          }
+        },
+        {
+          "id": "website-11",
+          "path": "/vote",
+          "result": {
+            "kind": "website",
+            "reason": "Use the original Hacker News form or account action"
+          }
+        },
+        {
+          "id": "website-12",
+          "path": "/x",
+          "result": {
+            "kind": "website",
+            "reason": "Use the original Hacker News form or account action"
+          }
+        },
+        {
+          "id": "hn-0",
+          "path": "/",
+          "result": {
+            "kind": "custom",
+            "screen": "feed",
+            "adapter": "feed",
+            "title": "Feed"
+          }
+        },
+        {
+          "id": "hn-1",
+          "path": "/news",
+          "result": {
+            "kind": "custom",
+            "screen": "feed",
+            "adapter": "feed",
+            "title": "Feed"
+          }
+        },
+        {
+          "id": "hn-2",
+          "path": "/newest",
+          "result": {
+            "kind": "custom",
+            "screen": "feed",
+            "adapter": "feed",
+            "title": "Feed"
+          }
+        },
+        {
+          "id": "hn-3",
+          "path": "/front",
+          "result": {
+            "kind": "custom",
+            "screen": "feed",
+            "adapter": "feed",
+            "title": "Feed"
+          }
+        },
+        {
+          "id": "hn-4",
+          "path": "/newcomments",
+          "result": {
+            "kind": "custom",
+            "screen": "feed",
+            "adapter": "feed",
+            "title": "Feed"
+          }
+        },
+        {
+          "id": "hn-5",
+          "path": "/ask",
+          "result": {
+            "kind": "custom",
+            "screen": "feed",
+            "adapter": "feed",
+            "title": "Feed"
+          }
+        },
+        {
+          "id": "hn-6",
+          "path": "/show",
+          "result": {
+            "kind": "custom",
+            "screen": "feed",
+            "adapter": "feed",
+            "title": "Feed"
+          }
+        },
+        {
+          "id": "hn-7",
+          "path": "/shownew",
+          "result": {
+            "kind": "custom",
+            "screen": "feed",
+            "adapter": "feed",
+            "title": "Feed"
+          }
+        },
+        {
+          "id": "hn-8",
+          "path": "/asknew",
+          "result": {
+            "kind": "custom",
+            "screen": "feed",
+            "adapter": "feed",
+            "title": "Feed"
+          }
+        },
+        {
+          "id": "hn-9",
+          "path": "/jobs",
+          "result": {
+            "kind": "custom",
+            "screen": "feed",
+            "adapter": "feed",
+            "title": "Feed"
+          }
+        },
+        {
+          "id": "hn-10",
+          "path": "/item",
+          "result": {
+            "kind": "custom",
+            "screen": "discussion",
+            "adapter": "discussion",
+            "title": "Discussion"
+          },
+          "query": {
+            "id": "present"
+          }
+        },
+        {
+          "id": "hn-12",
+          "path": "/user",
+          "result": {
+            "kind": "custom",
+            "screen": "profile",
+            "adapter": "profile",
+            "title": "Profile"
+          },
+          "query": {
+            "id": "present"
+          }
+        },
+        {
+          "id": "hn-13",
+          "path": "/submitted",
+          "result": {
+            "kind": "custom",
+            "screen": "feed",
+            "adapter": "feed",
+            "title": "Feed"
+          },
+          "query": {
+            "id": "present"
+          }
+        },
+        {
+          "id": "hn-14",
+          "path": "/threads",
+          "result": {
+            "kind": "custom",
+            "screen": "feed",
+            "adapter": "feed",
+            "title": "Feed"
+          },
+          "query": {
+            "id": "present"
+          }
+        },
+        {
+          "id": "hn-15",
+          "path": "/favorites",
+          "result": {
+            "kind": "custom",
+            "screen": "feed",
+            "adapter": "feed",
+            "title": "Feed"
+          },
+          "query": {
+            "id": "present"
+          }
+        },
+        {
+          "id": "hn-16",
+          "path": "/hidden",
+          "result": {
+            "kind": "custom",
+            "screen": "feed",
+            "adapter": "feed",
+            "title": "Feed"
+          },
+          "query": {
+            "id": "present"
+          }
+        },
+        {
+          "id": "hn-17",
+          "path": "/upvoted",
+          "result": {
+            "kind": "custom",
+            "screen": "feed",
+            "adapter": "feed",
+            "title": "Feed"
+          },
+          "query": {
+            "id": "present"
+          }
+        },
+        {
+          "id": "hn-23",
+          "path": "/formatdoc",
+          "result": {
+            "kind": "custom",
+            "screen": "information",
+            "adapter": "information",
+            "title": "Information"
+          }
+        },
+        {
+          "id": "hn-24",
+          "path": "/newsfaq.html",
+          "result": {
+            "kind": "custom",
+            "screen": "information",
+            "adapter": "information",
+            "title": "Information"
+          }
+        },
+        {
+          "id": "hn-25",
+          "path": "/newsguidelines.html",
+          "result": {
+            "kind": "custom",
+            "screen": "information",
+            "adapter": "information",
+            "title": "Information"
+          }
+        },
+        {
+          "id": "hn-26",
+          "path": "/lists",
+          "result": {
+            "kind": "custom",
+            "screen": "information",
+            "adapter": "information",
+            "title": "Information"
+          }
+        },
+        {
+          "id": "hn-27",
+          "path": "/best",
+          "result": {
+            "kind": "custom",
+            "screen": "feed",
+            "adapter": "feed",
+            "title": "Feed"
+          }
+        },
+        {
+          "id": "hn-28",
+          "path": "/active",
+          "result": {
+            "kind": "custom",
+            "screen": "feed",
+            "adapter": "feed",
+            "title": "Feed"
+          }
+        },
+        {
+          "id": "hn-29",
+          "path": "/leaders",
+          "result": {
+            "kind": "custom",
+            "screen": "information",
+            "adapter": "information",
+            "title": "Information"
+          }
+        },
+        {
+          "id": "hn-30",
+          "path": "/from",
+          "result": {
+            "kind": "custom",
+            "screen": "feed",
+            "adapter": "feed",
+            "title": "Feed"
+          }
+        }
+      ],
+      "defaultSourceId": "primary"
+    }
+  ],
+  "foreground": {
+    "pageId": "app",
+    "screens": [
+      "feed",
+      "discussion",
+      "profile",
+      "information"
+    ]
+  },
+  "navigation": {
+    "external": {
+      "default": "website",
+      "origins": []
+    },
+    "uncoveredWebsiteRecovery": true
+  },
+  "websiteActions": [
+    {
+      "id": "original-hn",
+      "contractId": "hn",
+      "routeIds": [
+        "hn-0",
+        "hn-1",
+        "hn-2",
+        "hn-3",
+        "hn-4",
+        "hn-5",
+        "hn-6",
+        "hn-7",
+        "hn-8",
+        "hn-9",
+        "hn-10",
+        "hn-12",
+        "hn-13",
+        "hn-14",
+        "hn-15",
+        "hn-16",
+        "hn-17",
+        "hn-23",
+        "hn-24",
+        "hn-25",
+        "hn-26",
+        "hn-27",
+        "hn-28",
+        "hn-29",
+        "hn-30"
+      ],
+      "label": "Open original Hacker News website",
+      "reason": "Continue with original page content and website controls"
+    }
+  ]
 }

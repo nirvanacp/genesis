@@ -5,7 +5,9 @@ description: Verify or diagnose a Genesis applet with package checks, TypeScript
 
 # Verify a Genesis applet
 
-Read [factory instructions](../../AGENTS.md), [product scope and clarification](../../guides/product-scope.md), and [verification](../../guides/verification.md). Use [SDK reference](../../guides/sdk-reference.md) to confirm expected behavior.
+Apply [design and interaction fidelity](../../guides/design.md) to visual work. Compare the agreed native/mobile reference with the actual applet under comparable conditions. Inventory all changed controls and verify their results, dismissal, persistence and Back/Close as applicable. Screenshots, static checks and synthetic previews do not establish real interaction parity. Keep blocked acceptance requirements pending.
+
+Read [the API-3 isolation contract](../../guides/isolated-applets.md), then [factory instructions](../../AGENTS.md), [product scope and clarification](../../guides/product-scope.md), and [verification](../../guides/verification.md). Use [SDK reference](../../guides/sdk-reference.md) to confirm expected behavior.
 
 1. Read the latest user requirements and applet brief before choosing checks. Identify intended apps/launcher entries, exact revisions, selected build, SDK version and device/provider. Ask about unresolved material scope or data semantics before assuming expected behavior. Use the standalone checker for this applet; the Genesis root checker covers only the current APK selection, not every dev-installed applet.
 2. Run existing static checks appropriate to the change. Inspect their output and separate pre-existing failures. Do not add test files or install unrelated tooling as a substitute for the existing workflow.
@@ -16,3 +18,21 @@ Read [factory instructions](../../AGENTS.md), [product scope and clarification](
 7. Label synthetic, component, integrated-source and device checks separately. A preview with substituted account/data providers cannot pass real authentication or integration acceptance. Inventory temporary installations and complete supported cleanup without erasing data. If cleanup cannot be completed safely, report it as unfinished delivery. Give every required flow a passed, failed, blocked or not-run result, with evidence or reason; only the user can approve deferral of a requirement.
 
 The handoff states expected and actual behavior, changed files if any, commands/results, device evidence, and remaining blockers. A passing typecheck is not a live-site pass. Read-only verification does not authorize publishing content, modifying accounts, or deploying a backend.
+
+Require a route-to-owned-screen/provider inventory for changed behavior. Verify internal query/path transitions, external website/Close, authentication/POST preservation, stale replies, failed loading and source accessibility/audio isolation. CSS and inline source controls cannot satisfy an API-3 foreground migration. Never claim source selectors or backend interactions verified from a typecheck or synthetic preview.
+
+Require [evidence-based loading](../../guides/patterns.md#loading-is-an-unresolved-observation). Define readiness, empty, auth/challenge and failure evidence per route. Missing selectors or HTML completion never prove failure. Verify recorded transitions through slow initialization and real failures, including repeated navigation and provider return. Ordinary loading must not ask for Retry; compilation and final screenshots cannot qualify this behavior. Platform faults require a minimal sanitized reproduction; keep website selectors in applets.
+
+Use [skeletons by default](../../guides/design.md#skeletons-are-the-default-pending-ui) across source transitions, owned libraries, account verification, pagination and dialog reads. Replace visible loading prose with destination-shaped neutral placeholders; keep assistive status, useful existing content and real failure/empty/confirmation copy. Verify a pending frame, completion, errors and Back/Close. This is a default design requirement, not a question the user must answer.
+
+
+## Explicit navigation requirement
+
+Read [navigation](../../guides/navigation.md). New work uses schema 3/API 4 and SDK/tools 0.5.0. Build establishes the route/action inventory before rendering. Customization updates the manifest, adapter/model, renderer and README acceptance table together. Verification exercises actual links, unknown tabs, redirects, query/hash changes, original-site actions, external pages, website Back and Return.
+
+Do not maintain an independent presentation regex or use unknown/missing content as a website fallback. Resolve observed URL tabs and label website controls before activation. Use host route metadata for source screen selection. Preserve required custom workflows; inaccessible content stays required/blocked. Direct webViews.open examples elsewhere apply only to legacy API 3. A route/typecheck pass is not live navigation or source qualification. Never submit protected actions just to verify entry/return.
+
+
+## Required interaction semantics
+
+Read [actions and navigation](../../guides/interactions.md). Establish each control's expected result and execution owner. Keep source mutations separate from URL navigation and protected website editors. A Like, Follow, Bookmark or Share icon cannot be implemented as a generic containing-page link. Revalidate live targets, disabled/account/visit state and retained action results. Audit shared renderers, cached/recycled rows, nested controls, failure/uncertainty and provider cancellation. Verify the promised outcome; a destination-opening check does not qualify a mutation. Do not submit real social actions without explicit mutation scope. Keep unsupported variants and blocked read-back qualification explicit.

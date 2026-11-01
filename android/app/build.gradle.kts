@@ -43,7 +43,7 @@ android {
     buildToolsVersion = "36.0.0"
     ndkVersion = "28.2.13676358"
     defaultConfig {
-        applicationId = "app.nirvana.genesis"
+        applicationId = providers.gradleProperty("genesis.applicationId").getOrElse("app.nirvana.genesis")
         minSdk = 26
         targetSdk = 37
         versionCode = 1

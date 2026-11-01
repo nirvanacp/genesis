@@ -38,8 +38,52 @@ pub fn validate(index: &PackageIndex) -> Result<(), String> {
     let mut ids = HashSet::new();
     for package in &index.packages {
         let manifest = &package.manifest;
-        if ![1, 2].contains(&package.runtime_api_version) {
+        if ![1, 2, 3, 4].contains(&package.runtime_api_version) {
             return Err("Unsupported package runtime API".into());
+        }
+        if matches!(manifest.schema_version, 2 | 3) {
+            if package.runtime_api_version != manifest.schema_version + 1 {
+                return Err("Isolated schema/runtime API mismatch".into());
+            }
+            crate::routes::validate_manifest(manifest)?;
+            let mut legacy = package.clone();
+            legacy.runtime_api_version = 2;
+            legacy.manifest.schema_version = 1;
+            for source in &mut legacy.manifest.sources {
+                source.origins = manifest
+                    .route_contracts
+                    .iter()
+                    .find(|c| Some(&c.id) == source.route_contract_id.as_ref())
+                    .ok_or("Unknown contract")?
+                    .origins
+                    .clone();
+                source.route_contract_id = None;
+            }
+            legacy.manifest.route_contracts.clear();
+            legacy.manifest.foreground = None;
+            legacy.manifest.navigation = None;legacy.manifest.website_actions.clear();
+            validate(&PackageIndex {
+                hidden_applet_ids: Vec::new(),
+                schema_version: 1,
+                implementation_stage: IMPLEMENTATION_STAGE.into(),
+                packages: vec![legacy],
+            })?;
+            if !ids.insert(&manifest.id) {
+                return Err("Duplicate applet".into());
+            }
+            continue;
+        }
+        if matches!(package.runtime_api_version, 3 | 4) {
+            return Err("API 3 requires schema 2".into());
+        }
+        if manifest.navigation.is_some() || !manifest.website_actions.is_empty() || !manifest.route_contracts.is_empty()
+            || manifest.foreground.is_some()
+            || manifest
+                .sources
+                .iter()
+                .any(|s| s.route_contract_id.is_some())
+        {
+            return Err("Isolated declarations require schema 2".into());
         }
         if manifest.schema_version != 1
             || manifest.data_schema_version != 1
@@ -256,7 +300,7 @@ fn route(path: &str) -> bool {
 /// Validate the external shape before the Android store verifies bytes and canonical revision.
 pub fn validate_bundle(bundle: &AppletBundle) -> Result<(), String> {
     if bundle.format_version != BUNDLE_FORMAT_VERSION
-        || ![1, RUNTIME_API_VERSION].contains(&bundle.runtime_api_version)
+        || ![1, 2, 3, 4].contains(&bundle.runtime_api_version)
     {
         return Err(format!(
             "Unsupported bundle/runtime API; supported {BUNDLE_FORMAT_VERSION}/{RUNTIME_API_VERSION}"

@@ -40,11 +40,13 @@ final class HostViews {
     private final FrameLayout content;
     private final ScrollView cover;
     private final TextView coverTitle, coverMessage;
+    private final LinearLayout loadingSkeleton, notice;
     private final LinearLayout recovery;
     private final LinearLayout siteRecovery;
     private final ImageButton floatingMenu;
     private final LinearLayout readerBar;
     private final TextView readerOrigin;
+    private final Button readerReturn;
     private final ImageButton readerBack, readerForward;
     private final ProgressBar pageProgress;
     private String readerUrl = "";
@@ -53,8 +55,10 @@ final class HostViews {
     private String presentationState = "loading", presentationMessage = "";
     private boolean fullscreen;
     private boolean readerVisible;
+    private boolean isolatedApplet;
     private boolean appletActive;
     private JSONObject shell;
+    private JSONArray sourceEntries = new JSONArray();
     private String appletId, sourceId, pageId, sectionId;
     private LinearLayout appHeader, sections;
     private TextView brand;
@@ -83,31 +87,50 @@ final class HostViews {
         });
         browserSlot = new FrameLayout(activity); content.addView(browserSlot, new FrameLayout.LayoutParams(-1, -1));
 
-        readerBar = new LinearLayout(activity); readerBar.setGravity(Gravity.CENTER_VERTICAL);
+        readerBar = new LinearLayout(activity); readerBar.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout readerControls=new LinearLayout(activity);readerControls.setGravity(Gravity.CENTER_VERTICAL);
         readerBar.setPadding(dp(8), 0, dp(8), 0); readerBar.setBackgroundColor(paper);
         readerBack = iconButton(R.drawable.ic_nav_back, "Back", () -> events.send(event("back")));
         readerForward = iconButton(R.drawable.ic_nav_forward, "Forward", () -> events.send(event("forward")));
         ImageButton close = iconButton(R.drawable.ic_nav_close, "Close reader", () -> events.send(event("readerClose")));
         readerOrigin = text("", 14); readerOrigin.setSingleLine(true); readerOrigin.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        readerBar.addView(readerBack, new LinearLayout.LayoutParams(dp(48), dp(48)));
-        readerBar.addView(readerForward, new LinearLayout.LayoutParams(dp(48), dp(48)));
-        readerBar.addView(readerOrigin, new LinearLayout.LayoutParams(0, -2, 1));
-        readerBar.addView(close, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        readerControls.addView(readerBack, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        readerControls.addView(readerForward, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        readerControls.addView(readerOrigin, new LinearLayout.LayoutParams(0, -2, 1));
+        readerControls.addView(close, new LinearLayout.LayoutParams(dp(48), dp(48)));
         ImageButton more = iconButton(R.drawable.ic_nav_more, "Reader options", () -> readerMenu());
-        readerBar.addView(more, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        readerControls.addView(more, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        readerBar.addView(readerControls,new LinearLayout.LayoutParams(-1,-2));
+        readerReturn=new Button(activity);readerReturn.setAllCaps(false);readerReturn.setText("Return to applet");readerReturn.setMinHeight(dp(48));readerReturn.setOnClickListener(v->events.send(event("readerClose")));
+        readerBar.addView(readerReturn,new LinearLayout.LayoutParams(-1,-2));
+        readerBar.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->{if(b-t!=ob-ot)alignContentInsets();});
         readerBar.setVisibility(View.GONE);
-        content.addView(readerBar, new FrameLayout.LayoutParams(-1, dp(READER_BAR_HEIGHT), Gravity.TOP));
+        content.addView(readerBar, new FrameLayout.LayoutParams(-1, -2, Gravity.TOP));
         pageProgress = new ProgressBar(activity, null, android.R.attr.progressBarStyleHorizontal);
         pageProgress.setMax(100); pageProgress.setIndeterminate(true); pageProgress.setVisibility(View.GONE);
         FrameLayout.LayoutParams progressLayout = new FrameLayout.LayoutParams(-1, dp(3), Gravity.TOP);
         content.addView(pageProgress, progressLayout);
 
-        LinearLayout notice = new LinearLayout(activity); notice.setOrientation(LinearLayout.VERTICAL);
+        notice = new LinearLayout(activity); notice.setOrientation(LinearLayout.VERTICAL);
         notice.setGravity(Gravity.CENTER); notice.setPadding(dp(28), dp(28), dp(28), dp(88));
         coverTitle = text("", 24); coverTitle.setTypeface(null, Typeface.BOLD); coverTitle.setGravity(Gravity.CENTER);
         coverMessage = text("", 16); coverMessage.setGravity(Gravity.CENTER); coverMessage.setPadding(0, dp(12), 0, dp(20));
         coverMessage.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
         notice.addView(coverTitle); notice.addView(coverMessage);
+        loadingSkeleton = new LinearLayout(activity); loadingSkeleton.setOrientation(LinearLayout.VERTICAL);
+        loadingSkeleton.setContentDescription("Loading page");
+        loadingSkeleton.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+        for(int row=0;row<3;row++) {
+            LinearLayout group=new LinearLayout(activity);group.setOrientation(LinearLayout.VERTICAL);group.setPadding(0,dp(16),0,dp(16));
+            for(int line=0;line<3;line++) {
+                View block=new View(activity);block.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+                LinearLayout.LayoutParams shape=new LinearLayout.LayoutParams(line==1?-1:dp(line==0?128:196),dp(line==0?14:10));shape.bottomMargin=dp(12);
+                group.addView(block,shape);
+            }
+            loadingSkeleton.addView(group,new LinearLayout.LayoutParams(-1,-2));
+        }
+        notice.addView(loadingSkeleton,new LinearLayout.LayoutParams(-1,-2));
+        loadingSkeleton.setVisibility(View.GONE);
         recovery = new LinearLayout(activity); recovery.setOrientation(LinearLayout.VERTICAL);
         recovery.addView(button("Retry", () -> events.send(event("retry"))));
         recovery.addView(button("Back", () -> events.send(event("back"))));
@@ -139,8 +162,11 @@ final class HostViews {
     }
 
     void configureShell(JSONObject command, PackageAssets assets) throws Exception {
+        readerReturn.setText("Return to "+command.getJSONObject("package").getJSONObject("manifest").optString("name","applet"));
+        isolatedApplet=command.getJSONObject("package").getJSONObject("manifest").optInt("schemaVersion")>=2;
         appletActive = true;
         JSONObject manifest = command.getJSONObject("package").getJSONObject("manifest");
+        sourceEntries = manifest.getJSONArray("sources");
         shell = manifest.optJSONObject("shell"); appletId = manifest.getString("id");
         palette(shell != null && "neutral".equals(shell.optString("colorScheme")));
         JSONObject selection = command.getJSONObject("selection");
@@ -189,12 +215,18 @@ final class HostViews {
         content.addView(appHeader, new FrameLayout.LayoutParams(-1, dp(APP_HEADER_HEIGHT), Gravity.TOP));
         alignHeaderInsets();
         sections = new LinearLayout(activity); sections.setBackgroundColor(paper);
+        sections.setMinimumHeight(dp(SECTION_BAR_HEIGHT));
+        sections.addOnLayoutChangeListener((view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+            if (bottom - top != oldBottom - oldTop) alignContentInsets();
+        });
         sections.setPadding(dp(8), dp(4), dp(8), dp(4));
         JSONArray entries = shell.optJSONArray("sections");
         for (int i = 0; i < entries.length(); i++) {
             JSONObject entry = entries.getJSONObject(i);
             Button tab = button(entry.getString("label"), () -> events.send(openSection(entry)));
-            tab.setTextSize(11); tab.setPadding(0, dp(4), 0, dp(4)); tab.setGravity(Gravity.CENTER); tab.setSingleLine(true);
+            tab.setTextSize(11); tab.setPadding(0, dp(4), 0, dp(4));
+            tab.setGravity(activity.getResources().getConfiguration().fontScale > 1.3f ? Gravity.TOP | Gravity.CENTER_HORIZONTAL : Gravity.CENTER);
+            tab.setSingleLine(false); tab.setMaxLines(2); tab.setEllipsize(android.text.TextUtils.TruncateAt.END);
             boolean selected = !sectionId.isEmpty() ? sectionId.equals(entry.optString("id")) : sourceId.equals(entry.optString("sourceId")) && pageId.equals(entry.isNull("pageId") ? "" : entry.optString("pageId"));
             tab.setSelected(selected); tab.setTextColor(selected ? accent : ink); tab.setTypeface(null, selected ? Typeface.BOLD : Typeface.NORMAL); tab.setContentDescription(entry.getString("label") + (selected ? ", selected" : ""));
             styleChromeControl(tab, selected ? wash : Color.TRANSPARENT, 16);
@@ -207,7 +239,25 @@ final class HostViews {
             LinearLayout.LayoutParams tabLayout = new LinearLayout.LayoutParams(0, -1, 1);
             tabLayout.setMargins(dp(2), 0, dp(2), 0); sections.addView(tab, tabLayout);
         }
-        content.addView(sections, new FrameLayout.LayoutParams(-1, dp(SECTION_BAR_HEIGHT), Gravity.BOTTOM));
+        int available = content.getWidth() - content.getPaddingLeft() - content.getPaddingRight();
+        if (available <= 0) available = dp(activity.getResources().getConfiguration().screenWidthDp);
+        int tabWidth = (available - dp(16) - entries.length() * dp(4)) / Math.max(1, entries.length());
+        boolean allHaveIcons = true, labelsNeedSpace = false;
+        for (int i = 0; i < sections.getChildCount(); i++) {
+            Button tab = (Button) sections.getChildAt(i);
+            allHaveIcons &= tab.getCompoundDrawables()[1] != null;
+            labelsNeedSpace |= tab.getPaint().measureText(tab.getText().toString()) + dp(8) > tabWidth;
+        }
+        if (activity.getResources().getConfiguration().fontScale > 1.3f && allHaveIcons && labelsNeedSpace) {
+            for (int i = 0; i < sections.getChildCount(); i++) {
+                Button tab = (Button) sections.getChildAt(i);
+                tab.setTooltipText(entries.getJSONObject(i).getString("label"));
+                tab.setText(""); tab.setGravity(Gravity.CENTER); tab.setCompoundDrawablePadding(0);
+                android.graphics.drawable.Drawable icon = tab.getCompoundDrawables()[1];
+                icon.setBounds(0, 0, dp(28), dp(28)); tab.setCompoundDrawables(null, icon, null, null);
+            }
+        }
+        content.addView(sections, new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM));
     }
     private void palette(boolean neutral) {
         boolean dark = (activity.getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES;
@@ -220,8 +270,26 @@ final class HostViews {
         readerBack.setColorFilter(ink); readerForward.setColorFilter(ink);
     }
     private JSONObject openSection(JSONObject entry) {
-        JSONObject event = open(entry.optString("sourceId"), entry.isNull("pageId") ? null : entry.optString("pageId"), null);
-        try { event.put("sectionId", entry.getString("id")); } catch (JSONException error) { throw new IllegalArgumentException(error); }
+        String source = entry.optString("sourceId");
+        String page = entry.isNull("pageId") ? null : entry.optString("pageId");
+        String url = null;
+        if (isolatedApplet) {
+            // A primary tab opens its declared entry, rather than a remembered child.
+            // An explicit empty page also clears a remembered internal owned page.
+            if (page == null) page = "";
+            for (int i = 0; i < sourceEntries.length(); i++) {
+                JSONObject candidate = sourceEntries.optJSONObject(i);
+                if (candidate != null && source.equals(candidate.optString("id"))) {
+                    url = candidate.optString("startUrl");
+                    break;
+                }
+            }
+        }
+        JSONObject event = open(source, page, url);
+        try {
+            event.put("sectionId", entry.getString("id"));
+            if (isolatedApplet) event.put("resetForeground", true);
+        } catch (JSONException error) { throw new IllegalArgumentException(error); }
         return event;
     }
     private int sectionIcon(String name) {
@@ -293,7 +361,8 @@ final class HostViews {
         boolean siteError = "siteError".equals(presentationState);
         boolean failed = "failed".equals(presentationState) || "unsupported".equals(presentationState);
         boolean loading = "loading".equals(presentationState);
-        coverTitle.setText(siteError ? "Page unavailable" : failed ? "Couldn’t prepare this page" : "Loading…"); coverMessage.setText(siteError ? "Check your connection and try again." : failed ? "Try again, go back, or view the original page." : "");
+        coverTitle.setText(siteError ? "Page unavailable" : failed ? "Couldn’t prepare this page" : ""); coverMessage.setText(siteError ? "Check your connection and try again." : failed ? "Try again, go back, or view the original page." : "");
+        skeletonLoading(loading);
         recovery.setVisibility(failed ? View.VISIBLE : View.GONE);
         siteRecovery.setVisibility(siteError ? View.VISIBLE : View.GONE);
         boolean blocking = failed || siteError || loading;
@@ -320,7 +389,7 @@ final class HostViews {
         readerBack.setEnabled(canBack); readerForward.setEnabled(canForward);
         if (reader) {
             Uri parsed = Uri.parse(url);
-            readerOrigin.setText((parsed.getHost() == null ? "Web page" : parsed.getHost()) + (parsed.getPort() < 0 ? "" : ":" + parsed.getPort()));
+            readerOrigin.setText("Website · "+("http".equals(parsed.getScheme())?"HTTP · ":"")+(parsed.getHost() == null ? "Web page" : parsed.getHost()) + (parsed.getPort() < 0 ? "" : ":" + parsed.getPort()));
         }
         readerBar.setVisibility(reader ? View.VISIBLE : View.GONE);
         boolean app = shell != null && !reader;
@@ -338,9 +407,21 @@ final class HostViews {
             }
             choices.setContentDescription("View: " + choices.getText() + ". Choose view");
         }
-        browserSlot.setPadding(0, app ? dp(APP_HEADER_HEIGHT) : reader ? dp(READER_BAR_HEIGHT) : 0, 0, app ? dp(SECTION_BAR_HEIGHT) : 0);
-        FrameLayout.LayoutParams bounds = (FrameLayout.LayoutParams) cover.getLayoutParams(); bounds.topMargin = app ? dp(APP_HEADER_HEIGHT) : reader ? dp(READER_BAR_HEIGHT) : 0; bounds.bottomMargin = app ? dp(SECTION_BAR_HEIGHT) : 0; cover.setLayoutParams(bounds);
+        alignContentInsets();
         readerBar.bringToFront(); pageProgress.bringToFront(); updateFloatingMenu();
+    }
+    private int sectionBarHeight() {
+        return Math.max(dp(SECTION_BAR_HEIGHT), sections == null ? 0 : sections.getHeight());
+    }
+    private void alignContentInsets() {
+        boolean app = appletActive && shell != null && !readerVisible;
+        int top = app ? dp(APP_HEADER_HEIGHT) : readerVisible ? Math.max(dp(READER_BAR_HEIGHT),readerBar.getHeight()) : 0;
+        int bottom = app ? sectionBarHeight() : 0;
+        browserSlot.setPadding(0, top, 0, bottom);
+        FrameLayout.LayoutParams bounds = (FrameLayout.LayoutParams) cover.getLayoutParams();
+        if (bounds.topMargin != top || bounds.bottomMargin != bottom) {
+            bounds.topMargin = top; bounds.bottomMargin = bottom; cover.setLayoutParams(bounds);
+        }
     }
     private void alignHeaderInsets() {
         if (appHeader == null) return;
@@ -353,7 +434,7 @@ final class HostViews {
     private void updateFloatingMenu() {
         floatingMenu.setVisibility(!appletActive || fullscreen || readerVisible || shell != null ? View.GONE : View.VISIBLE);
         FrameLayout.LayoutParams bounds = (FrameLayout.LayoutParams) floatingMenu.getLayoutParams();
-        int bottom = dp(shell != null && !readerVisible ? SECTION_BAR_HEIGHT + 16 : 16);
+        int bottom = shell != null && !readerVisible ? sectionBarHeight() + dp(16) : dp(16);
         if (bounds.bottomMargin != bottom) { bounds.bottomMargin = bottom; floatingMenu.setLayoutParams(bounds); }
         floatingMenu.bringToFront();
     }
@@ -362,10 +443,20 @@ final class HostViews {
         pageProgress.setIndeterminate(progress <= 0);
         if (progress > 0) pageProgress.setProgress(progress);
     }
+    private void skeletonLoading(boolean loading) {
+        notice.setGravity(loading?Gravity.TOP:Gravity.CENTER);
+        coverTitle.setVisibility(loading?View.GONE:View.VISIBLE);coverMessage.setVisibility(loading?View.GONE:View.VISIBLE);
+        loadingSkeleton.setVisibility(loading?View.VISIBLE:View.GONE);
+        boolean dark=(activity.getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK)==android.content.res.Configuration.UI_MODE_NIGHT_YES;
+        int color=Color.parseColor(dark?"#303438":"#eceff1");
+        for(int i=0;i<loadingSkeleton.getChildCount();i++) {
+            LinearLayout row=(LinearLayout)loadingSkeleton.getChildAt(i);
+            for(int j=0;j<row.getChildCount();j++){GradientDrawable shape=new GradientDrawable();shape.setColor(color);shape.setCornerRadius(dp(4));row.getChildAt(j).setBackground(shape);}
+        }
+    }
     void pageStarting() {
         browserSlot.animate().cancel(); browserSlot.setAlpha(1f); browserSlot.setTranslationY(0); browserSlot.setTranslationX(0);
-        coverTitle.setText("Loading page");
-        coverMessage.setText("Preparing this page…");
+        skeletonLoading(true);
         recovery.setVisibility(View.GONE);
         siteRecovery.setVisibility(View.GONE);
         cover.setVisibility(View.VISIBLE);
@@ -410,7 +501,7 @@ final class HostViews {
         if ((activity.getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0) {
             SubMenu debugMenu = menu.addSubMenu("Developer tools");
             String[][] debug = {{"Inspect current document", "inspect"}, {"Qualify 20 reloads", "qualify"}, {"Simulate creator failure", "debugFailure"}, {"Terminate renderer", "debugTerminate"}};
-            for (String[] item : debug) debugMenu.add(item[0]).setOnMenuItemClickListener(clicked -> { events.send(event(item[1])); return true; });
+            for (String[] item : debug) { if(isolatedApplet&&"qualify".equals(item[1]))continue; debugMenu.add(item[0]).setOnMenuItemClickListener(clicked -> { events.send(event(item[1])); return true; }); }
         }
         popup.show();
     }

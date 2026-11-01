@@ -1,4 +1,6 @@
 mod controller;
+mod isolated;
+mod navigation;
 mod packages;
 mod routes;
 mod sources;
@@ -17,15 +19,26 @@ use std::{
 };
 
 // All calls originate on the Activity UI thread. No Java references are retained.
-thread_local! { static HOST: RefCell<HostState> = RefCell::new(HostState::default()); }
+thread_local! {
+    static HOST: RefCell<HostState> = RefCell::new(HostState::default());
+    static ISOLATED: RefCell<Option<isolated::IsolatedHost>> = const { RefCell::new(None) };
+}
 
 fn dispatch(input: &str) -> String {
     let outcome = catch_unwind(AssertUnwindSafe(|| {
+        let raw: serde_json::Value = serde_json::from_str(input).map_err(|e| e.to_string())?;
+        if raw["type"] == "attach" {
+            let enabled = raw["index"]["packages"].as_array().is_some_and(|p| p.iter().any(|p| matches!(p["manifest"]["schemaVersion"].as_u64(),Some(2|3))));
+            ISOLATED.with(|host| *host.borrow_mut() = enabled.then(isolated::IsolatedHost::default));
+        }
+        if let Some(result) = ISOLATED.with(|host| host.borrow_mut().as_mut().map(|h| h.dispatch(raw))) {
+            return result.and_then(|commands| serde_json::to_string(&commands).map_err(|e| e.to_string()));
+        }
         let event: HostEvent = serde_json::from_str(input).map_err(|e| e.to_string())?;
-        HOST.with(|host| host.borrow_mut().dispatch(event))
+        HOST.with(|host| host.borrow_mut().dispatch(event)).and_then(|commands| serde_json::to_string(&commands).map_err(|e| e.to_string()))
     }));
     let commands = match outcome {
-        Ok(Ok(commands)) => commands,
+        Ok(Ok(encoded)) => return encoded,
         Ok(Err(message)) => vec![HostCommand::ShowError { message }],
         Err(_) => vec![HostCommand::ShowError {
             message: "Native host failed. Return Home or restart Genesis.".into(),

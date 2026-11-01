@@ -1,8 +1,12 @@
 # Hacker News applet
 
-This applet adapts Hacker News while preserving its real login/forms and source links. Home, Post, and Me are source sections; Search is an intentional local placeholder; Saved is an owned React page. Bookmarks/categories live on the applet-owned HTTPS service. Public account identity and Post drafts use optional applet-scoped host documents; credentials stay in WebView/native service storage.
+HN now uses manifest schema 2, SDK 0.4.1 and tools 0.4.2 and runtime API 3. Its upstream document stays hidden behind a native opaque layer. The source adapter publishes validated story/comment/profile/information models; `src/app.tsx` renders the owned foreground. This supersedes the source-table styling described in historical phase-4 records below. Keep stable ID `hn-bookmarks`, source/section/page IDs, service `bookmarks` and all existing record keys.
 
-Follow [factory instructions](../../AGENTS.md). From the Genesis root use workspace typecheck, selected package validation, and the shared build tooling. Service start is explicit through genesis-applet service start with this directory and an authorized device, or the root compatibility wrapper. Current builds use runtime API 2 and SDK/tools 0.3.0; the updated host also accepts existing API-1 bundles. Use an install-as-update host workflow to preserve hn-bookmarks identity and data.
+Home/feed families, discussion, public profiles/lists and informational pages have owned renderers. The manifest contains the exact route contract, including required item/profile query IDs and explicit unmatched handling. Me shows observed account state in the foreground. Saved reuses the existing backend/category components with an owned screen lifetime. Search retains its documented placeholder.
+
+Login/logout/account changes, posting, reply/vote/edit/delete actions and source forms use explicit framework website presentation. External article links use the bridge-free reader. Native Close restores/revalidates the owning applet. Login tokens, form fields and cookies never enter the source data model; sign-out remains an original-site action. No source action is submitted as routine verification.
+
+Current migration checks passed CLI/type/build validation and real QA feed, discussion, comment collapse, website-form presentation/Close, Saved save/read-back, category creation/assignment/filtering, text entry and section re-entry. Temporary records were removed and the original library was preserved. Final everyday-host delivery, signed-in flows and broader failure/accessibility checks continue in the phase-5 verification report. Earlier reports do not qualify this revision.
 
 For local backend startup, run `./start.sh` from this directory, or `./factory/start-applet-servers.sh` from the Genesis root for all applets. After reboot/reconnecting Android, add `--device <adb-serial>` to restore its tunnel and service connection. HN reserves port 8787 in `factory/ports.json`. Node 24, installed workspace dependencies and OpenSSL are required; SQLite is built into Node and needs no separate server. The helper reuses private data and credentials under `~/.local/share/genesis/services/hn-bookmarks/bookmarks/`, including `documents.sqlite3` and `server.log`. `./start.sh --stop` stops the managed backend and preserves data. Repeated startup checks health and reuses the managed process. See [startup and ports](../../guides/services-and-data.md#local-startup-and-port-assignments). These scripts are for the operator; agents maintain and statically check them without running services unless explicitly asked.
 
@@ -14,23 +18,62 @@ For local backend startup, run `./start.sh` from this directory, or `./factory/s
 
 The backend is a personal single-token/single-database server, not a multi-user account system. Production requires trusted HTTPS, durable storage, backups, and managed credentials. No Node runtime is bundled in Android. Supported source routes and shell destinations are enumerated in applet.json. Real HN posting is never a routine verification action; its authorized prelaunch check remains separate.
 
-For phase 4, preserve this working applet and its stable ID. Limit HN changes to measured UI improvements under the [two-app improvement plan](../../../.plans/phase-4/2026-10-30/214048-genesis-two-complete-applets-plan.md). Search remains the existing placeholder described above; do not report it as functional search or silently expand a visual-polish change into a search/backend rewrite.
+## Current verification and form ownership
 
-## Category bookmark verification
+The phase-5 emulator checks cover owned feed/discussion, new-comments/parent/context/author links, profiles, Saved/category operations and cleanup, explicit website presentation/Close and offline refresh recovery. Existing bookmark/category records were preserved. The current phase-5 verification report records exact revisions and remaining qualification limits.
 
-Required behavior is to save live HN stories into one or more categories within the existing `hn-bookmarks` app, edit those assignments, filter Saved, and preserve records across app restarts. The bookmark service remains authoritative. Source browsing and the existing library must remain intact. Delivery for this check was the installed Android debug applet, without a source or package update.
+Post, reply, authentication and account forms remain original website forms in the framework provider. Native Stay/Leave protects a live edited form. Legacy public draft records are preserved in host storage but are not injected into original forms; durable form restoration after process death is not supplied. The obsolete source-style/account/draft-injection modules were removed so new customization work follows the active source/foreground contract.
 
-Verified on 2026-10-31 using Android Studio device `emulator-5554`, runtime API 2, applet revision `8d0c52983ccac91033eca52f2dd57fe1322369f0f05b2ec7069346931dd4ee0d`, and the real HN source and HTTPS bookmark service. Saved initially showed an unavailable error because the HN backend was stopped and its adb reverse tunnel was missing. After explicit user authorization, `./start.sh --device emulator-5554` restored both using the existing private database. No bookmark logic defect was reproduced.
+Historical API-2 checks and older phone reports qualify only their recorded revisions, not this migration. Search remains the documented placeholder. Real posting/voting/account mutations are not routine QA actions.
 
-| Journey | Expected result | Device result |
+Missing content anchors and unfinished profile/discussion markup remain loading until validated content or the framework deadline. Invalid route parameters still produce unsupported outcomes; successful empty structures remain distinct from failed reads.
+
+The [source loading repair qualification](../../../.reports/phase-5/2026-11-01/091700-genesis-loading-repair-verification.md) records installed SDK 0.4.1 and tools 0.4.2 revisions, repeated X navigation, genuine recovery and shared-host checks. It supersedes earlier loading/recovery qualification for those journeys and states the remaining device/transport/accessibility limits.
+
+Gray content skeletons are the default for source transitions, account/library/dialog reads and pagination. Pending operations retain hidden accessible status and real errors remain explicit. See [skeleton verification](../../../.reports/phase-5/2026-11-01/093559-genesis-skeleton-loading-verification.md) for installed revisions and limits.
+
+## Explicit navigation coverage
+
+Schema 3/API 4 with SDK 0.5.0 delegates URL classification to the host. The manifest declares custom feed/discussion/profile/information routes, original-site form routes, the `original-hn` current-page action, external website policy and unsupported recovery. The foreground no longer maintains a separate form-path classifier. External article, Saved article, inline and action links show a compact ↗ cue and expose "opens website" to accessibility services without adding a full Website label inside every link.
+
+| Journey | Policy / rendering | Return and verification |
 | --- | --- | --- |
-| Launcher → HN → story Save → create category → save | Story appears in Saved with the category | Passed |
-| Assign two categories, select each filter, remove one assignment | Memberships persist independently; removed filter becomes empty | Passed |
-| Rename category; create a case-insensitive duplicate | Membership survives rename; duplicate is rejected visibly | Passed |
-| Saved → discussion → Back → Saved | Correct HN story opens; selected category is retained | Passed |
-| Force-stop/relaunch Genesis → HN → Saved | Bookmark, category membership, and filter persist | Passed |
-| Delete the remaining assigned category | Story stays saved under Uncategorized | Passed |
-| Cancel removal, then confirm removal | Cancellation keeps the story; confirmation removes it | Passed |
-| Clean up disposable records | Original library remains; temporary categories/bookmark are absent | Passed |
+| Feed → discussion | Declared custom item rule, bounded owned comments | Passed real emulator feed with 30 stories and discussion with 100 comments |
+| Profile, feed filters, More | Manifest custom route IDs; no local presentation regex | Existing extraction preserved; full route sweep remains unqualified |
+| Comment fragment | Existing owned anchor scrolls locally; missing bounded comment navigates to its custom item permalink | Static wiring checked; no website fallback |
+| External article | External decision and visible Website cue | Device entry/Return restored owned discussion |
+| Login/reply/vote/post/account forms | Declared website routes; native Return | Original session behavior retained; no submissions performed |
+| Current page / more original content | `original-hn` website action on declared custom routes | Explicit original-site entry, separate from normal reading |
+| Unknown internal URL | Native unsupported recovery with explicit website option | Host policy component checked |
+| Saved/Search | Existing owned pages and service authority | Search placeholder preserved; records unchanged |
 
-The backend and HN tunnel were left running. Temporary diagnostic forwarding was removed. The package checker and shared port-registry checker passed. This check did not cover concurrent clients, write timeouts, the 50-category limit, TalkBack, large text, or other devices. The backend must be running and the device connection restored after a restart; this repair does not add automatic service startup.
+Device qualification used the migrated development override because the existing emulator already had an HN override. APK-selected HN is also rebuilt from this manifest. Refer to the final phase-5 navigation delivery record for exact revisions and unperformed checks. No authentication, account, bookmark or category data was reset.
+
+Current delivery evidence: [explicit navigation verification](../../../.reports/phase-5/2026-11-01/115202-genesis-explicit-navigation-verification.md). Earlier reports qualify their recorded revisions only.
+
+The 2026-11-01 UI repair was checked on the API-4 emulator. Feed story links, action buttons, discussion links, comments, a Saved story and the signed-out Me screen rendered with the compact cue. Authenticated profile, large-text and TalkBack layouts were not inspected on this revision; the shared link renderer passed the applet check and build.
+
+## Interaction repair
+
+Current code uses SDK 0.5.1 with API 4/schema 3. Follow [the interaction contract](../../guides/interactions.md). X social buttons no longer use the generic original-post handoff: supported live controls dispatch visit/account-bound desired-state operations, while cached rows require a live post. Share opens an owned sheet with Copy and optional Android chooser. Reply opens the contextual original editor. HN retains local Save/category/collapse actions; explicit website entry cannot be swallowed by local comment scrolling. Existing private stores remain independent of upstream bookmarks/favorites.
+
+TypeScript/package/build checks pass. Real mutation persistence, inverse confirmation variants, private/requested Follow and physical-device accessibility remain unqualified. See [current verification](../../../.reports/phase-5/2026-11-01/144631-x-interactions-verification.md). Earlier blanket social-provider statements are superseded for these controls; forms, login, settings, uploads and protected playback remain provider-owned.
+
+## Compact HN interface and startup repair
+
+The foreground uses the existing navigation subscription for comment-link identity. Links do not create individual source subscriptions, which previously saturated the bridge and prevented a populated feed from opening.
+
+Story headings share `src/components/story-heading.tsx` and `src/story.css`. Home/feed filters, discussion story headers and Saved use the same system font, 15px/21px title scale, compact domain and metadata styling, separators and wrapping. Article titles open their destination with the existing website cue; comments remain internal navigation. Feed Save is a labeled 48px bookmark button. Saved retains Discussion/Edit/Remove and its existing confirmation/data rules. Comment headers/actions and source skeletons use compact spacing. No route or data-schema change is required.
+
+| Screen | Design and verification |
+| --- | --- |
+| Home and feed families | Shared compact story renderer; actual 30-story Home loaded, with 8 rows visible and 7 fully visible at 411x734 CSS pixels, compared with 3 visible before the change |
+| Discussion | Same story heading and metadata; actual discussion loaded 100 comments, and Back restored Home |
+| Saved | Shared heading/domain and 15px title style; existing saved record rendered after restoring the tunnel to the running backend; no writes performed |
+| Narrow/dark | 320-CSS-pixel foreground check had no horizontal overflow; dark theme tokens applied and Save target remained 48px |
+
+Static TypeScript and applet check/build pass. Physical-device/TalkBack and the complete signed-in/source-route matrix remain unqualified. Backend startup is still operator-owned; connection recovery does not authorize starting a new service or resetting records.
+
+Review repairs: failed-refresh retention is restricted to public feeds and discussions. Private lists, profiles and account screens require fresh source data. Comment disclosure now collapses the entire reply branch using nested native details elements.
+
+Same-page comment references expand the linked comment and all collapsed ancestor branches before scrolling. Explicit website links and missing-target navigation retain their existing behavior.

@@ -1,5 +1,9 @@
 # Verify and maintain an applet
 
+Read [explicit navigation](navigation.md) for schema-3/API-4 URL coverage, website actions, SDK controls and Return behavior. SDK/tools 0.5.0 use the host policy for new applets. Schema-2/API-3 examples below remain legacy compatibility reference wherever they use direct `webViews.open`; migrate those calls through resolve/activate or the navigation controls before using API 4.
+
+Read [the isolated architecture](isolated-applets.md) and its route inventory first. Check the owned foreground, hidden adapter and explicit website provider independently, then together.
+
 Start with the requested behavior and the selected applet, not the entire platform. Record SDK/package version, source routes, host build, and device/provider for live checks. Follow [factory instructions](../AGENTS.md); do not create or modify test files without a coverage request.
 
 Use the brief and acceptance-flow table from [product scope and clarification](product-scope.md). Verify the requested application, including preserved workflows, rather than only the newest component. Ask before assuming expected behavior when a material product choice is unresolved. Follow the user's existing authorization for both applet and platform work.
@@ -31,6 +35,8 @@ Label evidence by what was exercised: static, component with synthetic providers
 Prefer a separate QA environment for disposable packages. Before installing one on an everyday device, record its ID, purpose and safe supported cleanup method. Verify that it is absent from everyday navigation before handoff. Do not assume visibility/removal commands exist, edit private registries manually or clear user data to clean the launcher. If safe cleanup is unavailable, avoid the extra installation; report any existing leftover as incomplete delivery. A report-only verification task records this finding without mutating the device.
 
 ## Live acceptance checklist
+
+For visual work, also follow [design and interaction fidelity](design.md). Compare equivalent screens at comparable CSS widths, appearance and text scale. Inventory every changed control, including items moved into menus, and verify its actual destination/result plus Back/Close. Record visual, component, integrated-source and device evidence separately. Native resemblance does not establish native feature parity.
 
 | Area | Check and expected result |
 | --- | --- |
@@ -71,3 +77,26 @@ For each requirement separately report implementation status and verification re
 Website file inputs use Android's system document picker for single or multiple selection, up to 16 selected content URIs. No blanket storage or camera permission is requested. File-selection cancellation and stale-view result rejection need device qualification; attachments stay in the requesting website workflow, never in applet records.
 
 For faded overlays, inspect the control and its composed ancestor chain: opacity, alpha backgrounds, filters, blending and stacking contexts. Shadow DOM does not prevent ancestor opacity. Distinguish an intentional backdrop from a faded dialog panel. Compare settled samples with animation entry/exit. Correct computed styles with incorrect pixels require a separate native renderer/ancestor-alpha investigation. Genesis maintainers can use `node tools/inspect-ui-surfaces.mjs <CDP endpoint> <target-id> <selector>…` from the monorepo. It samples for one second without mutating DOM or collecting page text. This is a maintainer tool, not a portable SDK API.
+
+## Isolated-runtime acceptance
+
+Verify actual internal links, query/hash changes, section switches, Saved/detail/Back, external reader/Close and source-owned forms. During slow/offline loading and source errors, inspect frame recordings and accessibility trees to confirm no upstream pixels/nodes enter applet mode. Check source audio, autofocus, popups and fullscreen attempts. Recycled source rows and stale callbacks must not update another item/account/route. Confirm provider Close restores owned state and revalidates account data. Report exact device/provider/revisions and separate synthetic from real authenticated checks.
+
+## Isolated runtime diagnostics
+
+In a debuggable host, Developer tools / Inspect current document explicitly enables local WebView inspection for the current applet visit. Leaving disables it. Keep diagnostic forwarding local and remove it afterward. Simulate creator failure and Terminate renderer should retain a native opaque recovery screen, with Retry recreating the foreground. The legacy 20-reload control is not available for API 3. Source-only schema-1 packages in a mixed API-3 host use ordinary website presentation; they are not isolated custom applets.
+
+## Transient recovery acceptance
+
+Follow [loading observations](patterns.md#loading-is-an-unresolved-observation). Record supported navigation from its initiating action through valid content, including slow SPA assembly after HTML completion. Normal loading must not display failure/Retry/website-demand UI. Check real offline/adapter failures and bounded timeout separately, including Back, later recovery and stale callbacks. Preserve native navigation, account-safe content and source isolation. Report recording/sampling and exact revisions; settled screenshots do not pass this requirement.
+
+Verify [default skeleton presentation](design.md#skeletons-are-the-default-pending-ui) on every asynchronous owned screen and dialog, including retained-content refresh and pagination. Capture pending and settled states; check hidden status labels, dark appearance, large text, cancellation, errors and return. Normal wait states must not display loading prose.
+
+## Navigation acceptance
+
+Verify declared custom/website/action/uncovered/external/blocked decisions independently from real-source rendering. Exercise ordinary anchors, target-blank, redirects and query/hash updates as well as SDK controls. Check wrong-action/source rejection, stale decisions, missing owned anchors, website history versus Return, dirty-form Stay/Leave and source-origin account revalidation. A typecheck, route match or package receipt cannot qualify these connected journeys. Record unperformed cases explicitly.
+
+
+## Interaction contract
+
+Follow [actions and navigation](interactions.md). Inventory buttons, local menus, source mutations and protected editor workflows separately from URL coverage. Opening a containing page cannot qualify the action its icon promises. Source actions require current identity, observed results and uncertainty handling. SDK 0.5.1 adds optional native sharing on capable API-4 hosts.

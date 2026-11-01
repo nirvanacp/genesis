@@ -2,7 +2,7 @@ import { access, mkdir, cp, readdir, writeFile, lstat } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { creatorError } from './device.mjs';
-export const KIT_VERSION = '0.3.0';
+export const KIT_VERSION = '0.5.0';
 export async function emptyDirectory(directory) {
   const target = path.resolve(directory);
   try {
@@ -14,10 +14,10 @@ export async function emptyDirectory(directory) {
 export async function exportKit(directory) {
   const output = await emptyDirectory(directory);
   const packed = fileURLToPath(new URL('../kit/', import.meta.url));
-  let source = packed;
-  try { await access(path.join(packed, 'AGENTS.md')); }
-  catch { source = fileURLToPath(new URL('../../../factory/', import.meta.url)); }
+  let source = fileURLToPath(new URL('../../../factory/', import.meta.url));
+  try { await access(path.join(source, 'AGENTS.md')); }
+  catch { source = packed; }
   for (const name of ['AGENTS.md','README.md','guides','skills']) await cp(path.join(source, name), path.join(output, name), { recursive: true, errorOnExist: true, force: false });
-  await writeFile(path.join(output, 'kit.json'), JSON.stringify({ kitVersion: KIT_VERSION, sdkVersion: '0.3.0', toolsVersion: '0.3.0', runtimeApiVersion: 2, bundleFormatVersion: 1 }, null, 2) + '\n');
-  return { output, kitVersion: KIT_VERSION, runtimeApiVersion: 2 };
+  await writeFile(path.join(output, 'kit.json'), JSON.stringify({ kitVersion: KIT_VERSION, sdkVersion: '0.5.1', toolsVersion: '0.5.0', runtimeApiVersion: 4, bundleFormatVersion: 1 }, null, 2) + '\n');
+  return { output, kitVersion: KIT_VERSION, runtimeApiVersion: 4 };
 }

@@ -1,12 +1,14 @@
 # Product scope and clarification
 
+Read [explicit navigation](navigation.md) for schema-3/API-4 URL coverage, website actions, SDK controls and Return behavior. SDK/tools 0.5.0 use the host policy for new applets. Schema-2/API-3 examples below remain legacy compatibility reference wherever they use direct `webViews.open`; migrate those calls through resolve/activate or the navigation controls before using API 4.
+
 Use this workflow with [factory instructions](../AGENTS.md) and the selected [applet skill](../skills/README.md). It applies to new applications, feature additions and maintenance. It travels with the creator kit and requires no access to the Genesis monorepo or its historical plans.
 
 ## Keep the requested application intact
 
 An applet is the application a person opens. A source is a running website context, a page is an internal screen, and a service is a data provider. Several sources or pages can belong to the same applet. A user asking for one social client with categorized bookmarks usually wants timelines, search, conversations, account flows and bookmarking inside one application. A separate category backend does not imply a separate bookmark app. A request for two distinct applications normally produces two applet identities.
 
-For an existing app, preserve its working behavior and identity while adding the requested change. For a complete website-backed client, map the daily experience before selecting implementation components. Preserve source browsing, forms and authentication where the website already provides them. Do not reduce the app to the custom feature merely because that feature needs most of the new code. A source-owned screen can satisfy a workflow without a custom rewrite, provided it stays reachable and returns correctly.
+For an existing app, preserve its working behavior and identity while adding the requested change. For a complete website-backed client, map the daily experience before selecting implementation components. Preserve source browsing, forms and authentication where the website already provides them. Do not reduce the app to the custom feature merely because that feature needs most of the new code. A source-owned form/action can satisfy a workflow through explicit website presentation with correct return navigation. Core custom browsing screens require owned renderers.
 
 Copy useful technical patterns from reference applets. Do not copy an unrelated placeholder, missing workflow, personal-account restriction, visual theme or data model as if the user requested it. A minimum capability set means least privilege, not minimum product functionality. Component milestones are useful; a component demo is not the completed application.
 
@@ -20,6 +22,7 @@ Read the prompt, previous decisions, existing manifest/README and available auth
 - Which behavior the website supplies, which UI the applet owns and which store is authoritative.
 - Delivery target, such as source code, an installed debug applet or a bundled build. Do not confuse these.
 - User-approved exclusions, reversible technical assumptions and unresolved material choices. Attribute material decisions to the user or agent.
+- The visual reference and any explicit design/navigation overrides. Follow [design fidelity](design.md): source-product mobile/native identity is the default unless the user supplies a detailed alternative. Record inaccessible references and use the mobile website for uncertain native details.
 
 Label each requirement as `required`, `preserve`, or `user-approved deferred`. During work give it a separate status: `planned`, `implemented`, `verified`, `failed`, `blocked`, or `deferred`. Record evidence for verification and a reason for every block. An agent's convenience or inability to verify a flow does not turn it into a user-approved exclusion.
 
@@ -80,3 +83,14 @@ These are manual reasoning examples, not executable tests or promised tool capab
 | "Make a client like the native app" but a core host facility is absent | Record the expected workflow, explain the precise gap and ask about a material fallback; do not declare a subset equivalent. |
 | Login becomes rate-limited after source work | Keep real acceptance blocked, complete independent work and do not deliver a second synthetic app as the result. |
 | A QA applet remains in the launcher | Treat this as unfinished delivery cleanup, even if its individual UI checks passed. |
+
+The product brief must include the mandatory route inventory with owned-screen/adapter mapping, website-provider actions and unknown-route recovery. See [isolated applets](isolated-applets.md). A route match is not evidence of valid loaded source content.
+
+## Route and action inventory
+
+Before implementation, record each normal link/tab, same-URL website action, external destination and return path. The README or governing plan table must name example URL, manifest rule/source, screen/adapter or action, readiness/empty/gated/error evidence, visible handoff cue, expected Back/Return and actual verification status. Keep inaccessible required journeys marked blocked; declarations alone are not acceptance.
+
+
+## Interaction contract
+
+Follow [actions and navigation](interactions.md). Inventory buttons, local menus, source mutations and protected editor workflows separately from URL coverage. Opening a containing page cannot qualify the action its icon promises. Source actions require current identity, observed results and uncertainty handling. SDK 0.5.1 adds optional native sharing on capable API-4 hosts.

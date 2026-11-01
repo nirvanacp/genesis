@@ -55,6 +55,8 @@ export function bootstrap(config: BootstrapConfig, entry: AppletEntry): void {
     const acceptedDocument = documentId;
     const activation = new AbortController();
     abort = activation;
+    const hiddenSource = [3,4].includes(binding.runtimeApiVersion??0) && binding.role === "source";
+    if (hiddenSource && timer) clearTimeout(timer);
     try {
       phases.runtime = true;
       rpc("runtime.phase", { phase: "typescript" });
@@ -62,17 +64,25 @@ export function bootstrap(config: BootstrapConfig, entry: AppletEntry): void {
         document.addEventListener("DOMContentLoaded", () => resolve(), { once: true, signal: activation.signal });
       });
       if (activation.signal.aborted || documentId !== acceptedDocument) return;
+      if (hiddenSource) timer = setTimeout(() => fail(new Error("Adapter activation exceeded five seconds")), 5000);
       scope = new PageScope(qualificationCss, binding.binding.kind === "page");
       phases.style = true;
       phases.mount = scope.root().isConnected;
       client = new RpcClient(acceptedDocument!, message => bridge.postMessage(message));
       runtime = new ManagedRuntime(binding, scope.root(), client.call, fail);
+      if ([3,4].includes(binding.runtimeApiVersion??0) && binding.role === "source") {
+        let sourceUrl = location.href;
+        runtime.context.navigation.onChange(url => {
+          if(url !== sourceUrl) { sourceUrl = url; void client?.call("source.route",{url}).catch(()=>{}); }
+        });
+      }
+      if (entry.registration && [3,4].includes(binding.runtimeApiVersion??0)) await client.call("runtime.register",entry.registration);
       const disposer = await entry.activate(runtime.context);
       if (activation.signal.aborted || failed || documentId !== acceptedDocument) { if (typeof disposer === "function") disposer(); return; }
       if (typeof disposer === "function") runtime.context.onDispose(disposer);
       runtime.flushInitial();
       if (activation.signal.aborted || failed) return;
-      await initialLayout();
+      if (!hiddenSource) await initialLayout();
       if (activation.signal.aborted || failed || documentId !== acceptedDocument) return;
       phases.mount = scope.root().isConnected;
       phases.creator = true;
@@ -90,10 +100,14 @@ export function bootstrap(config: BootstrapConfig, entry: AppletEntry): void {
       } else if (message.documentId === documentId && documentId) {
         if (message.type === "context.retired") { cleanup(); documentId = null; }
         client?.receive(message);
-        if (message.type === "storage.changed") runtime?.storageChanged(message as unknown as StorageChange);
+        const data = (message.data ?? message) as Record<string, unknown>;
+        if (message.type === "navigation.snapshot") runtime?.navigationSnapshot(data as unknown as import("./navigation").NavigationSnapshot);
+        if (message.type === "source.snapshot") runtime?.sourceSnapshot(data as unknown as import("./runtime").SourceSnapshot);
+        if (message.type === "source.command") runtime?.sourceCommand(data as unknown as {name:string;payload?:unknown;epoch?:number});
+        if (message.type === "storage.changed") runtime?.storageChanged(data as unknown as StorageChange);
         if (message.type === "route.changed") runtime?.route();
         if (message.type === "host.focused") runtime?.focused();
-        if (message.type === "navigation.back" && typeof message.token === "number") void runtime?.handleBack(message.token);
+        if (message.type === "navigation.back" && typeof data.token === "number") void runtime?.handleBack(data.token);
         if (message.type === "ui.dismissModal") runtime?.dismissModal();
         if (message.type === "host.suspended") cleanup();
         if (message.type === "host.resumed" && abort?.signal.aborted) hello();

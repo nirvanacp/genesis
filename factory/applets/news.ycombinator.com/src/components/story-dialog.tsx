@@ -1,3 +1,4 @@
+import {Skeleton,PendingAction} from './skeleton';
 import { serviceMessage } from "@genesis/sdk";
 import { backendStorage } from "../backend";
 import { useEffect, useRef, useState } from "react";
@@ -84,7 +85,7 @@ function StoryDialog({ context, snapshot, close }: { context: AppletContext; sna
       } catch { if (alive.current) { setReadFailed(true); setMessage("Category creation could not be confirmed. Reload saved state before retrying."); } }
     } finally { if (alive.current) setBusy(false); }
   };
-  return <><style>{theme}{css}{"section[role=dialog]{background:var(--paper)!important;color:var(--ink)!important;border-radius:22px!important}"}</style><div className="genesis-dialog">
+  return <><style>{theme}{css}{"section[role=dialog]{background:var(--paper)!important;color:var(--ink)!important;border-radius:22px!important;overflow:hidden!important}.genesis-dialog{display:flex;flex-direction:column;height:min(76dvh,720px)}.dialog-scroll{flex:1;min-height:0;overflow:auto}.main-actions{flex:none;background:var(--paper);border-top:1px solid var(--line);padding-top:12px}.confirm-remove{flex:none;max-height:28dvh;overflow:auto}"}</style><div className="genesis-dialog"><div className="dialog-scroll">
     <div className="dialog-heading"><p className="eyebrow">SAVED STORIES</p><button disabled={busy} onClick={close}>Cancel</button></div><h2>{previous ? "Edit saved story" : "Save this story"}</h2>
     <p className="story-title">{previous?.value.title ?? snapshot.title}</p>
     <p className="muted">{snapshot.submitter ? `By ${snapshot.submitter} · ` : ""}HN item {snapshot.itemId}</p>
@@ -92,16 +93,16 @@ function StoryDialog({ context, snapshot, close }: { context: AppletContext; sna
     {!loading && categories && <fieldset disabled={busy || readFailed}><legend>Categories</legend>
       {categories.categories.length === 0 && <p className="muted">No categories yet. Save without one to use Uncategorized.</p>}
       {categories.categories.map(record => <label key={record.value.id}><input type="checkbox"
-        checked={selected.includes(record.value.id)} onChange={event => setSelected(ids => event.target.checked ? [...ids, record.value.id] : ids.filter(id => id !== record.value.id))} />{record.value.name}</label>)}
-      <label className="stack">New category<input aria-label="New category name" value={name} onChange={event => setName(event.target.value)} /></label>
+        aria-label={record.value.name} checked={selected.includes(record.value.id)} onChange={event => setSelected(ids => event.target.checked ? [...ids, record.value.id] : ids.filter(id => id !== record.value.id))} />{record.value.name}</label>)}
+      <label className="stack" htmlFor="hn-category-name">New category<input id="hn-category-name" placeholder="New category name" aria-label="New category name" value={name} onChange={event => setName(event.target.value)} /></label>
       <button disabled={!name.trim()} onClick={() => { void createCategory(); }}>Create category</button>
       <p className="muted">Creating a category saves it immediately, even if you cancel this bookmark.</p>
     </fieldset>}
     {previous && context.sourceId !== null && <label><input type="checkbox" checked={refresh} onChange={event => setRefresh(event.target.checked)} disabled={busy} /> Refresh title and link from this page</label>}
-    {loading && <p role="status">Loading saved state…</p>}
+    {loading && <Skeleton kind="form" label="Loading saved state"/>}
     {message && <p role="status" className="notice">{message}</p>}
     {readFailed && <button disabled={busy} onClick={() => setReload(value => value + 1)}>Reload saved state</button>}
-    <div className="actions"><button className="primary" disabled={busy || loading || readFailed} onClick={() => { void perform(false); }}>{busy ? "Working…" : previous ? "Save changes" : "Save to Genesis"}</button>
+    </div><div className="actions main-actions"><button className="primary" disabled={busy || loading || readFailed} onClick={() => { void perform(false); }}>{busy ? <PendingAction label="Saving changes"/> : previous ? "Save changes" : "Save to Genesis"}</button>
       <button disabled={busy} onClick={close}>Cancel</button>
       {previous && <button className="danger" disabled={busy || loading || readFailed} onClick={() => setConfirmRemove(true)}>Remove bookmark</button>}</div>
     {confirmRemove && <div className="confirm-remove" role="group" aria-label="Confirm removal"><p>Remove this saved story? This cannot be undone.</p><div className="actions"><button className="danger" disabled={busy} onClick={() => { void perform(true); }}>Remove story</button><button disabled={busy} onClick={() => setConfirmRemove(false)}>Keep story</button></div></div>}

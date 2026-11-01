@@ -1,3 +1,4 @@
+import {Skeleton} from './components/skeleton';
 import {useEffect,useRef,useState} from "react";
 import {definePage,type AppletContext} from "@genesis/sdk";
 import {mountReact} from "@genesis/sdk/react";
@@ -9,6 +10,8 @@ import {safeLink,type Bookmark,type Category,type Library} from "./domain";
 import {CategoryManager} from "./components/category-manager";
 import {openCategorySheet} from "./components/category-sheet";
 import {openCategoryFilter} from "./components/category-filter";
+import {PullToRefresh} from "./components/pull-to-refresh";
+import {Icon} from "./components/icon";
 import theme from "./theme.css";
 import css from "./library.css";
 export default definePage({mount:(context,container)=>mountReact(context,container,<LibraryPage context={context}/>)});
@@ -16,6 +19,7 @@ interface Preferences{query:string;categoryId:string|null;scroll:number}
 function LibraryPage({context}:{context:AppletContext}){
   const repo=repository(context),[library,setLibrary]=useState<Library|null>(null),[categories,setCategories]=useState<Category[]>([]),[rows,setRows]=useState<Bookmark[]>([]),[query,setQuery]=useState(""),[filter,setFilter]=useState<string|null>(null),[cursor,setCursor]=useState<string|null>(null),[error,setError]=useState(""),[loading,setLoading]=useState(true),[ready,setReady]=useState(false),[manage,setManage]=useState(false),[pending,setPending]=useState(false);
   const sequence=useRef(0),verified=useRef<Library|null>(null),preferences=useRef<Preferences>({query:"",categoryId:null,scroll:0}),restoreScroll=useRef(false),failures=useRef(0);
+  const[refreshing,setRefreshing]=useState(false);
   const savePreferences=()=>{if(!verified.current)return Promise.resolve();preferences.current={query,categoryId:filter,scroll:window.scrollY};return writeLocal(context,"preferences",`library:${verified.current!.libraryId}`,preferences.current).catch(()=>{});};
   const load=async(after:string|null=null)=>{
     const account=verified.current;if(!account)return;const version=++sequence.current;setLoading(true);setError("");
@@ -61,24 +65,27 @@ function LibraryPage({context}:{context:AppletContext}){
     window.addEventListener("scroll",scroll,{passive:true});
     return()=>{clearTimeout(timer);window.removeEventListener("scroll",scroll);};
   },[query,filter,library]);
+  useEffect(()=>context.navigation.onBack(()=>{if(manage){setManage(false);return true;}return false;}),[context,manage]);
   const openX=(path="/i/history")=>{void savePreferences().then(()=>context.sources.open("saved",`https://x.com${path}`)).catch(e=>setError(errorMessage(e)));};
   const openPost=(row:Bookmark)=>{void savePreferences().then(()=>context.sources.open("saved",row.url)).catch(e=>setError(errorMessage(e)));};
   const choose=(id:string|null)=>{setFilter(id);setManage(false);window.scrollTo(0,0);};
-  return <><style>{theme+css}</style><main className="library">
-    <header className="library-title"><h1>Saved</h1><p>Your private Categories library</p></header>
-    <div className="mode" role="tablist" aria-label="Saved location"><button role="tab" aria-selected={false} onClick={()=>openX()}>Bookmarks</button><button role="tab" aria-selected={false} onClick={()=>openX("/i/history/likes")}>Likes</button><button role="tab" aria-selected={true} onClick={()=>setManage(false)}>Categories</button></div>
+  const refresh=()=>{if(loading||refreshing)return;setRefreshing(true);void load().finally(()=>setRefreshing(false));};
+  return <><style>{theme+css}</style><main className="library"><PullToRefresh enabled={!!library&&!manage&&!loading} busy={refreshing} onRefresh={refresh} resetKey={query+'|'+filter}>
+    <header className="library-title"><div className="library-heading"><h1>Saved</h1><button className="icon-button" aria-label="Refresh saved posts" disabled={!library||loading} onClick={refresh}><Icon name="refresh"/></button></div><p>Your private Categories library</p></header>
+    <div className="mode" role="tablist" aria-label="Saved location"><button role="tab" aria-selected={false} onClick={()=>openX()}><span>Bookmarks</span></button><button role="tab" aria-selected={false} onClick={()=>openX("/i/history/likes")}><span>Likes</span></button><button role="tab" aria-selected={true} onClick={()=>setManage(false)}><span>Categories</span></button></div>
     {library?<div className="library-layout"><aside className="category-sidebar" aria-label="Filter saved posts"><button aria-pressed={filter===null} onClick={()=>choose(null)}>All saved</button>{categories.map(c=><button key={c.id} aria-pressed={filter===c.id} onClick={()=>choose(c.id)}>{c.name} <small className="muted">{c.count}</small></button>)}</aside><section className="saved-list">
       {manage?<><button className="back-link" onClick={()=>setManage(false)}>‹ Saved posts</button><CategoryManager library={library} repo={repo} categories={categories} refresh={load} openCategory={choose}/></>:<>
       <div className="library-tools"><div className="filter-row"><button className="filter-button secondary" aria-label="Filter by category" onClick={()=>openCategoryFilter(context,categories,filter,choose)}>{categories.find(c=>c.id===filter)?.name??"All saved"} <span aria-hidden="true">⌄</span></button><span className="spacer"/><button onClick={()=>setManage(true)}>Manage</button></div><input type="search" aria-label="Search all saved posts" placeholder="Search saved posts" value={query} onChange={e=>setQuery(e.target.value)} maxLength={200}/></div>
-      <div aria-live="polite">{loading&&<p className="status library-status">{rows.length?"Refreshing…":"Loading saved posts…"}</p>}</div>
-      {rows.map(row=><article className="saved-post" key={row.postId}><div className="post-heading"><div className="avatar" aria-hidden="true">{row.snapshot.authorName.slice(0,1).toUpperCase()}</div><div className="author"><strong>{row.snapshot.authorName}</strong><span>@{row.snapshot.authorHandle}</span></div><button aria-label={`Edit categories for post by ${row.snapshot.authorHandle}`} onClick={()=>openCategorySheet(context,row,library)}>•••</button></div><p className="post-text">{row.snapshot.text||`${row.snapshot.media.kind} post`}</p>
+      {loading&&!rows.length&&<Skeleton rows={3} label={rows.length?"Refreshing saved posts":"Loading saved posts"}/>}
+      {rows.map(row=><article className="saved-post" key={row.postId}><div className="post-heading"><div className="avatar" aria-hidden="true">{row.snapshot.authorName.slice(0,1).toUpperCase()}</div><div className="author"><strong>{row.snapshot.authorName}</strong><span>@{row.snapshot.authorHandle}</span></div><button aria-label={`Edit categories for post by ${row.snapshot.authorHandle}`} onClick={()=>openCategorySheet(context,row,library)}>•••</button></div><p className="post-text">{row.snapshot.text||(row.snapshot.media.kind==='none'?'Post without a text preview':`${row.snapshot.media.kind} post`)}</p>
         {row.snapshot.links.length>0&&<div className="post-links">{row.snapshot.links.map((link,index)=><a key={index} href={safeLink(link.href)!}>{link.text} ↗</a>)}</div>}
         <div className="category-pills">{row.categoryIds.map(id=><span className="pill" key={id}>{categories.find(c=>c.id===id)?.name??"Category"}</span>)}</div>
-        <div className="post-actions"><a className="open-post" href={row.url} onClick={e=>{if(!e.ctrlKey&&!e.metaKey&&!e.shiftKey){e.preventDefault();openPost(row);}}}>Open post ↗</a><span className="post-meta">Saved {new Date(row.savedAtMs).toLocaleDateString()}</span></div><p className="snapshot-note">Captured {new Date(row.snapshot.capturedAtMs).toLocaleDateString()}{row.snapshot.textState==="excerpt"?" · Excerpt":""}. View the live post for updates.</p></article>)}
+        <div className="post-actions"><a className="open-post" href={row.url} onClick={e=>{if(!e.ctrlKey&&!e.metaKey&&!e.shiftKey){e.preventDefault();openPost(row);}}}>Open post</a><span className="post-meta">Saved {new Date(row.savedAtMs).toLocaleDateString()}</span></div><p className="snapshot-note">Captured {new Date(row.snapshot.capturedAtMs).toLocaleDateString()}{row.snapshot.textState==="excerpt"?" · Excerpt":""}. View the live post for updates.</p></article>)}
+      {loading&&rows.length>0&&<Skeleton rows={1} label="Refreshing saved posts"/>}
       {!loading&&ready&&!rows.length&&!error&&<div className="empty"><h2>{query?"No matching posts":filter?"Nothing saved here yet":"Keep what matters."}</h2><p>{query?"Try another word or category. Search covers your entire Categories library.":"Use Save to category on a post to find it here later. Your ordinary X bookmarks stay in X."}</p><button className="secondary" onClick={()=>setManage(true)}>Create a category</button></div>}
       {cursor&&<button className="secondary load-more" onClick={()=>void load(cursor)} disabled={loading}>Load more</button>}</>}
       {error&&<div className="library-status"><p className="error" role="alert">{error}</p>{rows.length>0&&<p className="muted">Showing previously loaded posts.</p>}<button onClick={()=>void load()}>Refresh</button></div>}
       {pending&&<div className="library-status"><p>A previous change is still unconfirmed.</p><button className="secondary" onClick={()=>void repo.retry(library).then(()=>load()).catch(e=>setError(errorMessage(e)))}>Check or retry the same change</button><button onClick={()=>void repo.abandon(library).then(()=>load()).catch(e=>setError(errorMessage(e)))}>Refresh state and abandon pending change</button></div>}
-    </section></div>:<div className="empty"><h2>{loading?"Verifying your account…":"Categories unavailable"}</h2><p role={error?"alert":"status"}>{error||"Checking your X account before showing your private library."}</p>{!loading&&<button className="primary" onClick={()=>openX()}>Open X bookmarks</button>}</div>}
-  </main></>;
+    </section></div>:loading?<Skeleton label="Verifying your account"/>:<div className="empty"><h2>Categories unavailable</h2><p role="alert">{error}</p><button className="primary" onClick={()=>openX()}>Open X bookmarks</button></div>}
+  </PullToRefresh></main></>;
 }

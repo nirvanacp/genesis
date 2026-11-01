@@ -31,7 +31,7 @@ export class Device {
   }
   restart() {
     this.run(['shell', 'am', 'force-stop', this.application]);
-    this.run(['shell', 'am', 'start', '-n', `${this.application}/.MainActivity`]);
+    this.run(['shell', 'am', 'start', '-n', `${this.application}/app.nirvana.genesis.MainActivity`]);
   }
   status() {
     if (this.run(['get-state']) !== 'device') throw creatorError('DEVICE_UNAVAILABLE', 'Selected Android device is not connected and authorized');
@@ -41,7 +41,7 @@ export class Device {
     let status;
     try { status = JSON.parse(this.privateRead('genesis-applet-status.json')); }
     catch { throw creatorError('UNSUPPORTED_HOST', 'Host development status is unavailable; launch a compatible debug Genesis build'); }
-    if (status.debug !== true || status.runtimeApiVersion !== 2 || !status.bundleFormatVersions?.includes(1) || !Array.isArray(status.applets)) throw creatorError('INCOMPATIBLE_HOST', 'Host does not support bundle/runtime API 2');
+    if (status.debug !== true || !(status.runtimeApiVersions??[status.runtimeApiVersion]).some(v=>[3,4].includes(v)) || !status.bundleFormatVersions?.includes(1) || !Array.isArray(status.applets)) throw creatorError('INCOMPATIBLE_HOST', 'Host does not support bundle/runtime API 3');
     return status;
   }
   async submit(request) {
@@ -64,10 +64,11 @@ export class Device {
   }
 }
 function permissions(manifest) {
-  return { origins: [...new Set(manifest.sources.flatMap(s => s.origins))].sort(), capabilities: [...manifest.capabilities].sort(), services: [...(manifest.services ?? [])].sort() };
+  return { origins: [...new Set(manifest.schemaVersion >= 2 ? manifest.routeContracts.flatMap(c => c.origins) : manifest.sources.flatMap(s => s.origins))].sort(), capabilities: [...manifest.capabilities].sort(), services: [...(manifest.services ?? [])].sort() };
 }
 export async function installApplet(directory, options = {}) {
   const bundle = await readBundle(directory), device = new Device(options), status = device.status();
+  if(!(status.runtimeApiVersions??[status.runtimeApiVersion]).includes(bundle.runtimeApiVersion))throw creatorError('INCOMPATIBLE_HOST','Host does not support this package runtime API');
   const id = bundle.package.manifest.id, current = status.applets.find(p => p.id === id);
   const nextPermissions = permissions(bundle.package.manifest);
   const changed = current && current.revision !== bundle.package.revision;

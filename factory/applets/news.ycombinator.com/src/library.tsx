@@ -1,3 +1,7 @@
+import {StoryHeading} from './components/story-heading';
+import storyCss from './story.css';
+import {HnLink} from './components/navigation-link';
+import {Skeleton,PendingAction} from './components/skeleton';
 import { serviceMessage } from "@genesis/sdk";
 import { backendStorage } from "./backend";
 import { useEffect, useRef, useState } from "react";
@@ -112,18 +116,20 @@ function Library({ context }: { context: AppletContext }) {
     } finally { setRemoving(false); }
   };
   const sortedCategories = [...(categories?.categories ?? [])].sort((a, b) => a.value.name.localeCompare(b.value.name));
-  return <><style>{theme}{sharedCss}{libraryCss}</style><main className="library">
+  return <><style>{theme}{sharedCss}{libraryCss}{storyCss}</style><main className="library">
     <header><h1>{section === "categories" ? "Categories" : filter === "all" ? "Saved" : filter === "uncategorized" ? "Uncategorized" : categories?.categories.find(c => c.value.id === filter)?.value.name ?? "Saved"}</h1>
       <button className="manage-link" onClick={() => setSection(section === "saved" ? "categories" : "saved")}>{section === "saved" ? "Manage categories" : "Back to saved"}</button>
-      <p className="muted">Good stories, kept for later.</p></header>
+</header>
     {section === "saved" && <><label className="search"><Icon name="search" /><input type="search" aria-label="Filter this page" placeholder="Filter this page" value={query} onChange={event => setQuery(event.target.value)} /></label>
       <p className="filter-note">Filters stories loaded below. Use Load more to include older saves.</p></>}
+    {section === "categories"&&!categories&&loading&&<Skeleton kind="form" label="Loading categories"/>}
+    {message&&section==="categories"&&<p role="alert" className="notice">{message}</p>}
     {categories && section === "categories" && <CategoryManager context={context} snapshot={categories} changed={() => setVersion(value => value + 1)} />}
     {section === "saved" && <><nav className="filters" aria-label="Bookmark filters">
       {[{ id: "all", name: "All" }, { id: "uncategorized", name: "Uncategorized" }, ...sortedCategories.map(record => record.value)]
         .map(category => <button key={category.id} aria-pressed={filter === category.id} onClick={() => selectFilter(category.id)}>{category.name}</button>)}
     </nav>
-    <div className="library-status" role="status">{loading ? `Updating saved stories${scanned ? ` · ${scanned} checked` : ""}…` : !loaded || message ? "" : `${rows.length} saved stories loaded${done ? "" : " · More available"}`}</div>
+    {loading?(rows.length?<PendingAction label="Updating saved stories"/>:<Skeleton label="Updating saved stories"/>):<div className="library-status" role="status">{!loaded||message?"":`${rows.length} saved stories loaded${done?"":" · More available"}`}</div>}
     {message && <p role="alert" className="notice">{message} <button onClick={() => setVersion(value => value + 1)}>Reload library</button></p>}
     {missing > 0 && <p className="notice">Skipped {missing} missing index targets. Existing data has been preserved.</p>}
     {!loading && done && rows.length === 0 && !message && <section className="empty"><h2>{filter === "all" ? "A place for the next good read" : "No stories in this filter"}</h2>
@@ -132,21 +138,19 @@ function Library({ context }: { context: AppletContext }) {
     {query && !loading && loaded && !message && !rows.some(record => record.value.title.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())) && <p className="notice">No matches in loaded stories.{!done && " Load more to search the next page."}</p>}
     <ol className="stories">{rows.filter(record => record.value.title.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())).map(record => {
       const value = record.value, memberships = categories ? activeMembership(value.categoryIds, categories) : [];
-      return <li key={value.itemId} className="story-card" onClick={event => tileClick(event.nativeEvent, () => { void openDiscussion(value.discussionUrl); })}><h2><a className="story-link" href={value.articleUrl ?? value.discussionUrl} onClick={event => {
-        if (!value.articleUrl) { event.preventDefault(); void openDiscussion(value.discussionUrl); }
-      }}>{value.title}</a></h2>
+      return <li key={value.itemId} className="story-card" onClick={event => tileClick(event.nativeEvent, () => { void openDiscussion(value.discussionUrl); })}><StoryHeading context={context} title={value.title} url={value.discussionUrl} articleUrl={value.articleUrl}>
         <div className="story-meta">{memberships.map(id => <span className="tag" key={id}>{categories?.categories.find(category => category.value.id === id)?.value.name}</span>)}
-          <span>{value.articleUrl ? new URL(value.articleUrl).hostname : "news.ycombinator.com"}</span><span>Saved {new Date(value.savedAtMs).toLocaleDateString()}</span></div>
+          <span>Saved {new Date(value.savedAtMs).toLocaleDateString()}</span></div>
         <div className="row-actions"><button onClick={() => { void openDiscussion(value.discussionUrl); }}>Discussion</button>
           <button onClick={() => openStoryDialog(context, value)}>Edit</button>
-          <button onClick={() => setRemoveId(value.itemId)}>Remove</button></div>
+          <button onClick={() => setRemoveId(value.itemId)}>Remove</button></div></StoryHeading>
         {removeId === value.itemId && <div className="remove-prompt" role="group" aria-label={`Remove ${value.title}`}>
           <span>Remove this saved story?</span>
-          <button disabled={removing} onClick={() => { void removeStory(record); }}>Remove story</button>
+          <button disabled={removing} onClick={() => { void removeStory(record); }}>{removing?<PendingAction label="Removing saved story"/>:"Remove story"}</button>
           <button disabled={removing} onClick={() => setRemoveId(null)}>Keep story</button>
         </div>}
       </li>;
-    })}</ol>
+    })}</ol>{loading&&rows.length>0&&<Skeleton rows={1} label="Loading more saved stories"/>}
     <div className="actions">{loading && scanned > 100 ? <button onClick={cancel}>Cancel scan</button> : !loading && loaded && !message && !done && categories && <button className="primary" onClick={more}>Load more</button>}</div></>}
   </main></>;
 }

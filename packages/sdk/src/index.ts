@@ -2,7 +2,7 @@ export type { ExecutionContext, QualificationContext, QualificationEntry } from 
 export type { AppletContext, ElementBinding, WatchOptions, ElementHandlers, MountOptions, Dispose } from "./runtime";
 export { GenesisError } from "./rpc";
 import type { AppletContext, Dispose } from "./runtime";
-export interface AppletEntry { activate(context: AppletContext): void | Dispose | Promise<void | Dispose>; inspect?(): unknown }
+export interface AppletEntry { registration?: {screens?:string[];adapters?:string[]}; activate(context: AppletContext): void | Dispose | Promise<void | Dispose>; inspect?(): unknown }
 export const defineApplet = (entry: AppletEntry): AppletEntry => entry;
 export interface PageEntry { mount(context: AppletContext, container: HTMLElement): void | Dispose | Promise<void | Dispose>; inspect?(): unknown }
 export function definePage(entry: PageEntry | AppletEntry): AppletEntry {
@@ -26,3 +26,27 @@ export function serviceMessage(error: unknown): string {
 export { RUNTIME_API_VERSION } from "./manifest";
 export type { Manifest, Source, AppletBundle } from "./manifest";
 export interface ServiceResponse<T = unknown> { status: number; body: T }
+
+export type { SourceSnapshot, SourceState, SourceProblem, SourcePublication } from "./runtime";
+export type { IsolatedManifest, RouteContract, RouteRule } from "./manifest";
+export function defineForeground(entry: PageEntry & { screens: string[] }): AppletEntry {
+  return { ...definePage(entry), registration: {screens:entry.screens} };
+}
+/** Source adapters observe website DOM and publish data; foreground capabilities
+ * are intentionally absent from their authoring context. The host enforces roles. */
+export type SourceAdapterContext = Pick<AppletContext,'binding'|'signal'|'watchElements'|'onFocus'|'onDispose'> & {
+  readonly sourceId:string;
+  source:Pick<AppletContext['source'],'publish'|'onCommand'>;
+  navigation:Pick<AppletContext['navigation'],'onChange'>;
+};
+export interface SourceAdapterEntry {adapters:string[];activate(context:SourceAdapterContext):void|Dispose|Promise<void|Dispose>;inspect?():unknown}
+export function defineSourceAdapter(entry:SourceAdapterEntry):AppletEntry {
+  return {registration:{adapters:entry.adapters},inspect:entry.inspect,activate(context){
+    if(![3,4].includes(context.binding.runtimeApiVersion??0)||context.binding.role!=='source'||context.sourceId===null)throw new Error('Source adapters require an isolated source context');
+    return entry.activate(context as SourceAdapterContext);
+  }};
+}
+export {createOwnedScope} from './owned-scope';
+
+export {createNavigationControl,navigationCue,websiteDestination} from './navigation';
+export type {NavigationDecision,NavigationTarget,NavigationSnapshot,NavigationActivation,DestinationKind} from './navigation';

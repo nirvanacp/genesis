@@ -1,3 +1,4 @@
+import {PendingAction} from './skeleton';
 import { backendStorage } from "../backend";
 import { useEffect, useRef, useState } from "react";
 import type { AppletContext, StoredDocument } from "@genesis/sdk";
@@ -14,7 +15,7 @@ export function CategoryManager({ context, snapshot, changed }: { context: Apple
     finally { if (alive.current) setBusy(false); }
   };
   const repository = new CategoryRepository(backendStorage(context));
-  return <details className="category-manager" open><summary>Manage categories</summary>
+  return <details className="category-manager" open aria-busy={busy}><summary>Manage categories</summary>{busy&&<PendingAction label="Updating categories"/>}
     <p className="muted">Categories are saved immediately. Deleting one keeps its bookmarks.</p>
     {message && <p role="status" className="notice">{message}</p>}
     <form onSubmit={event => { event.preventDefault(); void run(async () => { await repository.create(name); if (alive.current) setName(""); }); }}>
