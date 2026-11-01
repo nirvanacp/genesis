@@ -73,3 +73,6 @@ button:active,a:active {
 button:hover {
   filter:brightness(.96);
 }
+
+/* The SDK backing styles the host in the outer document; retain applet theme colors. */
+:host{background:var(--paper)!important;color:var(--ink)!important}
