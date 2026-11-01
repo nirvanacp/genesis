@@ -2,17 +2,17 @@
 
 Read [factory instructions](../AGENTS.md), [product scope](product-scope.md) and [the isolated architecture](isolated-applets.md). New applets use one stable identity, an explicit URL contract, hidden source adapters and an owned foreground. React and backend services are optional.
 
-Use Node `24.15.0`, npm `11.14.1`, matching SDK/tools `0.4.1` archives and a compatible API-3 debug host from the platform maintainer. Archives are not published to the public registry. Ordinary applet creation/build/install needs Node, the supplied artifacts and authorized adb, not Rust/Android compilers or Genesis source.
+Use Node `24.15.0`, npm `11.14.1`, matching SDK `0.4.1` / tools `0.4.2` archives and a compatible API-3 debug host from the platform maintainer. Archives are not published to the public registry. Ordinary applet creation/build/install needs Node, the supplied artifacts and authorized adb, not Rust/Android compilers or Genesis source.
 
 ```sh
-npm install /absolute/path/genesis-applet-tools-0.4.1.tgz
+npm install /absolute/path/genesis-applet-tools-0.4.2.tgz
 npx --no-install genesis-applet create /absolute/path/my-reader --id my-reader --name "My reader" --source https://example.com/ --react
 ```
 
 In the generated applet directory, install the matching archives and generated dependencies, then check/build:
 
 ```sh
-npm install /absolute/path/genesis-sdk-0.4.1.tgz /absolute/path/genesis-applet-tools-0.4.1.tgz
+npm install /absolute/path/genesis-sdk-0.4.1.tgz /absolute/path/genesis-applet-tools-0.4.2.tgz
 npm run check
 npm run build
 ```

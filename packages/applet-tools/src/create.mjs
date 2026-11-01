@@ -16,7 +16,7 @@ export async function createApplet(directory, options) {
   const packageJson = { name: options.id, version: '0.1.0', private: true, type: 'module', engines: { node: '24.15.0' },
     scripts: { check: 'genesis-applet check .', build: 'genesis-applet build . --out dist' },
     dependencies: { '@genesis/sdk': '0.4.1', ...(options.react ? { react: '19.3.1', 'react-dom': '19.3.1' } : {}) },
-    devDependencies: { '@genesis/applet-tools': '0.4.1', ...(options.react ? { '@types/react': '19.3.0', '@types/react-dom': '19.3.0' } : {}) } };
+    devDependencies: { '@genesis/applet-tools': '0.4.2', ...(options.react ? { '@types/react': '19.3.0', '@types/react-dom': '19.3.0' } : {}) } };
   const config = { compilerOptions: { strict: true, noEmit: true, target: 'ES2022', module: 'ESNext', moduleResolution: 'Bundler', lib: ['ES2022','DOM','DOM.Iterable'], jsx: 'react-jsx', skipLibCheck: true }, include: ['src'] };
   const files = { 'applet.json': JSON.stringify(manifest,null,2)+'\n', 'package.json': JSON.stringify(packageJson,null,2)+'\n', 'tsconfig.json': JSON.stringify(config,null,2)+'\n',
     '.gitignore': 'node_modules/\ndist/\n.env\n.env.*\n*.sqlite3\n*.sqlite3-*\n*.pem\n.genesis-private/\n',
@@ -26,8 +26,32 @@ export async function createApplet(directory, options) {
     'src/main.ts': `import { defineSourceAdapter } from '@genesis/sdk';\n\n// Inspect the website and publish a validated content model. Never mount foreground UI here.\nexport default defineSourceAdapter({adapters:['home'],activate(context) {\n  void context.source.publish({state:'unsupported',error:{code:'ADAPTER_NOT_IMPLEMENTED',retryable:false,message:'This applet adapter has not been implemented yet.'}});\n}});\n`,
     'src/styles.css': 'body { line-height: 1.6; }\n',
     'src/assets.d.ts': 'declare module "*.css" { const css: string; export default css; }\n' };
-  if (!options.react) files['src/home.ts'] = `import {defineForeground} from '@genesis/sdk';\nexport default defineForeground({screens:['home'],mount(context,root){\n  const status=document.createElement('p');status.setAttribute('role','status');status.textContent='Loading…';\n  let currentUrl=${JSON.stringify(url.href)};\n  const open=document.createElement('button');open.textContent='Open website';open.onclick=()=>void context.webViews.open({url:currentUrl});\n  root.append(status,open);context.source.subscribe(snapshot=>{currentUrl=snapshot.url;open.hidden=['loading','ready','empty','blocked'].includes(snapshot.state);root.setAttribute('aria-busy',String(snapshot.state==='loading'));status.textContent=snapshot.state==='loading'?'Loading…':snapshot.state==='ready'?'Content is ready. Add your validated model renderer.':snapshot.state==='empty'?'Nothing here yet.':snapshot.state==='auth-required'?'Sign in on the website.':snapshot.state==='challenge'?'The website needs your attention.':snapshot.error?.message??'Continue on the website.';});\n}});\n`;
-  if (options.react) files['src/home.tsx'] = `import {useEffect,useState} from 'react';\nimport {defineForeground,type AppletContext,type SourceSnapshot} from '@genesis/sdk';\nimport {mountReact} from '@genesis/sdk/react';\n\nfunction App({context}:{context:AppletContext}){\n  const [snapshot,setSnapshot]=useState<SourceSnapshot|null>(null);\n  useEffect(()=>context.source.subscribe(setSnapshot),[context]);\n  return <main aria-busy={!snapshot||snapshot.state==='loading'}><h1>My applet</h1><p role="status">{!snapshot||snapshot.state==='loading'?'Loading…':snapshot.state==='ready'?'Content is ready. Add your validated model renderer.':snapshot.state==='empty'?'Nothing here yet.':snapshot.state==='auth-required'?'Sign in on the website.':snapshot.state==='challenge'?'The website needs your attention.':snapshot.error?.message??'Continue on the website.'}</p>{snapshot&&!['loading','ready','empty','blocked'].includes(snapshot.state)&&<button onClick={()=>void context.webViews.open({url:snapshot?.url??${JSON.stringify(url.href)}})}>Open website</button>}</main>;\n}\nexport default defineForeground({screens:['home'],mount(context,root){return mountReact(context,root,<App context={context}/>);}});\n`;
+  files['src/styles.css'] = `body{line-height:1.6}.skeleton{padding:16px 0}.skeleton-row{padding:20px 0;border-bottom:1px solid #e6e9ec}.skeleton-block{display:block;background:#eceff1;height:12px;border-radius:5px;margin:0 0 14px;max-width:100%}.skeleton-title{width:46%;height:16px}.skeleton-line{width:92%}.skeleton-short{width:66%}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}@media(prefers-color-scheme:dark){.skeleton-block{background:#303438}.skeleton-row{border-color:#303438}}`;
+  const statusText = `snapshot.state==='ready'?'Content is ready. Add your validated model renderer.':snapshot.state==='empty'?'Nothing here yet.':snapshot.state==='auth-required'?'Sign in on the website.':snapshot.state==='challenge'?'The website needs your attention.':snapshot.error?.message??'Continue on the website.'`;
+  if (!options.react) files['src/home.ts'] = `import {defineForeground} from '@genesis/sdk';
+import css from './styles.css';
+export default defineForeground({screens:['home'],mount(context,root){
+  const style=document.createElement('style');style.textContent=css;
+  const skeleton=document.createElement('section');skeleton.className='skeleton';skeleton.setAttribute('role','status');skeleton.setAttribute('aria-label','Loading content');skeleton.setAttribute('aria-busy','true');
+  const status=document.createElement('p');status.setAttribute('role','status');
+  for(let i=0;i<3;i++){const row=document.createElement('div');row.className='skeleton-row';row.setAttribute('aria-hidden','true');for(const kind of ['title','line','short']){const block=document.createElement('span');block.className='skeleton-block skeleton-'+kind;row.append(block);}skeleton.append(row);}
+  let currentUrl=${JSON.stringify(url.href)};
+  const open=document.createElement('button');open.hidden=true;open.textContent='Open website';open.onclick=()=>void context.webViews.open({url:currentUrl});
+  root.append(style,skeleton,status,open);context.source.subscribe(snapshot=>{const pending=snapshot.state==='loading';currentUrl=snapshot.url;skeleton.hidden=!pending;status.hidden=pending;open.hidden=['loading','ready','empty','blocked'].includes(snapshot.state);root.setAttribute('aria-busy',String(pending));status.textContent=pending?'':${statusText};});
+}});
+`;
+  if (options.react) files['src/home.tsx'] = `import {useEffect,useState} from 'react';
+import {defineForeground,type AppletContext,type SourceSnapshot} from '@genesis/sdk';
+import {mountReact} from '@genesis/sdk/react';
+import css from './styles.css';
+function Skeleton(){return <section className="skeleton" role="status" aria-label="Loading content" aria-busy="true"><span className="sr-only">Loading content</span><div aria-hidden="true">{[0,1,2].map(i=><div className="skeleton-row" key={i}><span className="skeleton-block skeleton-title"/><span className="skeleton-block skeleton-line"/><span className="skeleton-block skeleton-short"/></div>)}</div></section>;}
+function App({context}:{context:AppletContext}){
+  const [snapshot,setSnapshot]=useState<SourceSnapshot|null>(null);
+  useEffect(()=>context.source.subscribe(setSnapshot),[context]);
+  return <main aria-busy={!snapshot||snapshot.state==='loading'}><style>{css}</style><h1>My applet</h1>{!snapshot||snapshot.state==='loading'?<Skeleton/>:<p role="status">{${statusText}}</p>}{snapshot&&!['loading','ready','empty','blocked'].includes(snapshot.state)&&<button onClick={()=>void context.webViews.open({url:snapshot.url})}>Open website</button>}</main>;
+}
+export default defineForeground({screens:['home'],mount(context,root){return mountReact(context,root,<App context={context}/>);}});
+`;
   for (const [name, content] of Object.entries(files)) await writeFile(path.join(output, name), content, { flag: 'wx', ...(name === 'start.sh' ? { mode: 0o755 } : {}) });
   await exportKit(path.join(output, 'factory'));
   return { output, appletId: manifest.id, dependenciesInstalled: false };
