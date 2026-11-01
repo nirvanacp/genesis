@@ -21,7 +21,11 @@ export async function createApplet(directory, options) {
   const output = await emptyDirectory(directory);
   for (const name of ['src', '.specs', '.changelog']) await mkdir(path.join(output, name));
   const created = new Date();
-  const local = new Date(created.getTime() - created.getTimezoneOffset() * 60000).toISOString();
+  const offsetMinutes = -created.getTimezoneOffset();
+  const offset = (offsetMinutes >= 0 ? '+' : '-')
+    + String(Math.floor(Math.abs(offsetMinutes) / 60)).padStart(2, '0') + ':'
+    + String(Math.abs(offsetMinutes) % 60).padStart(2, '0');
+  const local = new Date(created.getTime() + offsetMinutes * 60000).toISOString().slice(0, -1) + offset;
   const stamp = local.slice(0, 10) + '-' + local.slice(11, 19).replaceAll(':', '');
   const displayName = markdownValue(options.name.trim());
   const sourceLabel = markdownValue(url.href);
