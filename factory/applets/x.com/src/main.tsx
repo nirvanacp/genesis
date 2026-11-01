@@ -1,3 +1,4 @@
+import {sourceInteractions} from './source-interactions';
 import {defineSourceAdapter} from '@genesis/sdk';
 import {currentHandle,resetAccountConfirmation} from './source-account';
 import {extractPost} from './extract-post';
@@ -9,6 +10,7 @@ const key=(value:string)=>{let hash=2166136261;for(let i=0;i<value.length;i++)ha
 export default defineSourceAdapter({adapters:screens,activate(context){
   resetAccountConfirmation();
   let targets=new Map<string,{element:HTMLElement;text:string}>(),moreTimer:ReturnType<typeof setTimeout>|undefined,publication:ReturnType<typeof setTimeout>|undefined;
+  const interactions=sourceInteractions(context,()=>schedule());
   const publish=()=>{
     targets.clear();
     const route=context.binding.route;const kind=route?.kind==='matched'&&route.result.kind==='custom'?route.result.screen:null;if(!kind){void context.source.publish({state:'unsupported'});return;}
@@ -106,6 +108,7 @@ export default defineSourceAdapter({adapters:screens,activate(context){
     if(kind==='post-metadata'&&!model.posts.length){model.information=[...primary.querySelectorAll('[data-testid="cellInnerDiv"],h2')].filter(e=>!e.querySelector('input,textarea,article')).map(e=>text(e,800)).filter(Boolean).slice(0,15).join('\n').slice(0,6000);}
     targets=nextTargets;
     while(new TextEncoder().encode(JSON.stringify(model)).length>150000){model.partial=true;if(model.entries.length)model.entries.pop();else if(model.posts.length>1)model.posts.pop();else break;}
+    model.interactions=interactions.observe();
     model.contentIdentity={url:location.href,selectedTabKey:model.tabs.filter(t=>t.selected).map(t=>t.key).join(','),postId:focusedId,profileHandle:model.profile?.handle};
     const subscriptions=location.pathname.endsWith('/subs');
     const selectedDestination=model.tabs.some(t=>t.selected&&t.url===location.href);
@@ -114,7 +117,7 @@ export default defineSourceAdapter({adapters:screens,activate(context){
     void context.source.publish({state:ready?(model.emptyText&&!model.posts.length&&!model.entries.length&&!model.profile?'empty':'ready'):'loading',data:model});
   };
   const schedule=()=>{if(!publication)publication=setTimeout(()=>{publication=undefined;publish();},300);};
-  publish();context.watchElements('x-content',{selector:'body',attributes:['href','src','aria-selected','data-testid'],text:true,limit:1,contentKey:()=>location.href},{enter:schedule,update:schedule});
+  publish();context.watchElements('x-content',{selector:'body',attributes:['href','src','aria-selected','data-testid','disabled','aria-disabled','aria-pressed'],text:true,limit:1,contentKey:()=>location.href},{enter:schedule,update:schedule});
   context.navigation.onChange(()=>{resetAccountConfirmation();publish();});window.addEventListener('DOMContentLoaded',schedule,{signal:context.signal});window.addEventListener('load',schedule,{signal:context.signal});
   context.source.onCommand(command=>{
     if(command.name==='loadMore'){window.scrollBy({top:Math.max(window.innerHeight*2,1000),behavior:'instant'});clearTimeout(moreTimer);moreTimer=setTimeout(publish,1000);return;}
