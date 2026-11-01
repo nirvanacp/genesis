@@ -126,7 +126,7 @@ function Library({ context }: { context: AppletContext }) {
       {[{ id: "all", name: "All" }, { id: "uncategorized", name: "Uncategorized" }, ...sortedCategories.map(record => record.value)]
         .map(category => <button key={category.id} aria-pressed={filter === category.id} onClick={() => selectFilter(category.id)}>{category.name}</button>)}
     </nav>
-    {loading?<Skeleton rows={rows.length?1:3} label="Updating saved stories"/>:<div className="library-status" role="status">{!loaded||message?"":`${rows.length} saved stories loaded${done?"":" · More available"}`}</div>}
+    {loading?(rows.length?<PendingAction label="Updating saved stories"/>:<Skeleton label="Updating saved stories"/>):<div className="library-status" role="status">{!loaded||message?"":`${rows.length} saved stories loaded${done?"":" · More available"}`}</div>}
     {message && <p role="alert" className="notice">{message} <button onClick={() => setVersion(value => value + 1)}>Reload library</button></p>}
     {missing > 0 && <p className="notice">Skipped {missing} missing index targets. Existing data has been preserved.</p>}
     {!loading && done && rows.length === 0 && !message && <section className="empty"><h2>{filter === "all" ? "A place for the next good read" : "No stories in this filter"}</h2>
@@ -150,7 +150,7 @@ function Library({ context }: { context: AppletContext }) {
           <button disabled={removing} onClick={() => setRemoveId(null)}>Keep story</button>
         </div>}
       </li>;
-    })}</ol>
+    })}</ol>{loading&&rows.length>0&&<Skeleton rows={1} label="Loading more saved stories"/>}
     <div className="actions">{loading && scanned > 100 ? <button onClick={cancel}>Cancel scan</button> : !loading && loaded && !message && !done && categories && <button className="primary" onClick={more}>Load more</button>}</div></>}
   </main></>;
 }
