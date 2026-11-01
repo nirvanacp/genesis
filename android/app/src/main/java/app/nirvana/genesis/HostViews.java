@@ -40,6 +40,7 @@ final class HostViews {
     private final FrameLayout content;
     private final ScrollView cover;
     private final TextView coverTitle, coverMessage;
+    private final LinearLayout loadingSkeleton;
     private final LinearLayout recovery;
     private final LinearLayout siteRecovery;
     private final ImageButton floatingMenu;
@@ -110,6 +111,20 @@ final class HostViews {
         coverMessage = text("", 16); coverMessage.setGravity(Gravity.CENTER); coverMessage.setPadding(0, dp(12), 0, dp(20));
         coverMessage.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
         notice.addView(coverTitle); notice.addView(coverMessage);
+        loadingSkeleton = new LinearLayout(activity); loadingSkeleton.setOrientation(LinearLayout.VERTICAL);
+        loadingSkeleton.setContentDescription("Loading page");
+        loadingSkeleton.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+        for(int row=0;row<3;row++) {
+            LinearLayout group=new LinearLayout(activity);group.setOrientation(LinearLayout.VERTICAL);group.setPadding(0,dp(16),0,dp(16));
+            for(int line=0;line<3;line++) {
+                View block=new View(activity);block.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+                LinearLayout.LayoutParams shape=new LinearLayout.LayoutParams(line==1?-1:dp(line==0?128:196),dp(line==0?14:10));shape.bottomMargin=dp(12);
+                group.addView(block,shape);
+            }
+            loadingSkeleton.addView(group,new LinearLayout.LayoutParams(-1,-2));
+        }
+        notice.addView(loadingSkeleton,new LinearLayout.LayoutParams(-1,-2));
+        loadingSkeleton.setVisibility(View.GONE);
         recovery = new LinearLayout(activity); recovery.setOrientation(LinearLayout.VERTICAL);
         recovery.addView(button("Retry", () -> events.send(event("retry"))));
         recovery.addView(button("Back", () -> events.send(event("back"))));
@@ -339,7 +354,8 @@ final class HostViews {
         boolean siteError = "siteError".equals(presentationState);
         boolean failed = "failed".equals(presentationState) || "unsupported".equals(presentationState);
         boolean loading = "loading".equals(presentationState);
-        coverTitle.setText(siteError ? "Page unavailable" : failed ? "Couldn’t prepare this page" : "Loading…"); coverMessage.setText(siteError ? "Check your connection and try again." : failed ? "Try again, go back, or view the original page." : "");
+        coverTitle.setText(siteError ? "Page unavailable" : failed ? "Couldn’t prepare this page" : ""); coverMessage.setText(siteError ? "Check your connection and try again." : failed ? "Try again, go back, or view the original page." : "");
+        skeletonLoading(loading);
         recovery.setVisibility(failed ? View.VISIBLE : View.GONE);
         siteRecovery.setVisibility(siteError ? View.VISIBLE : View.GONE);
         boolean blocking = failed || siteError || loading;
@@ -420,10 +436,19 @@ final class HostViews {
         pageProgress.setIndeterminate(progress <= 0);
         if (progress > 0) pageProgress.setProgress(progress);
     }
+    private void skeletonLoading(boolean loading) {
+        coverTitle.setVisibility(loading?View.GONE:View.VISIBLE);coverMessage.setVisibility(loading?View.GONE:View.VISIBLE);
+        loadingSkeleton.setVisibility(loading?View.VISIBLE:View.GONE);
+        boolean dark=(activity.getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK)==android.content.res.Configuration.UI_MODE_NIGHT_YES;
+        int color=Color.parseColor(dark?"#303438":"#eceff1");
+        for(int i=0;i<loadingSkeleton.getChildCount();i++) {
+            LinearLayout row=(LinearLayout)loadingSkeleton.getChildAt(i);
+            for(int j=0;j<row.getChildCount();j++){GradientDrawable shape=new GradientDrawable();shape.setColor(color);shape.setCornerRadius(dp(4));row.getChildAt(j).setBackground(shape);}
+        }
+    }
     void pageStarting() {
         browserSlot.animate().cancel(); browserSlot.setAlpha(1f); browserSlot.setTranslationY(0); browserSlot.setTranslationX(0);
-        coverTitle.setText("Loading page");
-        coverMessage.setText("Preparing this page…");
+        skeletonLoading(true);
         recovery.setVisibility(View.GONE);
         siteRecovery.setVisibility(View.GONE);
         cover.setVisibility(View.VISIBLE);
