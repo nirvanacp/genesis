@@ -1,14 +1,13 @@
 # Applet design and interaction fidelity
 
-Read [explicit navigation](navigation.md) for schema-3/API-4 URL coverage, website actions, SDK controls and Return behavior. SDK/tools 0.5.0 use the host policy for new applets. Schema-2/API-3 examples below remain legacy compatibility reference wherever they use direct `webViews.open`; migrate those calls through resolve/activate or the navigation controls before using API 4.
 
 Use this guide when building an applet from scratch or changing its visual design. Read it with [product scope](product-scope.md), [implementation patterns](patterns.md) and [verification](verification.md). The applet owns its interface code; the source website supplies observed application data and protected workflows.
 
 ## Choose the reference before choosing the style
 
-Unless the user supplies a detailed alternative design, preserve the source product's recognizable mobile design. When the source product has a native app, use its platform-appropriate mobile conventions as the target. Inspect an available native reference. Where native details are uncertain or inaccessible, inspect the live mobile website and use its design as the fallback quality floor. Do not claim native parity from a website comparison alone.
+Unless the user supplies an explicit alternative design, preserve the source product's recognizable mobile design. When the source product has a native app, use its platform-appropriate mobile conventions as the target. Inspect an available native reference. Where native details are uncertain or inaccessible, inspect the live mobile website and use its design as the fallback quality floor. Do not claim native parity from a website comparison alone.
 
-A broad request such as "make an X applet" does not authorize replacing X's design with a generic card dashboard, oversized text buttons or an unrelated visual theme. A detailed user design takes priority over the source reference. Record the user's later corrections and the chosen reference in the applet README or governing plan. Ask only when a missing design decision would materially change the application; choose ordinary spacing and implementation details yourself.
+A broad request such as "make an X applet" does not authorize replacing X's design with a generic card dashboard, oversized text buttons or an unrelated visual theme. An explicit user design takes priority over the source reference. Record the user's later corrections and the chosen reference in `.specs/current.md`. Ask only when a missing design decision would materially change the application; choose ordinary spacing and implementation details yourself.
 
 Keep the requested scope intact. Matching a reference does not add subscriptions, ads, new social mutations or account behavior that the user did not request. Keep the existing website-provider boundary where a protected action requires it, and label that handoff honestly.
 
@@ -16,7 +15,6 @@ Keep the requested scope intact. Matching a reference does not add subscriptions
 
 The native Genesis shell owns the launcher, primary sections, Back behavior and insets. Preserve one primary navigation system. Do not copy a website sidebar or mobile footer on top of an existing native bottom bar. Reproduce content tabs, filters and contextual actions inside the owned screen. A sidebar may be appropriate only when it belongs to the agreed design and does not duplicate shell navigation.
 
-For X, the explicit user decision is to keep the existing Home / Explore / Notifications / Saved / Profile bottom navigation. Native X is the visual target, and the authenticated mobile-width website is the fallback reference. No primary left sidebar is requested. This decision applies to X; do not silently apply X's feature set or navigation to unrelated applets.
 
 ## Compare connected screens, then build shared tokens
 
@@ -77,7 +75,8 @@ For an isolated foreground, check computed colors on the owned canvas as well as
 
 Apply the navigation guide to every content tab, image, inline link and icon action. Custom navigation keeps native primary sections visible. Original-site controls carry a visible website cue before activation; Return is separate from website Back. Pending headings use declared destination titles. Unknown tabs remain discoverable with owned recovery. Do not rely on color alone or hide the return action at large text.
 
+## Keyboard-safe sheets and density
 
-## Interaction contract
+Use a scrolling flex body with nonshrinking sections and reachable Close/Cancel/confirmation. Keep important removal warnings beside confirmation controls. Check keyboard appearance and short viewports without discarding drafts or suppressing account guards. Preserve compact rows and inline text hierarchy while keeping standalone controls usable.
 
-Follow [actions and navigation](interactions.md). Inventory buttons, local menus, source mutations and protected editor workflows separately from URL coverage. Opening a containing page cannot qualify the action its icon promises. Source actions require current identity, observed results and uncertainty handling. SDK 0.5.1 adds optional native sharing on capable API-4 hosts.
+Presentation choices in this guide follow [defaults](defaults.md) and can be overridden compatibly. Read [rules](rules.md) for the correctness and accessibility boundaries that still apply.

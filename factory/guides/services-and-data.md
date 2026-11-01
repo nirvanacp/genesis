@@ -54,7 +54,7 @@ Validate input and returned JSON, enforce application authorization on the serve
 
 ## Current development commands
 
-From an applet directory with SDK `0.4.1` / tools `0.4.2`, use the declared service and an authorized compatible debug host:
+From an applet directory with SDK `0.5.1` / tools `0.5.0`, use the declared service and an authorized compatible debug host:
 
 ```sh
 npx --no-install genesis-applet service start . --device emulator-5554 --json

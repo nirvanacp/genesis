@@ -1,10 +1,9 @@
 # Applet implementation patterns
 
-Read [explicit navigation](navigation.md) for schema-3/API-4 URL coverage, website actions, SDK controls and Return behavior. SDK/tools 0.5.0 use the host policy for new applets. Schema-2/API-3 examples below remain legacy compatibility reference wherever they use direct `webViews.open`; migrate those calls through resolve/activate or the navigation controls before using API 4.
 
 Use the [isolated applet architecture](isolated-applets.md), [SDK reference](sdk-reference.md) and [factory instructions](../AGENTS.md). Current applets use an owned foreground and a hidden source adapter. Website DOM is an extraction input, not the layout users interact with.
 
-Follow [design and interaction fidelity](design.md) before choosing an applet's appearance. Unless the user provides a detailed alternative, preserve the source product's mobile identity, aiming for its native app conventions and using its live mobile website where native details are uncertain. Rebuild that design in owned code. Keep the native primary navigation, compare connected screens, and apply the same tokens to applet-only features. Verify every changed interaction separately from visual comparison.
+Follow [design and interaction fidelity](design.md) before choosing an applet's appearance. Unless the user provides an explicit alternative, preserve the source product's mobile identity, aiming for its native app conventions and using its live mobile website where native details are uncertain. Rebuild that design in owned code. Keep the native primary navigation, compare connected screens, and apply the same tokens to applet-only features. Verify every changed interaction separately from visual comparison.
 
 Separate applet modules for extraction, model validation, owned screen rendering, source read/navigation commands, repositories and backend calls. Shared platform modules contain generic lifecycle/capability behavior only. Reuse an abstraction when several real adapters need it, not before.
 
@@ -48,15 +47,10 @@ Verify transitions with recordings or sanitized traces on the actual delivered h
 
 ## Skeletons are the default pending UI
 
-Use neutral gray, content-shaped skeletons for initial source navigation, source/account verification, empty-yet-pending libraries, filters, pagination and dialog reads. Match the destination's structure: avatar/title/text rows for a social feed, title/metadata rows for news, a banner/avatar for profiles and checkbox/field rows for forms. Keep known headings, navigation, Cancel and safe controls available. Reserve expected space to reduce layout jumps. Static shapes are the default; avoid mandatory shimmer and honor reduced motion if animation is added. Provide neutral light/dark colors rather than tinting placeholders with the brand accent.
+See [design presentation](design.md#skeletons-are-the-default-pending-ui) and [defaults](defaults.md). A compatible explicit override changes appearance, not readiness or accessible status requirements.
 
-Do not show visible "Loading…", "Verifying…", "Updating…" or "Working…" as the normal wait presentation. Use a compact placeholder inside a disabled action while it runs; retain useful existing content during refresh and show placeholders only for missing/appending content. Do not replace established content or user-entered drafts with a whole-screen skeleton. Unknown images may use a neutral backing. Real errors, sign-in requirements, empty results, confirmations and uncertain-write explanations must remain readable; skeletons never conceal them or extend loading deadlines.
+## Lifecycle and bounded work
 
-Expose one concise pending status to assistive technology with `role="status"` and `aria-busy`, using visually hidden status text or an accessible label. Hide decorative shapes with `aria-hidden`, do not make them focusable, and remove them when the actual operation settles. Do not announce every row or repeated observation. Keep Close/Back working during reads and preserve existing mutation/receipt safeguards. Use known progress information when it is meaningful; visually hidden loading status is allowed.
+Prefer one shared source/navigation subscription per foreground and pass accepted state to row components. Do not create a source subscription for every link or row. Revalidate account/entity/route after async work. Re-register transient Back handlers after source epoch or owned-page ownership changes; scoped cleanup must not remove a newer handler. On provider Return reconcile the latest accepted snapshot even if the source emits nothing new.
 
-React and vanilla creator projects include this treatment from the first render. Authors must adapt the placeholder shape to their route inventory, including owned pages and dialogs, without requiring the user to ask for it. Verification must inspect a pending frame as well as final content, actual read failures and return/cancellation, light/dark and enlarged text. Static component previews may exercise forced pending states, but must be labeled separately from real source/service checks.
-
-
-## Interaction contract
-
-Follow [actions and navigation](interactions.md). Inventory buttons, local menus, source mutations and protected editor workflows separately from URL coverage. Opening a containing page cannot qualify the action its icon promises. Source actions require current identity, observed results and uncertainty handling. SDK 0.5.1 adds optional native sharing on capable API-4 hosts.
+Cache only valid same-destination data with a currently permitted account. Public fallback caching never authorizes private-profile/account caching. Keep drafts and useful same-route content during refresh; clear or gate private content on identity changes. Use inspected source actions only under the [interaction contract](interactions.md).

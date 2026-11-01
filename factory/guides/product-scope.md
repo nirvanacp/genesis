@@ -1,6 +1,5 @@
 # Product scope and clarification
 
-Read [explicit navigation](navigation.md) for schema-3/API-4 URL coverage, website actions, SDK controls and Return behavior. SDK/tools 0.5.0 use the host policy for new applets. Schema-2/API-3 examples below remain legacy compatibility reference wherever they use direct `webViews.open`; migrate those calls through resolve/activate or the navigation controls before using API 4.
 
 Use this workflow with [factory instructions](../AGENTS.md) and the selected [applet skill](../skills/README.md). It applies to new applications, feature additions and maintenance. It travels with the creator kit and requires no access to the Genesis monorepo or its historical plans.
 
@@ -14,7 +13,7 @@ Copy useful technical patterns from reference applets. Do not copy an unrelated 
 
 ## Establish a small product brief
 
-Read the prompt, previous decisions, existing manifest/README and available authorized source context. In the applet README or the workspace's designated plan, record the following in a few paragraphs and a flow table. For small edits, extend the existing brief instead of writing a separate planning document.
+Read the prompt, previous decisions, existing manifest/README and available authorized source context. In `.specs/current.md`, record the following in a few paragraphs and a flow table. For small edits, extend the existing brief instead of writing a separate planning document.
 
 - Intended application names/count, existing stable IDs and intended launcher entries.
 - Explicit user requirements and the existing workflows/data to preserve.
@@ -22,7 +21,7 @@ Read the prompt, previous decisions, existing manifest/README and available auth
 - Which behavior the website supplies, which UI the applet owns and which store is authoritative.
 - Delivery target, such as source code, an installed debug applet or a bundled build. Do not confuse these.
 - User-approved exclusions, reversible technical assumptions and unresolved material choices. Attribute material decisions to the user or agent.
-- The visual reference and any explicit design/navigation overrides. Follow [design fidelity](design.md): source-product mobile/native identity is the default unless the user supplies a detailed alternative. Record inaccessible references and use the mobile website for uncertain native details.
+- The visual reference and any explicit design/navigation overrides. Follow [design fidelity](design.md): source-product mobile/native identity is the default unless the user supplies an explicit alternative. Record inaccessible references and use the mobile website for uncertain native details.
 
 Label each requirement as `required`, `preserve`, or `user-approved deferred`. During work give it a separate status: `planned`, `implemented`, `verified`, `failed`, `blocked`, or `deferred`. Record evidence for verification and a reason for every block. An agent's convenience or inability to verify a flow does not turn it into a user-approved exclusion.
 
@@ -88,9 +87,10 @@ The product brief must include the mandatory route inventory with owned-screen/a
 
 ## Route and action inventory
 
-Before implementation, record each normal link/tab, same-URL website action, external destination and return path. The README or governing plan table must name example URL, manifest rule/source, screen/adapter or action, readiness/empty/gated/error evidence, visible handoff cue, expected Back/Return and actual verification status. Keep inaccessible required journeys marked blocked; declarations alone are not acceptance.
+Before implementation, record each normal link/tab, same-URL website action, external destination and return path. The `.specs/current.md` table must name example URL, manifest rule/source, screen/adapter or action, readiness/empty/gated/error evidence, visible handoff cue, expected Back/Return and actual verification status. Keep inaccessible required journeys marked blocked; declarations alone are not acceptance.
 
+## Domain-first investigation
 
-## Interaction contract
+A base domain plus desired changes is sufficient to start. Resolve a bare domain to an HTTPS candidate and inspect its canonical destination. Preserve explicit paths/query context; explicit HTTP conflicts with source HTTPS requirements and needs a supported choice. Choose a readable name/stable ID when absent; ask about material ambiguity or collisions only.
 
-Follow [actions and navigation](interactions.md). Inventory buttons, local menus, source mutations and protected editor workflows separately from URL coverage. Opening a containing page cannot qualify the action its icon promises. Source actions require current identity, observed results and uncertainty handling. SDK 0.5.1 adds optional native sharing on capable API-4 hosts.
+Inspect available authorized mobile entry/detail/account/form/loading/failure states. Derive everyday connected workflows and write them in current specs without requiring the user to enumerate selectors or every screen. Missing login/tools blocks affected qualification; do not invent inspected evidence or replace the product with synthetic data. Apply [defaults](defaults.md), maintain [records](applet-records.md) and check [shared intent](rules.md#shared-intent-during-customization) before implementing.

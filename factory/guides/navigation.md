@@ -1,6 +1,6 @@
 # Explicit navigation and website presentation
 
-Use SDK/tools 0.5.0, manifest schema 3 and runtime API 4 for new applets and navigation migrations. Existing schema-2/API-3 applets remain executable with their original behavior. An API-3 host cannot execute API-4 packages. Inspect the actual host's supported runtime list before installing.
+Use SDK 0.5.1/tools 0.5.0, manifest schema 3 and runtime API 4 for new applets and navigation migrations. Existing schema-2/API-3 applets remain executable with their original behavior. An API-3 host cannot execute API-4 packages. Inspect the actual host's supported runtime list before installing.
 
 ## Declare coverage before rendering controls
 
@@ -83,7 +83,7 @@ Exact-current source adoption preserves the live session/forms and revokes adapt
 
 ## Authoring and verification workflow
 
-Maintain a README table with control/journey, example URL, contract/rule, source, adapter/screen or action, readiness/empty/gated/error evidence, visible cue, Back/Return and actual verification status. Reference manifest IDs rather than duplicating executable path lists. Declared support is different from qualified support.
+Maintain a `.specs/current.md` table with control/journey, example URL, contract/rule, source, adapter/screen or action, readiness/empty/gated/error evidence, visible cue, Back/Return and actual verification status. Reference manifest IDs rather than duplicating executable path lists. Declared support is different from qualified support.
 
 ```sh
 npx --no-install genesis-applet routes list . --json
@@ -95,7 +95,12 @@ npx --no-install genesis-applet build . --out dist --json
 
 Route inspection loads no website and does not qualify source selectors. Test the actual launcher → content → detail → Back journey, unknown internal link, external link/Return, source redirect/query/hash, source-command tab change, protected-form entry/cancel, stale decision and repeated section/provider return. Record installed revisions, device/provider and loading/settled evidence. Check narrow/large-text/dark/TalkBack behavior; cues and Return must stay readable. Do not submit social/account/purchase actions for verification. Keep blocked requirements explicit; never substitute a website-only app for requested custom coverage.
 
+## Native shell and platform options
 
-## Interaction contract
+By default configure `shell` with `title`, a contained bitmap `brandAsset`, and one to five `sections` referencing declared sources/pages. The title must be under 80 UTF-8 bytes. Optional `colorScheme` is `default` or `neutral`; optional `choices` select declared source URLs. A simple app may have one Home section. Use a supported bitmap image; do not assume native SVG decoding.
 
-Follow [actions and navigation](interactions.md). Inventory buttons, local menus, source mutations and protected editor workflows separately from URL coverage. Opening a containing page cannot qualify the action its icon promises. Source actions require current identity, observed results and uncertainty handling. SDK 0.5.1 adds optional native sharing on capable API-4 hosts.
+The host creates the top-right Applet options menu and platform settings, including Return to Genesis, Reload, Service connections, Rendering, Recovery and build-appropriate developer controls. Do not recreate these controls in applet web UI. Availability follows host mode/modal state; the website provider has its own chrome. Preserve existing device-local rendering preferences.
+
+A user can override the menu default. Omitting optional `shell` also removes its header/primary navigation. There is no public setting to move only the menu while preserving the shell. Explain that consequence and ask for a supported choice if needed; never invent a menu flag or hide native controls with CSS.
+
+Current native section selection/reselection opens its declared root and recreates the foreground to reset transient viewport/child state. Internal navigation, detail Back and website Return have different retention semantics. Let native layout measure insets; never hard-code footer height. Use host contextual transitions rather than a second full-screen animation.

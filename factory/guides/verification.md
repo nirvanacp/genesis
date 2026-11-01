@@ -1,6 +1,5 @@
 # Verify and maintain an applet
 
-Read [explicit navigation](navigation.md) for schema-3/API-4 URL coverage, website actions, SDK controls and Return behavior. SDK/tools 0.5.0 use the host policy for new applets. Schema-2/API-3 examples below remain legacy compatibility reference wherever they use direct `webViews.open`; migrate those calls through resolve/activate or the navigation controls before using API 4.
 
 Read [the isolated architecture](isolated-applets.md) and its route inventory first. Check the owned foreground, hidden adapter and explicit website provider independently, then together.
 
@@ -70,7 +69,7 @@ Give a platform maintainer the SDK/host versions, minimal manifest, entry, exact
 
 ## Maintenance handoff
 
-Update the applet README with supported source routes, behavior, data authority, backend setup if any, and known gaps. Preserve applet IDs and data on updates. Source websites can change independently; record the date and routes inspected, and isolate adapter changes from record-schema changes. Report checks as passed, failed, or not run with a reason. Existing historical device reports apply to those builds only.
+Update `.specs/current.md` with routes, interactions, choices and evidence; keep README focused on purpose, setup and spec links. Finalize the local logical changelog under [record rules](applet-records.md). Preserve applet IDs and data on updates. Source websites can change independently; record the date and routes inspected, and isolate adapter changes from record-schema changes. Report checks as passed, failed, or not run with a reason. Existing historical device reports apply to those builds only.
 
 For each requirement separately report implementation status and verification result. Identify blocked requirements and explicitly user-approved deferrals; do not conflate them. Keep core gaps visible in the final answer and current operating guidance. A developer-only subset or installed preview is not a completed full-client deliverable. Continue independent authorized work and report the precise remaining dependency when it prevents completion.
 
@@ -90,13 +89,12 @@ In a debuggable host, Developer tools / Inspect current document explicitly enab
 
 Follow [loading observations](patterns.md#loading-is-an-unresolved-observation). Record supported navigation from its initiating action through valid content, including slow SPA assembly after HTML completion. Normal loading must not display failure/Retry/website-demand UI. Check real offline/adapter failures and bounded timeout separately, including Back, later recovery and stale callbacks. Preserve native navigation, account-safe content and source isolation. Report recording/sampling and exact revisions; settled screenshots do not pass this requirement.
 
-Verify [default skeleton presentation](design.md#skeletons-are-the-default-pending-ui) on every asynchronous owned screen and dialog, including retained-content refresh and pagination. Capture pending and settled states; check hidden status labels, dark appearance, large text, cancellation, errors and return. Normal wait states must not display loading prose.
+Verify [default skeleton presentation](design.md#skeletons-are-the-default-pending-ui) on every asynchronous owned screen and dialog, including retained-content refresh and pagination. Capture pending and settled states; check hidden status labels, dark appearance, large text, cancellation, errors and return. The default pending presentation uses skeletons; inspect recorded explicit overrides while preserving accessible status and honest state.
 
 ## Navigation acceptance
 
 Verify declared custom/website/action/uncovered/external/blocked decisions independently from real-source rendering. Exercise ordinary anchors, target-blank, redirects and query/hash updates as well as SDK controls. Check wrong-action/source rejection, stale decisions, missing owned anchors, website history versus Return, dirty-form Stay/Leave and source-origin account revalidation. A typecheck, route match or package receipt cannot qualify these connected journeys. Record unperformed cases explicitly.
 
+## Default and policy acceptance
 
-## Interaction contract
-
-Follow [actions and navigation](interactions.md). Inventory buttons, local menus, source mutations and protected editor workflows separately from URL coverage. Opening a containing page cannot qualify the action its icon promises. Source actions require current identity, observed results and uncertainty handling. SDK 0.5.1 adds optional native sharing on capable API-4 hosts.
+Check the [defaults](defaults.md) against current specs, including native menu availability, declared primary roots versus detail/provider return, compact cues, keyboard-safe sheets, theme inheritance and refresh query retention. Recorded compatible overrides pass their chosen behavior. Review requirement conflicts and clear shared-intent instructions under [rules](rules.md); no duplicate/global rule for local-only fixes. A changed shared default does not authorize unrelated app retrofits.
