@@ -16,7 +16,7 @@ export async function createApplet(directory, options) {
   const output = await emptyDirectory(directory); await mkdir(path.join(output, 'src'));
   const packageJson = { name: options.id, version: '0.1.0', private: true, type: 'module', engines: { node: '24.15.0' },
     scripts: { check: 'genesis-applet check .', build: 'genesis-applet build . --out dist' },
-    dependencies: { '@genesis/sdk': '0.5.0', ...(options.react ? { react: '19.3.1', 'react-dom': '19.3.1' } : {}) },
+    dependencies: { '@genesis/sdk': '0.5.1', ...(options.react ? { react: '19.3.1', 'react-dom': '19.3.1' } : {}) },
     devDependencies: { '@genesis/applet-tools': '0.5.0', ...(options.react ? { '@types/react': '19.3.0', '@types/react-dom': '19.3.0' } : {}) } };
   const config = { compilerOptions: { strict: true, noEmit: true, target: 'ES2022', module: 'ESNext', moduleResolution: 'Bundler', lib: ['ES2022','DOM','DOM.Iterable'], jsx: 'react-jsx', skipLibCheck: true }, include: ['src'] };
   const files = { 'applet.json': JSON.stringify(manifest,null,2)+'\n', 'package.json': JSON.stringify(packageJson,null,2)+'\n', 'tsconfig.json': JSON.stringify(config,null,2)+'\n',

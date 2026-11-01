@@ -45,3 +45,8 @@ Storage supports `get(collection,key)`, `list(collection,{limit,afterKey?})`, `c
 No always-running source context, cross-source DOM access, independent cookie jars, public publisher trust, camera/microphone access or automatic authentication-popup compatibility is promised. Protected website interactions require real provider qualification. Report unsupported workflows explicitly instead of changing the requested product.
 
 `SourcePublication<T>` and `SourceProblem` are public types. `error` has required safe `message`, optional fixed `code` and `retryable`; accepted snapshots include host-assigned `origin: "host" | "adapter"`. Codes are NETWORK, HTTP, SOURCE_TIMEOUT, ADAPTER_FAILED, SOURCE_RENDERER_FAILED, UNSUPPORTED_ROUTE, CONTENT_UNRECOGNIZED, UPSTREAM_FAILURE and ADAPTER_NOT_IMPLEMENTED. The existing state/method contract is unchanged. API-3 hosts bound unresolved content independently of source activation. See [observation semantics](patterns.md#loading-is-an-unresolved-observation).
+
+
+## Interaction contract
+
+Follow [actions and navigation](interactions.md). Inventory buttons, local menus, source mutations and protected editor workflows separately from URL coverage. Opening a containing page cannot qualify the action its icon promises. Source actions require current identity, observed results and uncertainty handling. SDK 0.5.1 adds optional native sharing on capable API-4 hosts.

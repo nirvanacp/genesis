@@ -94,3 +94,8 @@ npx --no-install genesis-applet build . --out dist --json
 ```
 
 Route inspection loads no website and does not qualify source selectors. Test the actual launcher → content → detail → Back journey, unknown internal link, external link/Return, source redirect/query/hash, source-command tab change, protected-form entry/cancel, stale decision and repeated section/provider return. Record installed revisions, device/provider and loading/settled evidence. Check narrow/large-text/dark/TalkBack behavior; cues and Return must stay readable. Do not submit social/account/purchase actions for verification. Keep blocked requirements explicit; never substitute a website-only app for requested custom coverage.
+
+
+## Interaction contract
+
+Follow [actions and navigation](interactions.md). Inventory buttons, local menus, source mutations and protected editor workflows separately from URL coverage. Opening a containing page cannot qualify the action its icon promises. Source actions require current identity, observed results and uncertainty handling. SDK 0.5.1 adds optional native sharing on capable API-4 hosts.

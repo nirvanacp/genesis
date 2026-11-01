@@ -103,3 +103,9 @@ The installed API-4 migration preserves applet/source/page/service identity and 
 Current delivery evidence: [explicit navigation verification](../../../.reports/phase-5/2026-11-01/115202-genesis-explicit-navigation-verification.md). Earlier reports qualify their recorded revisions only.
 
 The 2026-11-01 UI repair was checked with the API-4 emulator build. Home and Explore headers rendered without the former Website text collision. The X source did not settle during this check, so live feed actions, trends and routed source tabs remain unqualified on this revision; their shared renderer and CSS passed the applet check and build.
+
+## Interaction repair
+
+Current code uses SDK 0.5.1 with API 4/schema 3. Follow [the interaction contract](../../guides/interactions.md). X social buttons no longer use the generic original-post handoff: supported live controls dispatch visit/account-bound desired-state operations, while cached rows require a live post. Share opens an owned sheet with Copy and optional Android chooser. Reply opens the contextual original editor. HN retains local Save/category/collapse actions; explicit website entry cannot be swallowed by local comment scrolling. Existing private stores remain independent of upstream bookmarks/favorites.
+
+TypeScript/package/build checks pass. Real mutation persistence, inverse confirmation variants, private/requested Follow and physical-device accessibility remain unqualified. See [current verification](../../../.reports/phase-5/2026-11-01/144631-x-interactions-verification.md). Earlier blanket social-provider statements are superseded for these controls; forms, login, settings, uploads and protected playback remain provider-owned.

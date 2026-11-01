@@ -118,3 +118,8 @@ function observe() {
 The function names above are illustrative applet helpers, not SDK APIs. Do not replace them with guessed selectors. Managed observations must continue across DOM mutations and be disposed with the source. Route inventories must list content identity, readiness, empty and failure evidence. An unimplemented starter reports `ADAPTER_NOT_IMPLEMENTED`; that deliberate development placeholder is not the pattern for normal missing content.
 
 Verify transitions with recordings or sanitized traces on the actual delivered host. Exercise HTML completion before SPA content, repeated warm/cold navigation, same-document tabs, source/provider return, offline recovery and delayed content on both sides of the deadline. Check that ordinary loading never paints Retry or unsupported recovery. Inspect actual errors separately. A settled screenshot or typecheck does not establish transition correctness.
+
+
+## Interaction contract
+
+Follow [actions and navigation](interactions.md). Inventory buttons, local menus, source mutations and protected editor workflows separately from URL coverage. Opening a containing page cannot qualify the action its icon promises. Source actions require current identity, observed results and uncertainty handling. SDK 0.5.1 adds optional native sharing on capable API-4 hosts.
