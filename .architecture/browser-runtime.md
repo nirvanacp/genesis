@@ -26,6 +26,8 @@ Close restores the owned opener. A provider visit to the source origin triggers 
 
 Activity pause/resume reaches foreground, source and external views. Renderer failure keeps native opaque recovery; Retry recreates the foreground and source. Stale source errors require matching view/epoch. Activity recreation restores eligible custom GET selection only. It never serializes arbitrary JavaScript, restores a POST, or guarantees durable website drafts or in-memory Back/scroll state.
 
+The native primary footer measures its content with a 64dp minimum, and browser/recovery insets use that measured height. Enlarged labels may wrap. When a complete icon set has insufficient caption width at large system text, the footer uses larger icons with full accessible names and tooltips. Normal-size labels and sections without icons remain visible. Applet content must not hard-code the shell's bottom height.
+
 ## Services, diagnostics and limits
 
 Only the foreground uses applet-scoped storage/services through existing workers. Completions require the live document/generation/channel and cannot update retired UI. Dropping a reply cannot undo a remote commit. RPC has 32 pending calls and a 15-second response deadline; source loading has a separate recovery deadline. Source media, focus and accessibility remain suppressed during those failures.
