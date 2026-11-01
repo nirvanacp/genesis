@@ -1,0 +1,6 @@
+# Hacker News explicit navigation
+
+- Goal: Adopt host policy for HN links and remove missing-comment and form-list website fallbacks.
+- Changes: Migrated manifest and dependency to schema 3/API 4, declared external/current-page actions, resolved foreground and Saved links through policy, and added visible website cues. Missing owned comment anchors navigate to custom comment-item context. Existing Search placeholder and backend/record identity remain.
+- Decisions: Device status revealed a pre-existing development override, so the agent updated that override in place as well as rebuilding APK-selected assets. Neither source sessions nor backend data were reset.
+- Verification: Standalone check/build and workspace typechecks passed. The authenticated emulator rendered 30 actual feed stories and 100 discussion comments; marked external article entry and native Return restored Discussion. Fragment fallback received static verification after that live pass; final artifact install is part of release qualification. Protected submissions, exhaustive route/accessibility cases and physical devices remain unqualified.
