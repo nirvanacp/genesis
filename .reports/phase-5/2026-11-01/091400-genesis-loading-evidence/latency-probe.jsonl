@@ -1,0 +1,14 @@
+{"ms":60,"role":"owned","state":"ready","epoch":18,"path":"/home","kind":"timeline","loading":false,"retry":0,"headings":[]}
+{"ms":63,"role":"source","path":"/home","readyState":"complete","primary":true,"progress":false,"posts":5,"empty":false,"signedOut":false,"error":false,"profile":false}
+{"ms":2411,"role":"owned","state":"ready","epoch":18,"path":"/home","kind":"timeline","loading":true,"retry":0,"headings":[]}
+{"ms":2765,"role":"source","path":"/home","readyState":"interactive","primary":false,"progress":false,"empty":false,"signedOut":false,"error":false,"profile":false}
+{"ms":2920,"role":"owned","state":"loading","epoch":19,"path":"/home","loading":true,"retry":0,"headings":[]}
+{"ms":2921,"role":"source","path":"/home","readyState":"complete","primary":false,"progress":false,"empty":false,"signedOut":false,"error":false,"profile":false}
+{"ms":3698,"role":"source","path":"/home","readyState":"complete","primary":true,"progress":true,"posts":0,"empty":false,"signedOut":false,"error":false,"profile":false}
+{"ms":4457,"role":"owned","state":"loading","epoch":19,"path":"/home","loading":false,"retry":0,"headings":[]}
+{"ms":4609,"role":"owned","state":"loading","epoch":19,"path":"/home","kind":"timeline","loading":false,"retry":0,"headings":[]}
+{"ms":4981,"role":"source","path":"/home","readyState":"complete","primary":true,"progress":true,"posts":3,"empty":false,"signedOut":false,"error":false,"profile":false}
+{"ms":5398,"role":"source","path":"/home","readyState":"complete","primary":true,"progress":false,"posts":3,"empty":false,"signedOut":false,"error":false,"profile":false}
+{"ms":5549,"role":"source","path":"/home","readyState":"complete","primary":true,"progress":false,"posts":6,"empty":false,"signedOut":false,"error":false,"profile":false}
+{"ms":5694,"role":"source","path":"/home","readyState":"complete","primary":true,"progress":false,"posts":5,"empty":false,"signedOut":false,"error":false,"profile":false}
+{"ms":5840,"role":"owned","state":"ready","epoch":19,"path":"/home","kind":"timeline","loading":false,"retry":0,"headings":[]}

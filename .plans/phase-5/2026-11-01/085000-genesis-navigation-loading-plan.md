@@ -1,6 +1,6 @@
 # Genesis source loading and recovery plan
 
-Status: ready for implementation; no runtime changes made by this planning task. Project: Genesis SDK/Android runtime, X applet and portable factory. Phase: `phase-5`, from `proto/phase-5`. Created 1 November 2026, Asia/Kolkata.
+Status: implementation delivered; targeted verification passed with the explicit qualification limits in the [repair report](../../../.reports/phase-5/2026-11-01/091700-genesis-loading-repair-verification.md). Project: Genesis SDK/Android runtime, X applet and portable factory. Phase: `phase-5`, from `proto/phase-5`. Created 1 November 2026, Asia/Kolkata.
 
 ## Problem and intended result
 
@@ -10,7 +10,7 @@ Normal supported navigation must proceed from an immediate owned shell/loader to
 
 Preserve the user's approved X design, fonts, bottom navigation, pull-to-refresh, correct primary roots and viewport reset. Keep one X and one HN launcher entry, stable applet/source/page/service identities, backend authority and existing records. Keep hidden sources muted, inaccessible and behind the native barrier. Website presentation remains explicit.
 
-This task delivers a plan, not implementation. The ordered component commits below govern subsequent implementation. No blocking product decision remains; timeout and presentation choices below are engineering decisions, subject to real verification.
+The initial task delivered this plan. The user subsequently authorized implementation, now delivered in component commits. The steps below preserve the intended behavior and verification criteria. No blocking product decision remains; timeout and presentation choices below are engineering decisions, subject to real verification.
 
 ## Governing context and exclusions
 
