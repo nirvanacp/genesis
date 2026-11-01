@@ -1,0 +1,6 @@
+# Explicit navigation architecture plan
+
+- Goal: Plan a framework-wide solution to the reproduced X custom-to-website switch, including applet migration and creator guidance, without implementing code.
+- Changes: Added an implementation plan covering authoritative URL decisions, declared website actions, source selection, native recovery/return, version compatibility, SDK controls, route inspection tooling, X/HN migration, factory artifacts and connected acceptance journeys.
+- Decisions: The user requested general route coverage and experience continuity rather than a one-route patch. The agent chose to extend existing isolated route contracts, keep unknown internal routes owned, and distinguish browsing from website actions at the same URL. Schema 3/API 4 makes the behavior change explicit while preserving API-3 compatibility. The agent deferred factory edits to implementation so portable documentation does not advertise unavailable APIs. No AGENTS, application or test files changed.
+- Verification: Read the report, current-phase architecture/operating guidance, contracts, resolver and navigation implementations, applet callers and creator workflows. Local document links, implementation anchor paths, whitespace and migration consistency checks passed. Implementation and live acceptance remain future work.
