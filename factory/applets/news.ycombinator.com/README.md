@@ -34,7 +34,7 @@ Gray content skeletons are the default for source transitions, account/library/d
 
 ## Explicit navigation coverage
 
-Schema 3/API 4 with SDK 0.5.0 delegates URL classification to the host. The manifest declares custom feed/discussion/profile/information routes, original-site form routes, the `original-hn` current-page action, external website policy and unsupported recovery. The foreground no longer maintains a separate form-path classifier. Article title links and Saved article links carry visible website cues.
+Schema 3/API 4 with SDK 0.5.0 delegates URL classification to the host. The manifest declares custom feed/discussion/profile/information routes, original-site form routes, the `original-hn` current-page action, external website policy and unsupported recovery. The foreground no longer maintains a separate form-path classifier. External article, Saved article, inline and action links show a compact ↗ cue and expose "opens website" to accessibility services without adding a full Website label inside every link.
 
 | Journey | Policy / rendering | Return and verification |
 | --- | --- | --- |
@@ -50,3 +50,5 @@ Schema 3/API 4 with SDK 0.5.0 delegates URL classification to the host. The mani
 Device qualification used the migrated development override because the existing emulator already had an HN override. APK-selected HN is also rebuilt from this manifest. Refer to the final phase-5 navigation delivery record for exact revisions and unperformed checks. No authentication, account, bookmark or category data was reset.
 
 Current delivery evidence: [explicit navigation verification](../../../.reports/phase-5/2026-11-01/115202-genesis-explicit-navigation-verification.md). Earlier reports qualify their recorded revisions only.
+
+The 2026-11-01 UI repair was checked on the API-4 emulator. Feed story links, action buttons, discussion links, comments, a Saved story and the signed-out Me screen rendered with the compact cue. Authenticated profile, large-text and TalkBack layouts were not inspected on this revision; the shared link renderer passed the applet check and build.
