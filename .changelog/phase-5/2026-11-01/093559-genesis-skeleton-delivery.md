@@ -1,0 +1,6 @@
+# Genesis skeleton delivery
+
+- Goal: deliver the user's default gray-placeholder loading design across X, HN and future factory applets.
+- Changes: source/owned-page/dialog skeletons, compact pending actions, native transition cover and factory starter/skill/guide defaults are implemented. The [verification report](../../../.reports/phase-5/2026-11-01/093559-genesis-skeleton-loading-verification.md) records final revisions, images and scope.
+- Decisions: retain static accessible placeholders, useful content during refresh, and explicit real errors. Keep SDK 0.4.1 while releasing tools/kit 0.4.2. Dark review corrected HN host color priority; verification restored the missing tunnel to its already-running backend without starting/resetting services or changing records.
+- Verification: both apps' real source navigation, dialog dismissal, HN successful backend read, dark/200% text and native failure/Retry passed. All component variants and packed React/vanilla creators passed checks. Physical-device/TalkBack and real mutation-pending behavior remain unqualified. Task device recordings/dump were removed, original font scale 1.0/night mode no restored, both backend tunnels preserved and X reopened on Home. Final document links and whitespace checks passed.

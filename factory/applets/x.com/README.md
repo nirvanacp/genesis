@@ -1,6 +1,6 @@
 # X applet
 
-X is one applet with native Home, Explore, Notifications, Saved and Profile sections. It uses SDK/tools 0.4.1, runtime API 3 and manifest schema 2. Stable applet/source/page/service IDs and both existing bookmark stores are preserved.
+X is one applet with native Home, Explore, Notifications, Saved and Profile sections. It uses SDK 0.4.1 and tools 0.4.2, runtime API 3 and manifest schema 2. Stable applet/source/page/service IDs and both existing bookmark stores are preserved.
 
 ## Product and rendering
 
@@ -80,4 +80,6 @@ Run the applet CLI check/build, workspace TypeScript check and backend `node --c
 
 Incomplete website markup remains loading, including after HTML document completion. Validated route content determines readiness; missing spinners/selectors do not imply unsupported content. Empty model shells never count as retained content after failure. Refresh retains only destination/account-matched valid content, and genuine failures expose source Retry separately from explicit website presentation.
 
-The [source loading repair qualification](../../../.reports/phase-5/2026-11-01/091700-genesis-loading-repair-verification.md) records installed SDK/tools 0.4.1 revisions, repeated X navigation, genuine recovery and shared-host checks. It supersedes earlier loading/recovery qualification for those journeys and states the remaining device/transport/accessibility limits.
+The [source loading repair qualification](../../../.reports/phase-5/2026-11-01/091700-genesis-loading-repair-verification.md) records installed SDK 0.4.1 and tools 0.4.2 revisions, repeated X navigation, genuine recovery and shared-host checks. It supersedes earlier loading/recovery qualification for those journeys and states the remaining device/transport/accessibility limits.
+
+Gray content skeletons are the default for source transitions, account/library/dialog reads and pagination. Pending operations retain hidden accessible status and real errors remain explicit. See [skeleton verification](../../../.reports/phase-5/2026-11-01/093559-genesis-skeleton-loading-verification.md) for installed revisions and limits.
