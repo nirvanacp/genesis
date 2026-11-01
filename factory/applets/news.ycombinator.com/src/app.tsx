@@ -1,3 +1,4 @@
+import {revealComment} from './comment-navigation';
 import css from './app.css';
 import {StoryHeading} from './components/story-heading';
 import storyCss from './story.css';
@@ -38,7 +39,7 @@ function App({context}:{context:AppletContext}){
   },[context,snapshot?.pageId,snapshot?.epoch]);
   const open=(url:string,website=false)=>{
     const safe=safeUrl(url,snapshot?.url??origin);if(!safe)return;setError('');const parsed=new URL(safe),current=new URL(snapshot?.url??origin);
-    if(!website&&parsed.hash&&parsed.origin===origin&&parsed.pathname===current.pathname&&parsed.search===current.search){const target=context.root.querySelector(`[id="comment-${parsed.hash.slice(1).replace(/[^0-9]/g,'')}"]`);if(target){target.scrollIntoView();return;}}
+    if(!website&&parsed.hash&&parsed.origin===origin&&parsed.pathname===current.pathname&&parsed.search===current.search){const target=context.root.querySelector(`[id="comment-${parsed.hash.slice(1).replace(/[^0-9]/g,'')}"]`);if(target){revealComment(target);return;}}
     void(async()=>{const destination=parsed.origin===origin&&/^#[0-9]+$/.test(parsed.hash)?`${origin}/item?id=${parsed.hash.slice(1)}`:safe;let [decision]=await context.navigation.resolve([{kind:'url',url:destination}]);if(website&&decision.kind==='custom')[decision]=await context.navigation.resolve([{kind:'url',url:safe,websiteActionId:'original-hn'}]);await context.navigation.activate({decision,intent:decision.kind==='website'||decision.kind==='external'?'open-website':'navigate'});})().catch(e=>setError(String(e)));
   };
   const link=(url:string,label:string,website=false)=><HnLink context={context} url={url} website={website} className="action">{label}</HnLink>;
