@@ -13,6 +13,6 @@ export function PostActions({url,id,open,actions,share,count=()=>''}:{url:string
     <MutationButton entity={'post:'+id} name="like" actions={actions} count={count('like')}/>
     <XLink className="post-action" url={url+'/analytics'} open={open} label="View post activity"><Icon name="views"/>{count('views')}</XLink>
     <button type="button" className="post-action" aria-label="Share post" onClick={share}><Icon name="share"/></button>
-    {!actions.find('post:'+id,'like')&&<XLink className="visually-hidden" url={url} open={open}>Open live post to interact</XLink>}
+    {!actions.find('post:'+id,'like')&&<XLink className="read-more" url={url} open={open}>Open live post to interact</XLink>}
   </div>;
 }

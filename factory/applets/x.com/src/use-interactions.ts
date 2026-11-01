@@ -5,17 +5,19 @@ import type {ActionRef,InteractionModel} from './interactions';
 export function useInteractions(context:AppletContext){
   const [state,setState]=useState<{snapshot:SourceSnapshot;model:InteractionModel;account:string}|null>(null);
   const [message,setMessage]=useState(''),[busy,setBusy]=useState(false);
+  const latest=useRef<SourceSnapshot|null>(null);
   const sequence=useRef(0),pending=useRef<number|null>(null),timer=useRef<ReturnType<typeof setTimeout>|undefined>(undefined);
   const clear=()=>{clearTimeout(timer.current);pending.current=null;setBusy(false);};
   useEffect(()=>{
     const source=context.source.subscribe(snapshot=>{
+      latest.current=snapshot;
       if(!validModel(snapshot.data)||!snapshot.data.interactions||snapshot.state!=='ready'||!snapshot.data.account.handle){setState(null);clear();return;}
       const model=snapshot.data.interactions;sequence.current=Math.max(sequence.current,model.sequence);
       setState({snapshot,model,account:snapshot.data.account.handle});
       const result=model.results.find(r=>r.requestId===pending.current);
       if(result&&result.status!=='pending'){clear();setMessage(result.status==='observed'?'':result.message??'The action could not be confirmed. Check status.');}
     });
-    const nav=context.navigation.subscribe(s=>{if(s.mode!=='applet'){setState(null);clear();}});
+    const nav=context.navigation.subscribe(s=>{if(s.mode!=='applet'){const snapshot=latest.current;if(snapshot)void context.source.command({name:'x.cancelInteraction',epoch:snapshot.epoch}).catch(()=>{});setState(null);clear();}});
     return()=>{source();nav();clearTimeout(timer.current);};
   },[context]);
   const perform=(ref:ActionRef)=>{
