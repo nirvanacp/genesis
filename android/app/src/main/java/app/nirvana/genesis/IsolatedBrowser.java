@@ -283,6 +283,7 @@ final class IsolatedBrowser {
                 dismissNavigationRecovery();
                 final long id=command.getLong("recoveryId");
                 if(command.optBoolean("retireSource")){if(sourceScript!=null){sourceScript.remove();sourceScript=null;}channels.remove("source");}
+                if(presentation!=null)presentation.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
                 navigationRecovery=new NavigationPresentation(activity,command.getJSONObject("decision"),()->emit("back","recoveryId",id),()->emit("isolatedRecoveryContinue","recoveryId",id));
                 views.browserSlot.addView(navigationRecovery,new FrameLayout.LayoutParams(-1,-1));views.reveal();break;
             }
@@ -312,6 +313,6 @@ final class IsolatedBrowser {
             default:throw new IllegalArgumentException("Unknown isolated host command");
         }
     }
-    private void dismissNavigationRecovery(){if(navigationRecovery!=null){views.browserSlot.removeView(navigationRecovery);navigationRecovery=null;}}
+    private void dismissNavigationRecovery(){if(presentation!=null)presentation.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);if(navigationRecovery!=null){views.browserSlot.removeView(navigationRecovery);navigationRecovery=null;}}
     void destroy(){if(destroyed)return;dismissNavigationRecovery();destroyed=true;WebView.setWebContentsDebuggingEnabled(false);main.removeCallbacksAndMessages(null);for(WebView popup:new HashSet<>(popups))releasePopup(popup);exitFullscreen();if(sourceScript!=null)sourceScript.remove();if(presentation!=null){presentation.dispose();views.browserSlot.removeView(presentation);}if(source!=null)source.destroy();if(foreground!=null)foreground.destroy();if(external!=null)external.destroy();channels.clear();}
 }
