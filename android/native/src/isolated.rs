@@ -61,6 +61,8 @@ impl IsolatedHost {
         self.navigation_version+=1;self.serial+=1;
         self.recovery=Some((self.serial,decision.clone()));
         out.push(json!({"type":"isolatedNavigationRecovery","generation":self.generation,"recoveryId":self.serial,"decision":decision,"retireSource":matches!(&decision.target,NavigationTarget::Url{url,..} if *url==self.source_live_url && *url!=self.url)}));
+        if self.transitions.len()==64{self.transitions.pop_front();}
+        self.transitions.push_back(json!({"role":"navigation","state":"recovery","generation":self.generation,"navigationVersion":self.navigation_version,"routeId":decision.route_id,"decision":decision.kind}));
         self.navigation_snapshot(out);
     }
     fn enter_website(&mut self,url:String,out:&mut Vec<Value>) {
@@ -345,7 +347,11 @@ impl IsolatedHost {
             out.push(self.command("isolatedWebsiteBack"));
             return Ok(());
         }
-        if self.recovery.take().is_some(){self.navigation_version+=1;out.push(self.command("isolatedNavigationDismiss"));self.navigation_snapshot(out);return Ok(());}
+        if self.recovery.take().is_some(){
+            self.navigation_version+=1;out.push(self.command("isolatedNavigationDismiss"));
+            if self.explicit_navigation() && (!self.documents.get("source").is_some_and(|d|d.bound)||self.source_live_url!=self.url){let mut input=self.selection.clone();input["url"]=json!(self.url);input["pageId"]=json!(self.page);self.open(&input,false,out)?;}
+            self.navigation_snapshot(out);return Ok(());
+        }
         if self.modal {
             self.modal = false;
             self.notify("foreground", "ui.dismissModal", Value::Null, out);
@@ -471,7 +477,14 @@ impl IsolatedHost {
                     out.push(json!({"type":"isolatedWebsite","sessionId":self.website_session,"generation":self.generation,"url":url,"adopt":adopt}));
                 }
             },
-            "ordinary" => { if self.explicit_navigation(){return Ok(out);} self.begin_website(); self.source_exposed=true; self.cancel_deadline(); self.notify("source","context.retired",Value::Null,&mut out); self.documents.remove("source"); out.push(json!({"type":"isolatedWebsite","sessionId":self.website_session,"generation":self.generation,"url":self.url,"adopt":true})); },
+            "ordinary" => { if self.explicit_navigation(){
+                let manifest=&self.package.as_ref().unwrap().manifest;
+                let mut target=NavigationTarget::Url{url:self.url.clone(),source_id:None,website_action_id:None};
+                let base=crate::navigation::decide(manifest,self.selection["sourceId"].as_str(),target.clone());
+                if base.kind==DestinationKind::Custom && let Some(action)=manifest.website_actions.iter().find(|a|Some(&a.contract_id)==base.contract_id.as_ref()&&base.route_id.as_ref().is_some_and(|id|a.route_ids.contains(id))){target=NavigationTarget::Url{url:self.url.clone(),source_id:None,website_action_id:Some(action.id.clone())};}
+                let d=crate::navigation::decide(manifest,self.selection["sourceId"].as_str(),target.clone());
+                self.activate_navigation(target,matches!(d.kind,DestinationKind::Website|DestinationKind::External),&mut out)?;return Ok(out);
+            } self.begin_website(); self.source_exposed=true; self.cancel_deadline(); self.notify("source","context.retired",Value::Null,&mut out); self.documents.remove("source"); out.push(json!({"type":"isolatedWebsite","sessionId":self.website_session,"generation":self.generation,"url":self.url,"adopt":true})); },
             "retry" | "reload" => if self.website { out.push(self.command("isolatedWebsiteReload")); } else {
                 let mut input=self.selection.clone();input["url"]=json!(self.url);input["pageId"]=json!(self.page);self.open(&input,false,&mut out)?;
             },
@@ -500,7 +513,7 @@ impl IsolatedHost {
                     }
                     if event["sameDocument"]==true && matches!(self.resolution(url),RouteResolution::Matched{result:RouteResult::Custom{..},..}) {
                         let mut input=self.selection.clone();input["url"]=json!(url);input["pageId"]=Value::Null;self.open(&input,true,&mut out)?;
-                    }else{self.url=url.into();self.documents.remove("source");self.route_state(&mut out);}
+                    }else{self.url=url.into();self.navigation_version+=1;self.documents.remove("source");self.route_state(&mut out);self.navigation_snapshot(&mut out);}
                 }
             },
             "isolatedSourceTimeout" => {
