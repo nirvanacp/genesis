@@ -34,6 +34,7 @@ pub struct IsolatedHost {
     modal: bool,
     back_handler: bool,
     pending_back: Option<u64>,
+    pending_share: Option<(String,String,u64)>,
     last_publish: Option<std::time::Instant>,
     deadline: Option<std::time::Instant>,
     deadline_token: u64,
@@ -296,6 +297,7 @@ impl IsolatedHost {
         self.modal = false;
         self.back_handler = false;
         self.pending_back = None;
+        self.pending_share = None;
         let recreate = !same_app
             || input["resetForeground"] == true
             || !self.documents.contains_key("foreground");
@@ -341,6 +343,7 @@ impl IsolatedHost {
         self.website = true;
         self.navigation_version+=1;
         self.pending_back = None;
+        self.pending_share = None;
     }
     fn back(&mut self, out: &mut Vec<Value>) -> Result<(), String> {
         if self.website {
@@ -455,6 +458,12 @@ impl IsolatedHost {
         match kind {
             "back" => self.back(&mut out)?,
             "isolatedBackDeadline" => if self.pending_back.is_some() && event["token"].as_u64() == self.pending_back { self.pending_back=None; self.back_default(&mut out)?; },
+            "isolatedShareResult" => {
+                if self.pending_share.as_ref().is_some_and(|(request,document,generation)|event["requestId"]==*request&&event["generation"].as_u64()==Some(*generation)&&*generation==self.generation&&self.documents.get("foreground").is_some_and(|d|d.id==*document&&d.bound))
+                    && let Some((request,_,_))=self.pending_share.take() {
+                        self.reply("foreground",&request,if event["presented"]==true{Ok(json!({"status":"presented"}))}else{Err("Sharing is unavailable")},&mut out);
+                }
+            },
             "isolatedForegroundFailed" => {self.documents.remove("foreground");self.modal=false;self.back_handler=false;self.pending_back=None;out.push(json!({"type":"modalState","open":false}));},
             "isolatedForegroundRetry" => {self.documents.remove("foreground");let mut input=self.selection.clone();input["url"]=json!(self.url);input["pageId"]=json!(self.page);self.open(&input,false,&mut out)?;},
             "isolatedRecoveryContinue" => {
@@ -622,7 +631,7 @@ impl IsolatedHost {
                     json!({"kind":"source","sourceId":source_id})
                 };
                 out.push(json!({"type":"isolatedReply","generation":self.generation,"role":role,"channel":channel,"message":{"type":"bound","nonce":doc.nonce,"documentId":doc.id,
-                    "context":{"runtimeApiVersion":self.package.as_ref().unwrap().runtime_api_version,"role":role,"instanceId":self.package.as_ref().unwrap().manifest.id,"appletId":self.package.as_ref().unwrap().manifest.id,"viewId":doc.id,"generation":self.generation,"route":self.resolution(&self.url),"binding":binding}}}));
+                    "context":{"features":["share-url"],"runtimeApiVersion":self.package.as_ref().unwrap().runtime_api_version,"role":role,"instanceId":self.package.as_ref().unwrap().manifest.id,"appletId":self.package.as_ref().unwrap().manifest.id,"viewId":doc.id,"generation":self.generation,"route":self.resolution(&self.url),"binding":binding}}}));
             }
             return Ok(());
         }
@@ -830,6 +839,14 @@ impl IsolatedHost {
             "runtime.ready"=>{self.navigation_snapshot(out);out.push(self.command("isolatedForegroundReady"));self.notify(role,"source.snapshot",self.snapshot.clone(),out);},
             "runtime.phase"=>{},
             "runtime.error"=>out.push(json!({"type":"isolatedFailure","generation":self.generation,"message":"The applet could not prepare its interface. Retry or return to Apps."})),
+            "sharing.shareUrl"=>{
+                let raw=params["url"].as_str().unwrap_or("");
+                let valid=raw.len()<=8192&&url::Url::parse(raw).is_ok_and(|u|["http","https"].contains(&u.scheme())&&u.username().is_empty()&&u.password().is_none()&&u.host_str().is_some()&&u.host_str()!=Some("appassets.androidplatform.net"));
+                let title=params["title"].as_str().unwrap_or("");
+                if !valid||title.chars().count()>200||self.website||self.recovery.is_some()||self.pending_share.is_some(){self.reply(role,request,Err("Sharing is unavailable"),out);return Ok(());}
+                self.pending_share=Some((request.into(),self.documents[role].id.clone(),self.generation));
+                out.push(json!({"type":"isolatedShare","requestId":request,"generation":self.generation,"url":raw,"title":title}));
+            },
             "source.subscribe"=>{self.notify(role,"source.snapshot",self.snapshot.clone(),out);self.reply(role,request,Ok(Value::Null),out);},
             "source.command"=>{
                 if params["epoch"].as_u64()!=Some(self.epoch)||!self.documents.get("source").is_some_and(|d|d.bound)||params["name"].as_str().is_none_or(|n|n.is_empty()||n.len()>64) {
