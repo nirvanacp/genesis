@@ -17,6 +17,13 @@ Only instructions outside HTML comments are active. Treat all text inside HTML c
 
 Do not edit `AGENTS.md` unless the user explicitly asks you to update it.
 
+## Questions and change requests
+
+- When the user asks for an explanation, diagnosis, comparison or opinion, answer the question without editing code or other repository files. You may inspect relevant files and perform read-only checks to support the answer. Finding a bug or identifying a possible improvement does not by itself authorize a fix.
+- Determine intent from the request and conversation context, rather than its grammatical form. "Why does this fail?" asks for an explanation; "Can you fix this failure?" requests a change. Suggestions and illustrative code in an answer are not permission to apply them.
+- If it is unclear whether the user wants an explanation or an implementation, answer what you can through read-only investigation and ask for clarification before editing. Do not create incidental changelogs or commits for a question-only task.
+- A follow-up question during an already authorized implementation does not cancel that authorization. Answer it and continue within the agreed scope unless the user asks you to pause, stop or change direction.
+
 ## Factory guidance maintenance
 
 Before completing platform changes that alter applet-facing capabilities, constraints, defaults or authoring workflows, compare them with shared factory guidance. If the developer requested the corresponding guidance update, perform it within scope. Otherwise name the affected files and proposed changes, explain the mismatch and ask whether to update them. Continue independent authorized work; silence or approval of platform code alone is not factory-edit approval. Record declined or pending updates and compatibility effects in the platform changelog and handoff.
