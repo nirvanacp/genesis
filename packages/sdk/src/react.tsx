@@ -70,7 +70,7 @@ export function useNavigation() {
     stack: state.stack,
     website: state.website,
     navigate: foreground.navigation.navigate as (target: NavigateTarget) => Promise<void>,
-    /** Reloads the current screen's page; cached data stays on screen, marked `stale`, until it loads. */
+    /** Reloads the current screen's page, or another source's with its id; cached data shows as `stale` meanwhile. */
     reload: foreground.navigation.reload,
     back: foreground.navigation.back,
     setLeaveGuard: foreground.navigation.setLeaveGuard,

@@ -54,8 +54,11 @@ export interface Foreground {
   navigation: {
     state(): NavigationState;
     navigate(target: NavigateTarget): Promise<void>;
-    /** Reloads the current screen's page in its source; the screen keeps its cached data meanwhile. */
-    reload(): void;
+    /**
+     * Reloads the current screen's page, or the page another source shows when `sourceId` is given.
+     * Until the page loads, a screen shows its cached data as `stale` and `latest` shows `loading`.
+     */
+    reload(sourceId?: string): void;
     /** In-app Back: the same rules as Android Back, except that the root screen stays. */
     back(): void;
     setLeaveGuard(message: string | null): void;
@@ -180,10 +183,23 @@ function foreground(connection: Connection): Foreground {
   function associate(screen: Screen, force = false) {
     const source = screen.source;
     if (!source || (!force && urlKey(sourceUrls.get(source.sourceId) ?? "") === urlKey(source.url))) return;
-    sourceUrls.set(source.sourceId, source.url);
-    connection.request("source.navigate", { sourceId: source.sourceId, url: source.url }).catch(error => {
+    load(source.sourceId, source.url);
+  }
+
+  /** Loads `url` in the source. Its last publication described the page being replaced, so it goes. */
+  function load(sourceId: string, url: string) {
+    sourceUrls.set(sourceId, url);
+    if (latest.delete(sourceId)) changed();
+    connection.request("source.navigate", { sourceId, url }).catch(error => {
       console.error("Genesis could not load the source page", error);
     });
+  }
+
+  function reload(sourceId?: string) {
+    const current = currentScreen(navigation);
+    if (!sourceId || sourceId === current.source?.sourceId) return associate(current, true);
+    const url = sourceUrls.get(sourceId);
+    if (url) load(sourceId, url);
   }
 
   // Navigation.
@@ -382,7 +398,7 @@ function foreground(connection: Connection): Foreground {
     navigation: {
       state: () => navigation,
       navigate,
-      reload: () => associate(currentScreen(navigation), true),
+      reload,
       back: () => { back(false); },
       setLeaveGuard: message => { dispatch({ type: "guard", guard: message === null ? null : { message } }); },
       onConfirmLeave(handler) {
