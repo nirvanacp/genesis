@@ -1,19 +1,17 @@
 {
   "name": "@genesis/applet-tools",
-  "version": "0.5.0",
+  "version": "1.0.0",
   "type": "module",
   "engines": {
     "node": "24.15.0"
   },
   "files": [
     "src",
-    "manifest.schema.json",
     "kit",
     "check-syntax.mjs"
   ],
   "exports": {
-    ".": "./src/index.mjs",
-    "./manifest.schema.json": "./manifest.schema.json"
+    ".": "./src/index.mjs"
   },
   "bin": {
     "genesis-applet": "./src/cli.mjs"
@@ -23,7 +21,8 @@
     "prepack": "node prepare-kit.mjs"
   },
   "dependencies": {
-    "typescript": "7.0.2",
-    "esbuild": "0.28.2"
+    "@genesis/core": "1.0.0",
+    "esbuild": "0.28.2",
+    "typescript": "7.0.2"
   }
 }
