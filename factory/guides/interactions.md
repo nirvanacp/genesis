@@ -1,56 +1,55 @@
-# Actions and navigation
+# Interactions
 
-Classify every control before implementing it. URL coverage and action support are separate contracts.
+A control in the foreground performs a real action on the website, in the applet's own data, or opens the website for the user. It never only looks like it did.
 
-| Control | Execution | Acceptance |
-| --- | --- | --- |
-| Post/profile/discussion/URL tab | Resolve and activate the declared destination | Correct custom screen and Back |
-| External article or original website | Resolve, show website cue, activate explicit website intent | Correct destination/session and Return |
-| Like, Bookmark, Follow | Semantic button and validated source action | Observe requested state and reconcile rollback |
-| Repost/More/Share | Owned menu or sheet | Opens its named choices, Cancel/Back restores focus |
-| Save/category editor | Owned button and applet repository | Existing receipt/conflict/read-back rules |
-| Reply/Post/Quote editor | Context-specific website workflow | Correct editor context, no automatic submission, Return |
+## Choose where the action happens
 
-An icon labeled Like must not merely open the containing post. A website action declaration grants presentation, not execution of that action. Keep generic Open page on website in an explicitly named recovery/menu item. Source DOM remains hidden through loading, errors and transitions. Never transfer HTML, form tokens, cookies or selectors to the foreground.
+| Action | Implement it as |
+| --- | --- |
+| A simple toggle the page exposes as a button or link (vote, follow, bookmark, like) | An adapter intent with driver steps, sent with `useIntent` |
+| A search or filter that is a website URL | `navigate({ kind: "route", url })` to the results URL |
+| Sign-in, sign-up, password, payment, account settings, CAPTCHA or other challenge | A website route, or `navigate({ kind: "website", url })` from an explicit control |
+| Writing a post, comment or message | The website sheet by default. Rebuild the editor only when the user asks and the form is plain fields and one submit button. |
+| Applet data (categories, notes, saved lists) | `useRecords` or the applet's service |
 
-## Source actions
+Never fill credentials, never solve challenges, and never submit anything the user did not explicitly request in that moment.
 
-Use the existing public source command/publication channel. The following names and payload are applet-defined, not SDK action APIs:
+## Intents
 
 ```ts
-await context.source.command({
-  name: 'x.action',
-  epoch: snapshot.epoch,
-  payload: {visitId, requestId, token, account, desired: true},
-});
+// adapter
+intents: {
+  vote: (intent, doc) => {
+    const button = `#up_${CSS.escape(intent.id)}`;
+    if (!doc.querySelector(button)) return [];          // nothing to do; act() resolves
+    return [{ click: button }, { waitFor: `#un_${CSS.escape(intent.id)}`, timeoutMs: 5000 }];
+  },
+  search: intent => [{ fill: "input[name=q]", value: String(intent.query) }, { submit: "form.search" }],
+},
 ```
 
-The promise acknowledges dispatch. It does not prove an upstream write. Publish validated bounded action descriptors and retained request results alongside normal source models. Preserve results across coalesced publication. Use pending, observed, rejected and uncertain outcomes, an observation deadline, and fixed safe errors. Observed source UI may be optimistic; keep accepting rollback. Persistence requires separately authorized write/reload/read-back qualification.
-
-Bind action tokens to current source visit, account, exact entity, URL, selected tab and live control. Revalidate immediately before clicking and each later confirmation. Reject disabled controls, recycled nodes, unknown state, stale requests and mismatched accounts. Desired-state operations are preferable to blind toggles. Deduplicate requests with a monotonic sequence; retain a high-water mark after evicting old receipts. Serialize mutations. Never automatically retry uncertain writes or send an opposite action to compensate.
-
-Cached content can remain readable after its live source action token expires. Offer internal Open live post to interact. Never queue a mutation across that navigation or obtain authority from cached text/counts. Provider/recovery entry cancels later confirmation steps. Disposal cancels timers, not a remote write already sent.
-
-Keep upstream bookmarks separate from applet Categories unless the product explicitly requests synchronization. Account confirmation for website actions is distinct from backend credentials and backend-account matching.
-
-## Editors and sharing
-
-Keep original forms, authentication, uploads, settings and protected playback in explicit website workflows unless separately implemented and qualified. Inspect contextual editor URLs. Opening the containing post is not a successful Reply action. Never prepare source dialogs on mount, hover or resolve. Any source preparation must be a non-submitting user action bound to the same context; a URL/epoch change invalidates preparation.
-
-SDK 0.5.1 adds optional foreground-only native sharing:
-
-```ts
-if (context.sharing.supported) {
-  await context.sharing.shareUrl({url: canonicalUrl, title: 'Post'});
+```tsx
+// foreground
+const { act, pending } = useIntent("main");
+async function vote() {
+  try { await act({ name: "vote", id: item.id }); }
+  catch (error) { setNotice("The vote did not go through. Try again."); }
 }
 ```
 
-The returned status is `presented`, not sent. Old hosts report unsupported; keep Copy link available. Copy only on explicit click and report success after `navigator.clipboard.writeText` resolves. If copying fails, provide a selectable URL and honest error. Never open the website to share a foreground URL.
+- Target the current entity by its stable id, never by its position on the page.
+- End with a wait for the observable result, such as the new button state or the result URL, so `act` resolves only when the website accepted the action.
+- After `act` resolves, read the new state from the next snapshot. Do not keep a separate optimistic copy that can disagree with the page. When you show an optimistic state, revert it on failure.
+- Disable the control while `pending` and keep the rest of the screen usable.
+- Intents that end in `navigate` or `submit` resolve when the new page starts loading. Wait for the destination screen's snapshot before claiming the outcome.
+- When an intent fails, say so and leave the control as it was. `DEADLINE` after a submit means the outcome is unknown: reread before offering to try again.
 
-## Design and qualification
+## Controls
 
-Use buttons for actions, links for destinations, pressed state only for known state, disabled/busy feedback and accessible labels. Preserve 48 CSS-pixel action targets, keyboard focus, scalable text and light/dark themes. Menus must open menus. Website cues belong to actual website transitions, not every interactive element.
+Every element that looks interactive does something: a menu icon opens a real menu, an image opens that image, a quoted post opens the quote, a username opens the profile. Do not invent destinations from appearance; use the URLs the adapter extracted. Mark controls that open the website sheet with the [website cue](defaults.md). Label icon buttons with what they do and their current state ("Upvote", "Remove upvote").
 
-Maintain an interaction inventory beside the route inventory. Record each control, entity identity, execution owner, expected result, mutation status, readiness/disabled evidence, pending/error behavior, Back/Return and actual qualification. Test nested controls separately from parent cards; selection and modified clicks must not also activate the parent.
+Pull to refresh and the Refresh control reload the current page: navigate to its URL with `mode: "replace"`, keep the current content visible, and show the outcome when the new snapshot arrives.
 
-Check disabled/unknown source controls, recycled rows, account/tab changes, duplicate requests, coalesced receipts, source rollback, timeout, provider return and chooser cancellation. Screenshots and typechecks cannot qualify mutations. Do not submit social/account actions as routine QA without explicit mutation scope. Keep blocked read-back or source variants visible in the handoff.
+## Interaction inventory
+
+List every control on each screen in `.specs/current.md`: what it does, where it happens (intent, route, website or applet data), its pending and failure behavior, and whether it was exercised on the device. Opening a form proves the form opens; it does not prove submission.

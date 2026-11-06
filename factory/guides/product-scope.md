@@ -1,96 +1,59 @@
-# Product scope and clarification
+# Product scope
 
+Use this to turn a website address and an ordinary request into the app the user expects, and to keep that app intact while you change it.
 
-Use this workflow with [factory instructions](../AGENTS.md) and the selected [applet skill](../skills/README.md). It applies to new applications, feature additions and maintenance. It travels with the creator kit and requires no access to the Genesis monorepo or its historical plans.
+## One app, many parts
 
-## Keep the requested application intact
+An applet is the app the user opens. Its sources, screens, records and services are internal parts. A request for "an X client with categorized bookmarks" means one applet with timelines, search, conversations, profiles and bookmarking, not a bookmark app and a separate client. Make two applets only when the user asks for two apps.
 
-An applet is the application a person opens. A source is a running website context, a page is an internal screen, and a service is a data provider. Several sources or pages can belong to the same applet. A user asking for one social client with categorized bookmarks usually wants timelines, search, conversations, account flows and bookmarking inside one application. A separate category backend does not imply a separate bookmark app. A request for two distinct applications normally produces two applet identities.
+When customizing, keep the applet's id, launcher entry, working features, stored data and explicit choices. Do not shrink a full client to the feature that needs the most new code. Reference applets show technique; do not copy their placeholders, restrictions, themes or data models unless the user asked for them.
 
-For an existing app, preserve its working behavior and identity while adding the requested change. For a complete website-backed client, map the daily experience before selecting implementation components. Preserve source browsing, forms and authentication where the website already provides them. Do not reduce the app to the custom feature merely because that feature needs most of the new code. A source-owned form/action can satisfy a workflow through explicit website presentation with correct return navigation. Core custom browsing screens require owned renderers.
+## Start from the website
 
-Copy useful technical patterns from reference applets. Do not copy an unrelated placeholder, missing workflow, personal-account restriction, visual theme or data model as if the user requested it. A minimum capability set means least privilege, not minimum product functionality. Component milestones are useful; a component demo is not the completed application.
+A domain and a description are enough to start. Resolve the domain to its canonical `https://` origin. Inspect the mobile website, signed in where the user has given access: the entry page, lists, details, profiles, search, account pages, forms, loading and failure states. Derive the everyday journeys yourself; the user does not have to list screens or selectors. Choose a readable name and an id when none was given.
 
-## Establish a small product brief
+## The product brief
 
-Read the prompt, previous decisions, existing manifest/README and available authorized source context. In `.specs/current.md`, record the following in a few paragraphs and a flow table. For small edits, extend the existing brief instead of writing a separate planning document.
+Write a short brief in `.specs/current.md`:
 
-- Intended application names/count, existing stable IDs and intended launcher entries.
-- Explicit user requirements and the existing workflows/data to preserve.
-- Essential journeys, including entry, action, persistence where relevant, and return to the opener.
-- Which behavior the website supplies, which UI the applet owns and which store is authoritative.
-- Delivery target, such as source code, an installed debug applet or a bundled build. Do not confuse these.
-- User-approved exclusions, reversible technical assumptions and unresolved material choices. Attribute material decisions to the user or agent.
-- The visual reference and any explicit design/navigation overrides. Follow [design fidelity](design.md): source-product mobile/native identity is the default unless the user supplies an explicit alternative. Record inaccessible references and use the mobile website for uncertain native details.
+- The app's name, id and launcher entry, and what already exists.
+- The user's explicit requirements and the workflows and data to preserve.
+- The core journeys: where each starts, what the user does, what is stored, and how they get back.
+- What the website supplies, what the applet renders, and which store owns each record type.
+- The design reference and any explicit overrides.
+- Exclusions the user approved, assumptions you made, and open questions.
 
-Label each requirement as `required`, `preserve`, or `user-approved deferred`. During work give it a separate status: `planned`, `implemented`, `verified`, `failed`, `blocked`, or `deferred`. Record evidence for verification and a reason for every block. An agent's convenience or inability to verify a flow does not turn it into a user-approved exclusion.
+Mark each requirement `required`, `preserve` or `deferred by user`, and track its status as `planned`, `implemented`, `verified`, `failed` or `blocked` with evidence. Your inability to check something does not make it an exclusion.
 
-| Journey | Expected user-visible result | Owner/data authority | Status and evidence |
+| Journey | Expected result | Owner and data | Status |
 | --- | --- | --- | --- |
-| Open application, browse, open detail, Back | One app identity; correct content, section and reading position on return | Website plus native shell | Fill from actual observation |
-| Open a sensitive/account route | Source session and forms remain usable; return stays within the app | Website | Do not infer from origin permission alone |
-| Use the added feature and reopen it | Confirmed result persists in the intended store | Applet and its declared authority | Trace actual UI through write/read-back |
-| Follow an external link and Close | Actual destination origin; original detail and scroll restored | Reader and owning section | Verify both directions |
-| Lose backend access or encounter unfamiliar markup | Useful error or usable source recovery; unrelated browsing remains available | Applet/source/host | Failed reads never become empty collections |
+| Launch, browse, open a detail, Back | Right content, section and scroll position on return | Source and foreground | |
+| Sign in or open an account page | Website sheet; returns to the opener | Website | |
+| Use the added feature, leave, reopen | The result persists in its store | Foreground and its store | |
+| Open an outside link and close it | Correct destination; the detail is restored | Website sheet or browser | |
+| Service down or unfamiliar page | A clear error; the rest of the app keeps working | Foreground | |
 
-Adjust the rows to the request. A tiny CSS fix does not require a full client audit. A complete client request does require coverage of its daily workflows and explicit reporting of gaps. Do not promise parity with a native application based solely on build success or visual similarity.
+Size the brief to the change. A style fix does not need a full client audit; a full client does.
 
-## Ask about material ambiguity
+## Ask about real ambiguity
 
-Ask when two plausible interpretations would materially change what the user receives and the prompt/context does not resolve them. Ask before implementing the affected decision. Use ordinary product language, one to three focused questions at a time, with concrete choices and their consequences. A question is for missing intent, not a ritual approval of every plan.
+Ask when two reasonable readings would give the user a materially different app and the context does not decide it. Ask before building the affected part, in product language, one to three questions with concrete choices.
 
-| Situation | Required response |
+| Situation | Response |
 | --- | --- |
-| The user explicitly wants one app with a new feature | Keep it integrated. Do not ask again whether to create a separate app. |
-| A brief says "make a saved-post app" without saying whether it replaces the full client | Ask whether they want the complete client with Saved integrated or a dedicated collection app. |
-| A request says "like our other app" | Reuse relevant patterns; ask only if importing an unresolved product limitation would affect the outcome. |
-| Two stores could be synchronized or independent and the user has not specified behavior | Ask what saving/removing should do in each store. Do not invent synchronization or migrations. |
-| A personal single-account backend would exclude intended accounts/users | Establish intended account scope before committing to that limitation. |
-| A required feature needs an unavailable host capability or blocked authentication | Explain the blocked workflow. Ask about the product tradeoff if a fallback or scope change is necessary; retain the requirement until answered. |
-| The request already defines the app count, data ownership or platform authorization | Follow it. Do not make the user repeat the instruction. |
-| A choice concerns module names, managed SDK calls or ordinary implementation structure | Decide from current code, document material technical tradeoffs and continue. |
+| The user asked for one app with a new feature | Keep it integrated; do not ask again. |
+| "Make a saved-posts app" without saying whether it replaces the client | Ask whether they want the full client with Saved, or a separate collection app. |
+| Two stores could stay independent or sync | Ask what saving and removing should do in each. |
+| A personal single-account backend would exclude other intended accounts | Establish who will use it first. |
+| A feature needs a capability the host lacks | Explain the gap; ask about a fallback if one changes the product. |
+| Module names, file layout, selector choice | Decide yourself. |
 
-For example: "Should removing a post from a category also remove its website bookmark, or should these remain independent?" This resolves a behavior choice. "Should I use a repository module?" transfers an implementation responsibility to the user and is unnecessary.
+Continue work that does not depend on the answer. No answer is not approval.
 
-While a material answer is pending, continue work that does not depend on it. Keep the decision marked unresolved and avoid building one interpretation into schemas, navigation or delivery. No response is not approval. If no question mechanism is available, state the focused question in the handoff and identify dependent work. Do not invent a response after a timeout.
+## Limits do not change the product
 
-## Handle access and capability limits without changing the product
+A blocked sign-in or a missing device blocks the affected verification; it does not redefine the app. Do not bypass challenges or collect extra account data. Label synthetic data and component previews as diagnostics. When the platform lacks a capability, describe the missing contract and a sanitized reproduction instead of inventing an API.
 
-An authentication failure blocks the affected verification; it does not redefine the product. Keep credentials out of source, evidence and password storage when requested. Do not bypass challenges or collect extra account data to complete a check.
+## Finishing
 
-Use independent component checks to make progress. Label synthetic data, substituted account providers and temporary applets as diagnostics. Such checks cannot establish real source extraction, account handling, service integration or native-client parity. A source route with ordinary presentation is still part of the app's journey; it must not be treated as an abandoned feature or another launcher app.
-
-If platform changes are authorized, handle generic capability work under platform instructions and then return to integrated app acceptance. If not, provide the exact missing contract and reproduction. Do not invent an SDK API, silently patch host internals or turn a missing capability into an unexplained exclusion.
-
-## Deliver the app, then assess completion
-
-Start acceptance at the actual launcher entry. Walk each required journey with the real source and intended service, including errors and return navigation. Keep component, integrated, device and synthetic evidence separate. For source actions with consequences, use existing authorization or ask for the specific missing mutation scope; never send a post/message just to prove a form works.
-
-Record any temporary installed package's identity and how it will be removed from everyday navigation. Prefer a separate QA environment. Use only supported cleanup/visibility tools and preserve user data. Do not assume a proposed visibility/uninstall command exists. If safe cleanup is unavailable, avoid installing an extra package on the everyday device; if it is already there, report the gap and seek the appropriate platform capability. Never reset Genesis merely to make the launcher look clean.
-
-Before handoff, compare the delivered launcher and behavior with the brief. A build pass, an accepted package receipt and a running server are separate checks; none proves the whole journey. For each unmet requirement state whether implementation failed, verification was blocked or the user explicitly deferred it. Continue independent authorized work, but do not label the requested application complete while a core journey remains unmet.
-
-## Examples for checking these instructions
-
-These are manual reasoning examples, not executable tests or promised tool capabilities.
-
-| Request or event | Expected agent behavior |
-| --- | --- |
-| "Build the complete X client and add categorized bookmarks; keep HN" | One X applet alongside HN; source/page/service parts remain internal; verify daily routes and both save authorities. |
-| "Improve this app's category sheet" | Preserve the app and existing stores; change/verify the sheet and neighboring return flow. |
-| "Create a collection app, separate from my social client" | A separate applet is appropriate because the split is explicit. |
-| "Make a client like the native app" but a core host facility is absent | Record the expected workflow, explain the precise gap and ask about a material fallback; do not declare a subset equivalent. |
-| Login becomes rate-limited after source work | Keep real acceptance blocked, complete independent work and do not deliver a second synthetic app as the result. |
-| A QA applet remains in the launcher | Treat this as unfinished delivery cleanup, even if its individual UI checks passed. |
-
-The product brief must include the mandatory route inventory with owned-screen/adapter mapping, website-provider actions and unknown-route recovery. See [isolated applets](isolated-applets.md). A route match is not evidence of valid loaded source content.
-
-## Route and action inventory
-
-Before implementation, record each normal link/tab, same-URL website action, external destination and return path. The `.specs/current.md` table must name example URL, manifest rule/source, screen/adapter or action, readiness/empty/gated/error evidence, visible handoff cue, expected Back/Return and actual verification status. Keep inaccessible required journeys marked blocked; declarations alone are not acceptance.
-
-## Domain-first investigation
-
-A base domain plus desired changes is sufficient to start. Resolve a bare domain to an HTTPS candidate and inspect its canonical destination. Preserve explicit paths/query context; explicit HTTP conflicts with source HTTPS requirements and needs a supported choice. Choose a readable name/stable ID when absent; ask about material ambiguity or collisions only.
-
-Inspect available authorized mobile entry/detail/account/form/loading/failure states. Derive everyday connected workflows and write them in current specs without requiring the user to enumerate selectors or every screen. Missing login/tools blocks affected qualification; do not invent inspected evidence or replace the product with synthetic data. Apply [defaults](defaults.md), maintain [records](applet-records.md) and check [shared intent](rules.md#shared-intent-during-customization) before implementing.
+Start acceptance at the launcher. Walk each core journey with the real website and the intended store, including errors and Back. Do not post, message, follow or purchase to prove a form works. Remove temporary test applets from the device with the tools that exist, and never reset Genesis to clean up. Report each unmet requirement as failed, blocked or deferred by the user, and do not call the app complete while a core journey is unmet.

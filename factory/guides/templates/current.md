@@ -1,29 +1,34 @@
-# Current applet specification
+# Current specification
 
-## Identity and context
+## Identity
 
-Record display name, stable applet ID, base/canonical origins, source/page/service IDs, installed SDK/tools/schema/API and kit metadata or guidance revision. Missing metadata is unknown.
+Name, applet id, origins, source ids, screen ids and service ids. Manifest schema, SDK and tools versions, and the kit version from `kit.json`. Write "unknown" for anything not known.
 
 ## Product scope
 
-Record requested app count, features, preserved workflows, data authority/account scope, delivery target, approved exclusions and open material questions.
+The app the user asked for, its core journeys, the workflows and data to preserve, which store owns each record type, the delivery target, exclusions the user approved, and open questions.
 
-## Applied defaults and overrides
+## Defaults and overrides
 
-| Rule ID | Current choice | User/agent origin and reason | Decision reference / contract limit |
+| Rule id | Current choice | Origin and reason | Decision |
 | --- | --- | --- | --- |
-| default-platform-menu | Configure native shell/menu unless explicitly overridden | Factory default | Record actual configuration status |
+| default-platform-menu | Shell top bar and Genesis menu, accent from `shell.accent` | Factory default | |
 
-## Route inventory
+## Routes
 
-| Journey/example URL | Manifest rule/source | Adapter/model/renderer or provider | Ready/empty/gated/error evidence | Cue and Back/Return | Implementation | Verification/evidence |
+| Route id | Example URL | Screen or website | Loading, empty, sign-in and error | Back | Status | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
 
-## Interaction inventory
+## Interactions
 
-| Control/entity | Expected result and owner | Mutation/authorization boundary | Pending/disabled/error/uncertainty | Back/Return | Implementation | Verification/evidence |
-| --- | --- | --- | --- | --- | --- | --- |
+| Screen and control | Result | Intent, route, website or store | Pending and failure | Status | Evidence |
+| --- | --- | --- | --- | --- | --- |
+
+## Data
+
+| Collection or service path | Owner | Key | Shape version | Notes |
+| --- | --- | --- | --- | --- |
 
 ## Current work and verification
 
-List ordered next steps, unresolved choices, blockers, exact check/revision/environment evidence and known limits. Implementation is planned, implemented, blocked or user-approved deferred. Verification is not-run, passed, failed or blocked. Do not infer live success from compilation.
+Next steps, blockers and known limits. Status is planned, implemented, verified, failed, blocked or deferred by the user. Record the evidence kind for each verification: static, synthetic, or device with the real website.

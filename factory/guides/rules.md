@@ -1,45 +1,53 @@
 # Applet rules and choices
 
-Read this before building or customizing. A user's product requirement describes their requested app. A Genesis requirement describes the contract that makes it work. Classify each separately.
+Read this before building or customizing an applet. A product requirement describes the app the user asked for. A Genesis requirement describes what makes an applet work on the platform. Classify each one separately.
 
 | Class | Meaning | Response |
 | --- | --- | --- |
-| Requirement | Platform compatibility, correctness/data boundary or mandatory authoring/verification obligation | Follow it. Explain contradictions and ask for viable alternatives before dependent implementation. Consent cannot create an unavailable capability. |
-| Default | Initial product/UI behavior absent another choice | Apply automatically. An explicit compatible alternative wins, even if brief. Record the override. |
-| Best practice | Preferred maintainable engineering method | Follow unless explicitly overridden compatibly. Record material departures without routine approval. |
+| Requirement | Platform compatibility, correctness, a data boundary, or a mandatory authoring or verification step | Follow it. If the user's request contradicts it, explain the consequence and offer workable alternatives before building the dependent part. Consent cannot create a capability the host lacks. |
+| Default | Initial product or UI behavior when nobody chose otherwise | Apply it automatically. A compatible explicit choice wins, however brief. Record the override. |
+| Best practice | Preferred maintainable engineering | Follow it unless the user overrides it compatibly. Record material departures; no approval needed. |
 
-Read the latest prompt, local instructions, `.specs/current.md`, relevant decisions and actual code. Explicit choices survive kit updates. A vague request to improve appearance does not revoke them. Split mixed rules into visual preference and correctness obligation.
+Read the latest request, local instructions, `.specs/current.md`, relevant decisions and the code itself. Explicit choices survive kit updates; a vague request to "make it look better" does not revoke them. Split a mixed instruction into its visual preference and its correctness obligation.
 
 ## Rule index
 
-| ID | Class and obligation | Detailed owner |
+| ID | Class and obligation | Details |
 | --- | --- | --- |
-| requirement-compatibility | Requirement: installed SDK/tools, schema and host must agree; public imports only | [SDK reference](sdk-reference.md) |
-| requirement-isolation | Requirement: hidden source, validated bounded models, owned foreground; no source pixels/HTML fallback | [Isolation](isolated-applets.md) |
-| requirement-route-policy | Requirement: exact origins, declared routes, host decisions and explicit website intent | [Navigation](navigation.md) |
-| requirement-loading-evidence | Requirement: affirmative ready/empty/gating/failure evidence; missing selectors remain pending | [Patterns](patterns.md#loading-is-an-unresolved-observation) |
-| requirement-real-interactions | Requirement: controls perform named actions; current account/entity/visit identity, observed outcomes and uncertainty | [Interactions](interactions.md) |
-| requirement-data-integrity | Requirement: stable IDs, explicit migrations, authoritative stores, credentials outside source, no blind uncertain-write retries | [Services/data](services-and-data.md) |
-| requirement-accessible-navigation | Authoring requirement: semantic labels, focus, readable contrast, scalable text, usable touch targets and Back/Return | [Design](design.md) |
-| requirement-records | Authoring requirement: maintain current applet intent, decisions and change outcomes | [Records](applet-records.md) |
-| requirement-honest-verification | Verification requirement: distinguish static/synthetic/live evidence and preserve blocked journeys; no unrequested account/social/purchase mutations | [Verification](verification.md) |
-| requirement-operator-startup | Workflow requirement: maintain start scripts but start services only when explicitly asked | [Services/data](services-and-data.md#local-startup-and-port-assignments) |
-| default-* | Initial UI/navigation choices and compatible exceptions | [Defaults](defaults.md) |
-| practice-focused-modules | Best practice: separate extraction, validation, UI, repositories and backend calls; abstract only after real reuse | [Patterns](patterns.md) |
-| practice-bounded-work | Best practice: bounded list work, centralized subscriptions and shared components/tokens | [Patterns](patterns.md), [design](design.md) |
-| practice-small-dependencies | Best practice: smallest useful dependency and capability set without reducing requested scope | [Getting started](getting-started.md) |
-| practice-scoped-diagnosis | Best practice: inspect evidence, isolate owner, verify changed journeys and keep concise current records | [Verification](verification.md) |
+| requirement-compatibility | Requirement: the installed SDK, tools, manifest schema and host agree; public imports only | [SDK reference](sdk-reference.md) |
+| requirement-hidden-sources | Requirement: websites stay hidden; adapters publish bounded JSON; the foreground renders every screen | [Hidden sources](#hidden-sources) |
+| requirement-route-policy | Requirement: exact origins, declared routes, and the website sheet only on explicit user intent | [Navigation](navigation.md) |
+| requirement-loading-evidence | Requirement: an extractor returns data only from content it recognized; `null` while the page is not ready | [Patterns](patterns.md#loading-is-not-empty) |
+| requirement-real-interactions | Requirement: a control performs the action its label names, against the current entity and account, and reports the observed outcome | [Interactions](interactions.md) |
+| requirement-data-integrity | Requirement: stable keys, one authoritative store per record type, revision checks, credentials outside the bundle, no blind retry of uncertain writes | [Services and data](services-and-data.md) |
+| requirement-accessible-navigation | Authoring requirement: semantic labels, focus, readable contrast, scalable text, 48 dp touch targets and working Back | [Design](design.md) |
+| requirement-records | Authoring requirement: keep current intent, decisions and change outcomes in applet records | [Records](applet-records.md) |
+| requirement-honest-verification | Verification requirement: keep static, synthetic and live evidence apart; keep blocked journeys visible; no unrequested posts, messages, purchases or account changes | [Verification](verification.md) |
+| requirement-operator-startup | Workflow requirement: maintain backend start commands; start services only when the user asks | [Services and data](services-and-data.md#local-startup-and-ports) |
+| default-* | Initial UI and navigation choices and their compatible overrides | [Defaults](defaults.md) |
+| practice-focused-modules | Best practice: separate extraction, data types, screens, repositories and backend calls; abstract only after real reuse | [Patterns](patterns.md) |
+| practice-bounded-work | Best practice: bounded lists, one subscription per concern, shared components and tokens | [Patterns](patterns.md), [design](design.md) |
+| practice-small-dependencies | Best practice: the smallest useful dependency and capability set, without shrinking the requested scope | [Getting started](getting-started.md) |
+| practice-scoped-diagnosis | Best practice: inspect evidence, find the owning component, verify the changed journeys, keep records short and current | [Verification](verification.md) |
 
-## Requirement conflicts and questions
+## Hidden sources
 
-Name the requested behavior, rule, concrete consequence and two or three feasible choices. Example: "Showing the original page while loading would break hidden-source isolation. Should I keep an owned loading screen, or add an explicit Open website action with Return?" Offer a separate platform capability request if necessary. Never offer to ignore a runtime constraint. An explicit process waiver cannot waive data or runtime guarantees.
+- A source is a hidden website page. Its adapter extracts JSON for the declared routes of that source and nothing else. The user never sees the hidden page, including while it loads, fails or redirects.
+- Adapters have no storage, services or navigation. They return data from `extract`, return driver steps from `intents`, and report sign-in state from `isSignedIn`. Only the foreground stores records and calls services.
+- An adapter never executes code taken from the page, never copies whole DOM trees, and never returns HTML, cookies, form tokens or credentials. Return the smallest model a screen needs: text, numbers, validated URLs and ids.
+- The foreground renders website strings as text. Rich text uses an applet-defined model of text runs, links and emphasis, never upstream HTML. Validate link and media URLs before use.
+- Each source sees only its own website. Screens that combine several sources read each one's snapshot in the foreground; no adapter reads another source's page.
+- A route match permits extraction; it does not prove the page holds valid content. Sign-in pages, challenges, error pages and changed markup can appear at any declared URL.
+- Snapshots are capped at 192 KiB. Page large lists, and deduplicate records by id.
 
-Ask only for unresolved material product intent, requirement contradictions, or necessary access/fallback choices. Choose selectors, module names and ordinary spacing yourself. Continue independent work while waiting. Silence is not approval. Missing login/tools/device access leaves affected acceptance blocked; it does not approve a reduced app or synthetic replacement.
+## Conflicts and questions
 
-## Shared intent during customization
+Name the requested behavior, the rule it hits, the concrete consequence and two or three workable choices. Example: "Showing the website while the screen loads would expose the hidden page. Should I keep a skeleton, or add an Open website button?" Offer a platform capability request when that is the real gap. Never offer to ignore a runtime constraint; a process waiver does not waive data or runtime guarantees.
 
-Judge the whole request for common intent such as "every applet should do this" or "make this standard whenever we build apps". Clear all-applet intent authorizes updating the corresponding factory guidance without requiring the phrase "update factory". Classify the rule, compare existing guidance, update its canonical owner and reconcile workflows/verification. Split mixed instructions; a visual preference does not become a runtime requirement merely because the user says "must". Record user origin, classification, scope and rationale in the shared guidance changelog, with a local decision reference where relevant.
+Ask only about unresolved product intent, requirement conflicts, or access and fallback choices. Choose selectors, module names and spacing yourself. Continue independent work while waiting. Silence is not approval. Missing sign-in, tools or device access blocks the affected acceptance; it does not approve a smaller app or synthetic data in its place.
 
-If already covered coherently, do not duplicate the rule. If local versus shared intent is unclear, ask "Should this become the default for all applets, or apply only here?" A reusable fix or repeated local request alone is insufficient. Do not retrofit unrelated applets or erase local overrides. Site selectors and business rules stay local. In exported workspaces update only the available factory copy and identify it; no upstream update is implied.
+## Shared intent
 
-For Genesis platform changes without requested/shared guidance scope, explain any factory mismatch and ask before changing shared policy. Restoring documented behavior needs no policy question. Authorized local applet records and port reservations are not shared policy edits.
+Judge the whole request for intent that covers every applet, such as "every applet should do this" or "make this standard whenever we build apps". Clear all-applet intent authorizes updating the factory guidance that owns the topic, without the user saying "update the factory". Classify the rule, compare it with the existing guidance, update its one canonical place, and reconcile skills and verification with it. A visual preference does not become a runtime requirement because the user said "must".
+
+If the guidance already covers the rule, do not duplicate it. If it is unclear whether the user means this applet or all applets, ask: "Should this become the default for all applets, or apply only here?" A reusable fix or a repeated local request is not enough. Do not change unrelated applets or erase their local overrides. Site selectors and business rules stay local. In an exported kit, update only the available copy and say so; nothing flows upstream automatically.

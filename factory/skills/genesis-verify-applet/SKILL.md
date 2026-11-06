@@ -1,14 +1,15 @@
 ---
 name: genesis-verify-applet
-description: Verify a Genesis applet using its public SDK, product choices and portable factory guidance.
+description: Verify a Genesis applet against its current spec on a device and report the evidence for each requirement.
 ---
 
 # Verify a Genesis applet
 
-Read [factory instructions](../../AGENTS.md), [rules](../../guides/rules.md), [defaults](../../guides/defaults.md), [records](../../guides/applet-records.md) and the applet's current specs. Use [product scope](../../guides/product-scope.md), [isolation](../../guides/isolated-applets.md), [SDK reference](../../guides/sdk-reference.md), [navigation](../../guides/navigation.md), [interactions](../../guides/interactions.md), [design](../../guides/design.md), [patterns](../../guides/patterns.md), [services/data](../../guides/services-and-data.md) and [verification](../../guides/verification.md) for the affected components.
+Read [factory instructions](../../AGENTS.md), [rules](../../guides/rules.md), [defaults](../../guides/defaults.md), [records](../../guides/applet-records.md). Use [product scope](../../guides/product-scope.md), [SDK reference](../../guides/sdk-reference.md), [navigation](../../guides/navigation.md), [interactions](../../guides/interactions.md), [patterns](../../guides/patterns.md), [design](../../guides/design.md), [services and data](../../guides/services-and-data.md) and [verification](../../guides/verification.md) as each step needs them.
 
-1. Read current requirements, choices, route/interaction inventories and exact installed revisions. Check shared-intent classification and consistency of authorized guidance changes. Do not infer expected behavior from a historical prototype.
-2. Run existing static checks scoped to the changed applet. No test files without a coverage request. Distinguish pre-existing failures and static/synthetic/live/device evidence.
-3. Check actual launcher/content/action/persistence/Back/Return flows, menu default or recorded override, pending frames, failures, large text/themes and keyboard layout. A menu must open its choices; a mutation requires observed results and separately authorized persistence qualification.
-4. Check stale/recycled identities, repeated navigation/refresh, provider Return without new publication, transient Back ownership and hidden-source pixels/accessibility/focus/audio. Do not submit real social/account/purchase actions as routine QA.
-5. Diagnose owner: applet, website, environment/backend or platform. Report-only work does not authorize fixes/device mutations. Keep required blocked journeys explicit, preserve user data and safely clean diagnostics. Record exact outcomes and limitations in current specs and change record when work changes files.
+1. Read the current spec's requirements, route and interaction inventories, and the installed revision from `genesis-applet dev status`.
+2. Run `npm run check` and `npm run build`. Do not add test files unless the user asked for test coverage. Separate failures that existed before the change.
+3. From the Genesis launcher, walk each journey: pending state, content, action, outcome, stored result and Back. Exercise sign-in, empty and failure states, the website sheet, resume and Reload applet, both themes and large text.
+4. Do not post, message, vote, follow, purchase or change account settings unless the user asked. A report-only request does not authorize fixes.
+5. When something fails, find the owner (adapter, screen, store, service, website or platform) from the evidence.
+6. Report each requirement as implemented, verified, failed, blocked or deferred, with the evidence kind. When the work changed files, record the outcome in the current spec and the change record.
