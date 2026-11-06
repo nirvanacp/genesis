@@ -89,6 +89,8 @@ const THEME = `:root { color-scheme: light dark; --paper: #ffffff; --ink: #18202
 html, body { margin: 0; height: 100%; background: var(--paper); color: var(--ink); font: 16px/1.5 system-ui, sans-serif; }
 #root, .screen { height: 100%; }
 .screen { overflow-y: auto; padding: 16px; box-sizing: border-box; }
+/* The shell's floating menu button covers the top-right corner. */
+.screen::before { content: ""; float: right; width: 44px; height: 44px; }
 .notice { padding: 16px; }
 .links { list-style: none; margin: 0; padding: 0; }
 .links li { border-bottom: 1px solid var(--line); }
