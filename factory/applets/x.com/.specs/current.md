@@ -99,7 +99,7 @@ All current code remains implemented at its prior revision; this record adoption
 
 ## Current work and verification
 
-Adoption 2026-11-01T19:24:48+05:30: manifest IDs, package versions, documented code paths and links inspected; no runtime/data changes. Live verification not-run in this task. Existing historical evidence: [144631-x-interactions-verification.md](../../../../.reports/phase-5/2026-11-01/144631-x-interactions-verification.md), [065059-x-ux-repair-verification.md](../../../../.reports/phase-5/2026-11-01/065059-x-ux-repair-verification.md). Each record qualifies only its named revision/environment; no past pass establishes current site selectors or all routes.
+Adoption 2026-11-01T19:24:48+05:30: manifest IDs, package versions, documented code paths and links inspected; no runtime/data changes. Live verification not-run in this task. Existing historical evidence: [144631-x-interactions-verification.md](../../../../.developer/reports/phase-5/2026-11-01/144631-x-interactions-verification.md), [065059-x-ux-repair-verification.md](../../../../.developer/reports/phase-5/2026-11-01/065059-x-ux-repair-verification.md). Each record qualifies only its named revision/environment; no past pass establishes current site selectors or all routes.
 
 Current interaction code restores ready account-bound controls after provider Return even without new source publication, cancels pending work on website entry, and keeps cached rows read-only until live targets exist. Actual mutation persistence, inverse confirmation/private Follow variants, native video, physical-device/TalkBack, localization/Premium-only layouts and account switching remain unqualified.
 

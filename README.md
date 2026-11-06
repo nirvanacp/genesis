@@ -6,7 +6,7 @@ There are two development layers:
 
 | Layer | Owns | Start here |
 | --- | --- | --- |
-| Genesis platform | Android browser integration and native shell, Rust lifecycle/policy, general SDK capabilities, package and creator tooling | [Root AGENTS.md](AGENTS.md), [architecture](.architecture/README.md), [phase-5 maintenance](.docs/phase-5/2026-10-31/194740-genesis-isolated-applet-maintenance.md) |
+| Genesis platform | Android browser integration and native shell, Rust lifecycle/policy, general SDK capabilities, package and creator tooling | [Root AGENTS.md](AGENTS.md), [architecture](.developer/architecture/README.md), [phase-5 maintenance](.developer/docs/phase-5/2026-10-31/194740-genesis-isolated-applet-maintenance.md) |
 | Applets | Website adapters, custom UI, application rules/data, optional independently operated backends | [Factory](factory/README.md), [factory AGENTS.md](factory/AGENTS.md), [builder skills](factory/skills/README.md) |
 
 A Genesis developer may work in either layer. Follow the instructions for the layer being changed. An applet author should use public SDK capabilities and their own code; they should not need to learn the host implementation to add application behavior.
@@ -21,7 +21,7 @@ A Genesis developer may work in either layer. Follow the instructions for the la
 - `tools/`: current package/APK build and development service tooling.
 - `factory/applets/`: current applet source, including optional applet-owned backends.
 - `factory/`: applet author instructions, portable guides, and skills. Example applets live under `factory/applets/`.
-- `.architecture/`: current platform boundaries and an explicitly labeled HN reference application. Phase-specific operations, plans, and change records follow root instructions.
+- `.developer/architecture/`: current platform boundaries and an explicitly labeled HN reference application. Phase-specific operations, plans, and change records follow root instructions.
 
 ## Running local applet servers
 
@@ -78,8 +78,8 @@ Stable applet identities, website cookies, native sections and backend records a
 
 Source adapters publish bounded validated data and perform only revalidated read/navigation commands. Foregrounds own application UI, records/services and explicit website presentation. Website forms/social mutations and protected media keep their original session and controls in the provider. No process-death form restoration or POST replay is promised. Existing HN Search remains its documented placeholder.
 
-The emulator migration checks cover real HN/X browsing, account-observed Categories, save/read-back/cleanup, internal/external return paths, media/notification variants, failed refresh, draft Stay/Leave and renderer recovery. Exact builds and unverified boundaries are recorded in the [final acceptance report](.reports/phase-5/2026-10-31/231100-genesis-isolated-applets-verification.md); historical reports qualify only their recorded environments.
+The emulator migration checks cover real HN/X browsing, account-observed Categories, save/read-back/cleanup, internal/external return paths, media/notification variants, failed refresh, draft Stay/Leave and renderer recovery. Exact builds and unverified boundaries are recorded in the [final acceptance report](.developer/reports/phase-5/2026-10-31/231100-genesis-isolated-applets-verification.md); historical reports qualify only their recorded environments.
 
-Use [current maintenance](.docs/phase-5/2026-10-31/194740-genesis-isolated-applet-maintenance.md), [architecture](.architecture/README.md), [the implementation plan](.plans/phase-5/2026-10-31/171848-genesis-isolated-applet-architecture-plan.md) and [factory getting started](factory/guides/getting-started.md). Earlier phase-3/4 plans/guides are background where superseded by this API-3 contract.
+Use [current maintenance](.developer/docs/phase-5/2026-10-31/194740-genesis-isolated-applet-maintenance.md), [architecture](.developer/architecture/README.md), [the implementation plan](.developer/plans/phase-5/2026-10-31/171848-genesis-isolated-applet-architecture-plan.md) and [factory getting started](factory/guides/getting-started.md). Earlier phase-3/4 plans/guides are background where superseded by this API-3 contract.
 
 Applet navigation coverage and website handoffs are described in [the factory navigation guide](factory/guides/navigation.md). New applets use schema 3/API 4 with SDK/tools 0.5.0; the host retains API-3 compatibility.
