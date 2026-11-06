@@ -23,6 +23,8 @@ pub struct Session {
     pub ready_deadlines: BTreeMap<String, u64>,
     /// The applet was recreated after being retired in the background.
     pub restored: bool,
+    /// The foreground's last `navigation.save`; on a restored session, the stack handed back in `bound`.
+    pub navigation: Option<Value>,
 }
 
 impl Session {
@@ -37,6 +39,7 @@ impl Session {
             snapshots: BTreeMap::new(),
             ready_deadlines: BTreeMap::new(),
             restored,
+            navigation: None,
         }
     }
 }
@@ -46,6 +49,7 @@ impl Session {
 pub struct Surfaces {
     pub session: Option<Session>,
     pub suspended_at_ms: Option<u64>,
-    /// Applet retired in the background, reopened on resume.
+    /// Applet retired in the background, reopened on resume, with its saved navigation.
     pub resume_applet: Option<String>,
+    pub resume_navigation: Option<Value>,
 }

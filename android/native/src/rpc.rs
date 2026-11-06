@@ -7,7 +7,7 @@ use crate::{
 use genesis_contracts::*;
 use serde_json::{Value, json};
 
-const FOREGROUND_METHODS: [&str; 11] = [
+const FOREGROUND_METHODS: [&str; 12] = [
     "ui.ready",
     "storage.get",
     "storage.list",
@@ -19,6 +19,7 @@ const FOREGROUND_METHODS: [&str; 11] = [
     "source.intent",
     "back.handled",
     "back.leave",
+    "navigation.save",
 ];
 const SOURCE_METHODS: [&str; 2] = ["source.publish", "source.intentResult"];
 const LIST_LIMIT: usize = 100;
@@ -77,6 +78,7 @@ impl Host {
                 "snapshots": session.snapshots,
                 "sourceUrls": session.source_urls,
                 "restored": session.restored,
+                "navigation": if session.restored { session.navigation.clone() } else { None },
             }),
         };
         let revision = session.revision;
@@ -87,6 +89,7 @@ impl Host {
         // A source's ready deadline stays until it publishes something other than `loading`.
         if let Some(session) = self.surfaces.session.as_mut().filter(|_| source_id.is_none()) {
             session.restored = false;
+            session.navigation = None;
         }
         let role = if source_id.is_some() { "source" } else { "foreground" };
         let bound = HostMessage::Bound {
@@ -244,6 +247,12 @@ impl Host {
             }
             Call::BackHandled { handled } => {
                 self.back_answered(document_id, handled);
+                ok()
+            }
+            Call::NavigationSave { navigation } => {
+                if let Some(session) = self.surfaces.session.as_mut() {
+                    session.navigation = Some(navigation);
+                }
                 ok()
             }
             Call::BackLeave {} => {

@@ -396,6 +396,9 @@ pub enum Call {
     /// Leaves the applet after a Back the foreground handled by asking first, once the user confirms.
     #[serde(rename = "back.leave")]
     BackLeave {},
+    /// The foreground's screen stack, kept only to recreate it after background retirement.
+    #[serde(rename = "navigation.save")]
+    NavigationSave { navigation: Value },
 }
 
 /// Host to document. Every message names the document it is for; a document ignores others.

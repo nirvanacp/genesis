@@ -205,7 +205,11 @@ impl Host {
         self.retire_if_long_suspended(now);
         self.surfaces.suspended_at_ms = None;
         if let Some(applet_id) = self.surfaces.resume_applet.take() {
+            let navigation = self.surfaces.resume_navigation.take();
             self.activate(&applet_id, true, now);
+            if let Some(session) = self.surfaces.session.as_mut() {
+                session.navigation = navigation;
+            }
         } else if self.surfaces.session.is_some() {
             self.broadcast("resumed", json!({}));
         }
@@ -213,8 +217,9 @@ impl Host {
 
     fn retire_if_long_suspended(&mut self, now: u64) {
         let long = self.surfaces.suspended_at_ms.is_some_and(|at| now.saturating_sub(at) >= SUSPEND_RETIRE_MS);
-        if let (true, Some(session)) = (long, self.surfaces.session.as_ref()) {
+        if let (true, Some(session)) = (long, self.surfaces.session.as_mut()) {
             self.surfaces.resume_applet = Some(session.applet_id.clone());
+            self.surfaces.resume_navigation = session.navigation.take();
             self.retire_active();
         }
     }
