@@ -10,9 +10,10 @@ export interface PostActions {
   pending: boolean;
 }
 
-/** Like and bookmark through the primary source. A stale page has no controls to press, so it gets none. */
+/** Like and bookmark through the current screen's source. A stale page has no controls to press, so it gets none. */
 export function usePostActions(stale: boolean): { actions: PostActions | null; error: unknown } {
-  const intent = useIntent("primary");
+  const { screen } = useNavigation();
+  const intent = useIntent(screen.source?.sourceId ?? "primary");
   const actions = stale ? null : {
     toggle: (name: "like" | "bookmark", postId: string, on: boolean) => void intent.act({ name, postId, on }).catch(() => {}),
     pending: intent.pending,

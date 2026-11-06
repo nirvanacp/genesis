@@ -1,5 +1,5 @@
 import type { ComponentType } from "react";
-import { useNavigation } from "@genesis/sdk/react";
+import { useAppResume, useNavigation } from "@genesis/sdk/react";
 import type { NavigateTarget } from "@genesis/sdk";
 import { useAccount } from "./library";
 import { ORIGIN, profileUrl } from "./model";
@@ -25,8 +25,11 @@ const SCREENS: Record<string, ComponentType> = {
 interface Tab { id: string; label: string; icon: IconName; screens: string[]; target: NavigateTarget }
 
 export function App() {
-  const { screen, stack, navigate } = useNavigation();
+  const { screen, stack, navigate, reload } = useNavigation();
   const { account } = useAccount();
+  // The website sheet or time away may have changed the signed-in account. Until the account page
+  // loads again, `useAccount` has no account, so Saved categories wait instead of using the old one.
+  useAppResume(() => reload("account"));
   const tabs: Tab[] = [
     { id: "home", label: "Home", icon: "home", screens: ["home", "post", "media", "unsupported"], target: { kind: "route", url: `${ORIGIN}/home`, mode: "root" } },
     { id: "explore", label: "Explore", icon: "search", screens: ["explore"], target: { kind: "route", url: `${ORIGIN}/explore`, mode: "root" } },

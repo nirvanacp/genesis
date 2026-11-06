@@ -1,6 +1,6 @@
 import { defineSource } from "@genesis/sdk/source";
-import { imageUrl, validId, type FeedData, type MediaData, type PostData, type ProfileData, type ProfileHeader } from "../model";
-import { BUDGET_BYTES, bytes, clean, emptyText, lines, parsing, primaryColumn, readItems, requireNoError, signedOut } from "./page";
+import { imageUrl, type FeedData, type MediaData, type PostData, type ProfileData, type ProfileHeader } from "../model";
+import { BUDGET_BYTES, bytes, clean, emptyText, lines, parsing, primaryColumn, postIntents, readItems, requireNoError, signedOut } from "./page";
 
 /** A list of posts or notifications; null until X has rendered items or its empty state. */
 function feed(doc: Document): FeedData | null {
@@ -78,17 +78,6 @@ function media(doc: Document): MediaData | null {
   return { image: src.href, hasNext: images.some(image => image.getBoundingClientRect().left >= innerWidth - 2) };
 }
 
-/** Clicks a post's control and waits for X to show the opposite one. */
-function toggle(intent: Record<string, any>, on: string, off: string) {
-  if (!validId(intent.postId) || typeof intent.on !== "boolean") throw new Error("Invalid post");
-  const post = `article[data-testid="tweet"]:has(a[href$="/status/${intent.postId}"] time)`;
-  const [press, expect] = intent.on ? [on, off] : [off, on];
-  return [
-    { click: `${post} [data-testid="${press}"]` },
-    { waitFor: `${post} [data-testid="${expect}"]`, timeoutMs: 8000 },
-  ];
-}
-
 export default defineSource({
   id: "primary",
   routes: {
@@ -104,10 +93,7 @@ export default defineSource({
     photo: { extract: media },
     post: { extract: post },
   },
-  intents: {
-    like: intent => toggle(intent, "like", "unlike"),
-    bookmark: intent => toggle(intent, "bookmark", "removeBookmark"),
-  },
+  intents: postIntents,
   /** Home, Notifications, Bookmarks and Likes belong to an account; X shows a login button instead. */
   isSignedIn: doc => parsing(doc) || !signedOut(doc),
 });

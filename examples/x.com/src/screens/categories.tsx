@@ -1,11 +1,14 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { ScrollMemory, useNavigation } from "@genesis/sdk/react";
+import { ScrollMemory, useNavigation, useRecords } from "@genesis/sdk/react";
 import { libraryMessage, useLibrary, type Bookmark } from "../library";
 import { profileUrl } from "../model";
 import { Icon, Notice, SignInPrompt, Skeleton, useOpenRoute } from "../components/ui";
 import { SavedTabs } from "./feed";
 
 type Library = ReturnType<typeof useLibrary>;
+
+/** The filter and search kept per library in the `preferences` collection, in the first release's shape. */
+interface Preferences { query: string; categoryId: string | null; scroll: number }
 
 /**
  * What stands between the screen and the library: sign-in, a different account, an unreachable
@@ -42,9 +45,27 @@ export function CategoriesScreen() {
   const [query, setQuery] = useState("");
   const [page, setPage] = useState<{ entries: Bookmark[]; cursor: string | null; loading: boolean; error: unknown }>(
     { entries: [], cursor: null, loading: true, error: null });
-  const usable = !!library.library && !library.error && !library.pending;
   const revision = library.library?.revision;
   const { service } = library;
+
+  // The last filter and search for this library come back before the first query; changes are kept.
+  const preferences = useRecords<Preferences>("preferences");
+  const key = library.library ? `library:${library.library.libraryId}` : null;
+  const saved = key ? (preferences.records.find(record => record.key === key)
+    ?? preferences.records.find(record => record.key === "library"))?.value ?? null : null;
+  const [applied, setApplied] = useState<string | null>(null);
+  useEffect(() => {
+    if (!key || preferences.loading || applied === key) return;
+    setApplied(key);
+    if (typeof saved?.query === "string") { setQuery(saved.query); setDraft(saved.query); }
+    if (saved?.categoryId && library.categories.some(category => category.id === saved.categoryId)) setCategoryId(saved.categoryId);
+  }, [key, preferences.loading, applied, saved, library.categories]);
+  useEffect(() => {
+    const unchanged = saved ? saved.query === query && saved.categoryId === categoryId : !query && categoryId === null;
+    if (!key || applied !== key || unchanged) return;
+    void preferences.put(key, { query, categoryId, scroll: saved?.scroll ?? 0 }).catch(() => {});
+  }, [key, applied, query, categoryId]); // Only the user's changes write; reading `saved` back does not.
+  const usable = !!library.library && !library.error && !library.pending && applied === key;
 
   // A new filter, search or library revision starts the list over.
   useEffect(() => {

@@ -43,9 +43,5 @@ export default defineSource({
       },
     },
   },
-  intents: {
-    /** Reads the page again after the website sheet may have signed in or out. */
-    reload: () => [{ navigate: location.href }],
-  },
   isSignedIn: doc => parsing(doc) || !signedOut(doc),
 });

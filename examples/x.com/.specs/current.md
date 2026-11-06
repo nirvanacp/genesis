@@ -49,14 +49,14 @@ Excluded: automatic import or sync of X bookmarks into Categories, an offline wr
 | --- | --- | --- | --- | --- | --- |
 | Post body, author, quote | Open the post or profile | Route | Unsupported screen for unknown pages | implemented | static |
 | Post photo | Open the media viewer; Previous and Next replace within the post's photos | Route | Open on X when the photo is missing | implemented | static |
-| Like | Like or unlike on X | `primary.like` intent | Disabled while pending; inline error | implemented, not exercised | static |
-| Bookmark | Bookmark or remove the X bookmark | `primary.bookmark` intent | Disabled while pending; inline error | implemented, not exercised | static |
+| Like | Like or unlike on X | `like` intent on the screen's source (`primary` or `explore`) | Disabled while pending; inline error | implemented, not exercised | static |
+| Bookmark | Bookmark or remove the X bookmark | `bookmark` intent on the screen's source (`primary` or `explore`) | Disabled while pending; inline error | implemented, not exercised | static |
 | Saved row: Bookmarks, Likes, Categories | Switch Saved view | Route or screen | | verified (Bookmarks, Categories) | device |
 | Categories chips, search, Load more | Filter and page filed posts | `bookmarks` service | Skeleton; unavailable notice with Try again | verified (unavailable state) | device |
 | Save to categories and Edit | Open the `save` screen | `bookmarks` service | Conflict rereads; a pending change is checked before new writes | implemented, writes not exercised | static |
 | Manage categories | Create, rename and delete categories | `bookmarks` service | Delete confirmation; nonempty categories are refused | implemented, writes not exercised | static |
 | Edit profile, Reply, Compose, Sign in | X page in the sheet | Website | | implemented | static |
-| Profile tab after sign-in or sign-out | Read the account again | `account.reload` intent on app resume | | implemented | static |
+| Profile tab after sign-in or sign-out | Read the account again | `reload("account")` at the app root on resume | | implemented | static |
 
 ## Data
 
@@ -69,7 +69,7 @@ Excluded: automatic import or sync of X bookmarks into Categories, an offline wr
 | `bookmarks` service, table `operations` | Applet service | Library id and operation id | 1 | Receipts for idempotent writes |
 | Local collection `operations` | Applet storage | `pending:<libraryId>` | 1 | Marker for a write whose outcome is unknown; checked before the next write |
 
-The backend and its records are unchanged by the SDK 1.0 rewrite. The old local `preferences` and `session` collections are no longer read.
+The backend and its records are unchanged by the SDK 1.0 rewrite. Categories restores its search and category filter from the local `preferences` collection (key `library:<libraryId>`) and writes them back when the user changes them; its scroll position is kept by the SDK. The old `session` collection is no longer read.
 
 ## Current work and verification
 

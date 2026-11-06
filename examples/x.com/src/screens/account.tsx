@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { ScrollMemory, useAppResume, useIntent, useNavigation, useScreenSource } from "@genesis/sdk/react";
+import { ScrollMemory, useNavigation, useScreenSource } from "@genesis/sdk/react";
 import { profileUrl, type AccountData } from "../model";
 import { LoadError, SignInPrompt, Skeleton } from "../components/ui";
 
@@ -7,9 +7,6 @@ import { LoadError, SignInPrompt, Skeleton } from "../components/ui";
 export function AccountScreen() {
   const { navigate } = useNavigation();
   const page = useScreenSource<AccountData>();
-  const account = useIntent("account");
-  // The website sheet may have signed in or out; read the account page again.
-  useAppResume(() => void account.act({ name: "reload" }).catch(() => {}));
   const handle = page.stale ? null : page.data?.handle ?? null;
 
   useEffect(() => {

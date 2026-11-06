@@ -1,6 +1,6 @@
 import { defineSource } from "@genesis/sdk/source";
 import type { ExploreData, Trend } from "../model";
-import { BUDGET_BYTES, bytes, clean, lines, parsing, primaryColumn, readItems, readPeople, requireNoError } from "./page";
+import { BUDGET_BYTES, bytes, clean, lines, parsing, postIntents, primaryColumn, readItems, readPeople, requireNoError } from "./page";
 
 function trends(root: ParentNode): Trend[] {
   return [...root.querySelectorAll('[data-testid="trend"]')].slice(0, 30).map(element => {
@@ -28,4 +28,5 @@ export default defineSource({
     search: { extract: explore },
     hashtag: { extract: explore },
   },
+  intents: postIntents,
 });

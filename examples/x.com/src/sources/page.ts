@@ -1,6 +1,6 @@
 /** Reading X's rendered pages. X marks its parts with `data-testid`; everything read is bounded plain text. */
 import {
-  imageUrl, postUrl, safeLink, validHandle,
+  imageUrl, postUrl, safeLink, validHandle, validId,
   type FeedData, type FeedItem, type NoticeView, type Person, type PostView, type TextPart,
 } from "../model";
 
@@ -192,3 +192,20 @@ export function readPeople(root: ParentNode, limit = 20): Person[] {
   }
   return people;
 }
+
+/** Clicks a post's control and waits for X to show the opposite one. */
+function toggle(intent: Record<string, any>, on: string, off: string) {
+  if (!validId(intent.postId) || typeof intent.on !== "boolean") throw new Error("Invalid post");
+  const post = `article[data-testid="tweet"]:has(a[href$="/status/${intent.postId}"] time)`;
+  const [press, expect] = intent.on ? [on, off] : [off, on];
+  return [
+    { click: `${post} [data-testid="${press}"]` },
+    { waitFor: `${post} [data-testid="${expect}"]`, timeoutMs: 8000 },
+  ];
+}
+
+/** Like and bookmark, for every source whose pages show actionable posts. */
+export const postIntents = {
+  like: (intent: Record<string, any>) => toggle(intent, "like", "unlike"),
+  bookmark: (intent: Record<string, any>) => toggle(intent, "bookmark", "removeBookmark"),
+};
