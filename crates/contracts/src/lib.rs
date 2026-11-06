@@ -393,6 +393,9 @@ pub enum Call {
     },
     #[serde(rename = "back.handled")]
     BackHandled { handled: bool },
+    /// Leaves the applet after a Back the foreground handled by asking first, once the user confirms.
+    #[serde(rename = "back.leave")]
+    BackLeave {},
 }
 
 /// Host to document. Every message names the document it is for; a document ignores others.

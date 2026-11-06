@@ -19,7 +19,7 @@ pub struct Session {
     pub source_urls: BTreeMap<String, String>,
     /// Latest `snapshot` event data per source.
     pub snapshots: BTreeMap<String, Value>,
-    /// Sources that started a load and have not yet said hello, with their deadline.
+    /// Sources that started a load and have not yet published anything but `loading`, with their deadline.
     pub ready_deadlines: BTreeMap<String, u64>,
     /// The applet was recreated after being retired in the background.
     pub restored: bool,

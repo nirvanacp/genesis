@@ -1,6 +1,13 @@
 //! Document registry: the current document per view, pending operations and pending intents.
 use genesis_contracts::ViewRef;
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    sync::atomic::{AtomicU64, Ordering},
+};
+
+/// Op ids are storage job ids and service request ids. Storage jobs and service calls outlive an
+/// Activity and a host reset, so ids stay unique for the process, not for one registry.
+static NEXT_OP: AtomicU64 = AtomicU64::new(1);
 
 pub struct Document {
     pub id: String,
@@ -28,7 +35,6 @@ pub struct Intent {
 pub struct Documents {
     counter: u64,
     current: HashMap<ViewRef, Document>,
-    next_op: u64,
     ops: HashMap<u64, PendingOp>,
     next_intent: u64,
     pub intents: HashMap<u64, Intent>,
@@ -73,14 +79,16 @@ impl Documents {
     }
 
     pub fn begin_op(&mut self, op: PendingOp) -> u64 {
-        self.next_op += 1;
-        self.ops.insert(self.next_op, op);
-        self.next_op
+        let op_id = NEXT_OP.fetch_add(1, Ordering::Relaxed);
+        self.ops.insert(op_id, op);
+        op_id
     }
 
-    /// Removes the pending operation. None when it expired or its document was retired.
-    pub fn finish_op(&mut self, op_id: u64) -> Option<PendingOp> {
-        self.ops.remove(&op_id)
+    /// Removes the pending operation. None when it expired, its document was retired, or it
+    /// belongs to another applet than `applet_id` (when given); a foreign completion leaves it pending.
+    pub fn finish_op(&mut self, op_id: u64, applet_id: Option<&str>) -> Option<PendingOp> {
+        let owned = self.ops.get(&op_id).is_some_and(|op| applet_id.is_none_or(|id| op.view.applet_id == id));
+        owned.then(|| self.ops.remove(&op_id)).flatten()
     }
 
     pub fn expired_ops(&mut self, now_ms: u64) -> Vec<PendingOp> {

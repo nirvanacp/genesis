@@ -7,7 +7,7 @@ use crate::{
 use genesis_contracts::*;
 use serde_json::{Value, json};
 
-const FOREGROUND_METHODS: [&str; 10] = [
+const FOREGROUND_METHODS: [&str; 11] = [
     "ui.ready",
     "storage.get",
     "storage.list",
@@ -18,11 +18,12 @@ const FOREGROUND_METHODS: [&str; 10] = [
     "source.navigate",
     "source.intent",
     "back.handled",
+    "back.leave",
 ];
 const SOURCE_METHODS: [&str; 2] = ["source.publish", "source.intentResult"];
 const LIST_LIMIT: usize = 100;
 
-/// What a call produced: an answer now, or an operation answered later under this op id.
+/// What a call produced: an answer now, or one sent later (or already sent) by the call itself.
 enum Outcome {
     Now(Result<Value, ErrorBody>),
     Later,
@@ -83,13 +84,9 @@ impl Host {
         if let Some(retired) = retired.filter(|_| source_id.is_some()) {
             self.fail_intents_for(&retired, ErrorCode::SourceReplaced);
         }
-        if let Some(session) = self.surfaces.session.as_mut() {
-            match &source_id {
-                Some(id) => {
-                    session.ready_deadlines.remove(id);
-                }
-                None => session.restored = false,
-            }
+        // A source's ready deadline stays until it publishes something other than `loading`.
+        if let Some(session) = self.surfaces.session.as_mut().filter(|_| source_id.is_none()) {
+            session.restored = false;
         }
         let role = if source_id.is_some() { "source" } else { "foreground" };
         let bound = HostMessage::Bound {
@@ -172,7 +169,7 @@ impl Host {
                         Outcome::Later
                     }
                     Err(failure) => {
-                        self.documents.finish_op(op_id);
+                        self.documents.finish_op(op_id, None);
                         Outcome::Now(Err(failure))
                     }
                 }
@@ -201,6 +198,7 @@ impl Host {
                     session.ready_deadlines.insert(source_id.clone(), now + ready_ms);
                 }
                 let view = self.source_view(&source_id).expect("active session");
+                self.retire_document(&view);
                 self.out.push(ShellCommand::LoadUrl { view, url });
                 ok()
             }
@@ -229,6 +227,10 @@ impl Host {
                 if size > self.limits.snapshot_max_bytes {
                     return error(ErrorCode::SnapshotTooLarge, "The snapshot is too large");
                 }
+                let content = snapshot.get("status").and_then(Value::as_str) != Some("loading");
+                if let Some(session) = self.surfaces.session.as_mut().filter(|_| content) {
+                    session.ready_deadlines.remove(source_id);
+                }
                 self.publish_snapshot(source_id, snapshot);
                 ok()
             }
@@ -243,6 +245,12 @@ impl Host {
             Call::BackHandled { handled } => {
                 self.back_answered(document_id, handled);
                 ok()
+            }
+            Call::BackLeave {} => {
+                // Answer before Home retires the document.
+                self.respond(view, document_id, request_id, Ok(json!({})));
+                self.home();
+                Outcome::Later
             }
         }
     }

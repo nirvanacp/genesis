@@ -63,10 +63,10 @@ impl Host {
             }
             ShellEvent::ImportFound { kind: ImportKind::Bundle, path, payload } => self.import_bundle(&path, &payload, now),
             ShellEvent::ServiceResponse { request_id, status, body } => {
-                self.finish_op(request_id, Ok(crate::services::result(status, body)));
+                self.finish_op(request_id, None, Ok(crate::services::result(status, body)));
             }
             ShellEvent::ServiceFailed { request_id, code, message } => {
-                self.finish_op(request_id, Err(ErrorBody::new(code, message)));
+                self.finish_op(request_id, None, Err(ErrorBody::new(code, message)));
             }
             ShellEvent::StorageCompleted { payload } => self.storage_completed(&payload)?,
             ShellEvent::Tick => self.tick(now),
@@ -136,7 +136,7 @@ impl Host {
         self.out.push(ShellCommand::ShowLauncher { applets: self.applets.launcher() });
     }
 
-    fn home(&mut self) {
+    pub fn home(&mut self) {
         self.retire_active();
         self.show_launcher();
     }
@@ -315,7 +315,8 @@ impl Host {
 
     fn document_loaded(&mut self, view: ViewRef, url: String, now: u64) {
         let Role::Source(source_id) = &view.role else { return };
-        // The new document's hello may arrive before this event; then nothing is pending.
+        // The new document's hello may arrive before this event; then it already holds the deadline
+        // or has published, and a deadline set now could overwrite its content with NOT_READY.
         let without_fragment = |u: &str| u.split('#').next().unwrap_or_default().to_owned();
         if self.documents.current(&view).is_some_and(|d| without_fragment(&d.url) == without_fragment(&url)) {
             return;
@@ -324,6 +325,16 @@ impl Host {
         if let Some(session) = self.surfaces.session.as_mut().filter(|s| s.applet_id == view.applet_id) {
             session.ready_deadlines.insert(source_id.clone(), now + ready_ms);
         }
+    }
+
+    /// Retires a source's document before it loads a new URL. Until the next document says
+    /// hello, the source publishes nothing and takes no intents, so every snapshot labeled with the
+    /// requested URL comes from the document that loaded it.
+    pub fn retire_document(&mut self, view: &ViewRef) {
+        let Some(document_id) = self.documents.retire(view) else { return };
+        let message = HostMessage::Event { document_id: document_id.clone(), name: "retired".into(), data: json!({}) };
+        self.post(view, &message);
+        self.fail_intents_for(&document_id, ErrorCode::SourceReplaced);
     }
 
     /// Records a snapshot for the source and forwards it to the foreground.
@@ -353,8 +364,8 @@ impl Host {
     // -----------------------------------------------------------------------------------------
     // Pending operations and deadlines
 
-    pub fn finish_op(&mut self, op_id: u64, outcome: Result<Value, ErrorBody>) {
-        if let Some(op) = self.documents.finish_op(op_id) {
+    pub fn finish_op(&mut self, op_id: u64, applet_id: Option<&str>, outcome: Result<Value, ErrorBody>) {
+        if let Some(op) = self.documents.finish_op(op_id, applet_id) {
             self.respond(&op.view, &op.document_id, op.request_id, outcome);
         }
     }
@@ -362,7 +373,7 @@ impl Host {
     pub fn submit_storage(&mut self, op_id: u64, applet_id: &str, operation: StorageOperation) {
         let job = StorageJob { job_id: op_id, applet_id: applet_id.into(), operation };
         if !storage_worker::submit(job) {
-            self.finish_op(op_id, Err(ErrorBody::new(ErrorCode::StorageFailure, "Storage is busy or unavailable")));
+            self.finish_op(op_id, None, Err(ErrorBody::new(ErrorCode::StorageFailure, "Storage is busy or unavailable")));
         }
     }
 
@@ -373,7 +384,7 @@ impl Host {
             (_, error) => Err(error.unwrap_or_else(|| ErrorBody::new(ErrorCode::StorageFailure, "Empty storage result"))),
         };
         let namespace_revision = outcome.as_ref().ok().and_then(|r| r.get("namespaceRevision").cloned());
-        self.finish_op(completion.job_id, outcome);
+        self.finish_op(completion.job_id, Some(&completion.applet_id), outcome);
         let active = self.surfaces.session.as_ref().is_some_and(|s| s.applet_id == completion.applet_id);
         if active && !completion.changed.is_empty() {
             self.foreground_event("storage.changed", json!({ "changes": completion.changed, "namespaceRevision": namespace_revision }));
