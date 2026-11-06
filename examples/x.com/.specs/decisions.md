@@ -12,7 +12,7 @@
 - Choice and rationale: Native mobile X design is the inherited user choice, with authenticated mobile website as fallback where native reference is unavailable. Preserve neutral palette, compact shared 15px/20px post text, 40px feed avatars, hairline separators, inline author/handle/time and icon actions. Saved has one Bookmarks/Likes/Categories row. Black media viewer keeps observed image identity and bounded Next/Previous controls. Preserve keyboard-safe category sheets, opaque themes, independent stores, at most 50 categories and 10 memberships per post, and rejection of deleting nonempty categories. The user requested native X identity and the five-section footer; exact token values, account-validation technique and action receipt implementation are inherited engineering choices.
 - Evidence and supersession: [current spec](current.md), applet source and historical records linked there. Supersedes none. Future changed decisions append here and update current.md.
 
-## decision-0003: Rebuild on SDK 1.0 with typed sources and screens
+## decision-0003: Rebuild on SDK 0.0 with typed sources and screens
 
 - Date and origin: 2026-11-06, the Genesis repository revamp requested by the user; implementation choices by the agent.
 - Choice and rationale: The applet moves to manifest schema 5. Three sources publish typed data: `primary` for timelines, notifications, bookmarks, likes, posts, profiles and media, `explore` for trends and search, and `account` for the signed-in handle. One React foreground renders twelve screens. Like and bookmark run as declared intents instead of page scripts. The old separate alerts and saved sources are folded into `primary`. The account is observed from its own source at `/settings/account`, and the Categories library opens only when that handle matches the handle the service was created for. X now serves bookmarks at `/i/history` and own likes at `/i/history/likes`, so both routes, and the `/i/bookmarks` alias, open the Saved screen. Every screen leaves the shell menu button's corner clear. Product choices from decision-0002 stay in force.
@@ -20,12 +20,12 @@
 
 ## decision-0004: Edit categories on screens
 
-- Date and origin: 2026-11-06, agent choice during the SDK 1.0 rewrite.
+- Date and origin: 2026-11-06, agent choice during the SDK 0.0 rewrite.
 - Choice and rationale: Filing a post and managing categories push the `save` and `manage` screens instead of opening keyboard-safe sheets. A full screen keeps the name field clear of the keyboard, and Android Back closes it through the stack. The limits of 50 categories and 10 categories per post, conflict rereads, the delete confirmation and the refusal to delete a nonempty category are unchanged.
 - Evidence and supersession: [save screen](../src/screens/save.tsx), [manage screen](../src/screens/manage.tsx). Supersedes the keyboard-safe category sheets in decision-0002.
 
 ## decision-0005: Shared post intents, account revalidation at the root and restored filters
 
 - Date and origin: 2026-11-06, fixes from the revamp implementation review; implementation choices by the agent.
-- Choice and rationale: Like and bookmark are declared on both `primary` and `explore`, and a post acts through the source of the screen it is shown on, so posts in search results act on the page that shows them. The account is read again with `reload("account")` from the app root on every resume instead of a custom adapter intent, so the Profile tab and the Categories handle check follow a sign-in or sign-out made elsewhere. Categories restores its search and category filter from `preferences` again, as before the SDK 1.0 rewrite.
+- Choice and rationale: Like and bookmark are declared on both `primary` and `explore`, and a post acts through the source of the screen it is shown on, so posts in search results act on the page that shows them. The account is read again with `reload("account")` from the app root on every resume instead of a custom adapter intent, so the Profile tab and the Categories handle check follow a sign-in or sign-out made elsewhere. Categories restores its search and category filter from `preferences` again, as before the SDK 0.0 rewrite.
 - Evidence and supersession: [page helpers](../src/sources/page.ts), [app](../src/app.tsx), [categories screen](../src/screens/categories.tsx). Amends decision-0003 on where intents run.

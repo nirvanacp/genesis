@@ -5,7 +5,7 @@
 - Name Hacker News, applet id `hn-bookmarks`, origin `https://news.ycombinator.com`.
 - Sources: `primary` (feeds, items, profiles, information pages), `post` (the submit form) and `me` (the signed-in account). Adapters are in [src/sources](../src/sources).
 - Screens: `feed`, `item`, `user`, `info`, `search`, `post`, `saved`, `save`, `me`, `unsupported`. Service: `bookmarks`.
-- Manifest schema 5, `@genesis/sdk` 1.0.0, `genesis-applet` tools 1.0.0. Kit version: not exported for this in-repository applet. The [manifest](../applet.json) is the authority for routes and sources.
+- Manifest schema 5, `@genesis/sdk` 0.0.0, `genesis-applet` tools 0.0.0. Kit version: not exported for this in-repository applet. The [manifest](../applet.json) is the authority for routes and sources.
 
 ## Product scope
 
@@ -24,7 +24,7 @@ Open work: Search is a placeholder screen. It is unfinished, not a deferral the 
 | default-pending-skeletons | Neutral, static, content-shaped skeletons | Factory default | |
 | default-compact-website-cue | External-link icon on every control that opens the website sheet | Factory default | |
 | default-theme-and-layout | Warm paper and HN orange, Verdana, light and dark, 48px controls, compact 15px story titles | Inherited user design direction | decision-0002 |
-| Saved editor | A `save` screen in the stack instead of a sheet, so Android Back closes it | Agent choice for SDK 1.0 | decision-0004 |
+| Saved editor | A `save` screen in the stack instead of a sheet, so Android Back closes it | Agent choice for SDK 0.0 | decision-0004 |
 
 ## Routes
 

@@ -5,7 +5,7 @@
 - Name X, applet id `x-bookmarks`, origin `https://x.com`.
 - Sources: `primary` (timelines, notifications, bookmarks, likes, posts, profiles, media), `explore` (trends, search, hashtags) and `account` (the signed-in handle from `/settings/account`). Adapters are in [src/sources](../src/sources).
 - Screens: `home`, `explore`, `notifications`, `saved`, `post`, `profile`, `media`, `account`, `categories`, `save`, `manage`, `unsupported`. Service: `bookmarks`.
-- Manifest schema 5, `@genesis/sdk` 1.0.0, `genesis-applet` tools 1.0.0. Kit version: not exported for this in-repository applet. The [manifest](../applet.json) is the authority for routes and sources.
+- Manifest schema 5, `@genesis/sdk` 0.0.0, `genesis-applet` tools 0.0.0. Kit version: not exported for this in-repository applet. The [manifest](../applet.json) is the authority for routes and sources.
 - Installed for development with `dev install`; it is not bundled into the APK.
 
 ## Product scope
@@ -25,7 +25,7 @@ Excluded: automatic import or sync of X bookmarks into Categories, an offline wr
 | default-pending-skeletons | Neutral, static, content-shaped skeletons | Factory default | |
 | default-compact-website-cue | External-link icon on every control that opens the website sheet | Factory default | |
 | default-theme-and-layout | Neutral X palette, light and dark, system font, 15px/20px post text, 40px avatars, hairline separators | Inherited user design direction | decision-0002 |
-| Category editors | `save` and `manage` screens in the stack instead of keyboard-safe sheets, so Android Back closes them | Agent choice for SDK 1.0 | decision-0004 |
+| Category editors | `save` and `manage` screens in the stack instead of keyboard-safe sheets, so Android Back closes them | Agent choice for SDK 0.0 | decision-0004 |
 
 ## Routes
 
@@ -69,7 +69,7 @@ Excluded: automatic import or sync of X bookmarks into Categories, an offline wr
 | `bookmarks` service, table `operations` | Applet service | Library id and operation id | 1 | Receipts for idempotent writes |
 | Local collection `operations` | Applet storage | `pending:<libraryId>` | 1 | Marker for a write whose outcome is unknown; checked before the next write |
 
-The backend and its records are unchanged by the SDK 1.0 rewrite. Categories restores its search and category filter from the local `preferences` collection (key `library:<libraryId>`) and writes them back when the user changes them; its scroll position is kept by the SDK. The old `session` collection is no longer read.
+The backend and its records are unchanged by the SDK 0.0 rewrite. Categories restores its search and category filter from the local `preferences` collection (key `library:<libraryId>`) and writes them back when the user changes them; its scroll position is kept by the SDK. The old `session` collection is no longer read.
 
 ## Current work and verification
 
