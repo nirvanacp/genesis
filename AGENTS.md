@@ -92,6 +92,18 @@ For every user-requested change, commit the resulting changes as part of the tas
 5. Follow the coding philosophy above and the repository's existing architecture and design patterns.
 6. In the final response, report the commits made and any verification gaps. If verification or committing is blocked, explain the blocker and identify any changes left uncommitted instead of claiming the task is fully complete.
 
+## Versions
+
+The developer controls every version that belongs to this project. Do not raise, lower or reset one on your own, even when a change seems to call for it. This includes:
+
+- the versions of the packages and crates in this repository (`@genesis/core`, `@genesis/sdk`, `@genesis/applet-tools`, `genesis-contracts`, `genesis-host`) and the dependency ranges that point at them;
+- the root and applet `package.json` versions;
+- the Android `versionCode` and `versionName`;
+- format and protocol numbers such as the manifest `schemaVersion`, the bundle format, the kit version and the service envelope version;
+- the version numbers that documentation and records quote for any of these.
+
+If you think one of these should change, for example because a change breaks compatibility, ask the user before editing it. Say which version and why. Keep the current value until they answer. Third-party dependency versions follow the normal task scope.
+
 ## Skills
 
 Project skills live in `.skills/`. This directory can contain third-party skills and skills written for this project. Each skill is defined by a `SKILL.md` file, usually at `.skills/<skill-name>/SKILL.md`.
