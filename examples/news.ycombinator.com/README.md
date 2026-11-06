@@ -1,15 +1,25 @@
 # Hacker News applet
 
-One `hn-bookmarks` applet with native Home, Search, Post, Saved, Me and top-right Genesis options. SDK 0.5.1/tools 0.5.0, runtime API 4/schema 3. Read [current specs](.specs/current.md) for scope, choices, routes/actions and verification limits, and [decisions](.specs/decisions.md) for attribution. Follow [factory instructions](../../factory/AGENTS.md).
+The `hn-bookmarks` applet: a native Hacker News app with Home, Search, Post, Saved and Me tabs, and a personal Saved library with categories. The current state is in [.specs/current.md](.specs/current.md), and the history of choices is in [.specs/decisions.md](.specs/decisions.md). Follow the [factory instructions](../../factory/AGENTS.md) when changing it.
+
+## Build
+
+From the Genesis root:
+
+```sh
+node packages/applet-tools/src/cli.mjs check examples/news.ycombinator.com
+node packages/applet-tools/src/cli.mjs build examples/news.ycombinator.com
+node packages/applet-tools/src/cli.mjs dev install examples/news.ycombinator.com --device <serial>
+```
+
+`dev install` sends the last build; run `build` first.
 
 ## Operator setup
 
-Run `./start.sh` here, or `./examples/start-applet-servers.sh` from the Genesis root for all local applet backends. After reboot/reconnecting Android use `--device <adb-serial>` to restore tunnels/connections. `./start.sh --stop` preserves records. Agents maintain scripts and run static checks; start services only when explicitly asked.
+Saved stories live in the `bookmarks` service. Run `./start.sh` here, or `./examples/start-applet-servers.sh` from the Genesis root to start every local applet backend. After a reboot or reconnecting the phone, pass `--device <adb-serial>` to restore the tunnel and connection. `./start.sh --stop` keeps the records. Coding agents maintain these scripts but start services only when asked.
 
-Requires Node 24, installed workspace dependencies and OpenSSL; SQLite is built in. Port 8787 is reserved in examples/ports.json. Private state, token/TLS files, documents.sqlite3 and server.log live under `~/.local/share/genesis/services/hn-bookmarks/bookmarks/`. Reuse that state; never reset it to repair a connection. The backend is a personal single-token/single-database service, with independent applet saves/categories. See [services and startup](../../factory/guides/services-and-data.md#local-startup-and-port-assignments).
+The backend needs Node 24, the workspace dependencies and OpenSSL. It uses port 8787, reserved in `examples/ports.json`. Its private state, token and TLS files, database and log live under `~/.local/share/genesis/services/hn-bookmarks/bookmarks/`. Reuse that state; never reset it to repair a connection. It is a personal single-token service. See [local startup and ports](../../factory/guides/services-and-data.md#local-startup-and-ports).
 
-## Limits and checks
+## Limits
 
-Search remains a placeholder. Posting/voting/account changes remain original-site workflows; no routine submissions are authorized. Legacy draft records are preserved but not injected into forms. No production multi-user service or durable website POST/draft restoration is promised.
-
-Use `node packages/applet-tools/src/cli.mjs check examples/news.ycombinator.com --json` from the Genesis root, or installed standalone tools. Static checks do not qualify current source selectors, backend persistence or native Return. Current specs distinguish historical evidence from checks performed now.
+Search is a placeholder. Replies, sign-in and account settings open HN's own pages in the website sheet. The service is not a multi-user backend.
