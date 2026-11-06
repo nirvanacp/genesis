@@ -53,7 +53,7 @@ export async function manageService(action, directory, options = {}) {
     // The shell checks that the installed applet declares this service, stores the credential
     // in the Keystore, probes the health path and writes the receipt.
     const name = `service-${manifest.id}-${service.serviceId}.json`;
-    const receipt = await device.submit(name, JSON.stringify({ appletId: manifest.id, serviceId: service.serviceId, origin, token, ...(certificate ? { certificate } : {}), healthPath: service.healthPath }));
+    const receipt = await device.submit(name, JSON.stringify({ version: 1, appletId: manifest.id, serviceId: service.serviceId, origin, token, ...(certificate ? { certificate } : {}), healthPath: service.healthPath }));
     if (!receipt.ok) throw creatorError('SERVICE_REJECTED', `Genesis rejected the service record: ${receipt.error ?? 'no reason given'}`);
     if (receipt.health !== 'ready') throw creatorError('SERVICE_HEALTH_FAILED', 'The device could not reach or authenticate to the service; check server health and credentials');
   }
