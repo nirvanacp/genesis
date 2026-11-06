@@ -7,3 +7,6 @@
 /packages/sdk/dist/
 /packages/applet-tools/kit/
 /packages/sdk/.build-lock
+
+# Private developer workspace (separate repository, maintainers only)
+/.developer/
