@@ -85,21 +85,21 @@ dependencies = [
 ]
 
 [[package]]
-name = "genesis-android"
+name = "genesis-contracts"
 version = "0.1.0"
 dependencies = [
- "genesis-contracts",
- "jni",
- "rusqlite",
  "serde",
  "serde_json",
  "url",
 ]
 
 [[package]]
-name = "genesis-contracts"
+name = "genesis-host"
 version = "0.1.0"
 dependencies = [
+ "genesis-contracts",
+ "jni",
+ "rusqlite",
  "serde",
  "serde_json",
  "url",

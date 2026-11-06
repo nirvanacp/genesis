@@ -8,7 +8,7 @@ import java.util.concurrent.Semaphore;
 /** UI reducer plus a bounded, process-lifetime Rust storage worker. */
 public final class NativeBridge {
     interface StorageResults { void receive(String result); }
-    static { System.loadLibrary("genesis_android"); }
+    static { System.loadLibrary("genesis_host"); }
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static final Semaphore COMPLETIONS = new Semaphore(64);
     private static WeakReference<StorageResults> receiver = new WeakReference<>(null);
@@ -25,8 +25,6 @@ public final class NativeBridge {
             });
         } catch (InterruptedException error) { Thread.currentThread().interrupt(); }
     }
-    public static native String validateBundle(String bundleJson);
     public static native String dispatch(String eventJson);
     public static native String configureStorage(String directory);
-    public static native boolean enqueueStorage(String jobJson);
 }

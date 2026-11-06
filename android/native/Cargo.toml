@@ -1,11 +1,12 @@
 [package]
-name = "genesis-android"
+name = "genesis-host"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 
 [lib]
+name = "genesis_host"
 crate-type = ["cdylib"]
 
 [dependencies]

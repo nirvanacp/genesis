@@ -18,6 +18,8 @@ export const ERROR_CODES = [
   "CONFIGURATION_REQUIRED",
   "NOT_READY",
   "UNKNOWN_METHOD",
+  "INVALID_ARGUMENT",
+  "QUOTA_EXCEEDED",
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

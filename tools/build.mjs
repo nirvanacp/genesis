@@ -84,10 +84,10 @@ async function native() {
   const output = path.join(generated, "jniLibs");
   await mkdir(output, { recursive: true });
   run(cargo, ["ndk", "-t", "arm64-v8a", "-t", "x86_64", "--platform", "26", "-o", output,
-    "build", "--locked", "-p", "genesis-android", ...(variant === "release" ? ["--release"] : [])],
+    "build", "--locked", "-p", "genesis-host", ...(variant === "release" ? ["--release"] : [])],
   { ...env, ANDROID_NDK_HOME: ndk, ANDROID_HOME: sdk });
   for (const abi of ["arm64-v8a", "x86_64"]) {
-    await requireFile(path.join(output, abi, "libgenesis_android.so"), `Native build did not produce ${abi}/libgenesis_android.so`);
+    await requireFile(path.join(output, abi, "libgenesis_host.so"), `Native build did not produce ${abi}/libgenesis_host.so`);
   }
 }
 
