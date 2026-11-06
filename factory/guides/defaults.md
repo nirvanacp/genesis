@@ -4,7 +4,7 @@ Apply these automatically to new apps. When customizing, keep existing explicit 
 
 | ID | Default behavior | Acceptance and boundary |
 | --- | --- | --- |
-| default-platform-menu | The shell draws the top bar with the applet name and the Genesis menu (Home, Reload applet, Open website, Service connections, Applet info) | Never draw these controls in the foreground. Set `shell.accent` to the product's brand color. The menu cannot be hidden from an applet. |
+| default-platform-menu | The shell draws a floating menu button in the top-right corner with the Genesis menu (Home, Reload applet, Open website, Service connections, Applet info) | Never draw these controls in the foreground, and keep the corner clear. Set `shell.accent` to the product's brand color. The menu cannot be hidden from an applet. |
 | default-mobile-identity | Follow the source product's mobile app conventions; inspect its mobile website where the app is unavailable | Connected screens and new features share one set of tokens and density. Do not copy another product's features. |
 | default-primary-navigation | One bottom tab bar inside the foreground for the product's main sections; content tabs and filters inside each screen | Selecting a tab opens its root with `mode: "root"`; reselecting it scrolls to the top or resets its stack. Detail Back and website sheet close restore the opener. |
 | default-pending-skeletons | Neutral, static, destination-shaped placeholders in light and dark | Keep useful content and drafts during refresh. Errors, sign-in prompts, empty results and uncertain outcomes stay readable. See [design](design.md#skeletons). |

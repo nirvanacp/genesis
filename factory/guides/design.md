@@ -8,7 +8,7 @@ Use the product's native mobile app as the reference when one exists, translated
 
 ## Shell and navigation
 
-The shell draws the top bar with the applet name and the Genesis menu, and handles Android Back. Do not draw another top bar with a menu, a back arrow or the applet's name. Use one bottom tab bar for the main sections. Keep content tabs, filters and contextual actions inside the screen. Do not copy the website's header, footer or sidebar.
+The shell draws a floating 44 dp Genesis menu button in the top-right corner, 8 dp from the edges, and handles Android Back. Keep the first row of every screen clear of that corner, for example with a 44 px right float at the top of the scroll container. Do not draw a menu of your own, a back arrow or the applet's name in a bar. Use one bottom tab bar for the main sections. Keep content tabs, filters and contextual actions inside the screen. Do not copy the website's header, footer or sidebar.
 
 ## Tokens
 
@@ -19,7 +19,7 @@ Define a small set of tokens in `src/theme.css` and use them everywhere, includi
 - Color: canvas, surface, primary and secondary text, borders, links, selected and accent. Define light and dark values. Set the canvas and text colors explicitly on `html` and `body`.
 - Controls: icon family and weight, button shapes, inputs, tab indicators, menus, sheets, pressed, focus and disabled states.
 
-Set `shell.accent` in the manifest to the brand color so the top bar matches.
+Set `shell.accent` in the manifest to the brand color; the shell uses it for the applet name on the launch splash.
 
 ## Building screens
 

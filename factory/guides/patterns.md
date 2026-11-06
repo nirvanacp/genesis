@@ -38,7 +38,7 @@ extract(doc) {
 }
 ```
 
-Sign-in walls, consent banners and error pages can appear at any route. Detect the ones you know: return a field such as `{ blocked: "signin" }` for the screen to explain, or use `requiresSignIn` with `isSignedIn`. If the page never becomes recognizable, the host reports `NOT_READY` after 15 seconds; show it as a failure with a way to open the website.
+Sign-in walls, consent banners and error pages can appear at any route. Detect the ones you know: return a field such as `{ blocked: "signin" }` for the screen to explain, or use `requiresSignIn` with `isSignedIn`. If the page publishes nothing but `loading` for 15 seconds, the host reports `NOT_READY`; show it as a failure with a way to open the website.
 
 ## Screens
 

@@ -48,7 +48,7 @@ async function vote() {
 
 Every element that looks interactive does something: a menu icon opens a real menu, an image opens that image, a quoted post opens the quote, a username opens the profile. Do not invent destinations from appearance; use the URLs the adapter extracted. Mark controls that open the website sheet with the [website cue](defaults.md). Label icon buttons with what they do and their current state ("Upvote", "Remove upvote").
 
-Pull to refresh and the Refresh control reload the current page: navigate to its URL with `mode: "replace"`, keep the current content visible, and show the outcome when the new snapshot arrives.
+Pull to refresh and the Refresh control reload the current page with `useNavigation().reload()`. Navigating to the same URL does not reload it. The screen keeps showing its cached data, marked `stale`, until the new snapshot arrives; show the outcome then. `reload(sourceId)` reloads another source's last page, for example an account source after the app resumes.
 
 ## Interaction inventory
 

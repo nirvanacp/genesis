@@ -65,7 +65,7 @@ The foreground calls it with `useService("bookmarks")` and a path. The shell add
 
 ## Handling service failures
 
-- A 4xx or 5xx status is a response: read its body and show a specific message.
+- A 4xx or 5xx status is a response: read its body and show a specific message. The exceptions are 401 and 403, which the shell turns into `ServiceError` with `AUTHENTICATION_FAILED`.
 - `ServiceError` means the shell could not complete the request. `CONFIGURATION_REQUIRED` means the user has not connected the service yet; tell them to use Service connections in the Genesis menu. Use `serviceMessage(error)` for the others.
 - After `DEADLINE` or `SERVICE_UNREACHABLE` on a write, the write may have happened. Reread before offering to retry, or make the write idempotent with a client-generated id.
 - A failed read is not an empty collection. Keep showing the last good data with a failure notice.

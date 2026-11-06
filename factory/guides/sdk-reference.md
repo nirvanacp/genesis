@@ -34,7 +34,7 @@ Nothing else is public. If a feature needs something these exports cannot do, de
 | Field | Rule |
 | --- | --- |
 | `id` | `[a-z0-9-]+`. Never change it after install; storage and service credentials are keyed by it. |
-| `name` | Shown in the launcher and the top bar. |
+| `name` | Shown in the launcher and on the launch splash. |
 | `origins` | Exact `https://host` origins, no path. Hidden sources load only these. |
 | `foreground.entry` | The TypeScript or TSX file that calls `mountForeground`. |
 | `foreground.screens` | Every screen id the foreground renders. A screen named `unsupported` receives declared-origin URLs that no route matches. |
@@ -44,7 +44,7 @@ Nothing else is public. If a feature needs something these exports cannot do, de
 | `kind: "website"` | The URL opens in the website sheet. Use it for sign-in, editors and other pages the user operates directly. |
 | `capabilities.storage` | Enables document storage for this applet. |
 | `capabilities.services` | HTTPS backends. `config` points at the service file that the tools use (see [services and data](services-and-data.md)). |
-| `shell.accent` | `#rrggbb` color for the shell's top bar. |
+| `shell.accent` | `#rrggbb` color for the applet name on the launch splash. |
 
 Unknown fields are errors. `genesis-applet check` reports each error with a JSON pointer such as `/routes/3/screen`.
 
@@ -99,11 +99,11 @@ Each source publishes one snapshot of its current page. Screens read it as a `So
 | --- | --- |
 | `status` | `loading`, `ready`, `auth`, `unsupported` or `error` |
 | `data` | The extractor's result when `ready`, otherwise `null`, except that a stale cached view keeps its data |
-| `stale` | `true` when the view comes from the cache (up to 16 ready pages per source) while the page reloads |
+| `stale` | `true` when the view comes from the cache (up to 16 ready pages per source) while the page loads. A screen keeps its cached data through `loading`; `error`, `auth` and `unsupported` replace it |
 | `url`, `routeId`, `params` | The page and the route it matched |
 | `error` | `{ code, message }` for `error` |
 
-The host writes an error snapshot with code `NOT_READY` when a page does not report within 15 seconds. A page that redirects to another route shows as `unsupported` on the screen that asked for it. A snapshot larger than 192 KiB becomes an error with code `SNAPSHOT_TOO_LARGE`.
+The host writes an error snapshot with code `NOT_READY` when a page publishes nothing but `loading` within 15 seconds. A page that redirects to another route shows as `unsupported` on the screen that asked for it. A snapshot larger than 192 KiB becomes an error with code `SNAPSHOT_TOO_LARGE`.
 
 ## Foreground hooks
 
@@ -112,11 +112,11 @@ The host writes an error snapshot with code `NOT_READY` when a page does not rep
 ### `useNavigation()`
 
 ```tsx
-const { screen, stack, website, navigate, back, setLeaveGuard } = useNavigation();
+const { screen, stack, website, navigate, back, reload, setLeaveGuard } = useNavigation();
 if (screen.id === "item") return <ItemScreen id={screen.params.id} />;
 ```
 
-`screen` is the current entry: `{ key, id, params, source }`. `stack` is the whole stack, `website` is `{ url }` while the website sheet is open. `navigate` takes the three targets in [navigation](navigation.md). `back()` is in-app Back: it follows Android Back's rules but never leaves the applet from the root screen. `setLeaveGuard(message)` asks for confirmation before Back leaves the current screen; `null` clears it, and so does any screen change.
+`screen` is the current entry: `{ key, id, params, source }`. `stack` is the whole stack, `website` is `{ url }` while the website sheet is open. `navigate` takes the three targets in [navigation](navigation.md). `back()` is in-app Back: it follows Android Back's rules but never leaves the applet from the root screen. `reload(sourceId?)` loads the current screen's page again, or the last page of another source; the screen keeps its cached data, marked `stale`, while it loads. `setLeaveGuard(message)` asks for confirmation before Back leaves the current screen; `null` clears it, and so does any screen change. On the root screen, confirming leaves the applet.
 
 ### `useScreenSource<T>()`
 
@@ -143,7 +143,7 @@ const { act, pending, error } = useIntent("main");
 <button type="button" disabled={pending} onClick={() => act({ name: "upvote", id: item.id }).catch(() => {})}>Upvote</button>
 ```
 
-`act(intent)` sends the intent to the source's adapter and resolves when its steps finish. It rejects with a `GenesisError` (`NOT_FOUND`, `DEADLINE`, `SOURCE_REPLACED`, `INVALID_STEPS`, `RETIRED`). Intents for one source run one at a time. The foreground gives up after 17 seconds.
+`act(intent)` sends the intent to the source's adapter and resolves when its steps finish. It rejects with a `GenesisError` (`NOT_FOUND`, `DEADLINE`, `SOURCE_REPLACED`, `INVALID_STEPS`, `RETIRED`). Intents for one source run one at a time. An intent targets the page that was showing when it arrived: if the source navigates elsewhere before or between steps (other than through its own `waitForUrl` step), it fails with `SOURCE_REPLACED`, and the 15-second deadline counts from arrival, including time queued. The foreground gives up after 17 seconds.
 
 ### `useRecords<T>(collection, { storage })`
 
@@ -182,7 +182,7 @@ Runs when the applet returns from the background and when the website sheet clos
 
 ### `useForeground()`
 
-The underlying runtime: `manifest`, `appletId`, `restored` (the host recreated the applet after retiring it in the background), `storage`, `navigation.onConfirmLeave(handler)` to replace the default confirm prompt, and the methods behind the hooks. Prefer the hooks.
+The underlying runtime: `manifest`, `appletId`, `restored` (the host recreated the applet after retiring it in the background; the screen stack, its parameters and scroll positions come back with it, without screens whose route no longer exists), `storage`, `navigation.onConfirmLeave(handler)` to replace the default confirm prompt, and the methods behind the hooks. Prefer the hooks.
 
 ## Errors and limits
 
@@ -195,7 +195,7 @@ The underlying runtime: `manifest`, `appletId`, `restored` (the host recreated t
 | Stored document | 32 KiB of JSON |
 | Message between page and host | 256 KiB |
 | Service request or response body | 256 KiB; 3 s to connect, 4 s to read |
-| Page ready deadline | 15 s, then `NOT_READY` |
+| Page ready deadline | 15 s to publish anything but `loading`, then `NOT_READY` |
 | Intent | 15 s on the page, 17 s in the foreground |
 | Request deadline | 15 s |
 | Back answer | 300 ms, after which the shell leaves the applet |

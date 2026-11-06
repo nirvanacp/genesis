@@ -2,7 +2,7 @@
 
 Build an application around the websites you use. Describe the screens and behavior you want to a coding agent; the agent uses this kit to write the website adapters, the custom UI and the application data. You do not need to know how Genesis's Android or Rust code works.
 
-An applet is a React UI over one or more live website sessions. Each source website runs in its own hidden page, where an adapter reads the data a screen needs. The foreground renders that data as native-feeling screens, keeps applet records and talks to an optional backend. Genesis runs the websites, draws the top bar and the Genesis menu, handles Android Back, and opens the website itself in a sheet when the user chooses to.
+An applet is a React UI over one or more live website sessions. Each source website runs in its own hidden page, where an adapter reads the data a screen needs. The foreground renders that data as native-feeling screens, keeps applet records and talks to an optional backend. Genesis runs the websites, draws the floating Genesis menu button, handles Android Back, and opens the website itself in a sheet when the user chooses to.
 
 Example request to an agent:
 

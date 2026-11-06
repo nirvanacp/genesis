@@ -1,6 +1,6 @@
 # Navigation
 
-The foreground owns a stack of screens. The shell owns the top bar, the Genesis menu, Android Back and the website sheet. Hidden source pages never appear on screen.
+The foreground owns a stack of screens. The shell owns the floating Genesis menu button, Android Back and the website sheet. Hidden source pages never appear on screen.
 
 ## The three ways to navigate
 

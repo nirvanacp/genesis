@@ -12,7 +12,7 @@ The app the user asked for, its core journeys, the workflows and data to preserv
 
 | Rule id | Current choice | Origin and reason | Decision |
 | --- | --- | --- | --- |
-| default-platform-menu | Shell top bar and Genesis menu, accent from `shell.accent` | Factory default | |
+| default-platform-menu | Shell floating menu button and Genesis menu, splash accent from `shell.accent` | Factory default | |
 
 ## Routes
 
