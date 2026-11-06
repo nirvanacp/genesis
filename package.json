@@ -5,7 +5,6 @@
   "workspaces": [
     "packages/sdk",
     "packages/applet-tools",
-    "examples/youtube.com",
     "examples/x.com",
     "examples/news.ycombinator.com"
   ],

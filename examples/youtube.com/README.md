@@ -1,5 +1,0 @@
-# YouTube applet prototype
-
-Preserved inactive qualification prototype. The manifest declares a Shorts navigation policy, but its source entry does not implement a complete Shorts customization. It is not selected in genesis.packages.json and is not a finished template. Read [factory instructions](../../factory/AGENTS.md) and qualify the intended behavior on the current website/host before enabling it. It consumes SDK 0.2.0.
-
-`./start.sh` is the local operator entrypoint. This applet currently needs no backend or separate storage daemon, so its reservation list in `examples/ports.json` is empty and startup reports that no backend is required. The shared factory launcher includes it automatically. The script does not enable or install this prototype. If a backend is added, update `start.sh`, reserve every listener, and follow [the startup contract](../../factory/guides/services-and-data.md#local-startup-and-port-assignments). Agents may maintain and statically check these files but must not start services unless explicitly asked. Shell syntax and registry checks cover this entrypoint; it was not executed.

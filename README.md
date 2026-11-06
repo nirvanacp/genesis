@@ -55,7 +55,7 @@ To operate one applet instead:
 ./examples/x.com/start.sh --stop
 ```
 
-Omit `--device emulator-5554` to start only the computer-side backend. HN uses port 8787 and X uses 8788. YouTube currently requires no backend, and its script does not activate or install the inactive prototype. Port reservations for current and future servers live in [examples/ports.json](examples/ports.json).
+Omit `--device emulator-5554` to start only the computer-side backend. HN uses port 8787 and X uses 8788. Port reservations for current and future servers live in [examples/ports.json](examples/ports.json).
 
 SQLite is built into Node; no separate database server is needed for these applets. Existing databases, tokens, TLS files and `server.log` files are preserved under `~/.local/share/genesis/services/<applet-id>/<service-id>/`. If you previously set `GENESIS_SERVICE_STATE_ROOT`, keep using that value to access the same data. On X's first database creation only, prefix startup with `X_EXPECTED_HANDLE=your_handle`; an existing library retains its stored account.
 
