@@ -185,16 +185,16 @@
       "screen": "media"
     },
     {
-      "id": "post-pages",
-      "pattern": "/:handle/status/:id/*",
-      "kind": "website"
-    },
-    {
       "id": "post",
       "pattern": "/:handle/status/:id",
       "kind": "adapted",
       "source": "primary",
       "screen": "post"
+    },
+    {
+      "id": "post-pages",
+      "pattern": "/:handle/status/:id/*",
+      "kind": "website"
     },
     {
       "id": "following",

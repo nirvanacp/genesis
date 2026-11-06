@@ -32,14 +32,14 @@ Excluded: automatic import or sync of X bookmarks into Categories, an offline wr
 | Route id | Example URL | Screen or website | Loading, empty, sign-in and error | Back | Status | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
 | home | `/home` | `home` | Skeleton; empty notice; sign-in prompt; error with website button | Tab root | verified | device |
-| notifications | `/notifications` | `notifications` | As above | Tab root | implemented | static |
+| notifications | `/notifications` | `notifications` | As above | Tab root | verified | device |
 | bookmarks, bookmarks-alias | `/i/history` (X redirects `/i/bookmarks` there) | `saved`, Bookmarks tab | As above | Tab root | verified | device |
-| own-likes, likes | `/i/history/likes`, `/<handle>/likes` | `saved`, Likes tab for the signed-in handle; a likes feed otherwise | As above | Stack | implemented | static |
+| own-likes, likes | `/i/history/likes`, `/<handle>/likes` | `saved`, Likes tab for the signed-in handle; a likes feed otherwise | As above | Stack | verified (own Likes tab) | device |
 | explore, search, hashtag | `/explore`, `/search?q=genesis`, `/hashtag/android` | `explore` | Skeleton; empty notice; error | Tab root or stack | verified (explore) | device |
 | account | `/settings/account` | `account` (source `account`), then replaced by the own profile | Sign-in prompt when signed out | Tab root | verified (signed in) | device |
 | profile, replies, profile-media | `/XDevelopers` | `profile` with Posts, Replies and Media tabs | Skeleton; partial notice with See more on X; error | Stack | verified (own profile) | device |
-| post | `/XDevelopers/status/1` | `post` with ancestors and replies | Skeleton; partial notice; error | Stack | implemented | static |
-| photo | `/XDevelopers/status/1/photo/1` | `media` | Black viewer; Open on X on failure | Stack | implemented | static |
+| post | `/XDevelopers/status/1` | `post` with ancestors and replies; matched before `post-pages` | Skeleton; partial notice; error | Stack | verified | device |
+| photo | `/XDevelopers/status/1/photo/1` | `media` | Black viewer; Open on X on failure | Stack | verified (one photo) | device |
 | website-* (root, login, logout, flow, compose, settings, account-pages, messages, internal, tos, privacy, about, download, post-pages, following, followers, verified-followers, avatar-photo, header-photo) | `/i/flow/login` | Website sheet | X's page | Sheet | implemented | static |
 | Other X URLs | `/XDevelopers/lists` | `unsupported` with an Open on X button | | Stack | implemented | static |
 
@@ -77,5 +77,7 @@ The backend and its records are unchanged by the SDK 1.0 rewrite. The old local 
 
 - Static: `check`, `typecheck` and `build` passed.
 - Device, real website: Home timeline, Explore, the own Profile and Saved Bookmarks rendered in light mode. Categories showed its unavailable state because the service was not started.
-- Not exercised: like and bookmark writes, Categories reads and writes, post detail, the media viewer, Notifications, search, signed-out states and dark mode. No X action was performed.
+- Not exercised: like and bookmark writes, Categories reads and writes, search, signed-out states and dark mode. No X action was performed.
+- Acceptance run, same day: Notifications and the Likes tab rendered. A post opened the Post screen with its replies after the route fix below; its photo opened in the media viewer with Previous and Next disabled, and Back returned to the post and then Home. Next and Previous across several photos were not exercised. Reply opened X's compose page in the website sheet, and Return restored Home at the same scroll position.
+- Fixed: the `post-pages` website route (`/:handle/status/:id/*`) was listed before `post`, and a trailing `*` also matches the bare prefix, so every post opened in the website sheet. `post` now comes first.
 - Known gap: news-style trends show the headline as context and the trend line as the name.
