@@ -1,4 +1,4 @@
-import { matchRoute, type AdaptedRoute, type ErrorCode } from "@genesis/core";
+import { matchRoute, urlKey, type AdaptedRoute, type ErrorCode } from "@genesis/core";
 import { connect, GenesisError, type BridgeObject, type Connection } from "./bridge.js";
 import type { Snapshot } from "./types.js";
 
@@ -28,7 +28,9 @@ export interface SourceDefinition {
   isSignedIn?(doc: Document): boolean;
 }
 
-const DEBOUNCE_MS = 250;
+/** A snapshot goes out once the page is quiet for `publishThrottleMs`, or this long after the
+ * first unpublished change, however busy the page stays. */
+const MAX_DELAY_MS = 1000;
 const URL_CHECK_MS = 1000;
 const STEP_POLL_MS = 100;
 let defined = false;
@@ -60,6 +62,7 @@ function run(connection: Connection, definition: SourceDefinition) {
   const encoder = new TextEncoder();
   let lastPublished = "";
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let changedAt: number | undefined;
   let lastUrl = location.href;
 
   function snapshot(): Snapshot {
@@ -98,8 +101,13 @@ function run(connection: Connection, definition: SourceDefinition) {
   }
 
   function schedule() {
+    const now = Date.now();
+    changedAt ??= now;
     clearTimeout(timer);
-    timer = setTimeout(() => publish(), DEBOUNCE_MS);
+    timer = setTimeout(() => {
+      changedAt = undefined;
+      publish();
+    }, Math.min(limits.publishThrottleMs, Math.max(0, changedAt + MAX_DELAY_MS - now)));
   }
 
   const observer = new MutationObserver(schedule);
@@ -119,23 +127,39 @@ function run(connection: Connection, definition: SourceDefinition) {
     clearTimeout(timer);
   });
 
-  // Intents run one at a time, in arrival order.
+  // Intents run one at a time, in arrival order. Each targets the page shown when it arrived.
   let queue: Promise<unknown> = Promise.resolve();
   connection.on("intent", ({ intentId, intent }: { intentId: number; intent: Record<string, any> }) => {
-    queue = queue.then(() => perform(connection, definition, intentId, intent, () => publish()));
+    const target = { page: urlKey(location.href), deadline: Date.now() + limits.intentTimeoutMs };
+    queue = queue.then(() => perform(connection, definition, intentId, intent, target, () => publish()));
   });
 
   schedule();
 }
 
-async function perform(connection: Connection, definition: SourceDefinition, intentId: number, intent: Record<string, any>, publish: () => void) {
+/**
+ * Runs an intent's steps. Before each step the page must still be the one the intent targeted,
+ * and the host's deadline must not have passed; a `waitForUrl` step moves the target to the page
+ * it waited for. A displaced or expired intent stops and reports a failure.
+ */
+async function perform(
+  connection: Connection,
+  definition: SourceDefinition,
+  intentId: number,
+  intent: Record<string, any>,
+  target: { page: string | null; deadline: number },
+  publish: () => void,
+) {
   const report = (ok: boolean, error?: { code: ErrorCode; message: string }) =>
     connection.request("source.intentResult", { intentId, ok, error: error ?? null }).catch(() => {});
-  const { manifest } = connection.bound;
-  const routeId = matchRoute(manifest, location.href).routeId;
+  const check = () => {
+    if (Date.now() >= target.deadline) throw new GenesisError("DEADLINE", "The action did not finish in time");
+    if (urlKey(location.href) !== target.page) throw new GenesisError("SOURCE_REPLACED", "The page changed");
+  };
 
   let steps: Steps;
   try {
+    check();
     const handler = definition.intents?.[String(intent?.name)];
     if (!handler) return report(false, { code: "INVALID_ARGUMENT", message: `Unknown action ${intent?.name}` });
     steps = handler(intent, document);
@@ -144,12 +168,13 @@ async function perform(connection: Connection, definition: SourceDefinition, int
       return report(false, { code: "INVALID_STEPS", message: "A navigate or submit step must be the last step" });
     }
   } catch (error) {
-    return report(false, { code: "INVALID_STEPS", message: String((error as Error)?.message ?? error) });
+    const code = error instanceof GenesisError ? error.code : "INVALID_STEPS";
+    return report(false, { code, message: String((error as Error)?.message ?? error) });
   }
 
   try {
     for (const [index, step] of steps.entries()) {
-      if (matchRoute(manifest, location.href).routeId !== routeId) throw new GenesisError("SOURCE_REPLACED", "The page changed");
+      check();
       if (index === steps.length - 1 && ("navigate" in step || "submit" in step)) {
         // The step replaces this document, so the result goes out first.
         await report(true);
@@ -157,6 +182,7 @@ async function perform(connection: Connection, definition: SourceDefinition, int
         return;
       }
       await executeAndWait(step);
+      if ("waitForUrl" in step) target.page = urlKey(location.href);
     }
     await report(true);
     publish();

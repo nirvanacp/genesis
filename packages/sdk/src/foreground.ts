@@ -34,6 +34,11 @@ interface Published {
   snapshot: Snapshot;
 }
 
+/** The screen stack sent with `navigation.save`, without keys. */
+interface SavedNavigation {
+  stack: { id: string; params: Record<string, string>; url: string | null; scroll?: number }[];
+}
+
 interface PendingIntent {
   resolve(): void;
   reject(error: GenesisError): void;
@@ -43,11 +48,14 @@ interface PendingIntent {
 export interface Foreground {
   readonly manifest: Manifest;
   readonly appletId: string;
-  /** True when the host recreated the applet after retiring it in the background. */
+  /** True when the host recreated the applet after retiring it in the background. The runtime
+   * then restores the screen stack and scroll positions it had when it went to the background. */
   readonly restored: boolean;
   navigation: {
     state(): NavigationState;
     navigate(target: NavigateTarget): Promise<void>;
+    /** Reloads the current screen's page in its source; the screen keeps its cached data meanwhile. */
+    reload(): void;
     /** In-app Back: the same rules as Android Back, except that the root screen stays. */
     back(): void;
     setLeaveGuard(message: string | null): void;
@@ -91,6 +99,7 @@ function foreground(connection: Connection): Foreground {
     snapshots?: Record<string, Published>;
     sourceUrls?: Record<string, string>;
     restored?: boolean;
+    navigation?: SavedNavigation | null;
   };
 
   let version = 0;
@@ -104,8 +113,6 @@ function foreground(connection: Connection): Foreground {
   const latest = new Map<string, Published>(Object.entries(boundState.snapshots ?? {}));
   const cache = new Map<string, Map<string, Snapshot>>();
   const sourceUrls = new Map<string, string>(Object.entries(boundState.sourceUrls ?? {}));
-  /** Documents a navigation replaced. Their late publications are ignored. */
-  const superseded = new Set<string>();
 
   for (const published of latest.values()) remember(published);
 
@@ -120,9 +127,9 @@ function foreground(connection: Connection): Foreground {
     while (entries.size > CACHE_PER_SOURCE) entries.delete(entries.keys().next().value!);
   }
 
+  // The host retires a source's document when it loads another URL, so every publication belongs
+  // to the page its requestedUrl names.
   connection.on("snapshot", (published: Published) => {
-    const documentId = published.snapshot?.documentId;
-    if (documentId && superseded.has(documentId)) return;
     latest.set(published.sourceId, published);
     remember(published);
     changed();
@@ -150,15 +157,18 @@ function foreground(connection: Connection): Foreground {
       if (!source) return loading<T>(null, null, screen.params);
       const key = urlKey(source.url);
       const published = latest.get(source.sourceId);
+      const cached = key ? cache.get(source.sourceId)?.get(key) : undefined;
+      const fallback = cached && cached.routeId === source.routeId ? view<T>(cached, true) : null;
       if (published && urlKey(published.requestedUrl ?? published.snapshot.url) === key) {
         const { snapshot } = published;
+        // A page still loading keeps showing its cached data. An error, sign-in or unsupported
+        // state replaces it: cached data must not outlive a failed refresh or a sign-out.
+        if (snapshot.status === "loading" && fallback) return fallback;
         if (snapshot.status !== "ready" || snapshot.routeId === source.routeId) return view<T>(snapshot, false);
         // The page redirected to another route; its data does not fit this screen.
         return { ...view<T>(snapshot, false), status: "unsupported", data: null };
       }
-      const cached = key ? cache.get(source.sourceId)?.get(key) : undefined;
-      if (cached && cached.routeId === source.routeId) return view<T>(cached, true);
-      return loading<T>(source.url, source.routeId, screen.params);
+      return fallback ?? loading<T>(source.url, source.routeId, screen.params);
     },
     latest<T>(sourceId: string) {
       const published = latest.get(sourceId);
@@ -166,12 +176,10 @@ function foreground(connection: Connection): Foreground {
     },
   };
 
-  /** Asks the source to load the screen's page when it shows another one. */
-  function associate(screen: Screen) {
+  /** Asks the source to load the screen's page when it shows another one, or always with `force`. */
+  function associate(screen: Screen, force = false) {
     const source = screen.source;
-    if (!source || urlKey(sourceUrls.get(source.sourceId) ?? "") === urlKey(source.url)) return;
-    const previous = latest.get(source.sourceId)?.snapshot.documentId;
-    if (previous) superseded.add(previous);
+    if (!source || (!force && urlKey(sourceUrls.get(source.sourceId) ?? "") === urlKey(source.url))) return;
     sourceUrls.set(source.sourceId, source.url);
     connection.request("source.navigate", { sourceId: source.sourceId, url: source.url }).catch(error => {
       console.error("Genesis could not load the source page", error);
@@ -189,10 +197,35 @@ function foreground(connection: Connection): Foreground {
     return screen(match.screen, match.params, { sourceId: match.source, url: urlKey(url)!, routeId: match.routeId });
   }
 
+  const scrollMemory = new Map<string, number>();
   const start = manifest.sources[0] ? screenForUrl(manifest.sources[0].startUrl) : null;
   let navigation = initialState(start ?? screen(manifest.foreground.screens[0]));
+  const restoredStack = boundState.restored ? restoreStack(boundState.navigation) : [];
+  if (restoredStack.length > 0) navigation = { ...navigation, stack: restoredStack };
   if (boundState.website?.open && boundState.website.url) navigation = { ...navigation, website: { url: boundState.website.url } };
-  const scrollMemory = new Map<string, number>();
+
+  /** Rebuilds saved screens against the current manifest; entries it no longer declares are dropped. */
+  function restoreStack(saved: SavedNavigation | null | undefined): Screen[] {
+    const stack: Screen[] = [];
+    for (const entry of Array.isArray(saved?.stack) ? saved!.stack : []) {
+      const restored = entry.url ? screenForUrl(entry.url)
+        : manifest.foreground.screens.includes(entry.id) ? screen(entry.id, entry.params ?? {}) : null;
+      if (!restored || restored.id !== entry.id) continue;
+      if (typeof entry.scroll === "number") scrollMemory.set(restored.key, entry.scroll);
+      stack.push(restored);
+    }
+    return stack;
+  }
+
+  function saveNavigation() {
+    const saved: SavedNavigation = {
+      stack: navigation.stack.map(entry => ({
+        id: entry.id, params: entry.params, url: entry.source?.url ?? null, scroll: scrollMemory.get(entry.key),
+      })),
+    };
+    void connection.request("navigation.save", { navigation: saved }).catch(() => {});
+  }
+  connection.on("suspended", saveNavigation);
   let confirmLeave: ((message: string, leave: () => void) => void) | null = null;
 
   function dispatch(event: NavigationEvent): Effect[] {
@@ -216,7 +249,12 @@ function foreground(connection: Connection): Foreground {
       if (effect.type === "host.website.close") void connection.request("website.close").catch(() => {});
       else if (effect.type === "host.back.unhandled") handled = false; // Only Android Back leaves the applet.
       else if (effect.type === "confirmLeave") {
-        const leave = () => { dispatch({ type: "guard", guard: null }); back(false); };
+        // The host's Back slot is answered by now, so a confirmed Android Back on a root screen
+        // leaves through back.leave.
+        const leave = () => {
+          dispatch({ type: "guard", guard: null });
+          if (!back(false) && fromHost) void connection.request("back.leave").catch(() => {});
+        };
         // Answer the host first; the prompt may take longer than the Back answer window.
         setTimeout(() => {
           if (confirmLeave) confirmLeave(effect.message, leave);
@@ -344,6 +382,7 @@ function foreground(connection: Connection): Foreground {
     navigation: {
       state: () => navigation,
       navigate,
+      reload: () => associate(currentScreen(navigation), true),
       back: () => { back(false); },
       setLeaveGuard: message => { dispatch({ type: "guard", guard: message === null ? null : { message } }); },
       onConfirmLeave(handler) {
