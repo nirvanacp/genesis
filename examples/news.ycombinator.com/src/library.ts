@@ -347,7 +347,7 @@ export function libraryMessage(error: unknown): string {
 
 /** Saved stories, newest first, and the active categories, reread after writes and on resume. */
 export function useLibrary(): Library {
-  const { storage, ...repositories } = useRepositories();
+  const { storage, bookmarkRepository, categoryRepository } = useRepositories();
   const records = useRecords<unknown>("bookmarks", { storage });
   const [categories, setCategories] = useState<{ snapshot: CategorySnapshot | null; error: unknown }>({ snapshot: null, error: null });
 
@@ -356,7 +356,7 @@ export function useLibrary(): Library {
     let serial = 0;
     const load = () => {
       const current = ++serial;
-      repositories.categoryRepository.read().then(
+      categoryRepository.read().then(
         snapshot => { if (active && current === serial) setCategories({ snapshot, error: null }); },
         error => { if (active && current === serial) setCategories(previous => ({ ...previous, error })); },
       );
@@ -366,7 +366,7 @@ export function useLibrary(): Library {
       if (change.changes.some(entry => entry.collection.startsWith("categor"))) load();
     });
     return () => { active = false; stop(); };
-  }, [storage, repositories]);
+  }, [storage, categoryRepository]);
 
   useAppResume(() => storage.refresh());
 
@@ -379,6 +379,7 @@ export function useLibrary(): Library {
     categories: categories.snapshot,
     loading: records.loading || (categories.snapshot === null && categories.error === null),
     error: records.error ?? categories.error,
-    ...repositories,
+    bookmarkRepository,
+    categoryRepository,
   };
 }

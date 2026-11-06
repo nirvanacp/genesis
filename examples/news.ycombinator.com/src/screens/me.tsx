@@ -3,24 +3,24 @@ import { ScrollMemory, useAppResume, useIntent, useNavigation, useScreenSource }
 import { ORIGIN, userUrl, type AccountData } from "../model";
 import { Icon, LoadError, Notice, SignInPrompt, Skeleton, useOpenRoute } from "../components/ui";
 
-/** The account route; a fresh `account` value makes the source load the page again. */
-export const accountUrl = (stamp = "1") => `${ORIGIN}/news?account=${stamp}`;
+/** The account route: the front page, read for its header. */
+export const accountUrl = () => `${ORIGIN}/news?account=1`;
 
 export function MeScreen() {
-  const { navigate } = useNavigation();
+  const { navigate, reload } = useNavigation();
   const page = useScreenSource<AccountData>();
   const account = useIntent("me");
   const open = useOpenRoute();
   const [confirming, setConfirming] = useState(false);
   // The website sheet may have signed in or out; read the header again.
-  useAppResume(() => void account.act({ name: "reload" }).catch(() => {}));
+  useAppResume(reload);
   const data = page.stale ? null : page.data;
 
   const signOut = async () => {
     try {
       await account.act({ name: "signOut" });
       setConfirming(false);
-      await navigate({ kind: "route", url: accountUrl(String(Date.now())), mode: "replace" });
+      reload();
     } catch { /* The error shows below. */ }
   };
 

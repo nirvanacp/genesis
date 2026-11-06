@@ -54,7 +54,8 @@ Open work: Search is a placeholder screen. It is unfinished, not a deferral the 
 | Save and Edit | Open the `save` screen | `bookmarks` service | Conflict rereads; uncertain writes reread | implemented, writes not exercised | static |
 | Saved filters and Manage categories | Filter; create, rename, delete categories | `bookmarks` service | Confirmation before delete | verified (list) | device |
 | Post form | Submit to HN | `post.submit` intent | Field errors; leave guard | implemented, not submitted | static |
-| Sign out | HN logout | `me.signOut` intent | Confirmation | implemented, not exercised | static |
+| Sign out | HN logout, then the account page reloads | `me.signOut` intent, `reload()` | Confirmation | implemented, not exercised | static |
+| Return to Me, Post another | Reload the account page or a fresh submit form | `reload()` | Skeleton until the page loads | implemented | static |
 
 ## Data
 
@@ -66,7 +67,7 @@ Open work: Search is a placeholder screen. It is unfinished, not a deferral the 
 | `bookmarks` service, collection `category-names` | Applet service | Normalized name | 1 | Keeps names unique |
 | `bookmarks` service, collection `category-meta` | Applet service | `active` | 1 | Active category ids; its revision guards category writes |
 
-Stories with no active category show as Uncategorized. Record shapes are unchanged from the first release, so existing data reads as is.
+Categories are read once when Saved opens and again on a category change or resume. Stories with no active category show as Uncategorized. Record shapes are unchanged from the first release, so existing data reads as is.
 
 ## Current work and verification
 

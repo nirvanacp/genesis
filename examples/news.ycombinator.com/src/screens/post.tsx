@@ -5,7 +5,7 @@ import { LoadError, Notice, SignInPrompt, Skeleton, useOpenRoute } from "../comp
 
 /** HN's submit form, rebuilt; HN's own form receives the values and decides the outcome. */
 export function PostScreen() {
-  const { navigate, setLeaveGuard } = useNavigation();
+  const { reload, setLeaveGuard } = useNavigation();
   const page = useScreenSource<SubmitData>();
   const post = useIntent("post");
   const open = useOpenRoute();
@@ -33,7 +33,7 @@ export function PostScreen() {
       <button type="button" className="primary" onClick={() => open(`${ORIGIN}/newest`)}>See New</button>
       <button type="button" className="secondary" onClick={() => {
         setTitle(""); setUrl(""); setText(""); setSent(false);
-        void navigate({ kind: "route", url: `${ORIGIN}/submit?t=${Date.now()}`, mode: "replace" });
+        reload();
       }}>Post another</button>
     </Notice>
   </div>;
