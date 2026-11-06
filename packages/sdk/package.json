@@ -1,6 +1,6 @@
 {
   "name": "@genesis/sdk",
-  "version": "1.0.0",
+  "version": "0.0.0",
   "type": "module",
   "exports": {
     ".": {
@@ -37,6 +37,6 @@
     "dist"
   ],
   "dependencies": {
-    "@genesis/core": "1.0.0"
+    "@genesis/core": "0.0.0"
   }
 }

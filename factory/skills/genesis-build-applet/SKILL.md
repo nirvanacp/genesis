@@ -1,6 +1,6 @@
 ---
 name: genesis-build-applet
-description: Build a new Genesis applet from a website address and a product request, using SDK 1.0 and the factory guides.
+description: Build a new Genesis applet from a website address and a product request, using SDK 0.0 and the factory guides.
 ---
 
 # Build a Genesis applet

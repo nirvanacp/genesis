@@ -1,6 +1,6 @@
 # SDK reference
 
-This kit matches `@genesis/sdk` `1.0.0`, `@genesis/applet-tools` `1.0.0`, manifest schema `5` and bundle format `2`. Import only from the three public entry points:
+This kit matches `@genesis/sdk` `0.0.0`, `@genesis/applet-tools` `0.0.0`, manifest schema `5` and bundle format `2`. Import only from the three public entry points:
 
 | Import | Use it in | Exports |
 | --- | --- | --- |

@@ -30,7 +30,7 @@ Agents work from an ordinary product request. They ask focused questions when un
 
 ## What is available
 
-This kit matches SDK `1.0.0`, tools `1.0.0`, manifest schema `5` and bundle format `2`; `kit.json` in an exported copy records the same versions. Applets use TypeScript and React, up to three sources, declared routes, driver-step intents, applet document storage and declared HTTPS services.
+This kit matches SDK `0.0.0`, tools `0.0.0`, manifest schema `5` and bundle format `2`; `kit.json` in an exported copy records the same versions. Applets use TypeScript and React, up to three sources, declared routes, driver-step intents, applet document storage and declared HTTPS services.
 
 The `genesis-applet` CLI creates, checks and builds applets with Node only. A debug build of the Genesis app accepts development installs over adb and applies them without restarting. Release builds load only the applets bundled into the APK. Publisher signing and public distribution do not exist yet.
 

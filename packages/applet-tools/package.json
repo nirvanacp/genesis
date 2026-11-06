@@ -1,6 +1,6 @@
 {
   "name": "@genesis/applet-tools",
-  "version": "1.0.0",
+  "version": "0.0.0",
   "type": "module",
   "engines": {
     "node": "24.15.0"
@@ -21,7 +21,7 @@
     "prepack": "node prepare-kit.mjs"
   },
   "dependencies": {
-    "@genesis/core": "1.0.0",
+    "@genesis/core": "0.0.0",
     "esbuild": "0.28.2",
     "typescript": "7.0.2"
   }
