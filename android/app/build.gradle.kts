@@ -81,7 +81,7 @@ androidComponents {
             workspace.set(workspaceRoot)
             inputs.files(fileTree(workspaceRoot) {
                 include("Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "package.json", "package-lock.json",
-                    "tsconfig.base.json", ".nvmrc", "tools/**", "crates/contracts/**", "packages/**", "factory/applets/**", "genesis.packages.json", "android/native/**")
+                    "tsconfig.base.json", ".nvmrc", "tools/**", "crates/contracts/**", "packages/**", "examples/**", "genesis.packages.json", "android/native/**")
                 exclude("**/node_modules/**", "**/target/**")
             })
             assetsDirectory.set(layout.buildDirectory.dir("generated/genesis/${variant.name}/assets"))

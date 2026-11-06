@@ -2,7 +2,7 @@
 
 ## Identity and context
 
-Stable ID `x-bookmarks`. Origins: https://x.com. Sources: primary, explore, alerts, saved, account. Pages: library, app. Service: bookmarks. Native sections: Home, Explore, Notifications, Saved, Profile. SDK 0.5.1, tools 0.5.0, runtime API 4, manifest schema 3, data/bundle schema 1. Monorepo guidance revision: factory redesign adopted 2026-11-01T19:24:48+05:30; exported kit metadata is not present in this applet. [Manifest](../applet.json) is executable route/source/page authority; [factory records](../../../guides/applet-records.md) define upkeep.
+Stable ID `x-bookmarks`. Origins: https://x.com. Sources: primary, explore, alerts, saved, account. Pages: library, app. Service: bookmarks. Native sections: Home, Explore, Notifications, Saved, Profile. SDK 0.5.1, tools 0.5.0, runtime API 4, manifest schema 3, data/bundle schema 1. Monorepo guidance revision: factory redesign adopted 2026-11-01T19:24:48+05:30; exported kit metadata is not present in this applet. [Manifest](../applet.json) is executable route/source/page authority; [factory records](../../../factory/guides/applet-records.md) define upkeep.
 
 ## Product scope
 
@@ -99,7 +99,7 @@ All current code remains implemented at its prior revision; this record adoption
 
 ## Current work and verification
 
-Adoption 2026-11-01T19:24:48+05:30: manifest IDs, package versions, documented code paths and links inspected; no runtime/data changes. Live verification not-run in this task. Existing historical evidence: [144631-x-interactions-verification.md](../../../../.developer/reports/phase-5/2026-11-01/144631-x-interactions-verification.md), [065059-x-ux-repair-verification.md](../../../../.developer/reports/phase-5/2026-11-01/065059-x-ux-repair-verification.md). Each record qualifies only its named revision/environment; no past pass establishes current site selectors or all routes.
+Adoption 2026-11-01T19:24:48+05:30: manifest IDs, package versions, documented code paths and links inspected; no runtime/data changes. Live verification not-run in this task. Existing historical evidence: Genesis developer records of the 2026-11-01 X interactions and UX-repair verifications (maintainer-only, not in public copies). Each record qualifies only its named revision/environment; no past pass establishes current site selectors or all routes.
 
 Current interaction code restores ready account-bound controls after provider Return even without new source publication, cancels pending work on website entry, and keeps cached rows read-only until live targets exist. Actual mutation persistence, inverse confirmation/private Follow variants, native video, physical-device/TalkBack, localization/Premium-only layouts and account switching remain unqualified.
 

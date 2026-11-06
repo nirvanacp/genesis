@@ -2,7 +2,7 @@
 
 ## Identity and context
 
-Stable ID `hn-bookmarks`. Origins: https://news.ycombinator.com. Sources: primary, post, me. Pages: library, search, app. Service: bookmarks. Native sections: Home, Search, Post, Saved, Me. SDK 0.5.1, tools 0.5.0, runtime API 4, manifest schema 3, data/bundle schema 1. Monorepo guidance revision: factory redesign adopted 2026-11-01T19:25:00+05:30; exported kit metadata is not present in this applet. [Manifest](../applet.json) is executable route/source/page authority; [factory records](../../../guides/applet-records.md) define upkeep.
+Stable ID `hn-bookmarks`. Origins: https://news.ycombinator.com. Sources: primary, post, me. Pages: library, search, app. Service: bookmarks. Native sections: Home, Search, Post, Saved, Me. SDK 0.5.1, tools 0.5.0, runtime API 4, manifest schema 3, data/bundle schema 1. Monorepo guidance revision: factory redesign adopted 2026-11-01T19:25:00+05:30; exported kit metadata is not present in this applet. [Manifest](../applet.json) is executable route/source/page authority; [factory records](../../../factory/guides/applet-records.md) define upkeep.
 
 ## Product scope
 
@@ -84,7 +84,7 @@ All current code remains implemented at its prior revision; this record adoption
 
 ## Current work and verification
 
-Adoption 2026-11-01T19:25:00+05:30: manifest IDs, package versions, documented code paths and links inspected; no runtime/data changes. Live verification not-run in this task. Existing historical evidence: [115202-genesis-explicit-navigation-verification.md](../../../../.developer/reports/phase-5/2026-11-01/115202-genesis-explicit-navigation-verification.md), [161451-hn-compact-stories.md](../../../../.developer/changelog/phase-5/2026-11-01/161451-hn-compact-stories.md). Each record qualifies only its named revision/environment; no past pass establishes current site selectors or all routes.
+Adoption 2026-11-01T19:25:00+05:30: manifest IDs, package versions, documented code paths and links inspected; no runtime/data changes. Live verification not-run in this task. Existing historical evidence: Genesis developer records of the 2026-11-01 explicit-navigation verification and the HN compact-stories change (maintainer-only, not in public copies). Each record qualifies only its named revision/environment; no past pass establishes current site selectors or all routes.
 
 Public feed/discussion retention excludes private lists/profiles/account data. Comment fragment reveal and nested disclosure are implemented, but this adoption adds no device checks. Search remains unresolved. Physical-device/TalkBack, complete signed-in/source-route matrix and protected mutations remain unqualified.
 

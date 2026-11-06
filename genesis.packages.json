@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
   "applets": [
-    "factory/applets/news.ycombinator.com"
+    "examples/news.ycombinator.com"
   ]
 }

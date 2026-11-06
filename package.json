@@ -5,9 +5,9 @@
   "workspaces": [
     "packages/sdk",
     "packages/applet-tools",
-    "factory/applets/youtube.com",
-    "factory/applets/x.com",
-    "factory/applets/news.ycombinator.com"
+    "examples/youtube.com",
+    "examples/x.com",
+    "examples/news.ycombinator.com"
   ],
   "engines": {
     "node": "24.15.0",

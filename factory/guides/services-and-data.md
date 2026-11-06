@@ -64,7 +64,7 @@ npx --no-install genesis-applet service stop . --device emulator-5554 --json
 
 To start or stop a backend without any connected device, replace `--device emulator-5554` with `--local`. Local start checks authenticated HTTPS health but leaves Android connections untouched. `provision` always requires a device. The factory scripts below wrap this lifecycle for the monorepo.
 
-The applet must first be installed in the host and declare that service. Genesis maintainers may still use `node tools/services.mjs <action> factory/applets/news.ycombinator.com <device>` as a compatibility wrapper. The standalone commands require no platform repository.
+The applet must first be installed in the host and declare that service. Genesis maintainers may still use `node tools/services.mjs <action> examples/news.ycombinator.com <device>` as a compatibility wrapper. The standalone commands require no platform repository.
 
 `start` can create/reuse private local state, start the declared process, check HTTPS health, establish adb reverse, and import the connection. Provisioning force-stops and relaunches Genesis, so save unsaved work first. `status` checks the recorded process, not end-to-end readiness. `stop` preserves data and credentials. Default adb location is the macOS Android SDK path; set `GENESIS_ADB` to the actual executable when needed. OpenSSL and an authorized adb device are prerequisites for local start.
 
@@ -78,36 +78,36 @@ From the Genesis repository root:
 
 ```sh
 # Start all local backends, leaving them running after the command exits.
-./factory/start-applet-servers.sh
+./examples/start-applet-servers.sh
 
 # Also restore Android tunnels/connections after reboot or reconnect.
-./factory/start-applet-servers.sh --device emulator-5554
+./examples/start-applet-servers.sh --device emulator-5554
 
 # Start just one applet, from any working directory.
-/absolute/path/to/genesis/factory/applets/news.ycombinator.com/start.sh
+/absolute/path/to/genesis/examples/news.ycombinator.com/start.sh
 
 # Stop all managed Node backends without deleting data.
-./factory/start-applet-servers.sh --stop
+./examples/start-applet-servers.sh --stop
 
 # Read-only validation, safe for coding agents. Does not execute start.sh.
-node factory/scripts/applet-servers.mjs all --check
+node examples/scripts/applet-servers.mjs all --check
 ```
 
-The launcher discovers directories with `applet.json` under `factory/applets/`, validates all reservations before launching anything, then runs each `start.sh` sequentially in directory-name order. A failed applet does not prevent later applets from starting; the launcher exits nonzero and names failures. Successful servers remain running. Each current applet script starts its declared services sequentially and waits for authenticated health before returning. Repeated starts reuse a matching managed process and check health. An occupied port or a process from another checkout is an error; the tool never kills the port owner or silently chooses another port. After moving a checkout, stop the original managed process before restarting from the new path.
+The launcher discovers directories with `applet.json` under `examples/`, validates all reservations before launching anything, then runs each `start.sh` sequentially in directory-name order. A failed applet does not prevent later applets from starting; the launcher exits nonzero and names failures. Successful servers remain running. Each current applet script starts its declared services sequentially and waits for authenticated health before returning. Repeated starts reuse a matching managed process and check health. An occupied port or a process from another checkout is an error; the tool never kills the port owner or silently chooses another port. After moving a checkout, stop the original managed process before restarting from the new path.
 
 Use Node 24, installed workspace dependencies and OpenSSL. Device mode additionally needs an authorized adb device and the applets installed in a compatible Genesis debug host. It imports service settings and restarts Genesis for each service, so save unsaved app work first. Local-only startup can run before an emulator or phone is available; rerun with `--device <serial>` when it is connected. Without that step, restarted adb tunnels may still leave bookmarking unavailable even though the backend is healthy.
 
 HN and X use built-in SQLite, so no separate database daemon, container, Redis or storage server is currently needed. The helper creates missing SQLite files/schema and reuses existing data at `~/.local/share/genesis/services/hn-bookmarks/bookmarks/documents.sqlite3` and `~/.local/share/genesis/services/x-bookmarks/bookmarks/documents.sqlite3`. The same directories contain `server.log`, `process.json`, token and TLS files. `GENESIS_SERVICE_STATE_ROOT` overrides the state root; preserve its previous value to keep using the same libraries. Nothing is written into applet source, and starts never import/reset existing records. On X's first database creation only, prefix the command with `X_EXPECTED_HANDLE=your_handle`. Existing X libraries retain their stored handle.
 
-`factory/ports.json` is the shared local reservation registry. HN bookmarks reserve 8787, X bookmarks 8788, and YouTube has an empty reservation list because it has no backend. Reserve the lowest unused port in 8787–8999 for every new TCP listener, including databases and workers with HTTP endpoints. Check the committed registry rather than choosing a temporarily free port at runtime. Keep assignments stable across restarts and customization; never renumber another applet to resolve a conflict. Review concurrent changes for duplicate reservations.
+`examples/ports.json` is the shared local reservation registry. HN bookmarks reserve 8787, X bookmarks 8788, and YouTube has an empty reservation list because it has no backend. Reserve the lowest unused port in 8787–8999 for every new TCP listener, including databases and workers with HTTP endpoints. Check the committed registry rather than choosing a temporarily free port at runtime. Keep assignments stable across restarts and customization; never renumber another applet to resolve a conflict. Review concurrent changes for duplicate reservations.
 
 For a new applet or service, the coding agent must:
 
-1. Add the applet's directory name under `applets` in `factory/ports.json`, with `[]` for no servers. Reserve one unique port per listener. Example Node service entry: `{ "name": "search", "port": 8789, "serviceFile": "backend/service.search.json" }`.
+1. Add the applet's directory name under `applets` in `examples/ports.json`, with `[]` for no servers. Reserve one unique port per listener. Example Node service entry: `{ "name": "search", "port": 8789, "serviceFile": "backend/service.search.json" }`.
 2. Keep a Node declaration's `serviceId` and `port` equal to the registry's `name` and `port`. Declare its logical ID in `applet.json` and implement the helper's HTTPS/token/health/environment contract. Give each service its own ID so databases, credentials, logs and process metadata remain separate.
 3. Create/update executable `start.sh`. For Node services in this repository, copy an existing applet wrapper pointing to `../../scripts/applet-servers.mjs`; it starts every registered declaration in registry order. For a non-Node service or a database daemon, reserve `{ "name": "database", "port": 8790 }` without `serviceFile` and implement its lifecycle in the applet script before dependent Node services. Read its assigned port from the registry. That script must prepare persistent storage without resetting it, preserve credentials, reuse its own healthy processes, check readiness, report failures with nonzero exit, and implement `--stop` to stop dependents before their databases. The shared runner only manages entries with `serviceFile`; entries without one are owned by the custom script. It does not start arbitrary database daemons for you.
 4. List any configuration, initial account requirements, dependency order, state locations and stop/recovery commands in the applet README. Keep credentials in private state or the operator's environment, never the registry. The scripts must work from any working directory, return after readiness, keep servers running after terminal exit, and accept `--device`, `--check` and `--stop`. Check mode must have no startup or data effects.
-5. Run `bash -n <applet>/start.sh`, `node --check` for changed modules, and `node factory/scripts/applet-servers.mjs all --check`. The checker rejects missing scripts, unknown applets, duplicate ports/names, out-of-range assignments and disagreement with service declarations. A static pass does not establish live readiness.
+5. Run `bash -n <applet>/start.sh`, `node --check` for changed modules, and `node examples/scripts/applet-servers.mjs all --check`. The checker rejects missing scripts, unknown applets, duplicate ports/names, out-of-range assignments and disagreement with service declarations. A static pass does not establish live readiness.
 
 The shared launcher and registry are Genesis-monorepo conveniences, not exported creator-kit files. In an independent applet workspace, maintain the same `start.sh` operator contract, use installed `genesis-applet service ... --local` and `--service-file` commands, and keep a shared port registry at the root of whatever local applet workspace the operator uses. Do not require the Genesis source checkout or copy its occupied port assignments into a separate workspace. The guides and skills travel with the kit.
 
