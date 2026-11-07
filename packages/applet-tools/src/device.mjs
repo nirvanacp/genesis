@@ -57,7 +57,7 @@ export class Device {
     this.run(['shell', 'run-as', this.application, 'rm', '-f', `${IMPORTS}/${receiptName(name)}`]);
   }
 
-  /** Brings the activity forward. It is `singleTask`, so a running app pauses, resumes and scans. */
+  /** Starts the activity. It is `singleTask`: a running app scans from `onNewIntent`, a background one also on resume. */
   scan() {
     this.run(['shell', 'am', 'start', '-n', `${this.application}/app.nirvana.genesis.MainActivity`]);
   }

@@ -151,6 +151,13 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
         tick();
     }
 
+    /** `dev install` starts this activity again; one already in front gets only this call. */
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        main.post(scan);
+    }
+
     @Override protected void onPause() {
         if (attached) {
             resumed = false;
