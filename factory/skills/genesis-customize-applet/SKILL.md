@@ -1,14 +1,15 @@
 ---
 name: genesis-customize-applet
-description: Customize a Genesis applet using its public SDK, product choices and portable factory guidance.
+description: Change an existing Genesis applet's screens, extractors, actions or data while preserving its identity, data and explicit choices.
 ---
 
 # Customize a Genesis applet
 
-Read [factory instructions](../../AGENTS.md), [rules](../../guides/rules.md), [defaults](../../guides/defaults.md), [records](../../guides/applet-records.md) and the applet's current specs. Use [product scope](../../guides/product-scope.md), [isolation](../../guides/isolated-applets.md), [SDK reference](../../guides/sdk-reference.md), [navigation](../../guides/navigation.md), [interactions](../../guides/interactions.md), [design](../../guides/design.md), [patterns](../../guides/patterns.md), [services/data](../../guides/services-and-data.md) and [verification](../../guides/verification.md) for the affected components.
+Read [factory instructions](../../AGENTS.md), [rules](../../guides/rules.md), [defaults](../../guides/defaults.md), [records](../../guides/applet-records.md). Use [product scope](../../guides/product-scope.md), [SDK reference](../../guides/sdk-reference.md), [navigation](../../guides/navigation.md), [interactions](../../guides/interactions.md), [patterns](../../guides/patterns.md), [design](../../guides/design.md), [services and data](../../guides/services-and-data.md) and [verification](../../guides/verification.md) as each step needs them.
 
-1. Read current specs/decisions, manifest, applet README and changed code. Initialize missing records from inspected facts. Preserve stable identity, existing workflows, stores and explicit design/navigation choices.
-2. Translate the requested difference into observable flows. Recognize clear all-applet intent, classify it and update authorized canonical factory guidance. Ask if local/shared scope or material product behavior is unresolved; do not repeat answered questions.
-3. Inspect current DOM before selector changes. Change route/model/renderer and interaction inventory together. Keep source hidden, actual actions distinct from destinations, account/epoch identity current, and private caches safe.
-4. Apply defaults only where relevant and not overridden. Preserve usable Back after refresh/page changes, provider Return, query/filter state, keyboard-safe dialogs and themed canvas. Data migrations need explicit authority and preservation; no resets to pass checks.
-5. Maintain service/startup declarations with static checks only unless asked to start services. Verify changed and neighboring journeys, update current records and finalize each change record before committing. Do not declare blocked flows complete.
+1. Read `.specs/current.md`, the relevant decisions, `applet.json`, the README and the code you will change. Create missing records from what the code actually does.
+2. Turn the request into observable journeys. Keep the applet id, existing features, stored data and the user's explicit choices. If the request is meant for every applet, follow [shared intent](../../guides/rules.md#shared-intent).
+3. Inspect the current website page before changing an extractor. Change the route, model, screen and interaction inventory together. Keep record keys and shapes readable; migrate only when the user asked for it.
+4. Apply defaults only where they are relevant and not overridden. Keep Back, scroll restoration, the website sheet return and keyboard-safe sheets working.
+5. Run `npm run check` and `npm run build`, install, and walk the changed journeys and their neighbors. Start services only when the user asks.
+6. Update the current spec and a change record, and commit. Report anything unverified.

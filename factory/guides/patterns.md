@@ -1,56 +1,68 @@
-# Applet implementation patterns
+# Implementation patterns
 
+## Layout
 
-Use the [isolated applet architecture](isolated-applets.md), [SDK reference](sdk-reference.md) and [factory instructions](../AGENTS.md). Current applets use an owned foreground and a hidden source adapter. Website DOM is an extraction input, not the layout users interact with.
+```text
+applet.json
+src/main.tsx              mountForeground and the screen switch
+src/sources/<id>.ts       one adapter per source: extract functions and intents
+src/model.ts              data types shared by adapters and screens
+src/screens/*.tsx         one file per screen
+src/components/*.tsx      shared rows, skeletons, sheets
+src/data/*.ts             record and service access (repositories)
+src/theme.css             tokens and base styles
+backend/                  optional service
+```
 
-Follow [design and interaction fidelity](design.md) before choosing an applet's appearance. Unless the user provides an explicit alternative, preserve the source product's mobile identity, aiming for its native app conventions and using its live mobile website where native details are uncertain. Rebuild that design in owned code. Keep the native primary navigation, compare connected screens, and apply the same tokens to applet-only features. Verify every changed interaction separately from visual comparison.
+Adapters import only `@genesis/sdk/source` and pure helpers. Screens import `@genesis/sdk/react`. Share types, not code with side effects, between them; each adapter is bundled separately and runs inside its website page. Extract a helper only after a second real use.
 
-Separate applet modules for extraction, model validation, owned screen rendering, source read/navigation commands, repositories and backend calls. Shared platform modules contain generic lifecycle/capability behavior only. Reuse an abstraction when several real adapters need it, not before.
+## Extractors
 
-Use stable content IDs and bounded managed watchers. Revalidate DOM identity, route, account and operation sequence after async work. Dispose observers, subscriptions and listeners. Never treat missing selectors as an empty page. Extract the smallest valid model; do not clone or transfer a live website tree, arbitrary HTML, cookies or credentials.
+- Read the page in one pass and return a small typed model. Use stable attributes such as ids, `data-*` attributes and URL parameters before visual class names.
+- Resolve links with `new URL(href, doc.baseURI)` and keep only `https:` URLs. Parse numbers with explicit fallbacks: `null` means unknown, not zero.
+- Keep text as text. For rich text, return runs such as `{ text, href?, emphasis? }` built from known elements.
+- Cap list lengths and deduplicate by id. Snapshots over 192 KiB fail.
+- Keep extractors pure: no clicks, no timers, no writes to the page. Use intents for actions.
 
-Mount React only in owned roots. Return `mountReact` for initial top-level layout readiness. For synchronous modal callbacks use `createRoot`, render, and a returned unmount. Use `ui.openModal` for one accessible owned dialog, with an explicit Close action and native Back support. Native shell owns primary navigation and insets. Keep modal panels opaque in both themes.
+## Loading is not empty
 
-Publish loading/ready/empty/auth/challenge/unsupported/error separately. Render initial local UI before remote work. Only a successful read can produce an empty collection. Preserve confirmed content through failed same-route refreshes, show freshness and retry, and prevent mutations against stale account/source state. Backend receipts/revision checks remain authoritative for uncertain writes.
-
-Keep login, upstream forms, account changes, uploads and protected media in the framework website provider. Open external links through the same provider. Never make source UI visible after extraction failure. An unknown route has a usable owned state and an explicit Open website action. Closing the provider returns to the owned opener and revalidates identity.
-
-Use semantic buttons/links, visible keyboard focus, scalable text and at least 48 CSS-pixel applet touch targets, verified on Android. Support 200% text, narrow widths, keyboard appearance, TalkBack, light/dark and reduced motion. Use text/status as well as color. Keep long text wrapping and list windows bounded. An internal screen and its service remain part of one stable applet identity.
-
-Multiple sources share records through foreground storage/services. Each adapter sees only its own website. A shared foreground coordinates visits and renders accepted records; this does not grant cross-origin DOM access, independent accounts, a permanent background process or offline backend authority.
-
-## Loading is an unresolved observation
-
-HTML document completion does not prove that a website has rendered its content. Missing selectors, missing progress indicators and temporarily empty structures remain `loading` on a supported route. Only validated content is `ready`; an affirmative empty marker or validated completed empty structure is `empty`. Explicit sign-out, challenge, upstream error and unsupported-content evidence produce their own outcomes. A route match grants extraction permission, not readiness.
-
-The host bounds each unresolved loading interval at 15 seconds and preserves real failures until a new visit or affirmative recovery. Repeated observations do not extend that deadline. Source activation runs without animation frames; it is separate from content readiness. The foreground mounts immediately with its destination shell, keeps navigation usable and shows a loader until valid content arrives. Do not debounce all errors, automatically open the website, or ask users to Retry during ordinary initialization.
-
-Use optional `error.code` and `error.retryable` with fixed safe copy for real failures. The host assigns `error.origin`. Never use raw exception text, page bodies or a button label as error copy. Legacy message-only publications remain compatible. Retain prior content only for the same destination/tab and a currently permitted account; an empty model shell is not prior content. Source Retry and explicit website presentation are separate actions.
-
-A source observer should follow this order, using site-specific functions implemented from inspected DOM:
+An extractor returns data only when it recognized the page. Return `null` (loading) when the content container is missing, the page is still assembling, or a placeholder is shown. Return an empty list only when the page itself says there is nothing, such as an empty container that the site renders for no results, or a "No results" message.
 
 ```ts
-function observe() {
-  const problem = inspectExplicitProblem();
-  if (problem) return context.source.publish(problem);
-  const model = extractValidatedDestination();
-  if (model) return context.source.publish({state:'ready', data:model});
-  const empty = inspectConfirmedEmpty();
-  if (empty) return context.source.publish({state:'empty', data:empty});
-  return context.source.publish({state:'loading'});
+extract(doc) {
+  const list = doc.querySelector("[data-testid=results]");
+  if (!list) return null;                                   // not there yet
+  const items = [...list.querySelectorAll("article")].map(readItem).filter(Boolean);
+  if (items.length === 0 && !doc.querySelector("[data-testid=empty-state]")) return null;
+  return { items };
 }
 ```
 
-The function names above are illustrative applet helpers, not SDK APIs. Do not replace them with guessed selectors. Managed observations must continue across DOM mutations and be disposed with the source. Route inventories must list content identity, readiness, empty and failure evidence. An unimplemented starter reports `ADAPTER_NOT_IMPLEMENTED`; that deliberate development placeholder is not the pattern for normal missing content.
+Sign-in walls, consent banners and error pages can appear at any route. Detect the ones you know: return a field such as `{ blocked: "signin" }` for the screen to explain, or use `requiresSignIn` with `isSignedIn`. If the page publishes nothing but `loading` for 15 seconds, the host reports `NOT_READY`; show it as a failure with a way to open the website.
 
-Verify transitions with recordings or sanitized traces on the actual delivered host. Exercise HTML completion before SPA content, repeated warm/cold navigation, same-document tabs, source/provider return, offline recovery and delayed content on both sides of the deadline. Check that ordinary loading never paints Retry or unsupported recovery. Inspect actual errors separately. A settled screenshot or typecheck does not establish transition correctness.
+## Screens
 
-## Skeletons are the default pending UI
+```tsx
+function ItemScreen() {
+  const page = useScreenSource<ItemData>();
+  if (page.status === "auth") return <SignInPrompt />;
+  if (page.status === "unsupported") return <OpenOnWebsite url={page.url} />;
+  if (page.status === "error" && !page.data) return <LoadError error={page.error} url={page.url} />;
+  if (!page.data) return <ItemSkeleton />;
+  return <Item data={page.data} refreshing={page.stale} />;
+}
+```
 
-See [design presentation](design.md#skeletons-are-the-default-pending-ui) and [defaults](defaults.md). A compatible explicit override changes appearance, not readiness or accessible status requirements.
+- Handle every status. Loading, empty, sign-in, unsupported and failure look different and say different things.
+- Render cached `stale` data with an unobtrusive refreshing state instead of a skeleton.
+- One `useScreenSource` per screen. Read other sources with `useSource` only for what the screen needs.
+- Keep keys stable: React keys and stored record keys use the website's ids.
+- Put each screen's scroll container in `ScrollMemory`.
 
-## Lifecycle and bounded work
+## Records and services
 
-Prefer one shared source/navigation subscription per foreground and pass accepted state to row components. Do not create a source subscription for every link or row. Revalidate account/entity/route after async work. Re-register transient Back handlers after source epoch or owned-page ownership changes; scoped cleanup must not remove a newer handler. On provider Return reconcile the latest accepted snapshot even if the source emits nothing new.
+Wrap storage and service calls in small modules under `src/data/` that screens call. Keep one authoritative store per record type and say which in the current spec. Validate stored values when reading; treat a missing or malformed record as absent, not as a crash. See [services and data](services-and-data.md).
 
-Cache only valid same-destination data with a currently permitted account. Public fallback caching never authorizes private-profile/account caching. Keep drafts and useful same-route content during refresh; clear or gate private content on identity changes. Use inspected source actions only under the [interaction contract](interactions.md).
+## Performance
+
+Bound list sizes and paginate. Avoid re-rendering the whole tree per snapshot: memoize row components by id. Keep images lazy and sized. Do not poll; snapshots arrive when the page changes.

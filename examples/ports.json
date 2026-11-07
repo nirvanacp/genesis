@@ -6,7 +6,6 @@
     ],
     "x.com": [
       { "name": "bookmarks", "port": 8788, "serviceFile": "backend/service.json" }
-    ],
-    "youtube.com": []
+    ]
   }
 }

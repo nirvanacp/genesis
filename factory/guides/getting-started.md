@@ -1,40 +1,49 @@
-# Start an isolated applet
+# Getting started
 
+You need Node 24, the `@genesis/sdk` and `@genesis/applet-tools` packages, and for device installs a debug build of the Genesis app on a device or emulator reachable over adb.
 
-Read [factory instructions](../AGENTS.md), [product scope](product-scope.md) and [the isolated architecture](isolated-applets.md). New applets use one stable identity, an explicit URL contract, hidden source adapters and an owned foreground. React and backend services are optional.
-
-Use Node `24.15.0`, npm `11.14.1`, matching SDK `0.5.1` / tools `0.5.0` archives and a compatible API-4 debug host from the platform maintainer. Archives are not published to the public registry. Ordinary applet creation/build/install needs Node, the supplied artifacts and authorized adb, not Rust/Android compilers or Genesis source.
-
-```sh
-npm install /absolute/path/genesis-applet-tools-0.5.0.tgz
-npx --no-install genesis-applet create /absolute/path/my-reader --id my-reader --name "My reader" --source https://example.com/ --react
-```
-
-In the generated applet directory, install the matching archives and generated dependencies, then check/build:
+## Create
 
 ```sh
-npm install /absolute/path/genesis-sdk-0.5.1.tgz /absolute/path/genesis-applet-tools-0.5.0.tgz
-npm run check
-npm run build
+npx genesis-applet create my-applet --origin https://example.com --name "Example"
+cd my-applet
+npm install
 ```
 
-`create` writes the manifest, adapter, foreground, TypeScript configuration, README, operator-owned `start.sh` and matching portable `factory/` kit. It installs no dependencies, starts no services and connects no device. The starter handles unsupported content safely; it is not a completed website client. Inspect real authorized DOM, build a route inventory and replace its adapter/foreground together. Preserve every required product journey in the brief and acceptance table.
+The scaffold contains:
 
-The source entry default-exports `defineSourceAdapter`. The owned page default-exports `defineForeground`; it renders immediately and subscribes to accepted source models. Never import native/internal RPC or call bootstrap. Do not turn source CSS into the applet foreground. See [SDK reference](sdk-reference.md) and [patterns](patterns.md).
+| File | Purpose |
+| --- | --- |
+| `applet.json` | Manifest, schema 5: one source `main`, screens `home` and `unsupported`, one route |
+| `src/sources/main.ts` | The adapter for source `main` |
+| `src/main.tsx` | The foreground: `mountForeground` and the two screens |
+| `src/theme.css` | Light and dark tokens |
+| `.specs/`, `.changelog/` | Applet records, already started |
+| `factory/` | This kit |
+| `AGENTS.md`, `README.md` | Pointers to the kit and the records |
 
-After a successful build, use an explicit authorized device serial:
+## Develop
+
+1. Inspect the website and write the brief in `.specs/current.md` ([product scope](product-scope.md)).
+2. Declare origins, sources, routes and screens in `applet.json` ([SDK reference](sdk-reference.md#manifest-appletjson)).
+3. Write an extractor per adapted route and the screens that render them ([patterns](patterns.md)).
+4. Add intents for actions ([interactions](interactions.md)), and storage or a service for applet data ([services and data](services-and-data.md)).
+
+Add the smallest set of dependencies and capabilities the requested features need. Do not reduce features to avoid a dependency.
+
+## Check, build, install
 
 ```sh
-npx --no-install genesis-applet dev status --device emulator-5554 --json
-npx --no-install genesis-applet dev install dist --device emulator-5554 --json
+npm run check                                      # manifest, files and TypeScript
+npm run build                                      # writes dist/ with the bundle
+npx genesis-applet dev install . --device emulator-5554
+npx genesis-applet dev status my-applet --device emulator-5554
 ```
 
-For updates add `--replace`. Permission-origin/capability/service changes also require the tool's explicit permission-change flag after reviewing its diff. Keep the same applet ID and record keys. Rollback selects previous compatible code, not previous data. Package acceptance is separate from source/UI/service readiness. If installation times out, inspect status before retrying.
+`check` validates the manifest against schema 5 and type-checks `src`. `build` bundles the foreground and each adapter. `dev install` takes the applet directory (it uses `dist/`) or a build output directory; it does not build, so run `build` first. It copies the bundle to the debug app, which applies it without restarting Genesis, and reports the accepted revision or the rejection reason. `dev status` lists the installed applets and, given an id, its last install receipt. Every command accepts `--json`; device commands accept `--adb <path>` and `--application <id>`.
 
-Use `--application <host-id>` for a separate QA host and `--adb <path>` when necessary. Release hosts ignore developer imports. Do not clear app data to repair a package or delete evidence packages that contain user records. Prefer disposable QA applets in a separate installation. Run the complete [verification workflow](verification.md) before delivery.
+Release builds of Genesis load only the applets bundled into the APK and refuse development installs.
 
-Every applet keeps `start.sh` current for its backend dependencies and reserves ports under the [services guide](services-and-data.md). Source sessions, accounts, forms and protected media use explicit website views with return navigation. A backend remains separately operated and is never bundled into the phone as a Node process.
+## Hand off the kit
 
-## Complete the authoring workflow
-
-Maintain flat `.specs/current.md`, `.specs/decisions.md` and `.changelog/` records using [templates](applet-records.md). Creator documentation includes these records. The adapter remains unimplemented and the scaffold does not yet configure native shell/menu. Add the supported shell during authoring unless explicitly overridden; see [native options](navigation.md#native-shell-and-platform-options). Do not call a scaffold a completed website client.
+`npx genesis-applet kit export --out <new-directory>` writes `AGENTS.md`, `README.md`, `guides/`, `skills/` and `kit.json` with the matching versions. Give a coding agent the path to `AGENTS.md`.

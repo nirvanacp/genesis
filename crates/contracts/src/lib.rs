@@ -1,730 +1,501 @@
-//! Shared package, host, and document qualification contracts. Shared host, managed runtime/navigation and generic storage contracts.
+//! Types shared by the Android shell, the Rust host and applet documents.
+//!
+//! JSON names are camelCase so they match `@genesis/core` and `@genesis/sdk`.
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
-pub const IMPLEMENTATION_STAGE: &str = "MVP-07";
-pub const RUNTIME_API_VERSION: u32 = 4;
-fn legacy_api() -> u32 {
-    1
+pub const MANIFEST_SCHEMA_VERSION: u32 = 5;
+pub const BUNDLE_FORMAT: u32 = 2;
+pub const MAX_SOURCES: usize = 3;
+/// Origin that serves foreground documents through `WebViewAssetLoader`.
+pub const FOREGROUND_ORIGIN: &str = "https://appassets.androidplatform.net";
+
+// ---------------------------------------------------------------------------------------------
+// Views
+
+/// Which WebView of an applet a message or command concerns.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ViewRef {
+    pub applet_id: String,
+    pub role: Role,
 }
 
-pub const BUNDLE_FORMAT_VERSION: u32 = 1;
+/// Serialized as `"foreground"`, `"source:<id>"` or `"website"`, the same text documentIds use.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[serde(try_from = "String", into = "String")]
+pub enum Role {
+    Foreground,
+    Source(String),
+    Website,
+}
+
+impl From<Role> for String {
+    fn from(role: Role) -> String {
+        match role {
+            Role::Foreground => "foreground".into(),
+            Role::Source(id) => format!("source:{id}"),
+            Role::Website => "website".into(),
+        }
+    }
+}
+
+impl TryFrom<String> for Role {
+    type Error = String;
+    fn try_from(value: String) -> Result<Self, String> {
+        match value.as_str() {
+            "foreground" => Ok(Role::Foreground),
+            "website" => Ok(Role::Website),
+            _ => match value.strip_prefix("source:") {
+                Some(id) if !id.is_empty() => Ok(Role::Source(id.into())),
+                _ => Err(format!("unknown view role {value}")),
+            },
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Shell events and commands
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct AppletBundle {
-    pub format_version: u32,
-    pub runtime_api_version: u32,
-    pub sdk_version: String,
-    pub package: Package,
+#[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase")]
+pub enum ShellEvent {
+    /// First event after process start. `files_dir` is the app's private files directory.
+    Attach { files_dir: String },
+    Resumed,
+    Suspended,
+    /// Android Back. `website_can_go_back` reports the website sheet's own history.
+    Back {
+        #[serde(default)]
+        website_can_go_back: bool,
+    },
+    /// The website sheet's Return button.
+    WebsiteReturn,
+    OpenApplet { applet_id: String },
+    Home,
+    Menu { action: MenuAction },
+    /// A main-frame load started in a view.
+    DocumentLoaded { view: ViewRef, url: String },
+    /// A string a document posted on `__genesisBridge`, forwarded unparsed.
+    DocumentMessage { view: ViewRef, payload: String },
+    WebsiteUrlChanged { url: String },
+    ImportFound { kind: ImportKind, path: String, payload: String },
+    ServiceResponse { request_id: u64, status: u16, body: Value },
+    ServiceFailed { request_id: u64, code: ErrorCode, message: String },
+    /// A storage worker result, relayed by the shell to the UI thread.
+    StorageCompleted { payload: String },
+    Tick,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum MenuAction {
+    Home,
+    Reload,
+    OpenWebsite,
+    Info,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ImportKind {
+    Bundle,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct PackageIndex {
-    #[serde(default)]
-    pub hidden_applet_ids: Vec<String>,
-    pub schema_version: u32,
-    pub implementation_stage: String,
-    pub packages: Vec<Package>,
+#[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase")]
+pub enum ShellCommand {
+    ShowLauncher { applets: Vec<LauncherEntry> },
+    /// Shows the applet container with the splash until `RevealForeground`.
+    ShowApplet { applet_id: String, name: String, accent: Option<String> },
+    CreateView { view: ViewRef, url: String, origins: Vec<String>, start_script: Option<String> },
+    DestroyView { view: ViewRef },
+    LoadUrl { view: ViewRef, url: String },
+    RevealForeground,
+    /// Opens the website sheet. Top-level navigations to origins outside `origins` go to the Android browser.
+    ShowWebsite { url: String, title: String, origins: Vec<String> },
+    HideWebsite,
+    WebsiteBack,
+    PostMessage { view: ViewRef, payload: String },
+    /// The shell's `ServiceClient` looks up the stored credential for (`applet_id`, `service_id`).
+    ServiceRequest {
+        request_id: u64,
+        applet_id: String,
+        service_id: String,
+        path: String,
+        method: String,
+        body: Option<Value>,
+    },
+    ShowError { message: String },
+    ShowInfo { title: String, message: String },
+    OpenExternal { url: String },
+    /// Asks the shell to send `Tick` after `delay_ms`, for deadlines shorter than the periodic tick.
+    Wake { delay_ms: u64 },
+    MoveTaskToBack,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct Package {
-    #[serde(default = "legacy_api")]
-    pub runtime_api_version: u32,
-    pub manifest: Manifest,
-    pub revision: String,
-    pub assets: Vec<Asset>,
+#[serde(rename_all = "camelCase")]
+pub struct LauncherEntry {
+    pub applet_id: String,
+    pub name: String,
+    pub accent: Option<String>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct Asset {
-    pub path: String,
-    pub sha256: String,
-}
+// ---------------------------------------------------------------------------------------------
+// Manifest (schema 5) and bundle (format 2)
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Manifest {
-    #[serde(default)]
-    pub shell: Option<AppShell>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub route_contracts: Vec<RouteContract>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub foreground: Option<Foreground>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub navigation: Option<NavigationPolicy>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub website_actions: Vec<WebsiteAction>,
     pub schema_version: u32,
     pub id: String,
     pub name: String,
-    pub data_schema_version: u32,
-    pub sources: Vec<Source>,
-    pub pages: Vec<Page>,
-    pub actions: Vec<Action>,
-    pub capabilities: Vec<String>,
-    #[serde(default)]
-    pub services: Vec<String>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct Source {
-    #[serde(default)]
-    pub customized_routes: Option<Vec<String>>,
-    #[serde(default)]
-    pub ordinary_routes: Vec<String>,
-    #[serde(default)]
-    pub customized_paths: Option<Vec<String>>,
-    pub id: String,
-    pub start_url: String,
-    #[serde(default)]
     pub origins: Vec<String>,
+    pub foreground: Foreground,
+    pub sources: Vec<Source>,
+    pub routes: Vec<Route>,
+    pub capabilities: Capabilities,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub route_contract_id: Option<String>,
-    pub entry: String,
-    #[serde(default)]
-    pub home_paths: Vec<String>,
-    #[serde(default)]
-    pub navigation_rules: Vec<NavigationRule>,
+    pub shell: Option<Shell>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Foreground {
-    pub page_id: String,
+    pub entry: String,
     pub screens: Vec<String>,
 }
 
-/// API 3 authoring contract. Kept separate until the isolated host can execute it.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct RouteContract {
+pub struct Source {
     pub id: String,
-    pub origins: Vec<String>,
-    pub routes: Vec<RouteRule>,
-    pub unmatched: UnmatchedRoute,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub default_source_id: Option<String>,
+    pub start_url: String,
+    pub adapter: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub enum UnmatchedRoute {
-    Unsupported,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct RouteRule {
-    pub id: String,
-    pub path: String,
-    #[serde(default)]
-    pub query: std::collections::BTreeMap<String, QueryConstraint>,
-    pub fragment: Option<ExactValue>,
-    pub result: RouteResult,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(untagged)]
-pub enum QueryConstraint {
-    Present(PresentQuery),
-    Equals(ExactValue),
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub enum PresentQuery {
-    #[serde(rename = "present")]
-    Present,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct ExactValue {
-    pub equals: String,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
-pub enum RouteResult {
-    Custom { screen: String, adapter: String, #[serde(default, skip_serializing_if = "Option::is_none")] title: Option<String> },
-    Website { reason: String },
-    Blocked { reason: String },
-}
-
-/// Every URL resolves, including malformed inputs and undeclared destinations.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(tag = "kind", rename_all = "camelCase")]
-pub enum RouteResolution {
-    Matched {
-        #[serde(rename = "routeId")]
-        route_id: String,
-        result: RouteResult,
+#[serde(tag = "kind", rename_all = "camelCase", rename_all_fields = "camelCase", deny_unknown_fields)]
+pub enum Route {
+    Adapted {
+        id: String,
+        pattern: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        query: Option<Vec<String>>,
+        source: String,
+        screen: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        requires_sign_in: Option<bool>,
     },
-    Unsupported,
-    External,
-    Blocked,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct NavigationRule {
-    pub id: String,
-    pub path_prefix: String,
-    pub action: String,
-    pub fallback_url: String,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct Page {
-    pub id: String,
-    pub entry: String,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct Action {
-    pub id: String,
-    pub label: String,
-    pub page_id: String,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct AppShell {
-    #[serde(default)]
-    pub color_scheme: Option<String>,
-    pub title: String,
-    pub brand_asset: String,
-    pub sections: Vec<ShellSection>,
-    #[serde(default)]
-    pub choices: Vec<ShellChoice>,
-}
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ShellSection {
-    #[serde(default)]
-    pub icon: Option<String>,
-    pub id: String,
-    pub label: String,
-    pub source_id: String,
-    pub page_id: Option<String>,
-}
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ShellChoice {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub source_id: Option<String>,
-    pub label: String,
-    pub url: String,
-}
-
-// Host-issued identities never come from a website's claimed applet ID.
-macro_rules! identity {
-    ($($name:ident),+ $(,)?) => { $(
-        #[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Deserialize, Serialize)]
-        #[serde(transparent)]
-        pub struct $name(pub String);
-    )+ };
-}
-identity!(
-    AppletId,
-    InstanceId,
-    SourceId,
-    ViewId,
-    DocumentId,
-    DocumentNonce,
-    RequestId
-);
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(transparent)]
-pub struct ViewGeneration(pub u64);
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(transparent)]
-pub struct RouteRevision(pub u64);
-
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(tag = "kind", rename_all = "camelCase")]
-pub enum ContextKind {
-    Source {
-        #[serde(rename = "sourceId")]
-        source_id: SourceId,
+    Website {
+        id: String,
+        pattern: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        query: Option<Vec<String>>,
     },
-    Page {
-        #[serde(rename = "pageId")]
-        page_id: String,
-    },
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ExecutionContext {
-    #[serde(default = "legacy_api")]
-    pub runtime_api_version: u32,
-    pub instance_id: InstanceId,
-    pub applet_id: AppletId,
-    pub view_id: ViewId,
-    pub generation: ViewGeneration,
-    pub binding: ContextKind,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SessionSnapshot {
-    #[serde(default)]
-    pub section_destinations: std::collections::HashMap<String, SectionDestination>,
-    #[serde(default)]
-    pub opener: Option<Selection>,
-    #[serde(default)]
-    pub current_url: Option<String>,
-    pub selection: Option<Selection>,
-    pub source_urls: std::collections::HashMap<String, String>,
-    pub disabled: Vec<AppletId>,
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Capabilities {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub storage: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub services: Option<Vec<ServiceDeclaration>>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SectionDestination {
-    pub selection: Selection,
-    pub url: String,
-    pub opener: Option<Selection>,
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ServiceDeclaration {
+    pub id: String,
+    pub config: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Selection {
-    #[serde(default)]
-    pub section_id: Option<String>,
-    pub applet_id: AppletId,
-    pub source_id: SourceId,
-    pub page_id: Option<String>,
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Shell {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub accent: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(tag = "type", rename_all = "camelCase")]
-pub enum HostEvent {
-    Attach {
-        index: PackageIndex,
-        #[serde(default)]
-        debug: bool,
-        restore: Option<Box<SessionSnapshot>>,
-    },
-    Open {
-        #[serde(default, rename = "sectionId")]
-        section_id: Option<String>,
-        #[serde(default)]
-        url: Option<String>,
-        #[serde(rename = "appletId")]
-        applet_id: String,
-        #[serde(rename = "sourceId")]
-        source_id: String,
-        #[serde(default, rename = "pageId")]
-        page_id: Option<String>,
-    },
-    OpenPage {
-        #[serde(rename = "pageId")]
-        page_id: String,
-    },
-    ActivateDestination {
-        generation: u64,
-        #[serde(rename = "documentId")]
-        document_id: DocumentId,
-        selection: Selection,
-        url: Option<String>,
-    },
-    ModalDeadline {
-        generation: u64,
-        #[serde(rename = "documentId")]
-        document_id: DocumentId,
-        token: u64,
-    },
-    BackDeadline {
-        generation: u64,
-        #[serde(rename = "documentId")]
-        document_id: DocumentId,
-        token: u64,
-    },
-    ClassifyUrl {
-        url: String,
-    },
-    Home,
-    Back {
-        #[serde(rename = "canGoBack")]
-        can_go_back: bool,
-    },
-    Forward,
-    Reload,
-    Retry,
-    Ordinary,
-    Inspect,
-    Qualify,
-    DebugFailure,
-    DebugTerminate,
-    StorageCompleted {
-        completion: StorageCompletion,
-    },
-    ConfigureServices,
-    ServiceCompleted {
-        completion: ServiceCompletion,
-    },
-    SaveSession,
-    Suspended,
-    Resumed,
-    FullscreenRequested {
-        generation: u64,
-    },
-    FullscreenClosed {
-        generation: u64,
-    },
-    Capabilities {
-        generation: u64,
-        supported: bool,
-        details: String,
-    },
-    NavigationStarted {
-        generation: u64,
-        url: String,
-        #[serde(rename = "sameDocument")]
-        same_document: bool,
-    },
-    Navigated {
-        generation: u64,
-        url: String,
-    },
-    PageMessage {
-        generation: u64,
-        channel: u64,
-        origin: String,
-        #[serde(rename = "mainFrame")]
-        main_frame: bool,
-        message: String,
-    },
-    Deadline {
-        generation: u64,
-        epoch: u64,
-    },
-    LoadFailed {
-        generation: u64,
-        message: String,
-    },
-    SiteFailed {
-        generation: u64,
-        message: String,
-    },
-    RendererGone {
-        generation: u64,
-    },
-    RendererUnresponsive {
-        generation: u64,
-    },
-    Detach,
+/// `dist/bundle.json`.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Bundle {
+    pub format: u32,
+    pub manifest: Manifest,
+    pub files: Vec<BundleFile>,
 }
 
-#[derive(Debug, Serialize)]
-#[serde(tag = "type", rename_all = "camelCase")]
-pub enum HostCommand {
-    LeaveGuard {
-        generation: u64,
-        message: Option<String>,
-    },
-    ScheduleBackDeadline {
-        generation: u64,
-        #[serde(rename = "documentId")]
-        document_id: DocumentId,
-        token: u64,
-    },
-    ModalState {
-        open: bool,
-    },
-    ClassifiedUrl {
-        kind: String,
-    },
-    ShowLauncher {
-        entries: Vec<LauncherEntry>,
-        status: String,
-    },
-    CreateView {
-        selection: Selection,
-        #[serde(rename = "ownerSelection")]
-        owner_selection: Option<Selection>,
-        generation: u64,
-        package: Box<Package>,
-        context: ExecutionContext,
-        origins: Vec<String>,
-        entry: String,
-        customized: bool,
-        #[serde(rename = "localAssets")]
-        local_assets: Vec<LocalAsset>,
-    },
-    ParkView {
-        generation: u64,
-    },
-    ResumeView {
-        generation: u64,
-    },
-    DestroyView {
-        generation: u64,
-    },
-    LoadUrl {
-        generation: u64,
-        url: String,
-    },
-    GoBack {
-        generation: u64,
-    },
-    GoForward {
-        generation: u64,
-    },
-    Reload {
-        generation: u64,
-    },
-    Presentation {
-        generation: u64,
-        epoch: u64,
-        document_id: Option<DocumentId>,
-        route_kind: String,
-        detail: bool,
-        state: String,
-        message: String,
-        actions: Vec<Action>,
-    },
-    Challenge {
-        generation: u64,
-        channel: u64,
-        nonce: DocumentNonce,
-        challenge: String,
-    },
-    ReplyToPage {
-        generation: u64,
-        channel: u64,
-        message: serde_json::Value,
-    },
-    ScheduleDeadline {
-        generation: u64,
-        epoch: u64,
-    },
-    ReturnToUrl {
-        generation: u64,
-        url: String,
-    },
-    DeferNavigation {
-        generation: u64,
-        #[serde(rename = "documentId")]
-        document_id: DocumentId,
-        selection: Selection,
-        url: Option<String>,
-    },
-    ScheduleModalDeadline {
-        generation: u64,
-        #[serde(rename = "documentId")]
-        document_id: DocumentId,
-        token: u64,
-    },
-    TerminateRenderer {
-        generation: u64,
-    },
-    ShowFullscreen {
-        generation: u64,
-    },
-    ExitFullscreen {
-        generation: u64,
-    },
-    StorageJob {
-        job: StorageJob,
-    },
-    ServiceRequest {
-        job: ServiceJob,
-    },
-    ConfigureServices {
-        generation: u64,
-        #[serde(rename = "appletId")]
-        applet_id: String,
-        services: Vec<String>,
-    },
-    Diagnostics {
-        text: String,
-    },
-    RetainSession {
-        snapshot: SessionSnapshot,
-    },
-    ShowError {
-        message: String,
-    },
-    FinishActivity,
-}
-
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LocalAsset {
-    pub url_path: String,
-    pub asset_path: String,
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BundleFile {
+    pub path: String,
     pub sha256: String,
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LauncherEntry {
-    pub applet_id: String,
-    pub source_id: String,
-    pub page_id: Option<String>,
-    pub label: String,
+/// `applet-<id>.bundle.json`, the transport form of a bundle.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BundleImport {
+    pub bundle: Bundle,
+    pub entries: Vec<BundleEntry>,
 }
 
-// Generic storage operations carry no website-specific fields. Namespace is host-issued.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(tag = "method", content = "params")]
-pub enum StorageOperation {
-    #[serde(rename = "storage.get")]
-    Get(StorageKey),
-    #[serde(rename = "storage.list")]
-    List(StorageList),
-    #[serde(rename = "storage.commit")]
-    Commit(StorageBatch),
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BundleEntry {
+    pub path: String,
+    pub encoding: Encoding,
+    pub content: String,
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Encoding {
+    Utf8,
+    Base64,
+}
+
+// ---------------------------------------------------------------------------------------------
+// Limits and errors
+
+/// Sent to every document in `bound`.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
+pub struct Limits {
+    pub rpc_deadline_ms: u64,
+    pub message_max_bytes: usize,
+    pub snapshot_max_bytes: usize,
+    pub stored_document_max_bytes: usize,
+    pub pending_requests_max: usize,
+    pub document_ready_ms: u64,
+    pub publish_throttle_ms: u64,
+    pub intent_timeout_ms: u64,
+    pub back_answer_ms: u64,
+}
+
+impl Default for Limits {
+    fn default() -> Self {
+        Self {
+            rpc_deadline_ms: 15_000,
+            message_max_bytes: 262_144,
+            snapshot_max_bytes: 196_608,
+            stored_document_max_bytes: 32_768,
+            pending_requests_max: 32,
+            document_ready_ms: 15_000,
+            publish_throttle_ms: 250,
+            intent_timeout_ms: 15_000,
+            back_answer_ms: 300,
+        }
+    }
+}
+
+/// The same names as `ERROR_CODES` in `@genesis/core`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ErrorCode {
+    Retired,
+    Conflict,
+    NotFound,
+    DocumentTooLarge,
+    StorageFailure,
+    OriginNotDeclared,
+    SnapshotTooLarge,
+    MessageTooLarge,
+    Deadline,
+    SourceReplaced,
+    InvalidSteps,
+    ServiceUnreachable,
+    ServiceFailure,
+    AuthenticationFailed,
+    CertificateFailed,
+    ConfigurationRequired,
+    NotReady,
+    UnknownMethod,
+    InvalidArgument,
+    QuotaExceeded,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ErrorBody {
+    pub code: ErrorCode,
+    pub message: String,
+}
+
+impl ErrorBody {
+    pub fn new(code: ErrorCode, message: impl Into<String>) -> Self {
+        Self { code, message: message.into() }
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Document protocol
+
+/// Document to host.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase")]
+pub enum DocumentMessage {
+    Hello { url: String },
+    Request {
+        #[serde(default)]
+        document_id: Option<String>,
+        request_id: u64,
+        method: String,
+        #[serde(default)]
+        params: Value,
+    },
+}
+
+/// A request's method and parameters, decoded from `method` and `params` of `DocumentMessage::Request`.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(tag = "method", content = "params", rename_all_fields = "camelCase")]
+pub enum Call {
+    #[serde(rename = "ui.ready")]
+    UiReady {},
+    #[serde(rename = "storage.get")]
+    StorageGet { collection: String, key: String },
+    #[serde(rename = "storage.list")]
+    StorageList {
+        collection: String,
+        #[serde(default)]
+        after_key: Option<String>,
+        #[serde(default)]
+        limit: Option<usize>,
+    },
+    #[serde(rename = "storage.commit")]
+    StorageCommit(StorageBatch),
+    #[serde(rename = "services.request")]
+    ServicesRequest {
+        service_id: String,
+        path: String,
+        method: String,
+        #[serde(default)]
+        body: Option<Value>,
+    },
+    #[serde(rename = "website.open")]
+    WebsiteOpen { url: String },
+    #[serde(rename = "website.close")]
+    WebsiteClose {},
+    #[serde(rename = "source.navigate")]
+    SourceNavigate { source_id: String, url: String },
+    #[serde(rename = "source.intent")]
+    SourceIntent { source_id: String, intent: Value },
+    #[serde(rename = "source.publish")]
+    SourcePublish { snapshot: Value },
+    #[serde(rename = "source.intentResult")]
+    SourceIntentResult {
+        intent_id: u64,
+        ok: bool,
+        #[serde(default)]
+        error: Option<Value>,
+    },
+    #[serde(rename = "back.handled")]
+    BackHandled { handled: bool },
+    /// Leaves the applet after a Back the foreground handled by asking first, once the user confirms.
+    #[serde(rename = "back.leave")]
+    BackLeave {},
+    /// The foreground's screen stack, kept only to recreate it after background retirement.
+    #[serde(rename = "navigation.save")]
+    NavigationSave { navigation: Value },
+}
+
+/// Host to document. Every message names the document it is for; a document ignores others.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase")]
+pub enum HostMessage {
+    Bound {
+        document_id: String,
+        applet_id: String,
+        role: String,
+        source_id: Option<String>,
+        revision: u64,
+        manifest: Box<Manifest>,
+        limits: Limits,
+        state: Value,
+    },
+    Response {
+        document_id: String,
+        request_id: u64,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        result: Option<Value>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<ErrorBody>,
+    },
+    Event { document_id: String, name: String, data: Value },
+}
+
+// ---------------------------------------------------------------------------------------------
+// Storage
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct StorageKey {
     pub collection: String,
     pub key: String,
 }
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
+pub struct StorageCheck {
+    pub collection: String,
+    pub key: String,
+    /// `null` requires the document to be absent.
+    pub expected_revision: Option<u64>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StoragePut {
+    pub collection: String,
+    pub key: String,
+    pub value: Value,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StorageBatch {
+    #[serde(default)]
+    pub checks: Vec<StorageCheck>,
+    #[serde(default)]
+    pub puts: Vec<StoragePut>,
+    #[serde(default)]
+    pub deletes: Vec<StorageKey>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct StorageList {
     pub collection: String,
     pub after_key: Option<String>,
     pub limit: usize,
 }
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct StorageCheck {
-    pub collection: String,
-    pub key: String,
-    pub expected_revision: Option<u64>,
+#[serde(tag = "op", content = "args", rename_all = "camelCase")]
+pub enum StorageOperation {
+    Get(StorageKey),
+    List(StorageList),
+    Commit(StorageBatch),
 }
+
+/// Host to storage worker.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct StoragePut {
-    pub collection: String,
-    pub key: String,
-    pub value: serde_json::Value,
-}
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct StorageBatch {
-    pub checks: Vec<StorageCheck>,
-    pub puts: Vec<StoragePut>,
-    pub deletes: Vec<StorageKey>,
-}
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct StorageJob {
-    pub generation: u64,
-    pub document_id: DocumentId,
-    pub channel: u64,
-    pub request_id: String,
+    pub job_id: u64,
     pub applet_id: String,
-    pub data_schema_version: u32,
     pub operation: StorageOperation,
 }
+
+/// Storage worker to host, through `ShellEvent::StorageCompleted`.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct StorageCompletion {
-    pub generation: u64,
-    pub document_id: DocumentId,
-    pub channel: u64,
-    pub request_id: String,
+    pub job_id: u64,
     pub applet_id: String,
-    pub response: serde_json::Value,
+    pub result: Option<Value>,
+    pub error: Option<ErrorBody>,
     pub changed: Vec<StorageKey>,
 }
-
-// Opaque service bodies belong to the applet. The host only validates transport.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ServiceJob {
-    pub generation: u64,
-    pub document_id: DocumentId,
-    pub channel: u64,
-    pub request_id: String,
-    pub applet_id: String,
-    pub service_id: String,
-    pub path: String,
-    pub method: String,
-    pub body: Option<serde_json::Value>,
-}
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ServiceCompletion {
-    pub generation: u64,
-    pub document_id: DocumentId,
-    pub channel: u64,
-    pub response: serde_json::Value,
-}
-
-/// Schema-3 navigation policy. These declarations do not grant source extraction.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct NavigationPolicy {
-    pub external: ExternalNavigation,
-    pub uncovered_website_recovery: bool,
-}
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct ExternalNavigation {
-    pub default: WebsiteDisposition,
-    pub origins: Vec<ExternalOrigin>,
-}
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub enum WebsiteDisposition { Website, Blocked }
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct ExternalOrigin {
-    pub origin: String,
-    pub result: WebsiteDisposition,
-    pub reason: String,
-}
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct WebsiteAction {
-    pub id: String,
-    pub contract_id: String,
-    pub route_ids: Vec<String>,
-    pub label: String,
-    pub reason: String,
-}
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
-pub enum NavigationTarget {
-    Url { url: String, #[serde(rename="sourceId", default, skip_serializing_if="Option::is_none")] source_id: Option<String>, #[serde(rename="websiteActionId", default, skip_serializing_if="Option::is_none")] website_action_id: Option<String> },
-    Page { #[serde(rename="pageId")] page_id: String },
-}
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct NavigationDecision {
-    pub target: NavigationTarget,
-    pub kind: DestinationKind,
-    #[serde(skip_serializing_if="Option::is_none")]
-    pub source_id: Option<String>,
-    #[serde(skip_serializing_if="Option::is_none")]
-    pub contract_id: Option<String>,
-    #[serde(skip_serializing_if="Option::is_none")]
-    pub route_id: Option<String>,
-    #[serde(skip_serializing_if="Option::is_none")]
-    pub screen: Option<String>,
-    pub title: String,
-    #[serde(skip_serializing_if="Option::is_none")]
-    pub reason: Option<String>,
-    #[serde(skip_serializing_if="Option::is_none")]
-    pub website_action_id: Option<String>,
-    pub website_allowed: bool,
-}
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub enum DestinationKind { Custom, Page, Website, External, Uncovered, Blocked }

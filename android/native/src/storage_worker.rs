@@ -1,5 +1,5 @@
-use crate::storage::{Database, StorageError, response};
-use genesis_contracts::StorageJob;
+use crate::storage::{Database, StorageError, completion};
+use genesis_contracts::{ErrorCode, StorageJob};
 use jni::{
     JavaVM, jni_sig, jni_str,
     objects::{Global, JClass, JString, JValue},
@@ -38,17 +38,17 @@ pub fn start(
                     }
                     database.as_mut().expect("initialized database").execute(
                         &job.applet_id,
-                        job.data_schema_version,
+                        1,
                         &job.operation,
                     )
                 }))
                 .unwrap_or_else(|_| {
                     Err(StorageError {
-                        code: "INTERNAL",
+                        code: ErrorCode::StorageFailure,
                         message: "Storage worker failed; reread before retrying".into(),
                     })
                 });
-                let completion = response(&job, result);
+                let completion = completion(&job, result);
                 if let Ok(encoded) = serde_json::to_string(&completion) {
                     let _ = vm.attach_current_thread(|env| -> jni::errors::Result<()> {
                         let value = JString::from_str(env, encoded)?;

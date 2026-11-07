@@ -1,5 +1,0 @@
-[data-genesis-owned="qualification"] { --genesis-qualified: ready; }
-[data-genesis-layout="source"] { display: none; }
-[data-genesis-layout="page"] { display: block; min-height: 100vh; background: #f7f7f2; color: #212c27; font: 16px/1.5 system-ui,sans-serif; }
-
-html:has([data-genesis-layout="page"]),body:has([data-genesis-layout="page"]) { margin:0; padding:0; }

@@ -1,8 +1,12 @@
-import { access, mkdir, cp, readdir, writeFile, lstat } from 'node:fs/promises';
+import { access, mkdir, cp, readdir, readFile, writeFile, lstat } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { creatorError } from './device.mjs';
-export const KIT_VERSION = '0.5.0';
+import { BUNDLE_FORMAT, MANIFEST_SCHEMA_VERSION } from '@genesis/core';
+import { toolError as creatorError } from './manifest.mjs';
+
+const own = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+/** The kit, the tools and the SDK they build against share one version. */
+export const VERSIONS = { kitVersion: own.version, toolsVersion: own.version, sdkVersion: own.version, manifestSchemaVersion: MANIFEST_SCHEMA_VERSION, bundleFormat: BUNDLE_FORMAT };
 export async function emptyDirectory(directory) {
   const target = path.resolve(directory);
   try {
@@ -18,6 +22,6 @@ export async function exportKit(directory) {
   try { await access(path.join(source, 'AGENTS.md')); }
   catch { source = packed; }
   for (const name of ['AGENTS.md','README.md','guides','skills']) await cp(path.join(source, name), path.join(output, name), { recursive: true, errorOnExist: true, force: false });
-  await writeFile(path.join(output, 'kit.json'), JSON.stringify({ kitVersion: KIT_VERSION, sdkVersion: '0.5.1', toolsVersion: '0.5.0', runtimeApiVersion: 4, bundleFormatVersion: 1 }, null, 2) + '\n');
-  return { output, kitVersion: KIT_VERSION, runtimeApiVersion: 4 };
+  await writeFile(path.join(output, 'kit.json'), JSON.stringify(VERSIONS, null, 2) + '\n');
+  return { output, ...VERSIONS };
 }

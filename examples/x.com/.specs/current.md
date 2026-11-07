@@ -1,106 +1,83 @@
 # Current X specification
 
-## Identity and context
+## Identity
 
-Stable ID `x-bookmarks`. Origins: https://x.com. Sources: primary, explore, alerts, saved, account. Pages: library, app. Service: bookmarks. Native sections: Home, Explore, Notifications, Saved, Profile. SDK 0.5.1, tools 0.5.0, runtime API 4, manifest schema 3, data/bundle schema 1. Monorepo guidance revision: factory redesign adopted 2026-11-01T19:24:48+05:30; exported kit metadata is not present in this applet. [Manifest](../applet.json) is executable route/source/page authority; [factory records](../../../factory/guides/applet-records.md) define upkeep.
+- Name X, applet id `x-bookmarks`, origin `https://x.com`.
+- Sources: `primary` (timelines, notifications, bookmarks, likes, posts, profiles, media), `explore` (trends, search, hashtags) and `account` (the signed-in handle from `/settings/account`). Adapters are in [src/sources](../src/sources).
+- Screens: `home`, `explore`, `notifications`, `saved`, `post`, `profile`, `media`, `account`, `categories`, `save`, `manage`, `unsupported`. Service: `bookmarks`.
+- Manifest schema 5, `@genesis/sdk` 0.0.0, `genesis-applet` tools 0.0.0. Kit version: not exported for this in-repository applet. The [manifest](../applet.json) is the authority for routes and sources.
+- Installed for development with `dev install`; it is not bundled into the APK.
 
 ## Product scope
 
-One complete X client with integrated private Categories, native Home/Explore/Notifications/Saved/Profile, mobile X identity and no primary sidebar. Preserve source browsing, profiles, conversations/media, notifications, search, upstream Bookmarks/Likes and independent Categories. X remains development-installed; HN remains APK-selected. Categories uses a personal handle-matched backend, not a multi-user account system. No automatic upstream bookmark import/synchronization, offline write queue or full media archive is supplied.
+One complete X client with five tabs: Home, Explore, Notifications, Saved and Profile, in the mobile X visual identity. Saved holds Bookmarks, Likes and the private Categories library in one row. Preserve post detail with its conversation, the media viewer, profiles with Posts, Replies and Media, liking and bookmarking.
 
-Data authority: source website owns upstream account/content/actions. Applet service owns saved records/categories. Cookies remain in website sessions and do not authenticate the service. Preserve applet/source/page/service IDs, keys, databases and account boundaries. No new exclusions approved by this documentation adoption.
+Data authority: X owns accounts, posts, likes and bookmarks. The `bookmarks` service owns Categories and the post snapshots filed in them; it is a personal backend bound to one X handle, not a multi-user service. Website cookies never authenticate the service. Categories and X bookmarks stay independent: filing a post never bookmarks it, and removing it from Categories never changes its X bookmark.
 
-## Applied defaults and overrides
+Excluded: automatic import or sync of X bookmarks into Categories, an offline write queue, and a media archive.
 
-Native mobile X design is the inherited user choice, with authenticated mobile website as fallback where native reference is unavailable. Preserve neutral palette, compact shared 15px/20px post text, 40px feed avatars, hairline separators, inline author/handle/time and icon actions. Saved has one Bookmarks/Likes/Categories row. Black media viewer keeps observed image identity and bounded Next/Previous controls. Preserve keyboard-safe category sheets, opaque themes, independent stores, at most 50 categories and 10 memberships per post, and rejection of deleting nonempty categories.
+## Defaults and overrides
 
-| Rule | Current choice | Origin / limit |
-| --- | --- | --- |
-| default-platform-menu | Native shell and top-right Applet options enabled | Existing manifests plus user-wide default; see decision-0001 |
-| default-primary-navigation | One native footer; root selection/reselection resets transient viewport | Current host contract; detail Back/provider Return restore opener |
-| default-pending-skeletons | Neutral content-shaped themed pending UI | Existing shared default; ready/empty/failure evidence still required |
-| default-compact-website-cue | Compact arrow and accessible opens-website name | Inherited cross-applet UI repair; explicit website action wording retained |
-| default-contextual-motion | Host contextual reveals, reduced motion | No independent full-screen animation or movable native-menu API |
-| default-theme-and-layout / default-keyboard-safe-sheets | Explicit owned theme tokens, opaque panels, scrolling body/reachable actions | Existing implementation choices and observed repairs |
+| Rule id | Current choice | Origin and reason | Decision |
+| --- | --- | --- | --- |
+| default-platform-menu | Shell menu button, accent `#1d9bf0`; the first row of every screen leaves the button's corner clear | Factory default | decision-0003 |
+| default-primary-navigation | One bottom tab bar of five sections; reselecting the active root tab scrolls to the top; hidden in the media viewer | Inherited user choice | decision-0001 |
+| default-pending-skeletons | Neutral, static, content-shaped skeletons | Factory default | |
+| default-compact-website-cue | External-link icon on every control that opens the website sheet | Factory default | |
+| default-theme-and-layout | Neutral X palette, light and dark, system font, 15px/20px post text, 40px avatars, hairline separators | Inherited user design direction | decision-0002 |
+| Category editors | `save` and `manage` screens in the stack instead of keyboard-safe sheets, so Android Back closes them | Agent choice for SDK 0.0 | decision-0004 |
 
-See [decision history](decisions.md) for attribution. No additional overrides inferred during adoption.
+## Routes
 
-## Route inventory
+| Route id | Example URL | Screen or website | Loading, empty, sign-in and error | Back | Status | Evidence |
+| --- | --- | --- | --- | --- | --- | --- |
+| home | `/home` | `home` | Skeleton; empty notice; sign-in prompt; error with website button | Tab root | verified | device |
+| notifications | `/notifications` | `notifications` | As above | Tab root | verified | device |
+| bookmarks, bookmarks-alias | `/i/history` (X redirects `/i/bookmarks` there) | `saved`, Bookmarks tab | As above | Tab root | verified | device |
+| own-likes, likes | `/i/history/likes`, `/<handle>/likes` | `saved`, Likes tab for the signed-in handle; a likes feed otherwise | As above | Stack | verified (own Likes tab) | device |
+| explore, search, hashtag | `/explore`, `/search?q=genesis`, `/hashtag/android` | `explore` | Skeleton; empty notice; error | Tab root or stack | verified (explore) | device |
+| account | `/settings/account` | `account` (source `account`), then replaced by the own profile | Sign-in prompt when signed out | Tab root | verified (signed in) | device |
+| profile, replies, profile-media | `/XDevelopers` | `profile` with Posts, Replies and Media tabs | Skeleton; partial notice with See more on X; error | Stack | verified (own profile) | device |
+| post | `/XDevelopers/status/1` | `post` with ancestors and replies; matched before `post-pages` | Skeleton; partial notice; error | Stack | verified | device |
+| photo | `/XDevelopers/status/1/photo/1` | `media` | Black viewer; Open on X on failure | Stack | verified (one photo) | device |
+| website-* (root, login, logout, flow, compose, settings, account-pages, messages, internal, tos, privacy, about, download, post-pages, following, followers, verified-followers, avatar-photo, header-photo) | `/i/flow/login` | Website sheet | X's page | Sheet | implemented | static |
+| Other X URLs | `/XDevelopers/lists` | `unsupported` with an Open on X button | | Stack | implemented | static |
 
-References below summarize existing manifest rule families, not a new route policy. Each source uses its declared contract; actual route matches still require content validation. Unknown internal URLs remain owned unsupported recovery, blocked destinations cannot escape, external URLs use host policy and marked website Return. Owned library pages remain internal. Readiness uses validated model family/account/identity; affirmative empty markers are distinct from failed reads. Exact per-site extraction is in [source entry](../src/main.tsx) and view models.
+## Interactions
 
-| Contract/rule | Path family or representative pattern | Adapter/screen or provider | Evidence | Cue/return | Status |
+| Screen and control | Result | Intent, route, website or store | Pending and failure | Status | Evidence |
 | --- | --- | --- | --- | --- | --- |
-| x/website-1 | `/` | website | Explicit host website policy; no action submission implied | Visible website cue; website Back and Return | implemented declaration; live not-run in adoption |
-| x/website-2 | `/login` | website | Explicit host website policy; no action submission implied | Visible website cue; website Back and Return | implemented declaration; live not-run in adoption |
-| x/website-3 | `/logout` | website | Explicit host website policy; no action submission implied | Visible website cue; website Back and Return | implemented declaration; live not-run in adoption |
-| x/website-4 | `/settings/*` | website | Explicit host website policy; no action submission implied | Visible website cue; website Back and Return | implemented declaration; live not-run in adoption |
-| x/website-5 | `/account/*` | website | Explicit host website policy; no action submission implied | Visible website cue; website Back and Return | implemented declaration; live not-run in adoption |
-| x/website-6 | `/i/flow/*` | website | Explicit host website policy; no action submission implied | Visible website cue; website Back and Return | implemented declaration; live not-run in adoption |
-| x/website-7 | `/i/jf/onboarding/*` | website | Explicit host website policy; no action submission implied | Visible website cue; website Back and Return | implemented declaration; live not-run in adoption |
-| x/website-8 | `/i/chat/*` | website | Explicit host website policy; no action submission implied | Visible website cue; website Back and Return | implemented declaration; live not-run in adoption |
-| x/website-9 | `/messages/*` | website | Explicit host website policy; no action submission implied | Visible website cue; website Back and Return | implemented declaration; live not-run in adoption |
-| x/website-10 | `/i/grok` | website | Explicit host website policy; no action submission implied | Visible website cue; website Back and Return | implemented declaration; live not-run in adoption |
-| x/website-11 | `/i/jf/grok/*` | website | Explicit host website policy; no action submission implied | Visible website cue; website Back and Return | implemented declaration; live not-run in adoption |
-| x/website-12 | `/i/calls` | website | Explicit host website policy; no action submission implied | Visible website cue; website Back and Return | implemented declaration; live not-run in adoption |
-| x/website-13 | `/i/spaces/*` | website | Explicit host website policy; no action submission implied | Visible website cue; website Back and Return | implemented declaration; live not-run in adoption |
-| x/website-14 | `/i/premium_sign_up` | website | Explicit host website policy; no action submission implied | Visible website cue; website Back and Return | implemented declaration; live not-run in adoption |
-| x/website-15 | `/i/verified-get-verified` | website | Explicit host website policy; no action submission implied | Visible website cue; website Back and Return | implemented declaration; live not-run in adoption |
-| x/website-16 | `/i/jf/creators/*` | website | Explicit host website policy; no action submission implied | Visible website cue; website Back and Return | implemented declaration; live not-run in adoption |
-| x/website-17 | `/i/verified-orgs-signup` | website | Explicit host website policy; no action submission implied | Visible website cue; website Back and Return | implemented declaration; live not-run in adoption |
-| x/website-18 | `/tos` | website | Explicit host website policy; no action submission implied | Visible website cue; website Back and Return | implemented declaration; live not-run in adoption |
-| x/website-19 | `/privacy` | website | Explicit host website policy; no action submission implied | Visible website cue; website Back and Return | implemented declaration; live not-run in adoption |
-| x/website-20 | `/about` | website | Explicit host website policy; no action submission implied | Visible website cue; website Back and Return | implemented declaration; live not-run in adoption |
-| x/website-21 | `/download` | website | Explicit host website policy; no action submission implied | Visible website cue; website Back and Return | implemented declaration; live not-run in adoption |
-| x/website-22 | `/compose/*` | website | Explicit host website policy; no action submission implied | Visible website cue; website Back and Return | implemented declaration; live not-run in adoption |
-| x/website-23 | `/:handle/photo` | website | Explicit host website policy; no action submission implied | Visible website cue; website Back and Return | implemented declaration; live not-run in adoption |
-| x/website-24 | `/:handle/header_photo` | website | Explicit host website policy; no action submission implied | Visible website cue; website Back and Return | implemented declaration; live not-run in adoption |
-| x/website-25 | `/:handle/about` | website | Explicit host website policy; no action submission implied | Visible website cue; website Back and Return | implemented declaration; live not-run in adoption |
-| x/home | `/home` | timeline/timeline | Validated content identity; affirmative empty/auth/challenge/error evidence; missing selectors stay loading | Internal Back; marked original-site action only | implemented declaration; live not-run in adoption |
-| x/explore | `/explore/*` | discovery/discovery | Validated content identity; affirmative empty/auth/challenge/error evidence; missing selectors stay loading | Internal Back; marked original-site action only | implemented declaration; live not-run in adoption |
-| x/search | `/search` | discovery/discovery | Validated content identity; affirmative empty/auth/challenge/error evidence; missing selectors stay loading | Internal Back; marked original-site action only | implemented declaration; live not-run in adoption |
-| x/hashtag | `/hashtag/:tag` | discovery/discovery | Validated content identity; affirmative empty/auth/challenge/error evidence; missing selectors stay loading | Internal Back; marked original-site action only | implemented declaration; live not-run in adoption |
-| x/notifications | `/notifications` | notifications/notifications | Validated content identity; affirmative empty/auth/challenge/error evidence; missing selectors stay loading | Internal Back; marked original-site action only | implemented declaration; live not-run in adoption |
-| x/mentions | `/notifications/mentions` | notifications/notifications | Validated content identity; affirmative empty/auth/challenge/error evidence; missing selectors stay loading | Internal Back; marked original-site action only | implemented declaration; live not-run in adoption |
-| x/bookmarks | `/i/history` | saved/saved | Validated content identity; affirmative empty/auth/challenge/error evidence; missing selectors stay loading | Internal Back; marked original-site action only | implemented declaration; live not-run in adoption |
-| x/likes | `/i/history/likes` | saved/saved | Validated content identity; affirmative empty/auth/challenge/error evidence; missing selectors stay loading | Internal Back; marked original-site action only | implemented declaration; live not-run in adoption |
-| x/bookmarks-alias | `/i/bookmarks` | saved/saved | Validated content identity; affirmative empty/auth/challenge/error evidence; missing selectors stay loading | Internal Back; marked original-site action only | implemented declaration; live not-run in adoption |
-| x/lists | `/i/lists/*` | collection/collection | Validated content identity; affirmative empty/auth/challenge/error evidence; missing selectors stay loading | Internal Back; marked original-site action only | implemented declaration; live not-run in adoption |
-| x/communities | `/i/communities/*` | collection/collection | Validated content identity; affirmative empty/auth/challenge/error evidence; missing selectors stay loading | Internal Back; marked original-site action only | implemented declaration; live not-run in adoption |
-| x/connect | `/i/connect_people` | people/people | Validated content identity; affirmative empty/auth/challenge/error evidence; missing selectors stay loading | Internal Back; marked original-site action only | implemented declaration; live not-run in adoption |
-| x/post-quotes | `/:handle/status/:id/quotes` | post-metadata/post-metadata | Validated content identity; affirmative empty/auth/challenge/error evidence; missing selectors stay loading | Internal Back; marked original-site action only | implemented declaration; live not-run in adoption |
-| x/post-analytics | `/:handle/status/:id/analytics` | post-metadata/post-metadata | Validated content identity; affirmative empty/auth/challenge/error evidence; missing selectors stay loading | Internal Back; marked original-site action only | implemented declaration; live not-run in adoption |
-| x/post-photo | `/:handle/status/:id/photo/:index` | media/media | Validated content identity; affirmative empty/auth/challenge/error evidence; missing selectors stay loading | Internal Back; marked original-site action only | implemented declaration; live not-run in adoption |
-| x/post-video | `/:handle/status/:id/video/:index` | media/media | Validated content identity; affirmative empty/auth/challenge/error evidence; missing selectors stay loading | Internal Back; marked original-site action only | implemented declaration; live not-run in adoption |
-| x/post | `/:handle/status/:id` | conversation/conversation | Validated content identity; affirmative empty/auth/challenge/error evidence; missing selectors stay loading | Internal Back; marked original-site action only | implemented declaration; live not-run in adoption |
-| x/following | `/:handle/following` | people/people | Validated content identity; affirmative empty/auth/challenge/error evidence; missing selectors stay loading | Internal Back; marked original-site action only | implemented declaration; live not-run in adoption |
-| x/followers | `/:handle/followers` | people/people | Validated content identity; affirmative empty/auth/challenge/error evidence; missing selectors stay loading | Internal Back; marked original-site action only | implemented declaration; live not-run in adoption |
-| x/verified-followers | `/:handle/verified_followers` | people/people | Validated content identity; affirmative empty/auth/challenge/error evidence; missing selectors stay loading | Internal Back; marked original-site action only | implemented declaration; live not-run in adoption |
-| x/profile-lists | `/:handle/lists` | collection/collection | Validated content identity; affirmative empty/auth/challenge/error evidence; missing selectors stay loading | Internal Back; marked original-site action only | implemented declaration; live not-run in adoption |
-| x/profile-communities | `/:handle/communities/*` | collection/collection | Validated content identity; affirmative empty/auth/challenge/error evidence; missing selectors stay loading | Internal Back; marked original-site action only | implemented declaration; live not-run in adoption |
-| x/replies | `/:handle/with_replies` | profile/profile | Validated content identity; affirmative empty/auth/challenge/error evidence; missing selectors stay loading | Internal Back; marked original-site action only | implemented declaration; live not-run in adoption |
-| x/reposts | `/:handle/reposts` | profile/profile | Validated content identity; affirmative empty/auth/challenge/error evidence; missing selectors stay loading | Internal Back; marked original-site action only | implemented declaration; live not-run in adoption |
-| x/profile-media | `/:handle/media` | profile/profile | Validated content identity; affirmative empty/auth/challenge/error evidence; missing selectors stay loading | Internal Back; marked original-site action only | implemented declaration; live not-run in adoption |
-| x/profile-subs | `/:handle/subs` | profile/profile | Validated content identity; affirmative empty/auth/challenge/error evidence; missing selectors stay loading | Internal Back; marked original-site action only | implemented declaration; live not-run in adoption |
-| x/profile | `/:handle` | profile/profile | Validated content identity; affirmative empty/auth/challenge/error evidence; missing selectors stay loading | Internal Back; marked original-site action only | implemented declaration; live not-run in adoption |
+| Post body, author, quote | Open the post or profile | Route | Unsupported screen for unknown pages | implemented | static |
+| Post photo | Open the media viewer; Previous and Next replace within the post's photos | Route | Open on X when the photo is missing | implemented | static |
+| Like | Like or unlike on X | `like` intent on the screen's source (`primary` or `explore`) | Disabled while pending; inline error | implemented, not exercised | static |
+| Bookmark | Bookmark or remove the X bookmark | `bookmark` intent on the screen's source (`primary` or `explore`) | Disabled while pending; inline error | implemented, not exercised | static |
+| Saved row: Bookmarks, Likes, Categories | Switch Saved view | Route or screen | | verified (Bookmarks, Categories) | device |
+| Categories chips, search, Load more | Filter and page filed posts | `bookmarks` service | Skeleton; unavailable notice with Try again | verified (unavailable state) | device |
+| Save to categories and Edit | Open the `save` screen | `bookmarks` service | Conflict rereads; a pending change is checked before new writes | implemented, writes not exercised | static |
+| Manage categories | Create, rename and delete categories | `bookmarks` service | Delete confirmation; nonempty categories are refused | implemented, writes not exercised | static |
+| Edit profile, Reply, Compose, Sign in | X page in the sheet | Website | | implemented | static |
+| Profile tab after sign-in or sign-out | Read the account again | `reload("account")` at the app root on resume | | implemented | static |
 
-## Interaction inventory
+## Data
 
-All current code remains implemented at its prior revision; this record adoption does not qualify it live. Upstream mutations need separately authorized persistence checks.
+| Collection or service path | Owner | Key | Shape version | Notes |
+| --- | --- | --- | --- | --- |
+| `bookmarks` service, table `libraries` | Applet service | Library id | 1 | Expected X handle, set at first database creation; the account source must match it |
+| `bookmarks` service, table `categories` | Applet service | Library id and category id | 1 | Name, revision; at most 50 |
+| `bookmarks` service, table `saved_posts` | Applet service | Library id and post id | 1 | Post URL and snapshot, revision, saved time |
+| `bookmarks` service, table `memberships` | Applet service | Library, post and category ids | 1 | At most 10 categories per post |
+| `bookmarks` service, table `operations` | Applet service | Library id and operation id | 1 | Receipts for idempotent writes |
+| Local collection `operations` | Applet storage | `pending:<libraryId>` | 1 | Marker for a write whose outcome is unknown; checked before the next write |
 
-| Control/entity | Expected result / owner | Authorization | Pending/error/uncertainty | Back/Return | Status/evidence |
-| --- | --- | --- | --- | --- | --- |
-| Like/Bookmark/Follow live entity | Desired state/current source executor | Explicit user action; current visit/account/entity token | Pending/observed/rejected/uncertain; retain rollback and no automatic retry | Revalidate on Return | implemented; persistence not-run here |
-| Repost/More | Owned contextual choices/scoped source confirmation | Same live identity, no queued cached mutation | Menu/confirmation cancellation; uncertain result remains honest | Back closes current menu | implemented; variants unqualified |
-| Share | Owned Copy/optional native chooser | User click; canonical URL | Report copy only after success; chooser means presented | Cancel/Back restores opener | implemented; device not-run |
-| Reply/Post/Quote/settings/uploads | Contextual original website editor | Entry is not submission authorization | Website owns fields/tokens/dirty guard | Native website Back/Return | implemented; no submissions |
-| Category save/filter/manage | Owned library/repository/bookmarks service | Confirmed source handle matches personal backend | Receipts/revisions and read-back; uncertain operation reconciled with same ID | Cancel/Back preserves records | implemented; live writes not-run here |
-| Pull/button refresh | Exact current source URL or Categories authoritative read | Read only; query/filter retained | Replacement epoch/result; timeout, exclusions and duplicate suppression | Menu Back after refresh works | implemented; device not-run |
+The backend and its records are unchanged by the SDK 0.0 rewrite. Categories restores its search and category filter from the local `preferences` collection (key `library:<libraryId>`) and writes them back when the user changes them; its scroll position is kept by the SDK. The old `session` collection is no longer read.
 
 ## Current work and verification
 
-Adoption 2026-11-01T19:24:48+05:30: manifest IDs, package versions, documented code paths and links inspected; no runtime/data changes. Live verification not-run in this task. Existing historical evidence: Genesis developer records of the 2026-11-01 X interactions and UX-repair verifications (maintainer-only, not in public copies). Each record qualifies only its named revision/environment; no past pass establishes current site selectors or all routes.
+2026-11-06 on the `emulator-5554` emulator (Android 17), signed-in X account, local `bookmarks` service not running:
 
-Current interaction code restores ready account-bound controls after provider Return even without new source publication, cancels pending work on website entry, and keeps cached rows read-only until live targets exist. Actual mutation persistence, inverse confirmation/private Follow variants, native video, physical-device/TalkBack, localization/Premium-only layouts and account switching remain unqualified.
-
-Next work: implement only requested customization; update route/action evidence before dependent changes; run scoped static checks, then authorized real-source/device checks when available. Preserve blockers and explicit choices. Do not infer approval for production distribution, multi-user service redesign, data migration or unrelated applet retrofits.
+- Static: `check`, `typecheck` and `build` passed.
+- Device, real website: Home timeline, Explore, the own Profile and Saved Bookmarks rendered in light mode. Categories showed its unavailable state because the service was not started.
+- Not exercised: like and bookmark writes, Categories reads and writes, search, signed-out states and dark mode. No X action was performed.
+- Acceptance run, same day: Notifications and the Likes tab rendered. A post opened the Post screen with its replies after the route fix below; its photo opened in the media viewer with Previous and Next disabled, and Back returned to the post and then Home. Next and Previous across several photos were not exercised. Reply opened X's compose page in the website sheet, and Return restored Home at the same scroll position.
+- Fixed: the `post-pages` website route (`/:handle/status/:id/*`) was listed before `post`, and a trailing `*` also matches the bare prefix, so every post opened in the website sheet. `post` now comes first.
+- Known gap: news-style trends show the headline as context and the trend line as the name.

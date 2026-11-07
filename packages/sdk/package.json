@@ -1,6 +1,6 @@
 {
   "name": "@genesis/sdk",
-  "version": "0.5.1",
+  "version": "0.0.0",
   "type": "module",
   "exports": {
     ".": {
@@ -11,13 +11,9 @@
       "types": "./dist/types/react.d.ts",
       "default": "./dist/react.js"
     },
-    "./runtime": {
-      "types": "./dist/types/bootstrap.d.ts",
-      "default": "./dist/runtime.js"
-    },
-    "./manifest": {
-      "types": "./dist/types/manifest.d.ts",
-      "default": "./dist/manifest.js"
+    "./source": {
+      "types": "./dist/types/source.d.ts",
+      "default": "./dist/source.js"
     }
   },
   "scripts": {
@@ -38,7 +34,9 @@
     }
   },
   "files": [
-    "dist/*.js",
-    "dist/types"
-  ]
+    "dist"
+  ],
+  "dependencies": {
+    "@genesis/core": "0.0.0"
+  }
 }

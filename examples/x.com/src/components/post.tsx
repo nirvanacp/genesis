@@ -1,97 +1,113 @@
-import {PostActions,MutationButton} from './post-actions';
-import type {Interactions} from '../use-interactions';
-import {openShareSheet} from './share-sheet';
-import {useEffect,useRef,useState,type MouseEvent,type ReactNode} from 'react';
-import type {AppletContext,NavigationDecision} from '@genesis/sdk';
-import {websiteDestination} from '@genesis/sdk';
-import type {XPost} from '../view-model';
-import {Icon, type IconName} from './icon';
+import { memo } from "react";
+import { useIntent, useNavigation } from "@genesis/sdk/react";
+import { snapshotOf } from "../library";
+import { ORIGIN, profileUrl, type PostView } from "../model";
+import { Avatar, Icon, RichText, useOpenRoute, Verified } from "./ui";
 
-export type OpenX = ((url: string, website?: boolean) => void)&{context:AppletContext};
-
-export function XLink({url,open,websiteActionId,className='',label,children,tab=false,selected=false}:{url:string;open:OpenX;websiteActionId?:string;className?:string;label?:string;children:ReactNode;tab?:boolean;selected?:boolean}){
-  const [failure,setFailure]=useState(false),[busy,setBusy]=useState(false);
-  const [decision,setDecision]=useState<NavigationDecision|null>(null),[attempt,setAttempt]=useState(0);
-  useEffect(()=>{let active=true,serial=0;const resolve=()=>{const current=++serial;setDecision(null);void(async()=>{
-    let [value]=await open.context.navigation.resolve([{kind:'url',url}]);
-    if(websiteActionId&&value.kind==='custom')[value]=await open.context.navigation.resolve([{kind:'url',url,websiteActionId}]);
-    if(active&&current===serial)setDecision(value);
-  })().catch(()=>{if(active)setFailure(true);});};const dispose=open.context.navigation.subscribe(resolve);resolve();return()=>{active=false;dispose();};},[url,websiteActionId,open.context,attempt]);
-  const opensWebsite=!!decision&&websiteDestination(decision);
-  return <><a href={url} className={className} role={tab?'tab':undefined} aria-selected={tab?selected:undefined} aria-label={label?label+(opensWebsite?', opens website':''):undefined} aria-busy={!decision} onClick={event=>{
-    event.preventDefault();if(!decision||busy)return;setBusy(true);setFailure(false);void open.context.navigation.activate({decision,intent:decision.kind==='website'||decision.kind==='external'?'open-website':'navigate'}).catch(()=>{setDecision(null);setFailure(true);}).finally(()=>setBusy(false));
-  }}>{children}{opensWebsite&&<><span className="website-cue" aria-hidden="true">↗</span>{!label&&<span className="visually-hidden"> opens website</span>}</>}</a>{failure&&<button type="button" onClick={()=>{setFailure(false);setAttempt(v=>v+1);}}>Retry link</button>}</>;
+/** The like and bookmark intents of the page the post was read from. Null when that page is not loaded. */
+export interface PostActions {
+  toggle(name: "like" | "bookmark", postId: string, on: boolean): void;
+  pending: boolean;
 }
 
-function PostText({post, open}: {post: XPost; open: OpenX}) {
-  const text = post.snapshot.text;
-  if (!text) return null;
-  // Rebuild only known links as text and anchors. Never copy source HTML.
-  const links = post.snapshot.links.filter(link => link.text && text.includes(link.text));
-  const content: ReactNode[] = [];
-  let offset = 0;
-  while (offset < text.length) {
-    const match = links.map(link => ({link, index: text.indexOf(link.text, offset)}))
-      .filter(item => item.index >= offset).sort((a, b) => a.index - b.index || b.link.text.length - a.link.text.length)[0];
-    if (!match) { content.push(text.slice(offset)); break; }
-    content.push(text.slice(offset, match.index));
-    content.push(<XLink key={match.index} url={match.link.href} open={open}>{match.link.text}</XLink>);
-    offset = match.index + match.link.text.length;
-  }
-  return <p className="post-text">{content}</p>;
-}
-
-export function Post({item, expanded, open, save, openQuote, actions}: {
-  actions:Interactions; item: XPost; expanded: boolean; open: OpenX; save: () => void; openQuote: (key:string) => void;
-}) {
-  const menu=useRef<HTMLDetailsElement>(null);
-  useEffect(()=>{
-    const dismiss=(event:PointerEvent)=>{
-      if(menu.current?.open&&!event.composedPath().includes(menu.current))menu.current.open=false;
-    };
-    const escape=(event:KeyboardEvent)=>{
-      if(event.key==='Escape'&&menu.current?.open){menu.current.open=false;menu.current.querySelector('summary')?.focus();}
-    };
-    document.addEventListener('pointerdown',dismiss);
-    document.addEventListener('keydown',escape);
-    return()=>{document.removeEventListener('pointerdown',dismiss);document.removeEventListener('keydown',escape);};
-  },[]);
-  const metric = (name: string) => item.metrics.find(m => m.label.toLowerCase() === name);
-  const count = (name: string) => {
-    const value = metric(name)?.value ?? '';
-    // Older accepted models contain complete ARIA sentences, newer ones contain visible counts.
-    const number=value.match(/[\d][\d,.]*(?:\s?[KMB])?/i)?.[0] ?? '';
-    return number==='0'?'':number;
+/** Like and bookmark through the current screen's source. A stale page has no controls to press, so it gets none. */
+export function usePostActions(stale: boolean): { actions: PostActions | null; error: unknown } {
+  const { screen } = useNavigation();
+  const intent = useIntent(screen.source?.sourceId ?? "primary");
+  const actions = stale ? null : {
+    toggle: (name: "like" | "bookmark", postId: string, on: boolean) => void intent.act({ name, postId, on }).catch(() => {}),
+    pending: intent.pending,
   };
-  const quotedContent=item.quote&&<>{item.quote.authorName?<span className="quote-heading">{item.quote.avatar&&<img src={item.quote.avatar} alt=""/>}<strong>{item.quote.authorName}</strong>{item.quote.verified&&<Icon name="verified"/>}<span>{item.quote.authorHandle&&'@'+item.quote.authorHandle}{item.quote.time&&' · '+item.quote.time}</span></span>:<span className="quoted-label">Quoted post</span>}<p>{item.quote.text}</p></>;
-  const profile = `https://x.com/${item.snapshot.authorHandle}`;
-  return <article className={`post${expanded ? ' expanded' : ''}`} id={`post-${item.postId}`}>
-    {item.context && <div className="post-context"><Icon name="repost"/><XLink url={item.context.url} open={open}>{item.context.text}</XLink></div>}
-    <XLink className="post-avatar" url={profile} open={open} label={`View @${item.snapshot.authorHandle}`}>
-      {item.avatar ? <img className="avatar" src={item.avatar} alt="" loading="lazy"/> : <span className="avatar fallback">{item.snapshot.authorName.slice(0, 1)}</span>}
-    </XLink>
-    <header className="post-heading">
-      <div className="author"><XLink url={profile} open={open} className="author-name">{item.snapshot.authorName}</XLink>{item.verified && <Icon name="verified"/>}<span className="author-handle">@{item.snapshot.authorHandle}</span>{!expanded&&<XLink className="post-time" url={item.url} open={open} label={`Open post and discussion, ${item.time}`}>· {item.time}</XLink>}</div>
-      <details className="post-menu" ref={menu}><summary role="button" aria-label={`More options for post by @${item.snapshot.authorHandle}`}><Icon name="more"/></summary><div className="post-menu-items">
-        <button onClick={event => { event.currentTarget.closest('details')?.removeAttribute('open'); save(); }}><Icon name="folder"/>Save to category</button>
-        <MutationButton entity={'post:'+item.postId} name="bookmark" actions={actions}/>
-        <XLink url={item.url} open={open} websiteActionId="original-x"><Icon name="more"/>More on X</XLink>
-      </div></details>
-    </header>
-    <div className="post-body" onClick={event => {
-      if (expanded || event.defaultPrevented || event.button!==0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.nativeEvent.composedPath().some(node=>node instanceof Element&&node.matches('a,button,input,summary,[role=button]')) || window.getSelection()?.toString()) return;
-      open(item.url);
-    }}>
-      <PostText post={item} open={open}/>
-      {expanded&&item.snapshot.textState==='excerpt'&&<XLink url={item.url} open={open} websiteActionId="original-x" className="read-more">Read full post on X website</XLink>}
-      {item.snapshot.textState === 'excerpt' && !expanded && <XLink url={item.url} open={open} className="read-more">Show more</XLink>}
-      {item.photos.length > 0 && <div className={`photos count-${item.photos.length}`}>{item.photos.map((url, index) => <XLink key={url} url={`${item.url}/photo/${index + 1}`} open={open}><img src={url} alt={`Photo ${index + 1} in post by @${item.snapshot.authorHandle}`} loading="lazy"/></XLink>)}</div>}
-      {['video', 'mixed'].includes(item.snapshot.media.kind) && <XLink url={`${item.url}/video/1`} open={open} websiteActionId="original-x" className="media-action"><Icon name="play"/>Play video on X</XLink>}
-      {item.quote && (item.quote.key?<button className="quoted-post" onClick={()=>openQuote(item.quote!.key!)}>{quotedContent}</button>:<XLink url={item.quote.url ?? item.url} open={open} className="quoted-post">{quotedContent}</XLink>)}
-      {item.snapshot.links.filter(link => !item.snapshot.text.includes(link.text)).map((link, index) => <XLink key={index} url={link.href} open={open} className="post-link"><Icon name="link"/>{link.text}</XLink>)}
-      {!item.snapshot.text && !item.photos.length && item.snapshot.media.kind === 'none' && <XLink url={item.url} open={open} websiteActionId="original-x">View post on X</XLink>}
-      {expanded && item.dateTime && <p className="post-date">{new Date(item.dateTime).toLocaleString(undefined, {hour: 'numeric', minute: '2-digit', month: 'short', day: 'numeric', year: 'numeric'})}</p>}
+  return { actions, error: intent.error };
+}
+
+/** Opens the category editor for a post read from the current page. */
+export function useSaveToCategories() {
+  const { navigate } = useNavigation();
+  return (post: PostView) => void navigate({
+    kind: "screen", id: "save",
+    params: { post: JSON.stringify({ postId: post.postId, url: post.url, snapshot: snapshotOf(post) }) },
+  });
+}
+
+export const PostCard = memo(function PostCard({ post, actions, focus = false }: {
+  post: PostView; actions: PostActions | null; focus?: boolean;
+}) {
+  const open = useOpenRoute();
+  const { navigate } = useNavigation();
+  const save = useSaveToCategories();
+  const openPost = () => { if (!focus) open(post.url); };
+  return <article className={focus ? "post focus" : "post"} aria-label={`Post by ${post.name}`}>
+    {post.context && <p className="post-context">
+      <Icon name={/pinned/i.test(post.context.text) ? "bookmark" : "repost"} />
+      {post.context.url
+        ? <a href={post.context.url} onClick={event => { event.preventDefault(); open(post.context!.url!); }}>{post.context.text}</a>
+        : post.context.text}
+    </p>}
+    <div className="post-grid">
+      <button type="button" className="avatar-button" aria-label={`Profile of ${post.name}`} onClick={() => open(profileUrl(post.handle))}>
+        <Avatar src={post.avatar} size={focus ? 48 : 40} />
+      </button>
+      <div className="post-body">
+        <header className="post-head">
+          <a className="post-name" href={profileUrl(post.handle)} onClick={event => { event.preventDefault(); open(profileUrl(post.handle)); }}>
+            <strong>{post.name}</strong>{post.verified && <Verified />}
+          </a>
+          <span className="post-meta">@{post.handle}{!focus && post.time && <> · <time dateTime={post.dateTime ?? undefined}>{post.time}</time></>}</span>
+        </header>
+        <div className="post-content" onClick={openPost}>
+          {post.parts.length > 0 && <RichText parts={post.parts} className={focus ? "post-text large" : "post-text"} />}
+          {post.textState === "excerpt" && !focus && <span className="show-more">Show more</span>}
+          {post.textState === "unavailable" && post.photos.length === 0 && post.videos === 0 && !post.quote
+            && <p className="post-meta">X didn't show this post's text.</p>}
+        </div>
+        {post.photos.length > 0 && <div className={`photos n${post.photos.length}`}>
+          {post.photos.map((src, index) => <button type="button" key={src} aria-label={`Photo ${index + 1} of ${post.photos.length}`}
+            onClick={() => open(`${post.url}/photo/${index + 1}`)}>
+            <img src={src} alt="" loading="lazy" referrerPolicy="no-referrer" />
+          </button>)}
+        </div>}
+        {post.videos > 0 && <button type="button" className="video-tile" onClick={() => void navigate({ kind: "website", url: post.url })}>
+          <span>Video</span><span className="post-meta">Play on X <Icon name="external" /></span>
+        </button>}
+        {post.quote && <button type="button" className="quote" disabled={!post.quote.url} onClick={() => post.quote?.url && open(post.quote.url)}>
+          <span className="post-head"><strong>{post.quote.name}</strong>{post.quote.handle && <span className="post-meta">@{post.quote.handle}</span>}</span>
+          {post.quote.text && <span className="quote-text">{post.quote.text}</span>}
+        </button>}
+        {focus && post.time && <p className="post-meta focus-time"><time dateTime={post.dateTime ?? undefined}>{post.time}</time>{post.views && <> · <strong>{post.views}</strong> views</>}</p>}
+        <ActionBar post={post} actions={actions} save={() => save(post)} />
+      </div>
     </div>
-    <PostActions url={item.url} id={item.postId} open={open} actions={actions} count={count} share={()=>openShareSheet(open.context,item.url)}/>
   </article>;
+});
+
+function ActionBar({ post, actions, save }: { post: PostView; actions: PostActions | null; save(): void }) {
+  const { navigate } = useNavigation();
+  const open = useOpenRoute();
+  return <div className="actions-bar">
+    <button type="button" className="action" aria-label={`Reply${post.replies ? `, ${post.replies} replies` : ""}`}
+      onClick={() => void navigate({ kind: "website", url: `${ORIGIN}/compose/post?in_reply_to=${post.postId}` })}>
+      <Icon name="reply" /><span>{post.replies}</span>
+    </button>
+    <span className={post.reposted ? "action reposted" : "action"} aria-label={`${post.reposts || "No"} reposts`} role="img">
+      <Icon name="repost" /><span>{post.reposts}</span>
+    </span>
+    <button type="button" className={post.liked ? "action liked" : "action"} aria-pressed={post.liked}
+      disabled={!actions || !post.canLike || actions.pending} aria-label={`${post.liked ? "Unlike" : "Like"}${post.likes ? `, ${post.likes} likes` : ""}`}
+      onClick={() => actions?.toggle("like", post.postId, !post.liked)}>
+      <Icon name="heart" filled={post.liked} /><span>{post.likes}</span>
+    </button>
+    <button type="button" className="action" aria-label={`${post.views || "No"} views`} disabled={!post.views}
+      onClick={() => open(`${post.url}/analytics`)}>
+      <Icon name="views" /><span>{post.views}</span>
+    </button>
+    <button type="button" className={post.bookmarked ? "action bookmarked" : "action"} aria-pressed={post.bookmarked}
+      disabled={!actions || !post.canBookmark || actions.pending} aria-label={post.bookmarked ? "Remove bookmark" : "Bookmark"}
+      onClick={() => actions?.toggle("bookmark", post.postId, !post.bookmarked)}>
+      <Icon name="bookmark" filled={post.bookmarked} />
+    </button>
+    <button type="button" className="action" aria-label="Save to categories" onClick={save}>
+      <Icon name="folder" />
+    </button>
+  </div>;
 }

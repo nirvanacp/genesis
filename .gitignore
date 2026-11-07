@@ -4,6 +4,7 @@
 .DS_Store
 **/*.env
 
+/packages/core/dist/
 /packages/sdk/dist/
 /packages/applet-tools/kit/
 /packages/sdk/.build-lock

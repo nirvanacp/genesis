@@ -5,8 +5,8 @@ import { homedir } from 'node:os';
 import path from 'node:path';
 import https from 'node:https';
 import net from 'node:net';
-import { readApplet, containedFile } from './manifest.mjs';
-import { Device, creatorError } from './device.mjs';
+import { readApplet, containedFile, toolError as creatorError } from './manifest.mjs';
+import { Device } from './device.mjs';
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 function run(command, args) {
   const result = spawnSync(command, args, { encoding: 'utf8', timeout: 15000, shell: false });
@@ -46,26 +46,16 @@ export async function manageService(action, directory, options = {}) {
     await unlink(pidFile).catch(error => { if (error.code !== 'ENOENT') throw error; });
     return result({ running: false, dataPreserved: true });
   }
-  if (device) {
-    const host = device.status().applets.find(p => p.id === manifest.id);
-    if (!host?.services.includes(service.serviceId)) throw creatorError('UNDECLARED_SERVICE', 'Install this applet and declare its service before provisioning');
-  }
   async function provision(origin, token, certificate = '') {
     const url = new URL(origin);
     if (url.protocol !== 'https:' || url.origin !== origin || url.username || url.password) throw creatorError('INVALID_SERVICE_ORIGIN', 'Use an exact HTTPS origin without path or credentials');
     if (token.length < 32 || token.length > 4096 || /[^\x21-\x7e]/.test(token)) throw creatorError('INVALID_CREDENTIAL', 'Service token must be 32–4096 printable ASCII characters');
-    device.clear('genesis-service-ready');
-    device.privateWrite('genesis-service-import.json', JSON.stringify({ version: 1, appletId: manifest.id, serviceId: service.serviceId, origin, token, certificate, healthPath: service.healthPath }));
-    device.restart();
-    const deadline = Date.now() + 15000;
-    while (Date.now() < deadline) {
-      let ready;
-      try { ready = device.privateRead('genesis-service-ready'); } catch { /* Device is starting. */ }
-      if (ready === 'ready') return;
-      if (ready === 'unavailable') throw creatorError('SERVICE_HEALTH_FAILED', 'Device could not authenticate or reach the configured HTTPS service; inspect server health and credentials');
-      await delay(200);
-    }
-    throw creatorError('UNKNOWN_STATUS', 'Device did not acknowledge service health; settings may be imported. Check service status before retrying');
+    // The shell checks that the installed applet declares this service, stores the credential
+    // in the Keystore, probes the health path and writes the receipt.
+    const name = `service-${manifest.id}-${service.serviceId}.json`;
+    const receipt = await device.submit(name, JSON.stringify({ version: 1, appletId: manifest.id, serviceId: service.serviceId, origin, token, ...(certificate ? { certificate } : {}), healthPath: service.healthPath }));
+    if (!receipt.ok) throw creatorError('SERVICE_REJECTED', `Genesis rejected the service record: ${receipt.error ?? 'no reason given'}`);
+    if (receipt.health !== 'ready') throw creatorError('SERVICE_HEALTH_FAILED', 'The device could not reach or authenticate to the service; check server health and credentials');
   }
   if (action === 'provision' && process.env.GENESIS_SERVICE_ORIGIN) {
     if (!process.env.GENESIS_SERVICE_TOKEN_FILE) throw creatorError('CREDENTIAL_REQUIRED', 'Set GENESIS_SERVICE_TOKEN_FILE to a private token file');

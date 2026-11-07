@@ -29,13 +29,13 @@ const MAX_SAFE: u64 = 9_007_199_254_740_991;
 
 #[derive(Debug)]
 pub struct StorageError {
-    pub code: &'static str,
+    pub code: ErrorCode,
     pub message: String,
 }
 impl From<rusqlite::Error> for StorageError {
     fn from(error: rusqlite::Error) -> Self {
         Self {
-            code: "STORAGE_FAILURE",
+            code: ErrorCode::StorageFailure,
             message: error.to_string(),
         }
     }
@@ -43,13 +43,13 @@ impl From<rusqlite::Error> for StorageError {
 type Result<T> = std::result::Result<T, StorageError>;
 fn invalid(message: &str) -> StorageError {
     StorageError {
-        code: "INVALID_ARGUMENT",
+        code: ErrorCode::InvalidArgument,
         message: message.into(),
     }
 }
 fn quota(message: &str) -> StorageError {
     StorageError {
-        code: "QUOTA_EXCEEDED",
+        code: ErrorCode::QuotaExceeded,
         message: message.into(),
     }
 }
@@ -115,7 +115,10 @@ pub fn validate(operation: &StorageOperation) -> Result<()> {
                     .len()
                     > 32768
                 {
-                    return Err(quota("Document exceeds 32 KiB"));
+                    return Err(StorageError {
+                        code: ErrorCode::DocumentTooLarge,
+                        message: "Document exceeds 32 KiB".into(),
+                    });
                 }
                 if !modified.insert((&put.collection, &put.key)) {
                     return Err(invalid("Duplicate modification"));
@@ -241,7 +244,7 @@ impl Database {
                         .optional()?;
                     if actual != check.expected_revision.map(|r| r as i64) {
                         return Err(StorageError {
-                            code: "CONFLICT",
+                            code: ErrorCode::Conflict,
                             message: "Data changed. Reload the record before retrying.".into(),
                         });
                     }
@@ -295,30 +298,22 @@ fn stored_document(key: &str, value: &str, revision: i64, time: i64) -> Result<V
         return Err(invalid("Invalid stored counters; data preserved"));
     }
     let value: Value = serde_json::from_str(value).map_err(|_| StorageError {
-        code: "STORAGE_FAILURE",
+        code: ErrorCode::StorageFailure,
         message: "Stored JSON is invalid; data preserved".into(),
     })?;
     Ok(json!({"key":key,"value":value,"revision":revision,"updatedAtMs":time}))
 }
-pub fn response(job: &StorageJob, result: Result<(Value, Vec<StorageKey>)>) -> StorageCompletion {
-    let (response, changed) = match result {
-        Ok((value, changed)) => (
-            json!({"v":1,"documentId":job.document_id,"requestId":job.request_id,"ok":true,"result":value}),
-            changed,
-        ),
-        Err(error) => (
-            json!({"v":1,"documentId":job.document_id,"requestId":job.request_id,"ok":false,
-            "error":{"code":error.code,"message":error.message,"retryable":error.code=="BUSY"||error.code=="CONFLICT"}}),
-            vec![],
-        ),
+/// Wraps a worker result for the host. Only a successful commit reports changed keys.
+pub fn completion(job: &StorageJob, result: Result<(Value, Vec<StorageKey>)>) -> StorageCompletion {
+    let (result, error, changed) = match result {
+        Ok((value, changed)) => (Some(value), None, changed),
+        Err(error) => (None, Some(ErrorBody::new(error.code, error.message)), Vec::new()),
     };
     StorageCompletion {
-        generation: job.generation,
-        document_id: job.document_id.clone(),
-        channel: job.channel,
-        request_id: job.request_id.clone(),
+        job_id: job.job_id,
         applet_id: job.applet_id.clone(),
-        response,
+        result,
+        error,
         changed,
     }
 }

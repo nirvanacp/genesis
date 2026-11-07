@@ -1,7 +1,7 @@
-export { readApplet, validateManifest, validateBundle, canonicalJson, bundleRevision } from './manifest.mjs';
+export { readApplet, requireValue, safePath, sha256 } from './manifest.mjs';
 export { checkApplet } from './check.mjs';
-export { buildApplet, readBundle } from './build.mjs';
-export { Device, installApplet, rollbackApplet } from './device.mjs';
+export { buildApplet, readBuild } from './build.mjs';
+export { Device, deviceStatus, installApplet } from './device.mjs';
 export { manageService } from './services.mjs';
 export { createApplet } from './create.mjs';
-export { exportKit } from './kit.mjs';
+export { exportKit, VERSIONS } from './kit.mjs';

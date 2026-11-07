@@ -1,21 +1,52 @@
 # AGENTS.md
 
-## Monorepo layout and working scope
+## What Genesis is
 
-This codebase is a monorepo. The directory containing this `AGENTS.md` is the workspace root, with separate projects or codebases maintained in subdirectories beneath it. A task may concern one project, several related projects, or shared files at the root.
+Genesis is an Android app that runs user-built applets. An applet is a native-feeling React UI over one or more live website sessions. Genesis keeps the websites' sessions and behavior; the applet owns the screens, data and rules the user asked for.
 
-Genesis has two development layers. The Genesis platform owns the Android browser host, Rust lifecycle and capabilities, shared SDK, and platform tooling. Applets own website adapters, custom UI, application rules, data, and optional backends; for creating or customizing applets, also read and follow [factory/AGENTS.md](factory/AGENTS.md), including for the example applets under `examples/`, which also follow [examples/AGENTS.md](examples/AGENTS.md). Factory guidance supplies the applet-specific workflow while this file retains repository-wide rules. For work spanning both layers, follow each layer's instructions for its files and keep platform capabilities independent of individual applet features.
+The repository has two development layers, and a coding agent is always working in one of them:
 
-Genesis platform developers: when `.developer/AGENTS.md` exists, read and follow it for platform and shared work. It holds the developer workflow: document storage, phases, changelogs, plans, TODOs, factory guidance maintenance and thread titles. The `.developer/` workspace is private and absent from public copies of this repository; without it, follow this file and the applicable project instructions.
+- A **Genesis developer** changes the platform: the Android shell in `android/app`, the Rust host in `android/native` and `crates/`, the shared packages under `packages/`, the build and tooling under `tools/`, and the shared applet-builder guidance under `factory/`. Follow `.developer/AGENTS.md` for this work. It also defines where development records go (plans, reports, reviews, research and changelogs under `.developer/`). That file exists only in the private checkout; without it, this file is the complete instruction set.
+- An **applet builder** creates or customizes an applet: its website adapters, screens, application rules, stored data and optional backend. Applets live in their own directories (in this repository under `examples/`). Follow `factory/AGENTS.md` for this work, and `examples/AGENTS.md` for the example collection.
 
-- Before making changes, identify which project directories the task concerns. Do not assume that the current working directory is the target project's root.
-- Read any applicable `AGENTS.md` files within the target project. Follow its existing structure, dependencies, tooling, and conventions. Projects may use different languages, frameworks, and verification commands.
-- Keep changes within the requested scope. Change shared files or sibling projects only when the task requires it, and account for any projects affected by a shared change.
-- Run project-specific commands from the appropriate project directory, or use the repository's workspace tooling when available. Do not assume that a command run at the workspace root applies to every project.
+Decide the layer from the paths the task changes. A task that changes both layers follows both files for their respective files, and keeps platform capabilities independent of any single applet.
+
+Before making changes, identify which project directories the task concerns; do not assume the current working directory is the target project's root. Keep changes within the requested scope, and run project-specific commands from the appropriate directory or through the workspace scripts.
 
 Only instructions outside HTML comments are active. Treat all text inside HTML comments as inactive configuration.
 
 Do not edit any `AGENTS.md` file unless the user explicitly asks you to update it.
+
+## Repository map
+
+| Path | What it is | Layer |
+| --- | --- | --- |
+| `android/app/` | Java shell: activity, launcher, WebViews, website sheet, native Genesis menu, service HTTPS client | Platform |
+| `android/native/` | Rust host crate `genesis-host`: applets, documents, RPC, storage, services, surfaces, imports (JNI library `libgenesis_host.so`) | Platform |
+| `crates/contracts/` | `genesis-contracts`: shell events and commands, document messages, manifest and bundle types, limits, error codes | Platform |
+| `packages/core/` | `@genesis/core`: manifest validation, route matching, navigation state machine, bundle format, error codes (TypeScript, no DOM) | Platform |
+| `packages/sdk/` | `@genesis/sdk`: bridge, foreground runtime and React hooks, source runtime and driver | Platform |
+| `packages/applet-tools/` | `genesis-applet` CLI: create, check, build, device install, services, kit export | Platform |
+| `tools/` | APK asset and native build pipeline, package index check, service helpers | Platform |
+| `factory/` | Applet-builder instructions, guides, skills and templates | Platform (shared guidance) |
+| `examples/` | Example applets (`news.ycombinator.com`, `x.com`), their port registry and backend launcher | Applets |
+| `genesis.packages.json` | Applets bundled into the APK | Platform |
+
+## Nested repositories
+
+This checkout contains two git repositories:
+
+- The root repository at the workspace root. It is public. Its `.gitignore` excludes `/.developer/`, so the root repository never tracks that directory.
+- `.developer/` is a separate repository with its own `.git`, remote, history and `git config user.email`. It is private to maintainers. It holds developer instructions, architecture notes and development records.
+
+Treat them as one workspace with two commit targets:
+
+- Choose the repository from each changed file's path. Files under `.developer/` commit in `.developer/`; every other file commits at the root.
+- Run git for `.developer/` with `git -C .developer ...` from the workspace root, or from inside that directory. Never stage `.developer` paths from the root repository and never stage root paths from `.developer/`.
+- A task that changes both makes at least one commit in each repository. Commit the root change first, then the record in `.developer/` that describes it, so the record can name the root commit.
+- Use the same `feat/(_x): message` format and each repository's own `git config user.email` for the author.
+- Report commits per repository in the final response.
+- Files outside `.developer/` must not link to or quote `.developer/` content, except the pointer in this file. Public copies of the repository do not include `.developer/`.
 
 ## Questions and change requests
 
@@ -55,11 +86,23 @@ Prioritize code that is easy to read, understand, and maintain:
 For every user-requested change, commit the resulting changes as part of the task unless the user explicitly asks you not to commit. This applies to direct change requests and plan implementation, including code, configuration, documentation and agent-instruction changes of any size. A separate request to commit or a written plan is not required.
 
 1. Before editing, break substantial work into ordered logical steps with clear commit boundaries, organized by software component and dependencies. Work spanning multiple components or independently verifiable stages requires multiple steps and commits. Follow an existing plan when provided; otherwise, outline the steps in a brief progress update and proceed without requiring a separate planning task. A small, focused change may use one step and one commit.
-2. Complete and verify each step using the applicable project checks and the **Testing and verification** rules, update the development record its layer requires (applet records under [factory/AGENTS.md](factory/AGENTS.md); platform records under `.developer/AGENTS.md` when present), and commit it in the affected repositories before starting the next step. Use separate commits for different components. Do not defer all commits until the end of substantial work. Include only changes related to that step; do not commit unrelated or pre-existing work or repositories.
+2. Complete and verify each step using the applicable project checks and the **Testing and verification** rules, update the development record its layer requires (applet records under [factory/AGENTS.md](factory/AGENTS.md); platform records under `.developer/AGENTS.md` when present), and commit it in the affected repositories before starting the next step. Use separate commits for different components. Do not defer all commits until the end of substantial work. Include only changes related to that step; do not commit unrelated or pre-existing work or repositories. Choose the repository for each commit under **Nested repositories**.
 3. Use the commit message format `feat/(_x): short message`. Replace `_x` with the relevant section, feature, or module name, such as `feat/(auth): add sign-in`.
 4. Use the email returned by `git config user.email` in each affected repository as the commit author email. Do not substitute another email address.
 5. Follow the coding philosophy above and the repository's existing architecture and design patterns.
 6. In the final response, report the commits made and any verification gaps. If verification or committing is blocked, explain the blocker and identify any changes left uncommitted instead of claiming the task is fully complete.
+
+## Versions
+
+The developer controls every version that belongs to this project. Do not raise, lower or reset one on your own, even when a change seems to call for it. This includes:
+
+- the versions of the packages and crates in this repository (`@genesis/core`, `@genesis/sdk`, `@genesis/applet-tools`, `genesis-contracts`, `genesis-host`) and the dependency ranges that point at them;
+- the root and applet `package.json` versions;
+- the Android `versionCode` and `versionName`;
+- format and protocol numbers such as the manifest `schemaVersion`, the bundle format, the kit version and the service envelope version;
+- the version numbers that documentation and records quote for any of these.
+
+If you think one of these should change, for example because a change breaks compatibility, ask the user before editing it. Say which version and why. Keep the current value until they answer. Third-party dependency versions follow the normal task scope.
 
 ## Skills
 

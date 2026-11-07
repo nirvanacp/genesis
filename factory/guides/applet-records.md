@@ -1,6 +1,6 @@
 # Applet records
 
-Keep current intent and development context in two tracked folders inside each applet, including monorepo applets:
+Keep the applet's current intent and development history in two tracked folders inside the applet:
 
 ```text
 .specs/current.md
@@ -8,14 +8,14 @@ Keep current intent and development context in two tracked folders inside each a
 .changelog/YYYY-MM-DD-HHMMSS-short-change.md
 ```
 
-Use flat files with the user's local time, no phases/date folders. Add a descriptive suffix on collisions; never overwrite an unrelated record. Do not create applet .plans/.docs/.reports/.reviews/.research folders. Put plans, investigations and verification summaries in current specs. Build/private-state directories are not documentation categories.
+Use flat files named with the user's local time; no phase or date folders. Add a descriptive suffix on a name collision and never overwrite an unrelated record. Do not create other record folders such as `.plans`, `.docs` or `.reports`; plans, investigations and verification summaries go in the current spec.
 
-Start from [current spec](templates/current.md), [decisions](templates/decisions.md) and [change record](templates/change.md). On an existing app, initialize when first touched; inspect actual code and prior decisions. Mark unknowns honestly, attribute user choices versus agent inferences, and never backdate new records. Preserve historical root records where created.
+Start from the [current spec](templates/current.md), [decisions](templates/decisions.md) and [change record](templates/change.md) templates. On an existing applet without records, create them the first time you change it, from the actual code and prior decisions. Mark unknowns as unknown, say whether a choice came from the user or from you, and never backdate a record.
 
-Read current specs first, then relevant decisions/recent changes. Current specs carry identity, origins, actual compatibility, product scope, defaults/overrides, route and interaction inventories, remaining work and verification. Reference manifest IDs rather than duplicate executable path rules. Keep implementation status separate from evidence. Latest user intent wins subject to actual platform constraints; only the user can approve deferral.
+Read the current spec first, then the relevant decisions and recent changes. The current spec holds identity, origins, versions, product scope, defaults and overrides, the route and interaction inventories, data authority, remaining work and verification. Refer to manifest route ids instead of copying patterns. Keep implementation status separate from verification evidence. The latest user intent wins within platform constraints; only the user can approve a deferral.
 
-Append material decisions with stable IDs, local date, origin, rationale, affected rules/workflows, evidence and superseded decision IDs. Update current specs so agents need not read the whole history. Never silently drop a prior explicit choice during summarization.
+Append material decisions to `decisions.md` with a stable id, local date, origin, rationale, the rules and journeys affected, evidence, and any decision it supersedes. Update the current spec so a reader does not need the whole history. Never drop an earlier explicit choice while summarizing.
 
-Maintain one changelog per logical change, update it until verification is known, and finalize before committing. Use four compact bullets, roughly 100–200 words: goal, changes, decisions, verification. Record blockers and exact evidence limits. Routine small edits can refer to existing choices instead of inventing decisions.
+Write one change record per logical change, keep it updated until verification is known, and finish it before committing. Use four short bullets of about 100 to 200 words in total: goal, changes, decisions, verification. Record blockers and the exact limits of the evidence. A small routine edit can point to existing decisions instead of creating new ones.
 
-README remains the human entrypoint for purpose, operator setup, current-spec links and known limits. Avoid duplicate route tables/history. Private account data, tokens, cookies, DOM dumps and private screenshots do not belong here. Platform/shared-factory/tooling changes keep their governing workspace's records; in the Genesis monorepo those are private developer records outside the public tree. Split mixed changes by owner; cross-link records only when both are visible to the same readers, and otherwise describe the related change in words.
+The README is the human entry point: purpose, operator setup, links to the current spec and known limits. Do not duplicate route tables there. Account data, tokens, cookies, page dumps and private screenshots never go into records. Changes to the shared factory, the platform or the tools keep the records their own workspace requires; describe a related change in words when the other record is not visible to the same readers.

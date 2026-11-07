@@ -1,129 +1,147 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { emptyDirectory, exportKit } from './kit.mjs';
-import { identifier, validateManifest } from './manifest.mjs';
-import { creatorError } from './device.mjs';
-// Escape user-supplied scalars so generated records cannot introduce Markdown structure.
+import { MANIFEST_SCHEMA_VERSION } from '@genesis/core';
+import { emptyDirectory, exportKit, VERSIONS } from './kit.mjs';
+import { toolError } from './manifest.mjs';
+
+/** Escapes user-supplied text so it cannot add Markdown structure to generated records. */
 function markdownValue(value) {
-  return JSON.stringify(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/[\\`*_{}\[\]()#+.!|~-]/g, character => '\\' + character);
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/[\\`*_{}\[\]()#+.!|~-]/g, c => '\\' + c);
 }
+
+function localStamp(date) {
+  const offsetMinutes = -date.getTimezoneOffset();
+  const sign = offsetMinutes >= 0 ? '+' : '-';
+  const offset = sign + String(Math.floor(Math.abs(offsetMinutes) / 60)).padStart(2, '0') + ':' + String(Math.abs(offsetMinutes) % 60).padStart(2, '0');
+  const local = new Date(date.getTime() + offsetMinutes * 60000).toISOString().slice(0, 19) + offset;
+  return { local, file: local.slice(0, 10) + '-' + local.slice(11, 19).replaceAll(':', '') };
+}
+
+const ADAPTER = `import { defineSource } from "@genesis/sdk/source";
+
+/** What the home screen shows. Replace it with the data your applet needs. */
+export interface HomeData {
+  title: string;
+  links: { text: string; url: string }[];
+}
+
+export default defineSource({
+  id: "main",
+  routes: {
+    home: {
+      extract(doc): HomeData | null {
+        if (doc.readyState === "loading") return null;
+        const links = [...doc.querySelectorAll<HTMLAnchorElement>("a[href]")]
+          .filter(a => a.textContent?.trim())
+          .slice(0, 20)
+          .map(a => ({ text: a.textContent!.trim(), url: a.href }));
+        return { title: doc.title, links };
+      },
+    },
+  },
+});
+`;
+
+const MAIN = `import { mountForeground, useNavigation, useScreenSource, ScrollMemory } from "@genesis/sdk/react";
+import type { HomeData } from "./sources/main";
+import "./theme.css";
+
+function Home() {
+  const page = useScreenSource<HomeData>();
+  const { navigate } = useNavigation();
+  if (page.status === "error") return <p role="alert" className="notice">{page.error?.message}</p>;
+  if (!page.data) return <p role="status" className="notice">Loading…</p>;
+  return (
+    <ScrollMemory className="screen">
+      <h1>{page.data.title}</h1>
+      <ul className="links">
+        {page.data.links.map(link => (
+          <li key={link.url}>
+            <button type="button" onClick={() => navigate({ kind: "route", url: link.url })}>{link.text}</button>
+          </li>
+        ))}
+      </ul>
+    </ScrollMemory>
+  );
+}
+
+function Unsupported() {
+  const { screen, navigate } = useNavigation();
+  const url = screen.params.url;
+  return (
+    <main className="screen notice">
+      <p>This page has no custom screen yet.</p>
+      {url && <button type="button" onClick={() => navigate({ kind: "website", url })}>Open the website</button>}
+    </main>
+  );
+}
+
+function App() {
+  const { screen } = useNavigation();
+  return screen.id === "home" ? <Home /> : <Unsupported />;
+}
+
+void mountForeground(<App />);
+`;
+
+const THEME = `:root { color-scheme: light dark; --paper: #ffffff; --ink: #182026; --line: #e6e9ec; }
+@media (prefers-color-scheme: dark) { :root { --paper: #171a1c; --ink: #e7e9ea; --line: #303438; } }
+html, body { margin: 0; height: 100%; background: var(--paper); color: var(--ink); font: 16px/1.5 system-ui, sans-serif; }
+#root, .screen { height: 100%; }
+.screen { overflow-y: auto; padding: 16px; box-sizing: border-box; }
+/* The shell's floating menu button covers the top-right corner. */
+.screen::before { content: ""; float: right; width: 44px; height: 44px; }
+.notice { padding: 16px; }
+.links { list-style: none; margin: 0; padding: 0; }
+.links li { border-bottom: 1px solid var(--line); }
+.links button { all: unset; display: block; width: 100%; padding: 12px 0; cursor: pointer; }
+button:focus-visible { outline: 2px solid var(--genesis-accent, #2f6fde); }
+`;
+
+/** Scaffolds an applet with one source, its adapter and two screens. */
 export async function createApplet(directory, options) {
-  if (!identifier.test(options.id ?? '') || typeof options.name !== 'string' || !options.name.trim() || !options.source) throw creatorError('USAGE', 'create requires --id <stable-id> --name <display-name> --source <https-url>');
-  const url = new URL(options.source);
-  const manifest = { schemaVersion: 3, id: options.id, name: options.name.trim(), dataSchemaVersion: 1,
-    sources: [{ id: 'main', startUrl: url.href, entry: 'src/main.ts', homePaths: [url.pathname], routeContractId: 'site' }],
-    navigation:{external:{default:'website',origins:[]},uncoveredWebsiteRecovery:true},websiteActions:[{id:'original-page',contractId:'site',routeIds:['home'],label:'Open original website',reason:'Continue on the original website while this custom screen is unavailable'}],
-    routeContracts: [{id:'site',defaultSourceId:'main',origins:[url.origin],unmatched:'unsupported',routes:[{id:'home',path:url.pathname,result:{kind:'custom',screen:'home',adapter:'home',title:'Home'}}]}],
-    foreground:{pageId:'app',screens:['home']},
-    pages: [{ id: 'app', entry: options.react ? 'src/home.tsx' : 'src/home.ts' }], actions: [], capabilities: ['dom'] };
-  validateManifest(manifest);
+  let origin;
+  try { origin = new URL(options.origin ?? ''); } catch { throw toolError('USAGE', 'create requires --origin <https://host>'); }
+  if (origin.protocol !== 'https:' || origin.origin !== options.origin.replace(/\/$/, '')) throw toolError('USAGE', '--origin must be an exact https://host origin');
+  const id = options.id ?? path.basename(path.resolve(directory)).toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '');
+  if (!/^[a-z0-9-]+$/.test(id)) throw toolError('USAGE', 'Pass --id <id> matching [a-z0-9-]+');
+  const name = (options.name ?? origin.hostname).trim();
+  const manifest = {
+    schemaVersion: MANIFEST_SCHEMA_VERSION, id, name, origins: [origin.origin],
+    foreground: { entry: 'src/main.tsx', screens: ['home', 'unsupported'] },
+    sources: [{ id: 'main', startUrl: origin.origin + '/', adapter: 'src/sources/main.ts' }],
+    routes: [{ id: 'home', pattern: '/', kind: 'adapted', source: 'main', screen: 'home' }],
+    capabilities: {},
+  };
   const output = await emptyDirectory(directory);
-  for (const name of ['src', '.specs', '.changelog']) await mkdir(path.join(output, name));
-  const created = new Date();
-  const offsetMinutes = -created.getTimezoneOffset();
-  const offset = (offsetMinutes >= 0 ? '+' : '-')
-    + String(Math.floor(Math.abs(offsetMinutes) / 60)).padStart(2, '0') + ':'
-    + String(Math.abs(offsetMinutes) % 60).padStart(2, '0');
-  const local = new Date(created.getTime() + offsetMinutes * 60000).toISOString().slice(0, -1) + offset;
-  const stamp = local.slice(0, 10) + '-' + local.slice(11, 19).replaceAll(':', '');
-  const displayName = markdownValue(options.name.trim());
-  const sourceLabel = markdownValue(url.href);
-  const packageJson = { name: options.id, version: '0.1.0', private: true, type: 'module', engines: { node: '24.15.0' },
-    scripts: { check: 'genesis-applet check .', build: 'genesis-applet build . --out dist' },
-    dependencies: { '@genesis/sdk': '0.5.1', ...(options.react ? { react: '19.3.1', 'react-dom': '19.3.1' } : {}) },
-    devDependencies: { '@genesis/applet-tools': '0.5.0', ...(options.react ? { '@types/react': '19.3.0', '@types/react-dom': '19.3.0' } : {}) } };
-  const config = { compilerOptions: { strict: true, noEmit: true, target: 'ES2022', module: 'ESNext', moduleResolution: 'Bundler', lib: ['ES2022','DOM','DOM.Iterable'], jsx: 'react-jsx', skipLibCheck: true }, include: ['src'] };
-  const files = { 'applet.json': JSON.stringify(manifest,null,2)+'\n', 'package.json': JSON.stringify(packageJson,null,2)+'\n', 'tsconfig.json': JSON.stringify(config,null,2)+'\n',
-    '.gitignore': 'node_modules/\ndist/\n.env\n.env.*\n*.sqlite3\n*.sqlite3-*\n*.pem\n.genesis-private/\n',
-    'start.sh': '#!/usr/bin/env bash\nset -euo pipefail\napplet_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"\nif [[ -d "$applet_dir/backend" ]]; then\n  printf "%s\\n" "Backend added: update start.sh to start every required service. See factory/guides/services-and-data.md." >&2\n  exit 1\nfi\nprintf "%s\\n" "No local backend required by this applet."\n',
-    'AGENTS.md': '# Applet workspace\n\nRead and follow [factory/AGENTS.md](factory/AGENTS.md) for all applet changes. Read .specs/current.md and relevant decisions first; maintain flat .specs and .changelog records under factory rules. This workspace owns application code and data; it consumes the Genesis SDK and tools.\n',
-    'README.md': `# ${displayName}
-
-Source: ${sourceLabel}. Read [current specs](.specs/current.md), [decisions](.specs/decisions.md) and [factory instructions](factory/AGENTS.md).
-
-Install matching maintainer-supplied SDK/tools archives and generated dependencies, then run npm run check and npm run build. See [setup](factory/guides/getting-started.md). Packages are not published to a public registry. The adapter is unimplemented; no backend or persistent records are configured. Configure the native shell/menu default during authoring unless explicitly overridden.
-`,
-    '.specs/current.md': `# Current applet specification
-
-## Identity and context
-
-Name: ${displayName}. Stable ID: ${options.id}. Base/canonical source candidate: ${sourceLabel}. Origin: ${markdownValue(url.origin)}. Source main, foreground page app, route contract site, home screen/adapter. No services. SDK 0.5.1, tools 0.5.0, runtime API 4, manifest schema 3, data/bundle schema 1. Kit metadata: factory/kit.json. Created ${local}; website canonical destination and user timezone must be confirmed from context.
-
-## Product scope
-
-Product features, preserved workflows, account/data authority, delivery target and exclusions are not yet established. One applet identity is scaffolded. No user-approved exclusions or completed website inspection are recorded.
-
-## Applied defaults and overrides
-
-| Rule ID | Current choice | Origin and reason | Decision / limit |
-| --- | --- | --- | --- |
-| default-platform-menu | Configure shell/menu during authoring; absent from scaffold | Factory default | decision-0001; no menu positioning API |
-| default-pending-skeletons | Static themed placeholders included | Factory default | Adapt shapes to inspected routes |
-
-No explicit user overrides recorded. Apply remaining [defaults](../factory/guides/defaults.md) when implementing the product.
-
-## Route inventory
-
-| Journey/example URL | Rule/source | Adapter/model/renderer | Evidence and cue | Back/Return | Implementation | Verification |
-| --- | --- | --- | --- | --- | --- | --- |
-| Supplied entry: ${sourceLabel} | site/home, main | home adapter / owned app page | Readiness unimplemented; original-page website recovery declaration | Must verify opener return | planned | not-run |
-
-## Interaction inventory
-
-| Control/entity | Result/owner | Authorization | Pending/error/uncertainty | Back/Return | Implementation | Verification |
-| --- | --- | --- | --- | --- | --- | --- |
-| Open original website | Explicit original-page navigation / host | User click only, no submission | Scaffold recovery only | Host Return | implemented scaffold | not-run |
-
-## Current work and verification
-
-Inspect authorized website, establish product scope and inventories, implement validated adapter/model/renderer, configure native shell/menu unless overridden, and verify actual journeys. Adapter reports ADAPTER_NOT_IMPLEMENTED. Scaffold code exists; product implementation is planned. All verification is not-run. No source, device, account or backend behavior is qualified.
-`,
-    '.specs/decisions.md': `# Applet decisions
-
-## decision-0001: Scaffold baseline
-
-- Date and origin: ${local}, creator-generated baseline using supplied name/ID/URL; no inferred user design approval.
-- Choice and rationale: Separate hidden source and owned foreground under schema 3/API 4. Shell/menu default remains to be configured during authoring. Preserve stable ID ${options.id}.
-- Evidence and supersession: applet.json and source files; adapter unimplemented, checks not run. Supersedes none. Record later product choices here and keep current.md authoritative.
-`,
-    ['.changelog/' + stamp + '-scaffold.md']: `# Initial scaffold
-
-- Goal: Initialize applet ${options.id} from supplied source ${sourceLabel}.
-- Changes: Created source/foreground placeholders, manifest, operator start script, factory guidance and current specifications/decision records.
-- Decisions: Creator baseline at ${local}, linked in [decision-0001](../.specs/decisions.md). No product exclusions or user design overrides inferred; native menu awaits authoring configuration.
-- Verification: Not run. Adapter unimplemented; no live source, device or backend qualification. Follow [current work](../.specs/current.md).
-`,
-    'src/main.ts': `import { defineSourceAdapter } from '@genesis/sdk';\n\n// Inspect the website and publish a validated content model. Never mount foreground UI here.\nexport default defineSourceAdapter({adapters:['home'],activate(context) {\n  void context.source.publish({state:'unsupported',error:{code:'ADAPTER_NOT_IMPLEMENTED',retryable:false,message:'This applet adapter has not been implemented yet.'}});\n}});\n`,
-    'src/styles.css': 'body { line-height: 1.6; }\n',
-    'src/assets.d.ts': 'declare module "*.css" { const css: string; export default css; }\n' };
-  files['src/styles.css'] = `body{line-height:1.6}:host{background:var(--applet-paper,#fff)!important;color:var(--applet-ink,#182026)!important}main{min-height:100dvh;padding:16px;background:var(--applet-paper,#fff);color:var(--applet-ink,#182026)}.skeleton{padding:16px 0}.skeleton-row{padding:20px 0;border-bottom:1px solid #e6e9ec}.skeleton-block{display:block;background:#eceff1;height:12px;border-radius:5px;margin:0 0 14px;max-width:100%}.skeleton-title{width:46%;height:16px}.skeleton-line{width:92%}.skeleton-short{width:66%}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}@media(prefers-color-scheme:dark){:host,main{--applet-paper:#171a1c;--applet-ink:#e7e9ea}.skeleton-block{background:#303438}.skeleton-row{border-color:#303438}}`;
-  const statusText = `snapshot.state==='ready'?'Content is ready. Add your validated model renderer.':snapshot.state==='empty'?'Nothing here yet.':snapshot.state==='auth-required'?'Sign in on the website.':snapshot.state==='challenge'?'The website needs your attention.':snapshot.error?.message??'Continue on the website.'`;
-  if (!options.react) files['src/home.ts'] = `import {defineForeground,createNavigationControl} from '@genesis/sdk';
-import css from './styles.css';
-export default defineForeground({screens:['home'],mount(context,root){
-  const style=document.createElement('style');style.textContent=css;
-  const skeleton=document.createElement('section');skeleton.className='skeleton';skeleton.setAttribute('role','status');skeleton.setAttribute('aria-label','Loading content');skeleton.setAttribute('aria-busy','true');
-  const status=document.createElement('p');status.setAttribute('role','status');
-  for(let i=0;i<3;i++){const row=document.createElement('div');row.className='skeleton-row';row.setAttribute('aria-hidden','true');for(const kind of ['title','line','short']){const block=document.createElement('span');block.className='skeleton-block skeleton-'+kind;row.append(block);}skeleton.append(row);}
-  let currentUrl=${JSON.stringify(url.href)};
-  const open=createNavigationControl(context,{target:{kind:'url',url:currentUrl,websiteActionId:'original-page'},label:'Open original website'});open.hidden=true;
-  root.append(style,skeleton,status,open);context.source.subscribe(snapshot=>{const pending=snapshot.state==='loading';currentUrl=snapshot.url;skeleton.hidden=!pending;status.hidden=pending;open.hidden=['loading','ready','empty','blocked'].includes(snapshot.state);root.setAttribute('aria-busy',String(pending));status.textContent=pending?'':${statusText};});
-}});
-`;
-  if (options.react) files['src/home.tsx'] = `import {useEffect,useState} from 'react';
-import {defineForeground,type AppletContext,type SourceSnapshot} from '@genesis/sdk';
-import {mountReact,NavigationLink} from '@genesis/sdk/react';
-import css from './styles.css';
-function Skeleton(){return <section className="skeleton" role="status" aria-label="Loading content" aria-busy="true"><span className="sr-only">Loading content</span><div aria-hidden="true">{[0,1,2].map(i=><div className="skeleton-row" key={i}><span className="skeleton-block skeleton-title"/><span className="skeleton-block skeleton-line"/><span className="skeleton-block skeleton-short"/></div>)}</div></section>;}
-function App({context}:{context:AppletContext}){
-  const [snapshot,setSnapshot]=useState<SourceSnapshot|null>(null);
-  useEffect(()=>context.source.subscribe(setSnapshot),[context]);
-  return <main aria-busy={!snapshot||snapshot.state==='loading'}><style>{css}</style><h1>My applet</h1>{!snapshot||snapshot.state==='loading'?<Skeleton/>:<p role="status">{${statusText}}</p>}{snapshot&&!['loading','ready','empty','blocked'].includes(snapshot.state)&&<NavigationLink context={context} target={{kind:'url',url:snapshot.url,websiteActionId:snapshot.route?.kind==='matched'&&snapshot.route.result.kind==='custom'?'original-page':undefined}}>Open original website</NavigationLink>}</main>;
-}
-export default defineForeground({screens:['home'],mount(context,root){return mountReact(context,root,<App context={context}/>);}});
-`;
-  for (const [name, content] of Object.entries(files)) await writeFile(path.join(output, name), content, { flag: 'wx', ...(name === 'start.sh' ? { mode: 0o755 } : {}) });
+  const { local, file: stamp } = localStamp(new Date());
+  const label = markdownValue(name), site = markdownValue(origin.origin);
+  const packageJson = {
+    name: id, version: '0.1.0', private: true, type: 'module', engines: { node: '24.15.0' },
+    scripts: { check: 'genesis-applet check .', build: 'genesis-applet build .' },
+    dependencies: { '@genesis/sdk': VERSIONS.sdkVersion, react: '19.3.1', 'react-dom': '19.3.1' },
+    devDependencies: { '@genesis/applet-tools': VERSIONS.toolsVersion, '@types/react': '19.3.0', '@types/react-dom': '19.3.0' },
+  };
+  const tsconfig = { compilerOptions: { strict: true, noEmit: true, target: 'ES2022', module: 'ESNext', moduleResolution: 'Bundler', lib: ['ES2022', 'DOM', 'DOM.Iterable'], jsx: 'react-jsx', skipLibCheck: true }, include: ['src'] };
+  const files = {
+    'applet.json': JSON.stringify(manifest, null, 2) + '\n',
+    'package.json': JSON.stringify(packageJson, null, 2) + '\n',
+    'tsconfig.json': JSON.stringify(tsconfig, null, 2) + '\n',
+    '.gitignore': 'node_modules/\ndist/\n.env\n.env.*\n*.sqlite3\n*.sqlite3-*\n*.pem\n',
+    'src/sources/main.ts': ADAPTER,
+    'src/main.tsx': MAIN,
+    'src/theme.css': THEME,
+    'src/css.d.ts': 'declare module "*.css";\n',
+    'AGENTS.md': '# Applet workspace\n\nFollow [factory/AGENTS.md](factory/AGENTS.md) for every change. Read [.specs/current.md](.specs/current.md) first and keep `.specs` and `.changelog` current.\n',
+    'README.md': `# ${label}\n\nA Genesis applet over ${site}. The current state is in [.specs/current.md](.specs/current.md).\n\n## Build\n\n\`\`\`sh\nnpm install\nnpm run check\nnpm run build\nnpx genesis-applet dev install . --device <serial>\n\`\`\`\n\nSetup is described in [factory/guides/getting-started.md](factory/guides/getting-started.md).\n`,
+    '.specs/current.md': `# Current specification\n\n## Identity\n\nName ${label}, id \`${id}\`, origin ${site}. Created ${local}. Manifest schema ${MANIFEST_SCHEMA_VERSION}, SDK ${VERSIONS.sdkVersion}.\n\n## Product scope\n\nNot established yet. Record the user's goals, preserved website workflows and exclusions here.\n\n## Routes\n\n| Route | Pattern | Screen | Status |\n| --- | --- | --- | --- |\n| home | / | home | scaffold, not verified |\n\nAny other URL shows the \`unsupported\` screen, which offers the website.\n\n## Verification\n\nNot run.\n`,
+    '.specs/decisions.md': `# Decisions\n\n## decision-0001: Scaffold\n\n- Date: ${local}.\n- Choice: one source \`main\`, screens \`home\` and \`unsupported\`, no storage or services.\n- Evidence: generated by \`genesis-applet create\`; nothing verified yet.\n`,
+    [`.changelog/${stamp}-scaffold.md`]: `# Scaffold\n\n- Goal: start applet \`${id}\` for ${site}.\n- Changes: manifest, adapter, two screens, records.\n- Verification: not run.\n`,
+  };
+  for (const [name, content] of Object.entries(files)) {
+    await mkdir(path.dirname(path.join(output, name)), { recursive: true });
+    await writeFile(path.join(output, name), content, { flag: 'wx' });
+  }
   await exportKit(path.join(output, 'factory'));
-  return { output, appletId: manifest.id, dependenciesInstalled: false };
+  return { output, appletId: id };
 }
