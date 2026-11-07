@@ -76,4 +76,5 @@ Categories are read once when Saved opens and again on a category change or resu
 - Static: `check`, `typecheck`, `build` and the APK build passed.
 - Device, real website: Home feed, a discussion, Me and Saved rendered in light mode; Home in dark mode.
 - Not exercised: voting, posting, sign out, Save writes, category edits, signed-out states, the information pages and Search. No HN mutation was performed.
-- Next: implement Search; exercise the remaining routes on a device.
+- 2026-11-07, revision 13: `dev install` passed with the applet in front. The Post tab showed the sign-in prompt for a signed-in account: HN's submit form now has `action="/r"`, and the `post` adapter still matches `form[action='r']`. Not fixed yet.
+- Next: fix the submit form selector; implement Search; exercise the remaining routes on a device.

@@ -22,7 +22,9 @@ export function Icon({ name, filled = false }: { name: IconName; filled?: boolea
 /** Website links go through the manifest, which picks a screen or the website sheet. */
 export function useOpenRoute() {
   const { navigate } = useNavigation();
-  return (url: string) => void navigate({ kind: "route", url });
+  return (url: string) => {
+    navigate({ kind: "route", url }).catch(error => console.error("Genesis could not open", url, error));
+  };
 }
 
 /** HN's formatted text. Links open through the manifest; text is never parsed as HTML. */

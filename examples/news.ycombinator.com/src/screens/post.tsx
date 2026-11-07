@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ScrollMemory, useIntent, useNavigation, useScreenSource } from "@genesis/sdk/react";
+import { ScrollMemory, useAppResume, useIntent, useNavigation, useScreenSource } from "@genesis/sdk/react";
 import { ORIGIN, safeUrl, TITLE_LIMIT, type SubmitData } from "../model";
 import { LoadError, Notice, SignInPrompt, Skeleton, useOpenRoute } from "../components/ui";
 
@@ -13,6 +13,8 @@ export function PostScreen() {
   const [url, setUrl] = useState("");
   const [text, setText] = useState("");
   const [sent, setSent] = useState(false);
+  // Signing in happens in the website sheet; read the form again when it closes.
+  useAppResume(() => { if (page.status === "auth") reload(); });
   const draft = !sent && (title.trim() !== "" || url.trim() !== "" || text.trim() !== "");
   useEffect(() => setLeaveGuard(draft ? "Discard this post?" : null), [draft, setLeaveGuard]);
 
@@ -28,7 +30,7 @@ export function PostScreen() {
 
   if (sent) return <div className="screen">
     <h1 className="screen-title">Post</h1>
-    <Notice title="Sent to Hacker News" role="status">
+    <Notice title="Submitted to Hacker News" role="status">
       <p>Hacker News checks each submission. New posts appear under New, or HN may point you to an existing discussion of the same link.</p>
       <button type="button" className="primary" onClick={() => open(`${ORIGIN}/newest`)}>See New</button>
       <button type="button" className="secondary" onClick={() => {
