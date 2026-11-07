@@ -177,12 +177,17 @@ impl Host {
                     }
                 }
             }
-            Call::WebsiteOpen { url } => match https_url(&url) {
-                Some(url) => {
+            Call::WebsiteOpen { url } => match web_url(&url) {
+                Some(url) if url.starts_with("https:") => {
                     self.open_website(url);
                     ok()
                 }
-                None => error(ErrorCode::InvalidArgument, "website.open needs an https URL"),
+                // The sheet holds sessions and stays https; plain http pages open in the Android browser.
+                Some(url) => {
+                    self.out.push(ShellCommand::OpenExternal { url });
+                    ok()
+                }
+                None => error(ErrorCode::InvalidArgument, "website.open needs an http or https URL"),
             },
             Call::WebsiteClose {} => {
                 self.close_website();
@@ -267,8 +272,14 @@ impl Host {
 
 /// The URL without its fragment, when it is https without credentials.
 fn https_url(value: &str) -> Option<String> {
+    web_url(value).filter(|url| url.starts_with("https:"))
+}
+
+/// An http or https URL with a host and no credentials, without its fragment.
+fn web_url(value: &str) -> Option<String> {
     let mut url = url::Url::parse(value).ok()?;
-    if url.scheme() != "https" || !url.username().is_empty() || url.password().is_some() || url.host_str().is_none() {
+    let web = matches!(url.scheme(), "https" | "http");
+    if !web || !url.username().is_empty() || url.password().is_some() || url.host_str().is_none() {
         return None;
     }
     url.set_fragment(None);

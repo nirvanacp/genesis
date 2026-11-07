@@ -14,7 +14,7 @@ navigate({ kind: "website", url: "https://example.com/item?id=42" });        // 
 
 | Target | What happens |
 | --- | --- |
-| `route` | The URL is classified by the manifest. An adapted route pushes its screen and loads the page in its source. A website route opens the sheet. A declared-origin URL that matches no route pushes the `unsupported` screen with `params.url`, or opens the sheet when the applet has no such screen. A URL on any other origin opens the sheet. |
+| `route` | The URL is classified by the manifest. An adapted route pushes its screen and loads the page in its source. A website route opens the sheet. A declared-origin URL that matches no route pushes the `unsupported` screen with `params.url`, or opens the sheet when the applet has no such screen. A URL on any other origin opens the sheet. The sheet is https only: an `http://` URL opens in the Android browser. |
 | `screen` | Pushes a declared screen with `params`. Pass `source: { sourceId, url, routeId }` only when you already know which page the screen shows; otherwise it has no page. |
 | `website` | Opens the URL in the website sheet. Use it only when the user asked for the website. |
 
