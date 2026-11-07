@@ -13,6 +13,7 @@ import {
 } from "@genesis/core";
 import { connect, GenesisError, type BridgeObject, type Connection } from "./bridge.js";
 import type {
+  NavigateMode,
   NavigateTarget,
   ServiceResponse,
   Snapshot,
@@ -61,8 +62,9 @@ export interface Foreground {
     reload(sourceId?: string): void;
     /** In-app Back: the same rules as Android Back, except that the root screen stays. */
     back(): void;
+    /** Asks for confirmation before Back or `navigate` leaves the current screen; `null` clears it. */
     setLeaveGuard(message: string | null): void;
-    /** Replaces the default `confirm()` prompt shown when a leave guard blocks Back. */
+    /** Replaces the default `confirm()` prompt shown when a leave guard blocks leaving the screen. */
     onConfirmLeave(handler: (message: string, leave: () => void) => void): () => void;
   };
   sources: {
@@ -134,9 +136,23 @@ function foreground(connection: Connection): Foreground {
   // to the page its requestedUrl names.
   connection.on("snapshot", (published: Published) => {
     latest.set(published.sourceId, published);
+    forget(published);
     remember(published);
     changed();
   });
+
+  /**
+   * Drops cached data a publication shows to be out of date. Sign-in pages mean the session
+   * changed, so every page of that source goes; an error or unsupported page drops its own entry.
+   */
+  function forget(published: Published) {
+    const { status, url } = published.snapshot;
+    if (status === "auth") cache.delete(published.sourceId);
+    else if (status === "error" || status === "unsupported") {
+      const key = urlKey(published.requestedUrl ?? url);
+      if (key) cache.get(published.sourceId)?.delete(key);
+    }
+  }
 
   function view<T>(snapshot: Snapshot, stale: boolean): SourceView<T> {
     return {
@@ -299,10 +315,22 @@ function foreground(connection: Connection): Foreground {
     }
   });
 
+  /** Changes the screen, first asking to confirm when the current screen set a leave guard. */
+  function show(mode: NavigateMode, next: Screen) {
+    const go = () => { dispatch({ type: mode, screen: next }); };
+    const guard = navigation.leaveGuard;
+    if (!guard) return go();
+    const leave = () => {
+      dispatch({ type: "guard", guard: null });
+      go();
+    };
+    if (confirmLeave) confirmLeave(guard.message, leave);
+    else if (window.confirm(guard.message)) leave();
+  }
+
   async function navigate(target: NavigateTarget): Promise<void> {
     if (target.kind === "screen") {
-      const next = screen(target.id, target.params, target.source ?? null);
-      dispatch({ type: target.mode ?? "push", screen: next });
+      show(target.mode ?? "push", screen(target.id, target.params, target.source ?? null));
       return;
     }
     if (target.kind === "website") {
@@ -311,9 +339,9 @@ function foreground(connection: Connection): Foreground {
     }
     const match = matchRoute(manifest, target.url);
     if (match.kind === "adapted") {
-      dispatch({ type: target.mode ?? "push", screen: screenForUrl(target.url)! });
+      show(target.mode ?? "push", screenForUrl(target.url)!);
     } else if (match.kind === "unsupported" && manifest.foreground.screens.includes("unsupported")) {
-      dispatch({ type: target.mode ?? "push", screen: screen("unsupported", { url: target.url }) });
+      show(target.mode ?? "push", screen("unsupported", { url: target.url }));
     } else {
       await connection.request("website.open", { url: target.url });
     }

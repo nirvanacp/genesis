@@ -116,7 +116,7 @@ const { screen, stack, website, navigate, back, reload, setLeaveGuard } = useNav
 if (screen.id === "item") return <ItemScreen id={screen.params.id} />;
 ```
 
-`screen` is the current entry: `{ key, id, params, source }`. `stack` is the whole stack, `website` is `{ url }` while the website sheet is open. `navigate` takes the three targets in [navigation](navigation.md). `back()` is in-app Back: it follows Android Back's rules but never leaves the applet from the root screen. `reload(sourceId?)` loads the current screen's page again, or the last page of another source; the screen keeps its cached data, marked `stale`, while it loads. `setLeaveGuard(message)` asks for confirmation before Back leaves the current screen; `null` clears it, and so does any screen change. On the root screen, confirming leaves the applet.
+`screen` is the current entry: `{ key, id, params, source }`. `stack` is the whole stack, `website` is `{ url }` while the website sheet is open. `navigate` takes the three targets in [navigation](navigation.md). `back()` is in-app Back: it follows Android Back's rules but never leaves the applet from the root screen. `reload(sourceId?)` loads the current screen's page again, or the last page of another source; the screen keeps its cached data, marked `stale`, while it loads. `setLeaveGuard(message)` asks for confirmation before Back or `navigate` leaves the current screen; `null` clears it, and so does any screen change. On the root screen, confirming leaves the applet.
 
 ### `useScreenSource<T>()`
 

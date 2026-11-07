@@ -29,9 +29,9 @@ Android Back and `back()` follow the same order:
 3. A stacked screen pops and the previous one returns with its scroll position.
 4. On the root screen, Android Back leaves the applet. `back()` does nothing there.
 
-The foreground must answer Back within 300 ms, so keep Back handling synchronous. Changing screens clears the leave guard. Set a guard while a draft is unsaved; replace the default `confirm()` with `useForeground().navigation.onConfirmLeave` when the product has its own dialog.
+The foreground must answer Back within 300 ms, so keep Back handling synchronous. `navigate` to another screen asks the same question first. Changing screens clears the leave guard. Set a guard while a draft is unsaved; replace the default `confirm()` with `useForeground().navigation.onConfirmLeave` when the product has its own dialog.
 
-Menus, sheets and dialogs drawn by the foreground are not stack entries. Close them before Back leaves the screen: either render them as screens, or set a leave guard while they are open and close them from `onConfirmLeave`.
+Menus, sheets and dialogs drawn by the foreground are not stack entries. Close them before Back leaves the screen: either render them as screens, or set a leave guard while they are open and close them from `onConfirmLeave`. A menu item that navigates clears that guard first, so the confirmation does not intercept it.
 
 ## The website sheet
 

@@ -176,9 +176,10 @@ async function perform(
     for (const [index, step] of steps.entries()) {
       check();
       if (index === steps.length - 1 && ("navigate" in step || "submit" in step)) {
-        // The step replaces this document, so the result goes out first.
+        // The step replaces this document, so the result goes out first, once the step can run.
+        const leave = prepare(step);
         await report(true);
-        execute(step);
+        leave();
         return;
       }
       await executeAndWait(step);
@@ -202,12 +203,23 @@ function element(selector: string): HTMLElement {
 function execute(step: Step) {
   if ("click" in step) element(step.click).click();
   else if ("fill" in step) fill(element(step.fill), step.value);
-  else if ("submit" in step) {
+  else prepare(step)();
+}
+
+/** Finds what a navigate or submit step needs, throwing if it is missing, and returns the action. */
+function prepare(step: Step): () => void {
+  if ("submit" in step) {
     const target = element(step.submit);
     const form = target instanceof HTMLFormElement ? target : target.closest("form");
     if (!form) throw new GenesisError("NOT_FOUND", `${step.submit} is not in a form`);
-    form.requestSubmit(target instanceof HTMLButtonElement || target instanceof HTMLInputElement ? target : undefined);
-  } else if ("navigate" in step) location.assign(step.navigate);
+    const submitter = target instanceof HTMLButtonElement || target instanceof HTMLInputElement ? target : undefined;
+    return () => form.requestSubmit(submitter);
+  }
+  if ("navigate" in step) {
+    const url = step.navigate;
+    return () => location.assign(url);
+  }
+  throw new GenesisError("INVALID_STEPS", "Only a navigate or submit step leaves the page");
 }
 
 async function executeAndWait(step: Step) {
