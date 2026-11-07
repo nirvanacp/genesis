@@ -80,8 +80,16 @@ impl Applets {
             let _ = fs::remove_dir_all(&directory);
             return Err(error);
         }
-        self.installed.insert(id.clone(), Installed { revision, manifest: bundle.manifest.clone() });
-        self.write_index()?;
+        let replaced = self.installed.insert(id.clone(), Installed { revision, manifest: bundle.manifest.clone() });
+        if let Err(error) = self.write_index() {
+            // The index on disk still names the previous revision; memory must agree with it.
+            match replaced {
+                Some(previous) => self.installed.insert(id, previous),
+                None => self.installed.remove(&id),
+            };
+            let _ = fs::remove_dir_all(&directory);
+            return Err(error);
+        }
         if let Some(previous) = previous {
             let _ = fs::remove_dir_all(self.root.join(&id).join(previous.to_string()));
         }
