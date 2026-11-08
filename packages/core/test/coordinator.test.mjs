@@ -300,6 +300,44 @@ describe("races and rules", () => {
     assert.equal(s.context().pin, "none");
   });
 
+  test("leaving a sign-in opened from a tab's start page selects the primary context", () => {
+    const s = session();
+    s.commit("primary", "/");
+    s.page("primary", "/", "ready");
+    s.send({ type: "select", id: "me" });
+    s.commit("me", "/news?account=1");
+    s.page("me", "/news?account=1", "auth", { signInUrl: `${HN}/login?goto=news%3Faccount%3D1` });
+    s.commit("me", "/login?goto=news%3Faccount%3D1");
+    s.page("me", "/login?goto=news%3Faccount%3D1", "unsupported");
+    assert.deepEqual(s.send({ type: "user.done", id: "me" }), [{ type: "cover" }]);
+    assert.equal(s.state.active, "primary");
+    assert.equal(s.context("me").pin, "none");
+    assert.equal(s.context("me").signIn, null);
+  });
+
+  test("leaving a sign-in opened from inside a context goes back past the page that needs the account", () => {
+    const s = session();
+    s.commit("primary", "/");
+    s.page("primary", "/", "ready");
+    s.commit("primary", "/item?id=1");
+    s.page("primary", "/item?id=1", "auth", { signInUrl: `${HN}/login` });
+    s.commit("primary", "/login");
+    s.page("primary", "/login", "unsupported");
+    assert.deepEqual(s.send({ type: "back" }), [{ type: "context.back", id: "primary", steps: 2 }]);
+    assert.equal(s.context().pin, "none");
+  });
+
+  test("a sign-in for the primary context's start page stays on Done and leaves on Back", () => {
+    const s = session();
+    s.commit("primary", "/");
+    s.page("primary", "/", "auth", { signInUrl: `${HN}/login` });
+    s.commit("primary", "/login");
+    s.page("primary", "/login", "unsupported");
+    assert.deepEqual(s.send({ type: "user.done", id: "primary" }), []);
+    assert.equal(s.context().pin, "auth");
+    assert.deepEqual(s.send({ type: "back" }), [{ type: "leave" }]);
+  });
+
   test("an overlay covers a revealed context and reveals it again when it closes", () => {
     const s = session();
     s.commit("primary", "/changepw");

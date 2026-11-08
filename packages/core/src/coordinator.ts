@@ -46,6 +46,11 @@ export interface ContextState {
   canGoForward: boolean;
   page: ContextPage;
   pin: "none" | "user" | "auth";
+  /**
+   * Set while the coordinator has sent this context to sign in: the history index of the page
+   * that needed the account, and whether that page is the context's start page.
+   */
+  signIn: { index: number; start: boolean } | null;
   /** Token of the readiness deadline that applies now. Each new view takes a new token. */
   deadline: number;
 }
@@ -85,7 +90,8 @@ export type CoordinatorEffect =
   | { type: "reveal"; id: string }
   | { type: "cover" }
   | { type: "context.navigate"; id: string; url: string; mode: NavigateMode }
-  | { type: "context.back"; id: string }
+  /** Goes back `steps` entries in the context's history (1 when absent). */
+  | { type: "context.back"; id: string; steps?: number }
   | { type: "context.reload"; id: string }
   /** Send `{ type: "deadline", id, token }` after `limits.documentReadyMs`. */
   | { type: "schedule"; id: string; token: number }
@@ -105,7 +111,7 @@ export function initialState(manifest: Pick<Manifest, "contexts">): CoordinatorS
 function freshContext(id: string, url: string | null): ContextState {
   return {
     id, url, generation: 0, seen: -1, index: 0, size: 0, canGoBack: false, canGoForward: false,
-    page: LOADING, pin: "none", deadline: 0,
+    page: LOADING, pin: "none", signIn: null, deadline: 0,
   };
 }
 
@@ -162,20 +168,24 @@ function apply(state: CoordinatorState, event: CoordinatorEvent, manifest: Manif
       if (!current && event.generation === context.generation && event.view.n <= context.seen) return unchanged;
       if (current && event.generation === context.generation && event.view.n < context.seen) return unchanged;
       const moved = current ? context : newView(context, event.generation, event.view.url, effects);
-      let pin = moved.pin;
+      let { pin, signIn } = moved;
       if (event.status === "auth") {
         if (pin === "none") pin = "auth";
         const target = event.signInUrl ?? null;
         if (target !== null && entryKey(target) !== entryKey(event.view.url)) {
           effects.push({ type: "context.navigate", id: context.id, url: target, mode: "push" });
+          const start = manifest.contexts.find(c => c.id === context.id)?.startUrl;
+          signIn = { index: moved.index, start: start !== undefined && entryKey(start) === entryKey(event.view.url) };
         }
       } else if (event.status === "ready" && event.account !== null && pin === "auth") {
         pin = "none";
+        signIn = null;
       }
       const next: ContextState = {
         ...moved,
         seen: Math.max(moved.seen, event.view.n),
         pin,
+        signIn,
         page: {
           status: event.status, pageId: event.pageId, routeId: event.routeId, view: event.view,
           stale: event.stale, expired: moved.page.expired,
@@ -199,6 +209,7 @@ function apply(state: CoordinatorState, event: CoordinatorEvent, manifest: Manif
     case "user.done": {
       const context = state.contexts[event.id];
       if (!context) return unchanged;
+      if (context.pin === "auth" && context.signIn) return declineSignIn(state, context, manifest) ?? unchanged;
       const unpinned = context.pin === "none" ? context : { ...context, pin: "none" as const };
       const next = unpinned === context ? state : withContext(state, unpinned);
       // A page that still shows as website (one no route maps, such as a reply form) leaves for the page before it.
@@ -243,6 +254,8 @@ function apply(state: CoordinatorState, event: CoordinatorEvent, manifest: Manif
     case "back": {
       if (state.leaveGuard) return { state, effects: [{ type: "confirmLeave", message: state.leaveGuard.message }] };
       if (state.overlay.length > 0) return { state: { ...state, overlay: state.overlay.slice(0, -1) }, effects };
+      const active = state.contexts[state.active];
+      if (active?.pin === "auth" && active.signIn) return declineSignIn(state, active, manifest) ?? { state, effects: [{ type: "leave" }] };
       if (state.contexts[state.active]?.canGoBack) return { state, effects: [{ type: "context.back", id: state.active }] };
       return { state, effects: [{ type: "leave" }] };
     }
@@ -256,6 +269,24 @@ function apply(state: CoordinatorState, event: CoordinatorEvent, manifest: Manif
       return { state: withContext(state, { ...context, page: { ...LOADING, status: "unsupported" } }), effects };
     }
   }
+}
+
+/**
+ * The person left a sign-in the coordinator opened. Going back one entry would reach the page
+ * that needs the account, which opens the sign-in again, so the context goes back past that page.
+ * When that page is the context's start page, or nothing comes before it, the primary context is
+ * selected instead. Returns null when the context is the primary one and has nowhere to go.
+ */
+function declineSignIn(state: CoordinatorState, context: ContextState, manifest: Manifest): Result | null {
+  const { index, start } = context.signIn!;
+  const primary = manifest.contexts[0].id;
+  const next = withContext(state, { ...context, pin: "none", signIn: null });
+  if (!start && index > 0) {
+    const steps = Math.max(1, context.index - index + 1);
+    return { state: next, effects: [{ type: "context.back", id: context.id, steps }] };
+  }
+  if (context.id === primary) return null;
+  return { state: { ...next, active: primary, overlay: [], leaveGuard: null }, effects: [] };
 }
 
 function sameView(context: ContextState, generation: number, url: string): boolean {
