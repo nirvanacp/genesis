@@ -1,4 +1,4 @@
-import type { ActionRequest, ActionResult, ActionUpdate, ErrorCode, Limits, Step } from "@genesis/core";
+import type { ActionExpect, ActionRequest, ActionResult, ActionUpdate, ErrorCode, Limits, Step } from "@genesis/core";
 import { GenesisError, type Connection } from "../bridge.js";
 import type { Action, ActionSpec } from "./index.js";
 
@@ -63,10 +63,12 @@ export function createActions(context: ActionContext) {
 async function run(context: ActionContext, handle: Handle) {
   const { connection, limits } = context;
   const { actionId } = handle.request;
+  let expect: ActionExpect | undefined;
   const report = (state: ActionUpdate["state"], result?: ActionResult, navigating?: boolean) => {
     if (handle.stopped) return Promise.resolve();
     const update: ActionUpdate = { actionId, state };
     if (navigating) update.navigating = true;
+    if (navigating && expect) update.expect = expect;
     if (result) update.result = result;
     return connection.request("context.actionResult", update).then(() => {}, () => {});
   };
@@ -96,6 +98,7 @@ async function run(context: ActionContext, handle: Handle) {
   const problem = checkSpec(spec);
   if (problem) return fail("INVALID_STEPS", problem);
   const { steps, until: evidence, deadlineMs } = spec as Extract<ActionSpec, { steps: Step[] }>;
+  expect = (spec as { expect?: ActionExpect }).expect;
   const navigates = (spec as { navigates?: boolean }).navigates === true || leaves(steps.at(-1));
   const deadline = handle.arrived + (deadlineMs ?? limits.actionTimeoutMs);
 

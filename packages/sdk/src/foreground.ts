@@ -8,6 +8,7 @@ import {
   restore,
   revealed,
   serialize,
+  type ActionExpect,
   type ActionResult,
   type ActionUpdate,
   type ContextNavigated,
@@ -139,7 +140,11 @@ interface ActionRecord extends ActionCall {
   timer: ReturnType<typeof setTimeout> | null;
   /** Set once the action left its document: the view it left, which the destination must replace. */
   from: ViewId | null;
+  /** The pages that count as success or rejection at the destination. */
+  expect: ActionExpect | null;
 }
+
+const names = (value: string | string[] | undefined) => value === undefined ? null : Array.isArray(value) ? value : [value];
 
 function foreground(connection: Connection): Foreground {
   const { manifest, appletId, limits, session } = connection.bound;
@@ -428,6 +433,7 @@ function foreground(connection: Connection): Foreground {
     if (update.state === "dispatched") {
       if (!update.navigating) return; // The document keeps observing; the host enforces its deadline.
       record.from = store.context(record.context)?.view ?? null;
+      record.expect = update.expect ?? null;
       deadline(record, limits.actionTimeoutMs);
       return;
     }
@@ -445,8 +451,9 @@ function foreground(connection: Connection): Foreground {
   });
 
   /**
-   * Settles navigating actions in `id` from its destination page. Without `expect` on the wire,
-   * any ready page with a screen counts as success; `auth` fails, and anything else is unknown.
+   * Settles navigating actions in `id` from its destination page: `auth` fails, a page in
+   * `expect.notPage` is rejected, a ready page in `expect.page` (any page with a screen when
+   * unspecified) is observed, and anything else is unknown.
    */
   function observe(id: string, page: Page) {
     for (const record of [...actions.values()]) {
@@ -454,9 +461,15 @@ function foreground(connection: Connection): Foreground {
       const { from } = record;
       if (page.view.generation === from.generation && page.view.n === from.n) continue; // The page it left.
       if (page.status === "loading") continue;
+      const match = matchRoute(manifest, page.view.url);
+      const pageName = match.kind === "route" ? match.page : null;
+      const wanted = names(record.expect?.page);
       if (page.status === "auth") settle(record, { outcome: "failed", code: "AUTH_REQUIRED", message: "Sign-in is needed" });
-      else if (page.status === "ready" && matchRoute(manifest, page.view.url).kind === "route") settle(record, { outcome: "observed" });
-      else settle(record, { outcome: "unknown", message: "The action led to another page" });
+      else if (pageName !== null && names(record.expect?.notPage)?.includes(pageName)) {
+        settle(record, { outcome: "failed", code: "REJECTED", message: "The website did not accept the action" });
+      } else if (page.status === "ready" && pageName !== null && (wanted === null || wanted.includes(pageName))) {
+        settle(record, { outcome: "observed" });
+      } else settle(record, { outcome: "unknown", message: "The action led to another page" });
     }
   }
 
@@ -482,7 +495,7 @@ function foreground(connection: Connection): Foreground {
 
     let resolve!: (result: ActionResult) => void;
     const promise = new Promise<ActionResult>(done => { resolve = done; });
-    const entry: ActionRecord = { ...call, dedup, actionId: null, promise, resolve, timer: null, from: null };
+    const entry: ActionRecord = { ...call, dedup, actionId: null, promise, resolve, timer: null, from: null, expect: null };
     actions.set(dedup, entry);
     deadline(entry, limits.actionTimeoutMs + ACTION_GRACE_MS);
     actionsChanged();
