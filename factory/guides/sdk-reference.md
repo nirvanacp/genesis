@@ -182,6 +182,7 @@ Returns `(key | null, args?) => Promise<ActionResult>`. The key is `null` for a 
 | `code`, `message` | Why, when the outcome is not `observed` |
 | `noop` | `true` when the action reported `{ satisfied: true }` and ran no steps |
 | `completedSteps`, `partial` | How far the steps got before a failure or deadline |
+| `exhausted` | Reserved for a load-more action that found the end of the collection. The type declares it, but the SDK does not set it yet; tell the end from the records the region shows |
 
 ### `usePending(region, key, contextId?)`
 

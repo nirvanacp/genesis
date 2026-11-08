@@ -11,7 +11,7 @@ src/adapter/*.ts          one file per page or shared reader
 src/model.ts              data types shared by the adapter and screens
 src/screens/*.tsx         one file per screen
 src/components/*.tsx      shared rows, skeletons, sheets
-src/data/*.ts             record and service access (repositories)
+src/library.ts            record and service access: the service client, hooks and validation
 src/theme.css             tokens and base styles
 backend/                  optional service
 ```
@@ -68,7 +68,7 @@ const StoryRow = memo(function StoryRow({ id }: { id: string }) {
 
 ## Records and services
 
-Wrap storage and service calls in small modules under `src/data/` that screens call. Keep one authoritative store per record type and say which in the current spec. Validate stored values when reading; treat a missing or malformed record as absent, not as a crash. See [services and data](services-and-data.md).
+Wrap storage and service calls in one module, `src/library.ts`, that screens call; split it into more modules only once it grows. Keep one authoritative store per record type and say which in the current spec. Validate stored values when reading; treat a missing or malformed record as absent, not as a crash. See [services and data](services-and-data.md).
 
 ## Performance
 
