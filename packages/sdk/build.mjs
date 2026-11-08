@@ -38,12 +38,12 @@ if (!handle) throw new Error('Timed out waiting for the SDK artifact builder');
 try {
   const stamp = path.join(cwd, 'dist/.build-stamp');
   const current = await readFile(stamp, 'utf8').catch(() => '');
-  const outputs = ['index.js','adapter.js','types/index.d.ts','types/adapter/index.d.ts'];
+  const outputs = ['index.js','adapter.js','react.js','types/index.d.ts','types/adapter/index.d.ts','types/react.d.ts'];
   const chunks = await readdir(path.join(cwd, 'dist/chunks')).catch(() => []);
   if (current !== signature || chunks.length === 0 || !(await Promise.all(outputs.map(name => stat(path.join(cwd, 'dist', name)).then(s => s.isFile()).catch(() => false)))).every(Boolean)) {
     await rm(path.join(cwd, 'dist'), { recursive: true, force: true });
     await mkdir(path.join(cwd, 'dist'), { recursive: true });
-    await build({ absWorkingDir: cwd, entryPoints: { index: 'src/index.ts', adapter: 'src/adapter/index.ts' }, outdir: 'dist', bundle: true, splitting: true, chunkNames: 'chunks/[name]-[hash]', format: 'esm', platform: 'browser', target: 'es2022', external: ['react', 'react-dom/client', 'react/jsx-runtime'], jsx: 'automatic' });
+    await build({ absWorkingDir: cwd, entryPoints: { index: 'src/index.ts', adapter: 'src/adapter/index.ts', react: 'src/react.tsx' }, outdir: 'dist', bundle: true, splitting: true, chunkNames: 'chunks/[name]-[hash]', format: 'esm', platform: 'browser', target: 'es2022', external: ['react', 'react-dom/client', 'react/jsx-runtime'], jsx: 'automatic' });
     const compiler = path.join(path.dirname(require.resolve('typescript/package.json')), 'lib/tsc.js');
     const result = spawnSync(process.execPath, [compiler, '-p', 'tsconfig.json', '--noEmit', 'false', '--declaration', '--emitDeclarationOnly', '--outDir', 'dist/types', '--rootDir', 'src'], { cwd, stdio: 'inherit' });
     if (result.error || result.status !== 0) throw new Error('SDK declarations failed');
