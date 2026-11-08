@@ -9,15 +9,15 @@ export interface CompiledPattern {
 }
 
 export type RouteMatch =
-  | { routeId: string; kind: "adapted"; source: string; screen: string; params: Record<string, string> }
-  | { routeId: string; kind: "website"; params: Record<string, string> }
-  | { routeId: null; kind: "unsupported" | "external"; params: Record<string, never> };
+  | { kind: "route"; routeId: string; page: string; screen: string; context?: string; params: Record<string, string> }
+  | { kind: "website"; url: string }
+  | { kind: "external"; url: string };
 
 const PARAM = /^:[A-Za-z][A-Za-z0-9_]*$/;
 const LITERAL = /^[A-Za-z0-9_.~@-]+$/;
 const cache = new Map<string, CompiledPattern | null>();
 
-/** Compiles a route pattern, or returns null when it is not a valid schema 5 pattern. */
+/** Compiles a route pattern, or returns null when it is not a valid route pattern. */
 export function compilePattern(pattern: string): CompiledPattern | null {
   if (cache.has(pattern)) return cache.get(pattern)!;
   let compiled: CompiledPattern | null = null;
@@ -38,33 +38,34 @@ export function compilePattern(pattern: string): CompiledPattern | null {
   return compiled;
 }
 
-/** Parses an https URL without credentials and drops the fragment. Returns null for any other URL. */
+/** Parses an https URL without credentials and drops the fragment, for display. Returns null for any other URL. */
 export function normalizeUrl(value: string): URL | null {
-  let url: URL;
-  try { url = new URL(value); } catch { return null; }
-  if (url.protocol !== "https:" || url.username || url.password) return null;
-  url.hash = "";
+  const url = parseHttps(value);
+  if (url) url.hash = "";
   return url;
 }
 
-/** The normalized form of `value` used to compare and cache URLs, or null when it is not a usable URL. */
-export function urlKey(value: string): string | null {
-  return normalizeUrl(value)?.href ?? null;
+/**
+ * The identity of a view: the parsed URL with its query and fragment, or null when `value`
+ * is not a URL. Two URLs with the same entry key show the same view.
+ */
+export function entryKey(value: string): string | null {
+  try { return new URL(value).href; } catch { return null; }
 }
 
 /**
- * Classifies a URL: the first declared route whose pattern and required query keys match wins.
- * URLs on undeclared origins are `external`; URLs on declared origins without a route are `unsupported`.
+ * Classifies a URL. On a declared origin the first route whose pattern and required query keys
+ * match wins, and a URL no route matches is `website`. Every other URL is `external`.
  */
 export function matchRoute(manifest: Pick<Manifest, "origins" | "routes">, value: string): RouteMatch {
-  const url = normalizeUrl(value);
-  if (!url || !manifest.origins.includes(url.origin)) return { routeId: null, kind: "external", params: {} };
+  const url = parseHttps(value);
+  if (!url || !manifest.origins.includes(url.origin)) return { kind: "external", url: value };
 
   let actual: string[];
   try {
     actual = url.pathname.split("/").slice(1).map(decodeURIComponent);
   } catch {
-    return { routeId: null, kind: "unsupported", params: {} };
+    return { kind: "website", url: value };
   }
   if (actual.at(-1) === "") actual.pop(); // "/news/" matches "/news"; "/" becomes no segments
 
@@ -75,12 +76,52 @@ export function matchRoute(manifest: Pick<Manifest, "origins" | "routes">, value
     if (!params) continue;
     if (!(route.query ?? []).every(key => url.searchParams.has(key))) continue;
     for (const key of route.query ?? []) params[key] = url.searchParams.get(key)!;
-    if (route.kind === "adapted") {
-      return { routeId: route.id, kind: "adapted", source: route.source, screen: route.screen, params };
-    }
-    return { routeId: route.id, kind: "website", params };
+    const match: RouteMatch = { kind: "route", routeId: route.id, page: route.page, screen: route.screen, params };
+    if (route.context !== undefined) match.context = route.context;
+    return match;
   }
-  return { routeId: null, kind: "unsupported", params: {} };
+  return { kind: "website", url: value };
+}
+
+/**
+ * Ids of routes no URL can reach, because an earlier route matches every URL they match:
+ * its segments cover theirs one by one and it requires no query key they do not require.
+ */
+export function unreachableRoutes(manifest: Pick<Manifest, "routes">): string[] {
+  const unreachable: string[] = [];
+  manifest.routes.forEach((route, i) => {
+    const pattern = compilePattern(route.pattern);
+    if (!pattern) return;
+    const shadowed = manifest.routes.slice(0, i).some(earlier => {
+      const cover = compilePattern(earlier.pattern);
+      if (!cover || !covers(cover, pattern)) return false;
+      const required = new Set(route.query ?? []);
+      return (earlier.query ?? []).every(key => required.has(key));
+    });
+    if (shadowed) unreachable.push(route.id);
+  });
+  return unreachable;
+}
+
+/** True when every path `inner` matches is also matched by `outer`. */
+function covers(outer: CompiledPattern, inner: CompiledPattern): boolean {
+  if (outer.rest) {
+    if (inner.segments.length < outer.segments.length) return false;
+  } else if (inner.rest || inner.segments.length !== outer.segments.length) {
+    return false;
+  }
+  return outer.segments.every((segment, i) => {
+    if ("param" in segment) return true;
+    const other = inner.segments[i];
+    return "literal" in other && other.literal === segment.literal;
+  });
+}
+
+function parseHttps(value: string): URL | null {
+  let url: URL;
+  try { url = new URL(value); } catch { return null; }
+  if (url.protocol !== "https:" || url.username || url.password) return null;
+  return url;
 }
 
 function matchSegments(pattern: CompiledPattern, actual: string[]): Record<string, string> | null {
