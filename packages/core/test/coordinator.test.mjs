@@ -288,6 +288,48 @@ describe("races and rules", () => {
     assert.equal(s.shown(), "website");
   });
 
+  test("a ready page that loads again after the deadline gets a new deadline", () => {
+    const s = session();
+    const [first] = s.commit("primary", "/item?id=1").filter(effect => effect.type === "schedule");
+    s.page("primary", "/item?id=1", "ready");
+    assert.deepEqual(s.send({ type: "deadline", id: "primary", token: first.token }), []);
+    const [second] = s.page("primary", "/item?id=1", "loading", { stale: true }).filter(effect => effect.type === "schedule");
+    assert.notEqual(second.token, first.token);
+    assert.equal(s.shown(), "custom");
+    assert.deepEqual(s.page("primary", "/item?id=1", "loading", { stale: true }), [], "a repeated loading page starts no deadline");
+    assert.deepEqual(s.send({ type: "deadline", id: "primary", token: second.token }), [{ type: "reveal", id: "primary" }]);
+    assert.equal(s.shown(), "website");
+  });
+
+  test("a repeated auth page does not open the sign-in again", () => {
+    const s = session();
+    s.commit("primary", "/item?id=1");
+    s.page("primary", "/item?id=1", "auth", { signInUrl: `${HN}/login` });
+    assert.deepEqual(types(s.effects), ["context.navigate", "reveal"]);
+    assert.deepEqual(s.page("primary", "/item?id=1", "auth", { signInUrl: `${HN}/login` }), []);
+  });
+
+  test("replacing the active route screen clears its leave guard; an overlay's guard stays", () => {
+    const s = session();
+    s.commit("primary", "/submit");
+    s.send({ type: "guard", guard: { message: "Discard this post?" } });
+    s.page("primary", "/submit", "ready");
+    assert.notEqual(s.state.leaveGuard, null, "a page for the same screen keeps the guard");
+    s.commit("primary", "/item?id=1");
+    assert.equal(s.state.leaveGuard, null);
+
+    s.send({ type: "navigate.screen", screen: { key: "s", id: "saved", params: {} }, mode: "push" });
+    s.send({ type: "guard", guard: { message: "Discard the draft?" } });
+    s.commit("primary", "/item?id=2");
+    assert.notEqual(s.state.leaveGuard, null);
+    s.send({ type: "back" });
+    s.send({ type: "guard", guard: null });
+    s.send({ type: "back" });
+    s.send({ type: "guard", guard: { message: "Discard the draft?" } });
+    s.commit("post", "/submit");
+    assert.notEqual(s.state.leaveGuard, null, "another context's navigation keeps the guard");
+  });
+
   test("the auth pin survives other pages until one is ready with an account", () => {
     const s = session();
     s.commit("primary", "/news?account=1");

@@ -259,6 +259,11 @@ export interface ActionRequest {
   key: string | null;
   name: string;
   args: unknown;
+  /**
+   * The view `n` whose records the foreground acted on. The document refuses the action with
+   * `CONTEXT_REPLACED` when its view is another one, when it arrives or when it would run.
+   */
+  view?: number;
 }
 
 export type ActionOutcome = "observed" | "failed" | "cancelled" | "unknown";

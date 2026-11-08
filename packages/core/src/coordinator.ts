@@ -48,9 +48,9 @@ export interface ContextState {
   pin: "none" | "user" | "auth";
   /**
    * Set while the coordinator has sent this context to sign in: the history index of the page
-   * that needed the account, and whether that page is the context's start page.
+   * that needed the account, whether that page is the context's start page, and the sign-in URL.
    */
-  signIn: { index: number; start: boolean } | null;
+  signIn: { index: number; start: boolean; url: string } | null;
   /** Token of the readiness deadline that applies now. Each new view takes a new token. */
   deadline: number;
 }
@@ -157,7 +157,7 @@ function apply(state: CoordinatorState, event: CoordinatorEvent, manifest: Manif
         ...moved,
         index: event.index, size: event.size, canGoBack: event.canGoBack, canGoForward: event.canGoForward,
       };
-      return { state: withContext(state, next), effects };
+      return { state: withContext(leftRouteScreen(state, context, next), next), effects };
     }
 
     case "context.page": {
@@ -168,30 +168,39 @@ function apply(state: CoordinatorState, event: CoordinatorEvent, manifest: Manif
       if (!current && event.generation === context.generation && event.view.n <= context.seen) return unchanged;
       if (current && event.generation === context.generation && event.view.n < context.seen) return unchanged;
       const moved = current ? context : newView(context, event.generation, event.view.url, effects);
-      let { pin, signIn } = moved;
+      let { pin, signIn, deadline } = moved;
+      let { expired } = moved.page;
       if (event.status === "auth") {
         if (pin === "none") pin = "auth";
         const target = event.signInUrl ?? null;
-        if (target !== null && entryKey(target) !== entryKey(event.view.url)) {
+        // A repeated auth page while the sign-in it opened is under way sends nobody anywhere again.
+        if (target !== null && entryKey(target) !== entryKey(event.view.url) && signIn?.url !== target) {
           effects.push({ type: "context.navigate", id: context.id, url: target, mode: "push" });
           const start = manifest.contexts.find(c => c.id === context.id)?.startUrl;
-          signIn = { index: moved.index, start: start !== undefined && entryKey(start) === entryKey(event.view.url) };
+          signIn = { index: moved.index, start: start !== undefined && entryKey(start) === entryKey(event.view.url), url: target };
         }
       } else if (event.status === "ready" && event.account !== null && pin === "auth") {
         pin = "none";
         signIn = null;
+      }
+      // A ready page that loads again or fails gets a new deadline, so a page that never recovers shows as website.
+      if (moved.page.status === "ready" && (event.status === "loading" || event.status === "error")) {
+        deadline++;
+        expired = false;
+        effects.push({ type: "schedule", id: context.id, token: deadline });
       }
       const next: ContextState = {
         ...moved,
         seen: Math.max(moved.seen, event.view.n),
         pin,
         signIn,
+        deadline,
         page: {
           status: event.status, pageId: event.pageId, routeId: event.routeId, view: event.view,
-          stale: event.stale, expired: moved.page.expired,
+          stale: event.stale, expired,
         },
       };
-      return { state: withContext(state, next), effects };
+      return { state: withContext(leftRouteScreen(state, context, next), next), effects };
     }
 
     case "deadline": {
@@ -305,6 +314,18 @@ function newView(context: ContextState, generation: number, url: string, effects
     page: LOADING,
     deadline,
   };
+}
+
+/**
+ * Clears the leave guard when the active context's route screen was replaced (another URL or
+ * history entry) while no overlay is open: the screen that set the guard is gone, for example
+ * after a form submitted through an action. A guard of an overlay screen, or one set while
+ * another context is active, stays.
+ */
+function leftRouteScreen(state: CoordinatorState, before: ContextState, after: ContextState): CoordinatorState {
+  if (!state.leaveGuard || before.id !== state.active || state.overlay.length > 0) return state;
+  const sameScreen = before.index === after.index && before.url !== null && after.url !== null && entryKey(before.url) === entryKey(after.url);
+  return sameScreen ? state : { ...state, leaveGuard: null };
 }
 
 function withContext(state: CoordinatorState, context: ContextState): CoordinatorState {
