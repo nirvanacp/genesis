@@ -42,6 +42,7 @@ Open questions for the user:
 | default-platform-menu | Shell floating menu button, Genesis menu and website bar, splash accent `#2347d9` from `shell.accent` | Factory default; accent from the user's mockups | |
 | theme | Light and dark tokens in `src/theme.css`, following the system or the Theme setting | Agent, matching the mockups' palette | decision-0007 |
 | multi-account | Built, hidden behind `MULTI_ACCOUNT_ENABLED = false` in `src/model.ts` | User instruction | decision-0006 |
+| motion-and-feedback | Directional screen motion, sheet and popover motion, delayed shimmer skeletons, progress bar, pull to refresh, optimistic star and selection, Undo toasts; none of it plays with reduced motion | User instruction to make screens and events feel less rigid | decision-0009 |
 
 ## Routes
 
@@ -66,17 +67,23 @@ The `mail` screen picks a view from the one Gmail shows (decision-0003):
 | Screen and control | Result | Action, navigation, website or store | Pending, failure and unknown | Status | Evidence |
 | --- | --- | --- | --- | --- | --- |
 | List row | Opens the email | Navigates to the thread URL | Skeleton until Gmail draws it | verified | device |
-| List avatar | Selects the row, shows the bulk bar | `threads.setSelected` | Selection is Gmail's own | implemented | static |
+| List avatar | Selects the row, shows the bulk bar | `threads.setSelected` | Shows the requested selection while pending (`usePending`) | implemented | static |
+| List star | Stars or unstars | `threads.setStarred` | Shows the requested state while pending; star pops | implemented | static |
+| Pull down at the top of a list | Reloads Gmail's page | `reload(primary)` | Disc spins and progress bar runs until the page is ready again; 10 s limit | verified | device |
+| List end Refresh, empty state Refresh | Same as pull to refresh | `reload(primary)` | | implemented | static |
 | Bulk bar Archive, Delete, Save for later | Archives, trashes, or opens `bulk` | `archiveSelected`, `trashSelected`, `bulk` screen | | implemented | static |
-| Row swipe | Remind or archive, per settings | `add` sheet or `threads.archive` | | implemented | static |
+| Row swipe | Remind or archive, per settings | `add` sheet or `threads.archive` | Row follows the finger, icon grows past 30%; archive slides the row off and closes the gap, and restores it if Gmail refuses | implemented | static |
 | Email "Add to…" | Menu with presets, Reminder, To-do, Snooze | `add` sheet; store `items` | Save failure keeps the sheet open | verified | device |
-| Email toolbar | Archive, Delete, Mark unread, Snooze, more | `conversation.*` actions | Unknown outcome shows a toast | implemented (not run: they change the account) | static |
+| Email toolbar | Archive, Delete, Mark unread, Snooze, more | `conversation.*` actions | Progress bar and disabled toolbar while one runs; unknown outcome shows a toast | implemented (not run: they change the account) | static |
+| Email star | Stars or unstars | `conversation.setStarred` | Shows the requested state while pending | verified (starred, then unstarred) | device |
 | Reply, Reply all, Forward | Compose with fields filled | Gmail's own buttons, then `compose.fill` | Body is typed and sent in Gmail (decision-0008) | implemented | static |
 | Compose Close | Back to the list | `compose.discard`; falls back to Back | | verified | device |
 | Drawer folders and labels | Opens the list | URL navigation; labels through `menu.open` | | verified (folders listed) | device |
 | To-do views, week strip, filters | Groups and filters items | Store `items` | | verified | device |
 | To-do add button | Manual to-do form | `add` sheet; store `items` | | verified (added, then deleted) | device |
 | Item Mark done and Undo | Marks done, restores | Store `items` | Conflict rereads the item | verified | device |
+| Today card and to-do row check | Check pops, title strikes through, then the item is done with an Undo toast | Store `items` | Save failure shows a toast | verified | device |
+| "Back in your inbox" dismiss | Dismisses with an Undo toast | Store `items` | | implemented | static |
 | Item Delete | Removes the item, toast with Undo | Store `items` | | verified | device |
 | Item Snooze, Change, Edit | Snooze chips, edit form | Store `items` | | implemented | static |
 | Search | Results, matching to-dos, filter chips | URL navigation to `#tl/search/…` | | verified | device |
@@ -97,6 +104,8 @@ The `mail` screen picks a view from the one Gmail shows (decision-0003):
 Verified on 2026-11-09 on emulator-5556 (Android 17, `app.nirvana.genesis`), installed revision 12, with the one test Google account, light and dark mode. Evidence kind: device with the real website. Checked: inbox, Today card, reminder chip, open email with attachment, "Add to…" and the reminder sheet, item detail with Mark done and Undo, To-do in both views, manual to-do add and delete, drawer, accounts, snoozed, Gmail Only settings, Gmail settings, search, compose open and close, and the tabs. Static checks: `npm run typecheck`, `npm run check`, `npm run build`, and `tsc --noUnusedLocals`.
 
 Not verified, because each changes the Google account or needs a second one: archive, delete, mark unread, spam and the other conversation commands; bulk archive and delete; swipes; snooze (it archives); archive after adding a to-do; sending mail; account switching and setup with a second session. Also not seen: the fallback screen for unknown Gmail views, the sign-in screen, and list error states.
+
+Motion and feedback, verified on 2026-11-09 with revision 14 on the same device, dark then light mode: push and pop between list and email, the drawer sliding in and out, tab fade-through, sheets opening, dragging closed and closing with Back with the screen under them kept in place, the segmented thumb, the shimmer list skeleton, Today card completion with the Undo toast lifting the Compose button, pull to refresh, the email star and its pending state. Not seen: swipe archive and toolbar commands (they change the account), the email skeleton on a slow load, and reduced motion on the device (checked in code: every motion path reads `prefers-reduced-motion`). Once, after the Today card emptied, the emulator showed a stale strip over the category chips; the WebView's own capture was clean and the strip cleared on the next screen change.
 
 Known limits:
 

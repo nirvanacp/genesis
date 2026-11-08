@@ -47,3 +47,9 @@
 - Date and origin: 2026-11-09, agent choice under a website limit.
 - Choice and rationale: The applet fills Gmail's To, Cc, Bcc and Subject fields as the person types. Gmail's message body is a rich-text field Genesis cannot fill reliably, so "Continue in Gmail" shows Gmail's own compose to write and send; the applet never sends on its own. "Remind me if no reply" saves its follow-up to-do at that point. Close uses Gmail's own Close so Gmail returns to the list it came from.
 - Evidence and supersession: [compose](../src/screens/compose.tsx). Supersedes none.
+
+## decision-0009: Motion and feedback for every change on screen
+
+- Date and origin: 2026-11-09, user instruction to add transitions, animations and loaders so the applet stops feeling rigid.
+- Choice and rationale: Screens move by where they sit: a deeper history entry or overlay pushes in from the end edge, Back pops, Mail and To-do fade through, and the drawer slides from the start edge. Genesis swaps screens at once, so each screen slot is a `Stage` that copies the outgoing screen's DOM and plays its exit as an inert ghost while the live screen enters; taps and Back never wait. Sheets rise, follow a drag and sink from where they are; popovers grow from their button. Loading has three steps: nothing for 120 ms, then a shimmer skeleton shaped like the content, then a fade-in; work on content already shown runs a thin progress bar. Star and selection show the requested state through `usePending`. Completing an item pops its check, waits a moment, then leaves with an Undo toast. Durations stay at 150 to 350 ms, and with reduced motion everything swaps at once.
+- Evidence and supersession: [motion](../src/components/motion.tsx), [app shell](../src/app.tsx), [theme](../src/theme.css), [list](../src/screens/list.tsx). Supersedes none.
