@@ -75,6 +75,12 @@ export interface Response {
   error?: { code: ErrorCode; message: string };
 }
 
+/** The host's answer to a `hello` in another protocol version. No `bound` follows. */
+export interface Refused {
+  type: "refused";
+  error: { code: ErrorCode; message: string };
+}
+
 export interface Event {
   type: "event";
   documentId: string;

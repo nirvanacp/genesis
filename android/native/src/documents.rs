@@ -1,4 +1,4 @@
-//! Document registry: the current document per view, pending operations and pending intents.
+//! Document registry: the current document per view, its generation, and pending operations.
 use genesis_contracts::ViewRef;
 use std::{
     collections::HashMap,
@@ -13,6 +13,10 @@ pub struct Document {
     pub id: String,
     /// `location.href` the document reported in `hello`.
     pub url: String,
+    /// Increments each time a document binds in the view; 0 for the foreground.
+    pub generation: u64,
+    /// The view's `DocumentStarted` for this document has arrived. A hello can come first.
+    pub started: bool,
 }
 
 /// A request the host answers later: a storage job or a service request. The op id is the
@@ -24,20 +28,13 @@ pub struct PendingOp {
     pub deadline_ms: u64,
 }
 
-pub struct Intent {
-    pub foreground_document: String,
-    pub source_id: String,
-    pub source_document: String,
-    pub deadline_ms: u64,
-}
-
 #[derive(Default)]
 pub struct Documents {
     counter: u64,
     current: HashMap<ViewRef, Document>,
+    /// The last generation bound in each context view; it survives the document's retirement.
+    generations: HashMap<ViewRef, u64>,
     ops: HashMap<u64, PendingOp>,
-    next_intent: u64,
-    pub intents: HashMap<u64, Intent>,
 }
 
 impl Documents {
@@ -45,17 +42,35 @@ impl Documents {
         self.current.get(view)
     }
 
+    pub fn current_mut(&mut self, view: &ViewRef) -> Option<&mut Document> {
+        self.current.get_mut(view)
+    }
+
     pub fn is_current(&self, view: &ViewRef, document_id: &str) -> bool {
         self.current(view).is_some_and(|d| d.id == document_id)
     }
 
-    /// Binds a new document to `view`, retiring the previous one. Returns the new id and the retired id.
-    pub fn bind(&mut self, view: &ViewRef, url: &str) -> (String, Option<String>) {
-        let retired = self.retire(view);
+    /// The generation the next document bound in `view` receives.
+    pub fn next_generation(&self, view: &ViewRef) -> u64 {
+        self.generations.get(view).copied().unwrap_or(0) + 1
+    }
+
+    /// Binds a new document to `view`. Context documents take the next generation; the
+    /// foreground's is always 0. The caller retires the previous document first.
+    pub fn bind(&mut self, view: &ViewRef, url: &str, context: bool, started: bool) -> &Document {
         self.counter += 1;
         let id = format!("{}/{}/{}", view.applet_id, String::from(view.role.clone()), self.counter);
-        self.current.insert(view.clone(), Document { id: id.clone(), url: url.into() });
-        (id, retired)
+        let generation = match context {
+            true => {
+                let next = self.next_generation(view);
+                self.generations.insert(view.clone(), next);
+                next
+            }
+            false => 0,
+        };
+        let document = Document { id, url: url.into(), generation, started };
+        self.current.insert(view.clone(), document);
+        &self.current[view]
     }
 
     /// Removes the view's document and drops its pending operations. Returns the retired id.
@@ -65,17 +80,15 @@ impl Documents {
         Some(document.id)
     }
 
-    /// Retires every document of the applet and forgets its intents.
+    /// Retires every document of the applet and forgets its generations.
     pub fn retire_applet(&mut self, applet_id: &str) -> Vec<(ViewRef, String)> {
+        self.generations.retain(|view, _| view.applet_id != applet_id);
         let views: Vec<ViewRef> = self.current.keys().filter(|v| v.applet_id == applet_id).cloned().collect();
-        let retired = views.into_iter().filter_map(|v| self.retire(&v).map(|id| (v, id))).collect();
-        self.intents.clear();
-        retired
+        views.into_iter().filter_map(|v| self.retire(&v).map(|id| (v, id))).collect()
     }
 
     pub fn pending_count(&self, document_id: &str) -> usize {
         self.ops.values().filter(|op| op.document_id == document_id).count()
-            + self.intents.values().filter(|i| i.foreground_document == document_id).count()
     }
 
     pub fn begin_op(&mut self, op: PendingOp) -> u64 {
@@ -94,17 +107,5 @@ impl Documents {
     pub fn expired_ops(&mut self, now_ms: u64) -> Vec<PendingOp> {
         let ids: Vec<u64> = self.ops.iter().filter(|(_, op)| op.deadline_ms <= now_ms).map(|(id, _)| *id).collect();
         ids.into_iter().filter_map(|id| self.ops.remove(&id)).collect()
-    }
-
-    pub fn begin_intent(&mut self, intent: Intent) -> u64 {
-        self.next_intent += 1;
-        self.intents.insert(self.next_intent, intent);
-        self.next_intent
-    }
-
-    /// Removes and returns the intents matching `predicate`.
-    pub fn take_intents(&mut self, predicate: impl Fn(&Intent) -> bool) -> Vec<(u64, Intent)> {
-        let ids: Vec<u64> = self.intents.iter().filter(|(_, i)| predicate(i)).map(|(id, _)| *id).collect();
-        ids.into_iter().filter_map(|id| self.intents.remove(&id).map(|i| (id, i))).collect()
     }
 }

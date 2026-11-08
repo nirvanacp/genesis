@@ -1,27 +1,34 @@
 //! Document messages: handshake, role authorization and method dispatch.
 use crate::{
-    documents::{Intent, PendingOp},
+    contexts::ActionHandle,
+    documents::PendingOp,
     host::Host,
     services::{self, ServiceCall},
 };
 use genesis_contracts::*;
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 
-const FOREGROUND_METHODS: [&str; 12] = [
+const FOREGROUND_METHODS: [&str; 18] = [
     "ui.ready",
     "storage.get",
     "storage.list",
     "storage.commit",
     "services.request",
-    "website.open",
-    "website.close",
-    "source.navigate",
-    "source.intent",
+    "context.navigate",
+    "context.back",
+    "context.forward",
+    "context.reload",
+    "context.reveal",
+    "context.cover",
+    "context.resync",
+    "context.act",
+    "context.cancel",
+    "context.ping",
+    "session.save",
     "back.handled",
     "back.leave",
-    "navigation.save",
 ];
-const SOURCE_METHODS: [&str; 2] = ["source.publish", "source.intentResult"];
+const CONTEXT_METHODS: [&str; 2] = ["context.publish", "context.actionResult"];
 const LIST_LIMIT: usize = 100;
 
 /// What a call produced: an answer now, or one sent later (or already sent) by the call itself.
@@ -40,12 +47,12 @@ fn ok() -> Outcome {
 
 impl Host {
     pub fn document_message(&mut self, view: ViewRef, payload: &str, now: u64) {
-        if view.role == Role::Website || self.surfaces.session.as_ref().is_none_or(|s| s.applet_id != view.applet_id) {
+        if self.contexts.session.as_ref().is_none_or(|s| s.applet_id != view.applet_id) {
             return;
         }
         let Ok(message) = serde_json::from_str::<DocumentMessage>(payload) else { return };
         match message {
-            DocumentMessage::Hello { url } => self.hello(view, url),
+            DocumentMessage::Hello { protocol, url } => self.hello(view, protocol, url),
             DocumentMessage::Request { document_id, request_id, method, params } => {
                 let Some(current) = self.documents.current(&view).map(|d| d.id.clone()) else { return };
                 if document_id.is_some_and(|id| id != current) {
@@ -63,52 +70,58 @@ impl Host {
         }
     }
 
-    fn hello(&mut self, view: ViewRef, url: String) {
-        let Some(manifest) = self.active_manifest().cloned() else { return };
-        let session = self.surfaces.session.as_ref().expect("active session");
-        let source_id = match &view.role {
-            Role::Source(id) if manifest.sources.iter().any(|s| &s.id == id) => Some(id.clone()),
-            Role::Source(_) | Role::Website => return,
+    /// Binds a new document. A context document takes the context's next generation and
+    /// replaces the context's previous document.
+    fn hello(&mut self, view: ViewRef, protocol: u32, url: String) {
+        let Some((revision, manifest)) = self.active_manifest().map(|(r, m)| (r, m.clone())) else { return };
+        let context_id = match &view.role {
+            Role::Context(id) if manifest.contexts.iter().any(|c| &c.id == id) => Some(id.clone()),
+            Role::Context(_) => return,
             Role::Foreground => None,
         };
-        let state = match &source_id {
-            Some(id) => json!({ "url": session.source_urls.get(id) }),
-            None => json!({
-                "website": { "open": session.website.is_some(), "url": session.website },
-                "snapshots": session.snapshots,
-                "sourceUrls": session.source_urls,
-                "restored": session.restored,
-                "navigation": if session.restored { session.navigation.clone() } else { None },
-            }),
+        if protocol != compat::PROTOCOL {
+            let message = format!("The page speaks protocol {protocol}; this Genesis speaks {}", compat::PROTOCOL);
+            self.post(&view, &HostMessage::Refused { error: ErrorBody::new(ErrorCode::ProtocolMismatch, &message) });
+            if let Some(id) = context_id {
+                self.foreground_event("context.gone", json!({ "id": id, "code": ErrorCode::ProtocolMismatch, "message": message }));
+            }
+            return;
+        }
+        self.retire_document(&view);
+        // When the document's DocumentStarted came first, it is waiting for this hello.
+        let started = match &context_id {
+            Some(id) => self.context_mut(id).and_then(|c| c.navigating_since.take()).is_some(),
+            None => true,
         };
-        let revision = session.revision;
-        let (document_id, retired) = self.documents.bind(&view, &url);
-        if let Some(retired) = retired.filter(|_| source_id.is_some()) {
-            self.fail_intents_for(&retired, ErrorCode::SourceReplaced);
-        }
-        // A source's ready deadline stays until it publishes something other than `loading`.
-        if let Some(session) = self.surfaces.session.as_mut().filter(|_| source_id.is_none()) {
-            session.restored = false;
-            session.navigation = None;
-        }
-        let role = if source_id.is_some() { "source" } else { "foreground" };
+        let session = self.contexts.session.as_mut().expect("active session");
+        let saved = match (&context_id, session.restored) {
+            (None, true) => {
+                session.restored = false;
+                session.saved.clone()
+            }
+            _ => None,
+        };
+        let document = self.documents.bind(&view, &url, context_id.is_some(), started);
         let bound = HostMessage::Bound {
-            document_id,
+            protocol: compat::PROTOCOL,
+            compat: HostCompat::default(),
+            document_id: document.id.clone(),
             applet_id: view.applet_id.clone(),
-            role: role.into(),
-            source_id,
             revision,
+            role: if context_id.is_some() { DocumentRole::Context } else { DocumentRole::Foreground },
+            context_id,
+            generation: document.generation,
             manifest: Box::new(manifest),
             limits: self.limits.clone(),
-            state,
+            session: saved,
         };
         self.post(&view, &bound);
     }
 
     fn call(&mut self, view: &ViewRef, document_id: &str, request_id: u64, method: &str, params: Value, now: u64) -> Outcome {
-        let allowed: &[&str] = if view.role == Role::Foreground { &FOREGROUND_METHODS } else { &SOURCE_METHODS };
+        let allowed: &[&str] = if view.role == Role::Foreground { &FOREGROUND_METHODS } else { &CONTEXT_METHODS };
         if !allowed.contains(&method) {
-            let known = FOREGROUND_METHODS.contains(&method) || SOURCE_METHODS.contains(&method);
+            let known = FOREGROUND_METHODS.contains(&method) || CONTEXT_METHODS.contains(&method);
             return match known {
                 true => error(ErrorCode::InvalidArgument, format!("{method} is not available to this document")),
                 false => error(ErrorCode::UnknownMethod, format!("Unknown method {method}")),
@@ -119,10 +132,15 @@ impl Host {
             Ok(call) => call,
             Err(e) => return error(ErrorCode::InvalidArgument, format!("Invalid {method} parameters: {e}")),
         };
-        let Some(manifest) = self.active_manifest().cloned() else {
+        let Some(manifest) = self.active_manifest().map(|(_, m)| m.clone()) else {
             return error(ErrorCode::Retired, "The applet is not active");
         };
-        let pending = |host: &Host| host.documents.pending_count(document_id) >= host.limits.pending_requests_max;
+        let pending = |host: &Host| {
+            let actions = host.contexts.session.as_ref().map_or(0, |s| {
+                s.actions.values().filter(|a| a.foreground_document == document_id).count()
+            });
+            host.documents.pending_count(document_id) + actions >= host.limits.pending_requests_max
+        };
         let begin = |host: &mut Host| {
             let op = PendingOp {
                 view: view.clone(),
@@ -134,8 +152,8 @@ impl Host {
         };
         match call {
             Call::UiReady {} => {
-                if let Some(session) = self.surfaces.session.as_mut().filter(|s| !s.revealed) {
-                    session.revealed = true;
+                if let Some(session) = self.contexts.session.as_mut().filter(|s| !s.foreground_shown) {
+                    session.foreground_shown = true;
                     self.out.push(ShellCommand::RevealForeground);
                 }
                 ok()
@@ -177,87 +195,97 @@ impl Host {
                     }
                 }
             }
-            Call::WebsiteOpen { url } => match web_url(&url) {
-                Some(url) if url.starts_with("https:") => {
-                    self.open_website(url);
-                    ok()
-                }
-                // The sheet holds sessions and stays https; plain http pages open in the Android browser.
-                Some(url) => {
-                    self.out.push(ShellCommand::OpenExternal { url });
-                    ok()
-                }
-                None => error(ErrorCode::InvalidArgument, "website.open needs an http or https URL"),
-            },
-            Call::WebsiteClose {} => {
-                self.close_website();
+            Call::ContextNavigate { id, url, mode } => {
+                let Some(target) = self.context_view(&id) else { return unknown_context(&id) };
+                // Any http or https origin: an undeclared one presents as website.
+                let Some(url) = web_url(&url) else {
+                    return error(ErrorCode::InvalidArgument, "context.navigate needs an http or https URL");
+                };
+                self.out.push(ShellCommand::LoadUrl { view: target, url, mode });
                 ok()
             }
-            Call::SourceNavigate { source_id, url } => {
-                if !manifest.sources.iter().any(|s| s.id == source_id) {
-                    return error(ErrorCode::NotFound, format!("Unknown source {source_id}"));
-                }
-                let Some(url) = https_url(&url).filter(|u| declared(&manifest, u)) else {
-                    return error(ErrorCode::OriginNotDeclared, "The URL is not on a declared origin");
-                };
-                let ready_ms = self.limits.document_ready_ms;
-                if let Some(session) = self.surfaces.session.as_mut() {
-                    session.source_urls.insert(source_id.clone(), url.clone());
-                    session.ready_deadlines.insert(source_id.clone(), now + ready_ms);
-                }
-                let view = self.source_view(&source_id).expect("active session");
-                self.retire_document(&view);
-                self.out.push(ShellCommand::LoadUrl { view, url });
+            Call::ContextBack { id } | Call::ContextForward { id } => {
+                let Some(target) = self.context_view(&id) else { return unknown_context(&id) };
+                let delta = if method == "context.back" { -1 } else { 1 };
+                self.out.push(ShellCommand::HistoryGo { view: target, delta });
                 ok()
             }
-            Call::SourceIntent { source_id, intent } => {
-                let Some(source_view) = self.source_view(&source_id) else {
-                    return error(ErrorCode::NotFound, format!("Unknown source {source_id}"));
+            Call::ContextReload { id } => {
+                let Some(target) = self.context_view(&id) else { return unknown_context(&id) };
+                self.out.push(ShellCommand::Reload { view: target });
+                ok()
+            }
+            Call::ContextReveal { id } => {
+                let Some(target) = self.context_view(&id) else { return unknown_context(&id) };
+                self.reveal(&id, target, &manifest.name);
+                ok()
+            }
+            Call::ContextCover {} => {
+                self.cover();
+                ok()
+            }
+            Call::ContextResync { id } => {
+                let Some(target) = self.context_view(&id) else { return unknown_context(&id) };
+                if self.documents.current(&target).is_none() {
+                    return error(ErrorCode::NotReady, "The context has no adapted page");
+                }
+                self.event(&target, "resync", json!({}));
+                ok()
+            }
+            Call::ContextAct { id, generation, action } => {
+                let Some(target) = self.context_view(&id) else { return unknown_context(&id) };
+                let Some(document) = self.documents.current(&target) else {
+                    return error(ErrorCode::ContextReplaced, "The context has no adapted page");
                 };
-                let Some(source_document) = self.documents.current(&source_view).map(|d| d.id.clone()) else {
-                    return error(ErrorCode::NotReady, "The source page is not ready");
-                };
+                if document.generation != generation {
+                    return error(ErrorCode::ContextReplaced, "The page the action was for has been replaced");
+                }
                 if pending(self) {
                     return error(ErrorCode::QuotaExceeded, "Too many pending requests");
                 }
-                let intent_id = self.documents.begin_intent(Intent {
+                let handle = ActionHandle {
                     foreground_document: document_id.into(),
-                    source_id,
-                    source_document,
-                    deadline_ms: now + self.limits.intent_timeout_ms,
-                });
-                self.event(&source_view, "intent", json!({ "intentId": intent_id, "intent": intent }));
-                Outcome::Now(Ok(json!({ "intentId": intent_id })))
+                    context_id: id,
+                    context_document: document.id.clone(),
+                    dispatched: false,
+                    deadline_ms: now + self.limits.action_timeout_ms,
+                };
+                let action_id = self.contexts.session.as_mut().expect("active session").begin_action(handle);
+                let mut data: Map<String, Value> = action;
+                data.insert("actionId".into(), json!(action_id));
+                self.event(&target, "act", Value::Object(data));
+                Outcome::Now(Ok(json!({ "actionId": action_id })))
             }
-            Call::SourcePublish { snapshot } => {
-                let Role::Source(source_id) = &view.role else { unreachable!() };
-                let size = serde_json::to_vec(&snapshot).map(|b| b.len()).unwrap_or(usize::MAX);
-                if size > self.limits.snapshot_max_bytes {
-                    return error(ErrorCode::SnapshotTooLarge, "The snapshot is too large");
+            Call::ContextCancel { action_id } => {
+                let session = self.contexts.session.as_ref().expect("active session");
+                let handle = session.actions.get(&action_id).filter(|a| a.foreground_document == document_id);
+                if let Some(handle) = handle.filter(|a| !a.dispatched) {
+                    let target = self.context_view(&handle.context_id.clone()).expect("declared context");
+                    self.event(&target, "cancel", json!({ "actionId": action_id }));
                 }
-                let content = snapshot.get("status").and_then(Value::as_str) != Some("loading");
-                if let Some(session) = self.surfaces.session.as_mut().filter(|_| content) {
-                    session.ready_deadlines.remove(source_id);
-                }
-                self.publish_snapshot(source_id, snapshot);
                 ok()
             }
-            Call::SourceIntentResult { intent_id, ok: succeeded, error: failure } => {
-                let mine = self.documents.intents.get(&intent_id).is_some_and(|i| i.source_document == document_id);
-                if let Some(intent) = mine.then(|| self.documents.intents.remove(&intent_id)).flatten() {
-                    debug_assert!(view.role == Role::Source(intent.source_id.clone()));
-                    self.intent_result(&intent.foreground_document, intent_id, succeeded, failure);
+            Call::ContextPing { id } => {
+                let Some(target) = self.context_view(&id) else { return unknown_context(&id) };
+                // The renderer is shared, so a bound document and a live foreground mean a live context.
+                let answer = match self.documents.current(&target) {
+                    Some(document) => json!({ "bound": true, "generation": document.generation, "url": document.url }),
+                    None => json!({ "bound": false }),
+                };
+                self.event(&target, "ping", json!({}));
+                Outcome::Now(Ok(answer))
+            }
+            Call::SessionSave { version, state } => {
+                if version != compat::SESSION_STATE {
+                    return error(ErrorCode::InvalidArgument, format!("session.save version must be {}", compat::SESSION_STATE));
+                }
+                if let Some(session) = self.contexts.session.as_mut() {
+                    session.saved = Some(json!({ "version": version, "state": state }));
                 }
                 ok()
             }
             Call::BackHandled { handled } => {
                 self.back_answered(document_id, handled);
-                ok()
-            }
-            Call::NavigationSave { navigation } => {
-                if let Some(session) = self.surfaces.session.as_mut() {
-                    session.navigation = Some(navigation);
-                }
                 ok()
             }
             Call::BackLeave {} => {
@@ -266,26 +294,72 @@ impl Host {
                 self.home();
                 Outcome::Later
             }
+            Call::ContextPublish { page, patch } => {
+                let Role::Context(id) = &view.role else { unreachable!() };
+                let generation = self.documents.current(view).map_or(0, |d| d.generation);
+                let (name, body) = match (page, patch) {
+                    (Some(page), None) => ("page", page),
+                    (None, Some(patch)) => ("patch", patch),
+                    _ => return error(ErrorCode::InvalidArgument, "context.publish needs exactly one of page and patch"),
+                };
+                if let Some(failure) = self.publish_too_large(name, &body) {
+                    return Outcome::Now(Err(failure));
+                }
+                self.foreground_event(name, json!({ "id": id, "generation": generation, name: body }));
+                ok()
+            }
+            Call::ContextActionResult { action_id, state, navigating, result } => {
+                let session = self.contexts.session.as_mut().expect("active session");
+                let Some(handle) = session.actions.get_mut(&action_id).filter(|a| a.context_document == document_id) else {
+                    return ok(); // Expired or cancelled by the host already.
+                };
+                let foreground_document = handle.foreground_document.clone();
+                // A navigating action's outcome is observed by the foreground, not reported here.
+                let finished = state != ActionState::Dispatched || navigating == Some(true);
+                if finished {
+                    session.actions.remove(&action_id);
+                } else {
+                    handle.dispatched = true;
+                }
+                let mut update = json!({ "actionId": action_id, "state": state });
+                if let Some(navigating) = navigating {
+                    update["navigating"] = json!(navigating);
+                }
+                if let Some(result) = result {
+                    update["result"] = result;
+                }
+                self.action_update(&foreground_document, update);
+                ok()
+            }
         }
+    }
+
+    /// The size check for one publish: bytes per kind, and records upserted by a patch.
+    fn publish_too_large(&self, name: &str, body: &Value) -> Option<ErrorBody> {
+        let size = serde_json::to_vec(body).map(|b| b.len()).unwrap_or(usize::MAX);
+        if name == "page" {
+            return (size > self.limits.page_max_bytes).then(|| ErrorBody::new(ErrorCode::PageTooLarge, "The page is too large"));
+        }
+        let records: usize = body
+            .get("regions")
+            .and_then(Value::as_object)
+            .map(|regions| regions.values().filter_map(|r| r.get("upsert")?.as_array().map(Vec::len)).sum())
+            .unwrap_or(0);
+        (size > self.limits.patch_max_bytes || records > self.limits.patch_records_max)
+            .then(|| ErrorBody::new(ErrorCode::PatchTooLarge, "The patch is too large"))
     }
 }
 
-/// The URL without its fragment, when it is https without credentials.
-fn https_url(value: &str) -> Option<String> {
-    web_url(value).filter(|url| url.starts_with("https:"))
+fn unknown_context(id: &str) -> Outcome {
+    error(ErrorCode::NotFound, format!("Unknown context {id}"))
 }
 
-/// An http or https URL with a host and no credentials, without its fragment.
+/// An http or https URL with a host and no credentials.
 fn web_url(value: &str) -> Option<String> {
-    let mut url = url::Url::parse(value).ok()?;
+    let url = url::Url::parse(value).ok()?;
     let web = matches!(url.scheme(), "https" | "http");
     if !web || !url.username().is_empty() || url.password().is_some() || url.host_str().is_none() {
         return None;
     }
-    url.set_fragment(None);
     Some(url.into())
-}
-
-fn declared(manifest: &Manifest, url: &str) -> bool {
-    url::Url::parse(url).is_ok_and(|u| manifest.origins.contains(&u.origin().ascii_serialization()))
 }
