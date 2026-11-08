@@ -45,7 +45,8 @@ export class Publisher {
       const patch = diffRegion(last.regions[name], region);
       if (patch) regions[name] = patch;
     }
-    const account = content.account !== last.account;
+    // A page that stops showing the account (undefined) is no change to report.
+    const account = content.account !== undefined && content.account !== last.account;
     if (!account && Object.keys(regions).length === 0) return;
     const patches = this.split(regions);
     if (account) patches[patches.length - 1].account = content.account;

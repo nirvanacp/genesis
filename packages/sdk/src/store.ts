@@ -139,12 +139,12 @@ export function createStore(contextIds: string[], options: { historyEntriesMax: 
   }
 
   /**
-   * The account rule. Only a ready or `auth` page is evidence of the account: a page that is
-   * still loading may not show it yet. On a change every history entry goes, and the other
+   * The account rule. Only a ready or `auth` page that shows the account is evidence of it: a
+   * page that is still loading may not show it yet, and some pages never do. On a change every history entry goes, and the other
    * contexts' records are marked stale until they reload.
    */
-  function report(id: string, account: string | null, status: PageStatus): boolean {
-    if (status !== "ready" && status !== "auth") return false;
+  function report(id: string, account: string | null | undefined, status: PageStatus): boolean {
+    if (account === undefined || (status !== "ready" && status !== "auth")) return false;
     if (!accountKnown) {
       accountKnown = true;
       if (state.account !== account) state = { ...state, account };

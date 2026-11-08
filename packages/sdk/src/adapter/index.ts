@@ -63,8 +63,8 @@ export type Region = CollectionRegion<any> | SingleRegion<any>;
 export interface Page {
   /** Positive evidence that the page has rendered what the regions read. */
   ready: (doc: Document) => boolean;
-  /** Overrides the adapter-level `account` on this page. */
-  account?: (doc: Document) => string | null;
+  /** Overrides the adapter-level `account` on this page. Return undefined when the page does not show the account. */
+  account?: (doc: Document) => string | null | undefined;
   /** Without an account the page's status is `auth`. */
   requiresAccount?: boolean;
   regions?: { [name: string]: Region };
@@ -73,8 +73,11 @@ export interface Page {
 }
 
 export interface AdapterDefinition {
-  /** The signed-in account read from the page, or null. Pages may override it. */
-  account?: (doc: Document) => string | null;
+  /**
+   * The signed-in account read from the page, or null when signed out. Undefined means the page
+   * does not show the account, so it is no evidence either way. Pages may override it.
+   */
+  account?: (doc: Document) => string | null | undefined;
   /** Where an `auth` page sends the user: a path on the first declared origin, or a function of the current URL. */
   signInUrl?: string | ((url: string) => string);
   /** Keyed by the page ids that manifest routes name. */

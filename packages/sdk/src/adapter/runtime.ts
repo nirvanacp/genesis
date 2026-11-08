@@ -114,10 +114,12 @@ function start(connection: Connection, definition: AdapterDefinition): Bound {
     return value.kind === "route" ? definition.pages[value.page] ?? null : null;
   }
 
-  function readAccount(): string | null {
+  /** The account the page shows; undefined when the page does not show one either way. */
+  function readAccount(): string | null | undefined {
     const read = page?.account ?? definition.account;
     try {
       const value = read?.(document);
+      if (value === undefined && read) return undefined;
       return typeof value === "string" && value !== "" ? value : null;
     } catch {
       return null;
@@ -136,7 +138,7 @@ function start(connection: Connection, definition: AdapterDefinition): Bound {
   }
 
   /** The page's status now. An `auth` page needs positive evidence: ready, or a parsed document. */
-  function evaluate(account: string | null): { status: PageStatus; error?: { code: ErrorCode; message: string } } {
+  function evaluate(account: string | null | undefined): { status: PageStatus; error?: { code: ErrorCode; message: string } } {
     if (match.kind !== "route") return { status: "unsupported" };
     if (!page) return { status: "error", error: { code: "NOT_FOUND", message: `The adapter declares no page ${match.page}` } };
     let ready: boolean;
@@ -151,17 +153,17 @@ function start(connection: Connection, definition: AdapterDefinition): Bound {
     return { status: "loading" };
   }
 
-  function content(account: string | null, state: ReturnType<typeof evaluate>): PageContent {
+  function content(account: string | null | undefined, state: ReturnType<typeof evaluate>): PageContent {
     const result: PageContent = {
       view,
       pageId: match.kind === "route" ? match.page : null,
       routeId: match.kind === "route" ? match.routeId : null,
       params: match.kind === "route" ? match.params : {},
       status: state.status,
-      account,
       signInUrl: signInUrl(),
       regions: {},
     };
+    if (account !== undefined) result.account = account;
     if (state.error) result.error = state.error;
     for (const [name, region] of regions) result.regions[name] = region.value;
     return result;

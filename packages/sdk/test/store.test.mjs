@@ -144,6 +144,10 @@ describe("store", () => {
 
     // A page still loading is no evidence of the account.
     assert.equal(store.applyPage("me", 2, page({ generation: 2, status: "loading", account: "ann" })).accountChanged, false);
+    // Nor is a ready page that does not show the account.
+    const { account: _, ...silent } = page({ generation: 2 });
+    assert.equal(store.applyPage("me", 2, silent).accountChanged, false);
+    assert.equal(store.state().account, null);
     const result = store.applyPage("me", 2, page({ generation: 2, epoch: 2, account: "ann" }));
     assert.equal(result.accountChanged, true);
     assert.equal(store.state().account, "ann");
