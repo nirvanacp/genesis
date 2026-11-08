@@ -10,7 +10,7 @@ Use the product's native mobile app as the reference when one exists, translated
 
 The shell draws a floating 44 dp Genesis menu button in the top-right corner, 8 dp from the edges, over every screen and over the website. Keep the first row of every screen clear of that corner, for example with a 44 px right float at the top of the scroll container. Do not draw a menu of your own, a back arrow or the applet's name in a bar. Use one bottom tab bar for the main sections. Keep content tabs, filters and contextual actions inside the screen. Do not copy the website's header, footer or sidebar.
 
-When a context shows the website, the shell puts a 56 dp website bar above it with the page title and Done; the menu button stays on top at its right. The foreground does not draw this bar and cannot restyle it. Screens shown next to the website, such as overlay screens, should not imitate it.
+When a context shows the website, the shell puts a website bar above it, at least 64 dp tall and taller with larger text, with the page title, the host and Done; the menu button stays on top at its right. The foreground does not draw this bar and cannot restyle it. Screens shown next to the website, such as overlay screens, should not imitate it.
 
 The launcher marks an applet that this Genesis cannot run with a status line: "Needs update" when the applet was built for an older SDK, "Needs a newer Genesis" when it was built for a newer one. Opening it shows the reason instead of the applet. Rebuild the applet with the current SDK to clear "Needs update".
 
