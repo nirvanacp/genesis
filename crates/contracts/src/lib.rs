@@ -565,8 +565,13 @@ pub enum Call {
         #[serde(default)]
         mode: NavigateMode,
     },
+    /// Goes back `steps` entries (1 when absent).
     #[serde(rename = "context.back")]
-    ContextBack { id: String },
+    ContextBack {
+        id: String,
+        #[serde(default)]
+        steps: Option<u32>,
+    },
     #[serde(rename = "context.forward")]
     ContextForward { id: String },
     #[serde(rename = "context.reload")]

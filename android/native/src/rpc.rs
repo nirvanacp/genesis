@@ -204,10 +204,15 @@ impl Host {
                 self.out.push(ShellCommand::LoadUrl { view: target, url, mode });
                 ok()
             }
-            Call::ContextBack { id } | Call::ContextForward { id } => {
+            Call::ContextBack { id, steps } => {
                 let Some(target) = self.context_view(&id) else { return unknown_context(&id) };
-                let delta = if method == "context.back" { -1 } else { 1 };
-                self.out.push(ShellCommand::HistoryGo { view: target, delta });
+                let steps = steps.unwrap_or(1).clamp(1, i32::MAX as u32) as i32;
+                self.out.push(ShellCommand::HistoryGo { view: target, delta: -steps });
+                ok()
+            }
+            Call::ContextForward { id } => {
+                let Some(target) = self.context_view(&id) else { return unknown_context(&id) };
+                self.out.push(ShellCommand::HistoryGo { view: target, delta: 1 });
                 ok()
             }
             Call::ContextReload { id } => {
