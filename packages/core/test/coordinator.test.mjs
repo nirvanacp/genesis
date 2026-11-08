@@ -111,6 +111,23 @@ describe("section 5.5 scenarios", () => {
     assert.equal(s.context().url, `${HN}/item?id=2`);
   });
 
+  test("Done on an unpinned website page goes back, or to the start page without history", () => {
+    const s = session();
+    s.commit("primary", "/");
+    s.page("primary", "/", "ready");
+    s.commit("primary", "/reply?id=1");
+    assert.equal(s.shown(), "website");
+    assert.deepEqual(s.send({ type: "user.done", id: "primary" }), [{ type: "context.back", id: "primary" }]);
+
+    const t = session();
+    t.commit("primary", "/reply?id=1");
+    assert.deepEqual(t.send({ type: "user.done", id: "primary" }),
+      [{ type: "context.navigate", id: "primary", url: `${HN}/`, mode: "push" }]);
+    t.commit("primary", "/");
+    t.page("primary", "/", "ready");
+    assert.deepEqual(t.send({ type: "user.done", id: "primary" }), [], "Done on a custom screen does nothing");
+  });
+
   test("3: a page that needs an account signs in, then returns to custom", () => {
     const s = session();
     s.commit("primary", "/");

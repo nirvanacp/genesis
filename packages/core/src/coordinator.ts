@@ -198,8 +198,14 @@ function apply(state: CoordinatorState, event: CoordinatorEvent, manifest: Manif
 
     case "user.done": {
       const context = state.contexts[event.id];
-      if (!context || context.pin === "none") return unchanged;
-      return { state: withContext(state, { ...context, pin: "none" }), effects };
+      if (!context) return unchanged;
+      if (context.pin !== "none") return { state: withContext(state, { ...context, pin: "none" }), effects };
+      // An unpinned website page (one no route maps, such as a reply form) leaves for the page before it.
+      if (presentation(context, manifest) !== "website") return unchanged;
+      if (context.canGoBack) return { state, effects: [{ type: "context.back", id: context.id }] };
+      const start = manifest.contexts.find(c => c.id === context.id)?.startUrl;
+      if (start) effects.push({ type: "context.navigate", id: context.id, url: start, mode: "push" });
+      return { state, effects };
     }
 
     case "navigate.url": {
