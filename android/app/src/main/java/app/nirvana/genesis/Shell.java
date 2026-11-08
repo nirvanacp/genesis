@@ -56,14 +56,16 @@ final class Shell implements Views.Listener {
     private final Activity activity;
     private final Owner owner;
     private final Views views;
-    private final Tokens tokens;
+    private Tokens tokens;
     private final FrameLayout root;
     private final ScrollView launcher;
     private final FrameLayout applet, sources, foreground;
     private final Splash splash;
     private final Views.Revealed revealed;
     private final WebsiteBar bar;
-    private final View menu;
+    private final View menu, barrier;
+    private ImageView menuFace;
+    private JSONArray launcherApplets;
     private final Map<String, Views.Page> pages = new HashMap<>();
     private Views.Page revealedPage;
     private String appletId, appletName;
@@ -92,7 +94,7 @@ final class Shell implements Views.Listener {
         sources.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
         sources.setDescendantFocusability(ViewGroup.FOCUS_BLOCK_DESCENDANTS);
         applet.addView(sources, new FrameLayout.LayoutParams(-1, -1));
-        View barrier = new View(activity);
+        barrier = new View(activity);
         barrier.setBackgroundColor(tokens.surface);
         barrier.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         applet.addView(barrier, new FrameLayout.LayoutParams(-1, -1));
@@ -138,6 +140,7 @@ final class Shell implements Views.Listener {
 
     void showLauncher(JSONArray applets) throws JSONException {
         destroyAll();
+        launcherApplets = applets;
         appletId = null;
         applet.setVisibility(View.GONE);
         launcher.setVisibility(View.VISIBLE);
@@ -383,6 +386,31 @@ final class Shell implements Views.Listener {
         return owner.chooseFiles(params, callback, () -> pages.get(key(page.ref)) == page && page.isRevealed());
     }
 
+    /**
+     * The system switched between light and dark. The activity keeps running (the manifest handles
+     * `uiMode`), so the applet and its pages survive; only the native views take the new colors.
+     */
+    void appearanceChanged() {
+        boolean dark = (activity.getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK)
+            == android.content.res.Configuration.UI_MODE_NIGHT_YES;
+        if (dark == tokens.dark) return;
+        // The theme still holds the old appearance's colors; apply it again so they resolve for the new one.
+        activity.getTheme().applyStyle(R.style.Theme_NirvanaGenesis, true);
+        DynamicColors.applyToActivityIfAvailable(activity);
+        tokens = new Tokens(activity);
+        root.setBackgroundColor(tokens.surface);
+        barrier.setBackgroundColor(tokens.surface);
+        revealed.setBackgroundColor(tokens.surface);
+        splash.restyle(tokens);
+        bar.restyle(tokens);
+        styleMenuFace();
+        tokens.applySystemBars(activity);
+        if (launcher.getVisibility() == View.VISIBLE && launcherApplets != null) {
+            launcher.removeAllViews();
+            launcher.addView(new Launcher(activity, tokens, this::openApplet).build(launcherApplets), new ScrollView.LayoutParams(-1, -2));
+        }
+    }
+
     // -----------------------------------------------------------------------------------------
     // Pieces
 
@@ -398,13 +426,18 @@ final class Shell implements Views.Listener {
         target.setFocusable(true);
         target.setContentDescription("Genesis menu");
         target.setOnClickListener(v -> openMenu());
-        ImageView face = tokens.icon(R.drawable.ic_nav_more, tokens.onSecondaryContainer);
-        face.setScaleType(ImageView.ScaleType.CENTER);
-        face.setBackground(tokens.pressable(tokens.secondaryContainer, 12, 12));
-        face.setElevation(tokens.dp(3));
-        face.setDuplicateParentStateEnabled(true);
-        target.addView(face, new FrameLayout.LayoutParams(tokens.dp(44), tokens.dp(44), Gravity.CENTER));
+        menuFace = tokens.icon(R.drawable.ic_nav_more, tokens.onSecondaryContainer);
+        menuFace.setScaleType(ImageView.ScaleType.CENTER);
+        menuFace.setElevation(tokens.dp(3));
+        menuFace.setDuplicateParentStateEnabled(true);
+        styleMenuFace();
+        target.addView(menuFace, new FrameLayout.LayoutParams(tokens.dp(44), tokens.dp(44), Gravity.CENTER));
         return target;
+    }
+
+    private void styleMenuFace() {
+        menuFace.setImageTintList(android.content.res.ColorStateList.valueOf(tokens.onSecondaryContainer));
+        menuFace.setBackground(tokens.pressable(tokens.secondaryContainer, 12, 12));
     }
 
     /** Top end, with the visible button 8 dp from the edges. */

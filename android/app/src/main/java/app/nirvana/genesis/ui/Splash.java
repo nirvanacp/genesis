@@ -13,7 +13,7 @@ public final class Splash extends FrameLayout {
     /** Fast starts never show the progress bar. */
     private static final long PROGRESS_DELAY_MS = 1000;
 
-    private final Tokens tokens;
+    private Tokens tokens;
     private final FrameLayout monogram;
     private final TextView name;
     private final LinearProgressIndicator progress;
@@ -51,6 +51,13 @@ public final class Splash extends FrameLayout {
         progress.setVisibility(View.INVISIBLE);
         setVisibility(View.VISIBLE);
         postDelayed(showProgress, PROGRESS_DELAY_MS);
+    }
+
+    /** Takes the colors of a new appearance; the next `show` uses them for the monogram too. */
+    public void restyle(Tokens tokens) {
+        this.tokens = tokens;
+        setBackgroundColor(tokens.surface);
+        name.setTextColor(tokens.onSurface);
     }
 
     public void hide() {

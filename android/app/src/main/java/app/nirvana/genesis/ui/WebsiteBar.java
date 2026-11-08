@@ -18,6 +18,7 @@ public final class WebsiteBar extends LinearLayout {
     private static final int MENU_ROOM_DP = 60;
 
     private final TextView title, host;
+    private final MaterialButton button;
 
     public WebsiteBar(Context context, Tokens tokens, Runnable done) {
         super(context);
@@ -38,7 +39,7 @@ public final class WebsiteBar extends LinearLayout {
         text.addView(host);
         addView(text, new LayoutParams(0, -2, 1));
 
-        MaterialButton button = tokens.button("Done", true);
+        button = tokens.button("Done", true);
         button.setInsetTop(tokens.dp(4));
         button.setInsetBottom(tokens.dp(4));
         button.setCornerRadius(tokens.dp(20));
@@ -51,6 +52,15 @@ public final class WebsiteBar extends LinearLayout {
     }
 
     public void setTitle(String value) { title.setText(value); }
+
+    /** Takes the colors of a new appearance. */
+    public void restyle(Tokens tokens) {
+        setBackgroundColor(tokens.surfaceContainer);
+        title.setTextColor(tokens.onSurface);
+        host.setTextColor(tokens.onSurfaceVariant);
+        button.setBackgroundTintList(android.content.res.ColorStateList.valueOf(tokens.secondaryContainer));
+        button.setTextColor(tokens.onSecondaryContainer);
+    }
 
     /** Shows the host of the page's current URL, or nothing when it has none. */
     public void setUrl(String url) {
