@@ -126,6 +126,15 @@ describe("section 5.5 scenarios", () => {
     t.commit("primary", "/");
     t.page("primary", "/", "ready");
     assert.deepEqual(t.send({ type: "user.done", id: "primary" }), [], "Done on a custom screen does nothing");
+
+    const u = session();
+    u.commit("primary", "/");
+    u.page("primary", "/", "ready");
+    u.send({ type: "user.viewWebsite", id: "primary" });
+    u.commit("primary", "/submitted?id=pg");
+    assert.deepEqual(u.send({ type: "user.done", id: "primary" }), [{ type: "context.back", id: "primary" }],
+      "a pin on an unrouted page clears and leaves in one Done");
+    assert.equal(u.context().pin, "none");
   });
 
   test("3: a page that needs an account signs in, then returns to custom", () => {
