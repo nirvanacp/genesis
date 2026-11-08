@@ -93,11 +93,14 @@ h1.story-title { font-size: 1.25rem; line-height: 1.3; font-weight: 700; }
 .vote { display: inline-grid; place-items: center; width: 40px; min-height: 48px; flex: none; color: var(--muted); }
 .vote.voted { color: var(--accent); }
 .vote svg { width: 18px; height: 18px; }
+.vote.small { width: 32px; min-height: 40px; margin-left: -8px; }
+.vote.small svg { width: 14px; height: 14px; }
 
 .comment { padding: 10px 0 10px calc(var(--depth, 0) * 12px); border-bottom: 1px solid var(--line); }
 .comment > * { border-left: 2px solid transparent; }
 .comment[style*="--depth: 0"] > * { border-left: 0; }
 .comment-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.comment-head .meta { flex: 1; }
 .comment-head .text-button { min-height: 40px; font-size: .8rem; }
 .comment-links { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 4px; font-size: .8rem; }
 .comment-links a { color: var(--muted); display: inline-flex; align-items: center; gap: 3px; min-height: 32px; }

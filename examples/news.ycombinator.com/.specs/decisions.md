@@ -23,3 +23,9 @@
 - Date and origin: 2026-11-06, agent choice during the SDK 0.0 rewrite.
 - Choice and rationale: Save and Edit push a `save` screen carrying a story snapshot, replacing the old dialog. Android Back closes it through the stack and no leave guard is needed. Conflict and uncertain-write rereads, category creation and confirmed removal are unchanged.
 - Evidence and supersession: [save screen](../src/screens/save.tsx). Supersedes the story dialog from the previous release.
+
+## decision-0005: Move to the adapter runtime as a vertical slice
+
+- Date and origin: 2026-11-08, step 7 of the session projection migration requested by the user; implementation choices by the agent.
+- Choice and rationale: The applet moves to manifest schema 6 with one `primary` context and an adapter (`feed`, `item`, `user` pages) that publishes regions and actions instead of typed sources and intents. Votes are a desired-state `setVoted` action that clicks HN's own vote link, so the account's vote token stays in the page. Reply, comment and sign-in open HN's pages in the same context; unrouted HN pages show as the website, replacing the `website-*` routes and the `unsupported` screen. Only Home, discussions and profiles are ported; the other screens wait for step 8 and are listed as pending in [current](current.md). A `news` route is kept beside `home` so the front page's own links and its More pages stay on the feed screen.
+- Evidence and supersession: [manifest](../applet.json), [adapter](../src/adapter.ts), [adapter tests](../test/adapter.test.mjs). Supersedes the sources and intents of decision-0003; the product choices of decision-0002 stay in force.

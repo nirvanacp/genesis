@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useCallback, type ReactNode } from "react";
 import { useNavigation } from "@genesis/sdk/react";
 import type { ErrorInfo } from "@genesis/sdk";
 import { ORIGIN, type TextPart } from "../model";
@@ -19,17 +19,24 @@ export function Icon({ name, filled = false }: { name: IconName; filled?: boolea
   return <svg viewBox="0 0 24 24" aria-hidden="true" className={filled ? "filled" : undefined}><path d={ICONS[name]} /></svg>;
 }
 
-/** Website links go through the manifest, which picks a screen or the website sheet. */
-export function useOpenRoute() {
+/**
+ * Website links go through the manifest: a routed URL opens its screen, any other URL shows
+ * the website in the same context. `navigate` throws only for a URL it cannot open.
+ */
+export function useOpenUrl() {
   const { navigate } = useNavigation();
-  return (url: string) => {
-    navigate({ kind: "route", url }).catch(error => console.error("Genesis could not open", url, error));
-  };
+  return useCallback((url: string) => {
+    try {
+      navigate({ url });
+    } catch (error) {
+      console.error("Genesis could not open", url, error);
+    }
+  }, [navigate]);
 }
 
 /** HN's formatted text. Links open through the manifest; text is never parsed as HTML. */
 export function RichText({ parts, onLink }: { parts: TextPart[]; onLink?: (url: string) => void }) {
-  const open = useOpenRoute();
+  const open = useOpenUrl();
   const follow = onLink ?? open;
   return <div className="rich">{parts.map((part, index) => {
     let node: ReactNode = part.text;
@@ -57,30 +64,22 @@ export function Notice({ title, children, role }: { title: string; children?: Re
   return <section className="notice" role={role}><h2>{title}</h2>{children}</section>;
 }
 
-export function LoadError({ error, url }: { error: ErrorInfo | null; url: string | null }) {
-  const { navigate } = useNavigation();
-  const message = error?.code === "NOT_READY"
+/** A page that could not be read, with no earlier copy to show. The website is one tap away. */
+export function LoadError({ error }: { error: ErrorInfo | null }) {
+  const { viewWebsite } = useNavigation();
+  const message = error?.code === "NOT_READY" || error?.code === "DEADLINE"
     ? "Hacker News did not answer in time."
     : error?.message || "This page could not be read.";
   return <Notice title="Couldn't load this page" role="alert">
     <p>{message}</p>
-    {url && <button type="button" className="secondary" onClick={() => void navigate({ kind: "website", url })}>
+    <button type="button" className="secondary" onClick={() => viewWebsite()}>
       Open on Hacker News <Icon name="external" />
-    </button>}
-  </Notice>;
-}
-
-/** Shown when HN asks for an account; sign-in happens on HN's own page in the website sheet. */
-export function SignInPrompt({ reason, goto }: { reason: string; goto: string }) {
-  const { navigate } = useNavigation();
-  return <Notice title="Sign in to Hacker News">
-    <p>{reason}</p>
-    <button type="button" className="primary" onClick={() =>
-      void navigate({ kind: "website", url: `${ORIGIN}/login?goto=${encodeURIComponent(goto)}` })}>
-      Sign in <Icon name="external" />
     </button>
   </Notice>;
 }
+
+/** HN's login page, which returns to `goto` (a path relative to the site root) after sign-in. */
+export const loginUrl = (goto: string) => `${ORIGIN}/login?goto=${encodeURIComponent(goto)}`;
 
 /** "3 hours ago" style metadata joined with separators, skipping unknown parts. */
 export function Meta({ parts }: { parts: (ReactNode | null | false)[] }) {

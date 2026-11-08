@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 5,
+  "schemaVersion": 6,
   "id": "hn-bookmarks",
   "name": "Hacker News",
   "origins": [
@@ -10,187 +10,30 @@
     "screens": [
       "feed",
       "item",
-      "user",
-      "info",
-      "search",
-      "post",
-      "saved",
-      "save",
-      "me",
-      "unsupported"
+      "user"
     ]
   },
-  "sources": [
+  "adapter": "src/adapter.ts",
+  "contexts": [
     {
       "id": "primary",
-      "startUrl": "https://news.ycombinator.com/",
-      "adapter": "src/sources/primary.ts"
-    },
-    {
-      "id": "post",
-      "startUrl": "https://news.ycombinator.com/submit",
-      "adapter": "src/sources/post.ts"
-    },
-    {
-      "id": "me",
-      "startUrl": "https://news.ycombinator.com/news?account=1",
-      "adapter": "src/sources/me.ts"
+      "startUrl": "https://news.ycombinator.com/"
     }
   ],
   "routes": [
     {
-      "id": "account",
-      "pattern": "/news",
-      "query": [
-        "account"
-      ],
-      "kind": "adapted",
-      "source": "me",
-      "screen": "me",
-      "requiresSignIn": true
-    },
-    {
       "id": "home",
       "pattern": "/",
-      "kind": "adapted",
-      "source": "primary",
-      "screen": "feed"
+      "page": "feed",
+      "screen": "feed",
+      "context": "primary"
     },
     {
       "id": "news",
       "pattern": "/news",
-      "kind": "adapted",
-      "source": "primary",
-      "screen": "feed"
-    },
-    {
-      "id": "newest",
-      "pattern": "/newest",
-      "kind": "adapted",
-      "source": "primary",
-      "screen": "feed"
-    },
-    {
-      "id": "front",
-      "pattern": "/front",
-      "kind": "adapted",
-      "source": "primary",
-      "screen": "feed"
-    },
-    {
-      "id": "newcomments",
-      "pattern": "/newcomments",
-      "kind": "adapted",
-      "source": "primary",
-      "screen": "feed"
-    },
-    {
-      "id": "ask",
-      "pattern": "/ask",
-      "kind": "adapted",
-      "source": "primary",
-      "screen": "feed"
-    },
-    {
-      "id": "show",
-      "pattern": "/show",
-      "kind": "adapted",
-      "source": "primary",
-      "screen": "feed"
-    },
-    {
-      "id": "shownew",
-      "pattern": "/shownew",
-      "kind": "adapted",
-      "source": "primary",
-      "screen": "feed"
-    },
-    {
-      "id": "asknew",
-      "pattern": "/asknew",
-      "kind": "adapted",
-      "source": "primary",
-      "screen": "feed"
-    },
-    {
-      "id": "jobs",
-      "pattern": "/jobs",
-      "kind": "adapted",
-      "source": "primary",
-      "screen": "feed"
-    },
-    {
-      "id": "best",
-      "pattern": "/best",
-      "kind": "adapted",
-      "source": "primary",
-      "screen": "feed"
-    },
-    {
-      "id": "active",
-      "pattern": "/active",
-      "kind": "adapted",
-      "source": "primary",
-      "screen": "feed"
-    },
-    {
-      "id": "from",
-      "pattern": "/from",
-      "kind": "adapted",
-      "source": "primary",
-      "screen": "feed"
-    },
-    {
-      "id": "submitted",
-      "pattern": "/submitted",
-      "query": [
-        "id"
-      ],
-      "kind": "adapted",
-      "source": "primary",
-      "screen": "feed"
-    },
-    {
-      "id": "threads",
-      "pattern": "/threads",
-      "query": [
-        "id"
-      ],
-      "kind": "adapted",
-      "source": "primary",
-      "screen": "feed"
-    },
-    {
-      "id": "favorites",
-      "pattern": "/favorites",
-      "query": [
-        "id"
-      ],
-      "kind": "adapted",
-      "source": "primary",
-      "screen": "feed"
-    },
-    {
-      "id": "hidden",
-      "pattern": "/hidden",
-      "query": [
-        "id"
-      ],
-      "kind": "adapted",
-      "source": "primary",
+      "page": "feed",
       "screen": "feed",
-      "requiresSignIn": true
-    },
-    {
-      "id": "upvoted",
-      "pattern": "/upvoted",
-      "query": [
-        "id"
-      ],
-      "kind": "adapted",
-      "source": "primary",
-      "screen": "feed",
-      "requiresSignIn": true
+      "context": "primary"
     },
     {
       "id": "item",
@@ -198,9 +41,9 @@
       "query": [
         "id"
       ],
-      "kind": "adapted",
-      "source": "primary",
-      "screen": "item"
+      "page": "item",
+      "screen": "item",
+      "context": "primary"
     },
     {
       "id": "user",
@@ -208,117 +51,9 @@
       "query": [
         "id"
       ],
-      "kind": "adapted",
-      "source": "primary",
-      "screen": "user"
-    },
-    {
-      "id": "formatdoc",
-      "pattern": "/formatdoc",
-      "kind": "adapted",
-      "source": "primary",
-      "screen": "info"
-    },
-    {
-      "id": "faq",
-      "pattern": "/newsfaq.html",
-      "kind": "adapted",
-      "source": "primary",
-      "screen": "info"
-    },
-    {
-      "id": "guidelines",
-      "pattern": "/newsguidelines.html",
-      "kind": "adapted",
-      "source": "primary",
-      "screen": "info"
-    },
-    {
-      "id": "lists",
-      "pattern": "/lists",
-      "kind": "adapted",
-      "source": "primary",
-      "screen": "info"
-    },
-    {
-      "id": "leaders",
-      "pattern": "/leaders",
-      "kind": "adapted",
-      "source": "primary",
-      "screen": "info"
-    },
-    {
-      "id": "submit",
-      "pattern": "/submit",
-      "kind": "adapted",
-      "source": "post",
-      "screen": "post",
-      "requiresSignIn": true
-    },
-    {
-      "id": "website-changepw",
-      "pattern": "/changepw",
-      "kind": "website"
-    },
-    {
-      "id": "website-comment",
-      "pattern": "/comment",
-      "kind": "website"
-    },
-    {
-      "id": "website-delete",
-      "pattern": "/delete",
-      "kind": "website"
-    },
-    {
-      "id": "website-edit",
-      "pattern": "/edit",
-      "kind": "website"
-    },
-    {
-      "id": "website-fave",
-      "pattern": "/fave",
-      "kind": "website"
-    },
-    {
-      "id": "website-forgot",
-      "pattern": "/forgot",
-      "kind": "website"
-    },
-    {
-      "id": "website-login",
-      "pattern": "/login",
-      "kind": "website"
-    },
-    {
-      "id": "website-logout",
-      "pattern": "/logout",
-      "kind": "website"
-    },
-    {
-      "id": "website-r",
-      "pattern": "/r",
-      "kind": "website"
-    },
-    {
-      "id": "website-reply",
-      "pattern": "/reply",
-      "kind": "website"
-    },
-    {
-      "id": "website-vote",
-      "pattern": "/vote",
-      "kind": "website"
-    },
-    {
-      "id": "website-x",
-      "pattern": "/x",
-      "kind": "website"
-    },
-    {
-      "id": "website-hide",
-      "pattern": "/hide",
-      "kind": "website"
+      "page": "user",
+      "screen": "user",
+      "context": "primary"
     }
   ],
   "capabilities": {

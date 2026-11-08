@@ -1,54 +1,48 @@
-import { ScrollMemory, useIntent, useNavigation, useScreenSource } from "@genesis/sdk/react";
-import { ORIGIN, type FeedData } from "../model";
-import { CommentView, StoryRow } from "../components/story";
-import { LoadError, Notice, SignInPrompt, Skeleton, useOpenRoute } from "../components/ui";
+import { ScrollMemory, useAction, usePage, usePending, useRecord, useRegion } from "@genesis/sdk/react";
+import type { MoreLink, Story } from "../model";
+import { StoryRow } from "../components/story";
+import { LoadError, Notice, Skeleton, useOpenUrl } from "../components/ui";
 
-/** The Home feed chooser; each choice is an HN URL, so the manifest still decides the screen. */
-export const HOME_FEEDS = [
-  { label: "Top", path: "/", routes: ["home", "news"] },
-  { label: "New", path: "/newest", routes: ["newest"] },
-  { label: "Past", path: "/front", routes: ["front"] },
-  { label: "Comments", path: "/newcomments", routes: ["newcomments"] },
-  { label: "Ask", path: "/ask", routes: ["ask"] },
-  { label: "Show", path: "/show", routes: ["show"] },
-  { label: "Jobs", path: "/jobs", routes: ["jobs"] },
-];
-const HOME_ROUTES = HOME_FEEDS.flatMap(feed => feed.routes);
-/** Feeds of one account; HN shows its login form for these when signed out. */
-const PRIVATE_ROUTES = ["hidden", "upvoted"];
-
+/**
+ * The front page (`/`, `/news`). Rows are `memo` components keyed by the record key, so a patch
+ * that changes one story renders only that row. Other feeds return in step 8.
+ */
 export function FeedScreen() {
-  const { screen, navigate } = useNavigation();
-  const page = useScreenSource<FeedData>();
-  const vote = useIntent("primary");
-  const open = useOpenRoute();
-  const routeId = screen.source?.routeId ?? "";
-  const home = HOME_ROUTES.includes(routeId);
-  const data = PRIVATE_ROUTES.includes(routeId) && page.stale ? null : page.data;
+  const page = usePage();
+  const stories = useRegion<Story | null>("stories");
+  const more = useRecord<MoreLink>("more", null);
+  const loadMore = useAction("loadMore");
+  const loading = usePending(null, null).some(action => action.name === "loadMore");
+  const open = useOpenUrl();
+  const signedIn = page.account !== null;
+  const shown = page.pageId === "feed" ? stories.order : [];
+
+  const next = () => void loadMore(null).then(result => {
+    // The click did not leave the page; the link's URL still opens the next page.
+    if (result.outcome === "failed" && more) open(more.data.url);
+  });
 
   let body;
-  if (page.status === "auth") body = <SignInPrompt reason="Hacker News shows this list only to its owner." goto={new URL(screen.source!.url).pathname.slice(1) + new URL(screen.source!.url).search} />;
-  else if (page.status === "unsupported") body = <Notice title="This page moved"><p>Hacker News sent this feed somewhere the app doesn't show.</p></Notice>;
-  else if (!data) body = page.status === "error" ? <LoadError error={page.error} url={page.url} /> : <Skeleton label="Loading stories" />;
-  else if (data.stories.length === 0 && data.comments.length === 0) body = <Notice title="Nothing here yet"><p>This list is empty on Hacker News.</p></Notice>;
-  else body = <>
+  if (shown.length === 0) {
+    if (page.pageId === "feed" && page.status === "ready" && stories.status === "ready") {
+      body = <Notice title="Nothing here yet"><p>This list is empty on Hacker News.</p></Notice>;
+    } else if (page.status === "error" || stories.status === "error") {
+      body = <LoadError error={page.error ?? stories.error} />;
+    } else body = <Skeleton label="Loading stories" />;
+  } else body = <>
     {page.status === "error" && <p className="inline-error" role="alert">Couldn't refresh. Showing the last copy.</p>}
-    {vote.error != null && <p className="inline-error" role="alert">The vote didn't go through. Try again.</p>}
-    {data.commentList
-      ? data.comments.map(entry => <CommentView key={entry.id} entry={entry} showStory />)
-      : data.stories.map(story => <StoryRow key={story.id} story={story}
-          actions={{ vote: id => void vote.act({ name: "vote", id }).catch(() => {}), voting: vote.pending }} />)}
-    {data.nextUrl && <button type="button" className="secondary more" onClick={() => open(data.nextUrl!)}>More</button>}
+    {stories.status === "error" && <p className="inline-error" role="alert">Some stories couldn't be read.</p>}
+    {shown.map(key => {
+      const story = stories.get(key)?.data;
+      return story && <StoryRow key={key} story={story} region="stories" signedIn={signedIn} />;
+    })}
+    {more && <button type="button" className="secondary more" disabled={loading || page.stale} onClick={next}>
+      {loading ? "Loading…" : "More"}
+    </button>}
   </>;
 
-  return <ScrollMemory className="screen" aria-busy={page.stale}>
-    {home
-      ? <nav className="chips" aria-label="Feeds">{HOME_FEEDS.map(feed => {
-          const active = feed.routes.includes(routeId);
-          return <button type="button" key={feed.path} className="chip" aria-pressed={active}
-            onClick={() => !active && void navigate({ kind: "route", url: ORIGIN + feed.path, mode: "replace" })}>{feed.label}</button>;
-        })}</nav>
-      : <h1 className="screen-title">{data?.title ?? "Hacker News"}</h1>}
+  return <ScrollMemory className="screen" aria-busy={page.stale || page.status === "loading"}>
+    <h1 className="screen-title">Top</h1>
     {body}
   </ScrollMemory>;
 }
