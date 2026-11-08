@@ -58,6 +58,11 @@ Do not post, comment, message, follow, vote, purchase or change account settings
 | Reload fails over a stale copy | The copy with an inline error, then the website after the deadline |
 | Reselect the current tab, off and on its start page | The start page; then scroll to top |
 | An action whose evidence does not appear | The `unknown` message, not a success |
+| Forward, then Back with the system gesture | A push, then a pop over the stale copy; no copy stays on screen and Back answers at once |
+| Switch tabs; open and close a sheet or the drawer | Fade through; the sheet rises and sinks over the kept screen; the drawer slides from the start edge |
+| A slow load, then a reload of the loaded screen | The skeleton fades in and shimmers, the content fades in once; on reload the content stays with a progress bar |
+| Pull to refresh, a toggle, completing or removing an item | The indicator follows and spins until ready; the toggle changes at once; a toast offers Undo |
+| Reduced motion on (Remove animations) | Screens swap at once, loaders stay still, every state change still shows |
 
 ## Diagnosing
 

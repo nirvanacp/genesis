@@ -24,7 +24,7 @@ Read the latest request, local instructions, `.specs/current.md`, relevant decis
 | requirement-records | Authoring requirement: keep current intent, decisions and change outcomes in applet records | [Records](applet-records.md) |
 | requirement-honest-verification | Verification requirement: keep static, synthetic and live evidence apart; keep blocked journeys visible; no unrequested posts, messages, purchases or account changes | [Verification](verification.md) |
 | requirement-operator-startup | Workflow requirement: maintain backend start commands; start services only when the user asks | [Services and data](services-and-data.md#local-startup-and-ports) |
-| default-* | Initial UI and navigation choices and their compatible overrides | [Defaults](defaults.md) |
+| default-* | Initial UI and navigation choices and their compatible overrides | [Defaults](defaults.md), [motion](motion.md) |
 | practice-focused-modules | Best practice: separate adapter pages, data types, screens, repositories and backend calls; abstract only after real reuse | [Patterns](patterns.md) |
 | practice-bounded-work | Best practice: bounded lists, one subscription per concern, shared components and tokens | [Patterns](patterns.md), [design](design.md) |
 | practice-small-dependencies | Best practice: the smallest useful dependency and capability set, without shrinking the requested scope | [Getting started](getting-started.md) |
