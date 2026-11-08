@@ -26,6 +26,13 @@ export function hrefOf(element: Element): string | null {
   return href ? safeUrl(href, baseOf(element)) : null;
 }
 
+/**
+ * The user named in an item's header. HN marks the link with `.hnuser` on some pages and not on
+ * others, so the `user?id=` link is the stable signal.
+ */
+const userOf = (head: Element | null) =>
+  clean((head?.querySelector(".hnuser") ?? head?.querySelector("a[href^='user?id=']"))?.textContent, 64) || null;
+
 /** Positive evidence for every HN page: the document is parsed and HN's layout table exists. */
 export const hnPage = (doc: Document) => doc.readyState !== "loading" && doc.querySelector("#hnmain") !== null;
 
@@ -97,7 +104,7 @@ export function story(row: Element): Story | null {
     title,
     articleUrl: href && itemIdOf(href) !== row.id ? href : null,
     domain: clean(row.querySelector(".sitestr")?.textContent, 120) || null,
-    submitter: clean(sub?.querySelector(".hnuser")?.textContent, 64) || null,
+    submitter: userOf(sub),
     score: clean(sub?.querySelector(".score")?.textContent, 40) || null,
     age: clean(sub?.querySelector(".age")?.textContent, 40) || null,
     comments: commentsLink ? clean(commentsLink.textContent, 40) : null,
@@ -128,7 +135,7 @@ export function comment(row: Element, { links = false } = {}): CommentEntry | nu
   const storyId = onStory ? itemIdOf(hrefOf(onStory) ?? "") : null;
   return {
     id: row.id,
-    author: clean(row.querySelector(".hnuser")?.textContent, 64) || null,
+    author: userOf(row.querySelector(".comhead")),
     age: clean(row.querySelector(".age")?.textContent, 40) || null,
     depth: Math.min(20, Math.max(0, Number(row.querySelector(".ind")?.getAttribute("indent") ?? 0) || 0)),
     parent: parentOf(row),

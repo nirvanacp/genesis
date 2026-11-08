@@ -84,7 +84,7 @@ export function ItemScreen() {
       {data.story && <StoryRow heading story={data.story} region="story" signedIn={signedIn} />}
       {data.comment && <CommentRow head entry={data.comment} region="story" storyId={storyId} signedIn={signedIn} onLink={follow} />}
       {data.text.length > 0 && <div className="toptext"><RichText parts={data.text} onLink={follow} /></div>}
-      {data.canComment && <button type="button" className="secondary" onClick={() =>
+      {signedIn && data.canComment && <button type="button" className="secondary" onClick={() =>
         open(`${ORIGIN}/reply?id=${id}&goto=${encodeURIComponent(goto)}`)}>Add a comment</button>}
       {!signedIn && <button type="button" className="secondary" onClick={() => open(loginUrl(goto))}>Sign in to comment</button>}
       <h2 className="section-title">{keys.length === 0 ? "No comments yet" : "Comments"}</h2>

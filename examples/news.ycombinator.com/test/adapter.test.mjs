@@ -33,12 +33,12 @@ ${storyRows("1002", { rank: 2, title: "Ask HN: Text posts?", href: "item?id=1002
 <tr class="morespace"></tr><tr><td colspan="2"></td><td class="title"><a href="?p=2" class="morelink" rel="next">More</a></td></tr>
 </tbody></table>`, { me: signedIn ? "alice" : null });
 
-const commentRow = (id, { indent, parent, user, text, voted = false }) => `
+const commentRow = (id, { indent, parent, user, text, voted = false, userClass = true }) => `
 <tr class="athing comtr" id="${id}"><td><table><tbody><tr>
   <td class="ind" indent="${indent}"><img src="s.gif" height="1" width="${indent * 40}"></td>
   <td class="votelinks"><center><a id="up_${id}" class="clicky${voted ? " nosee" : ""}" href="vote?id=${id}&amp;how=up&amp;auth=tok${id}&amp;goto=item%3Fid%3D2001"><div class="votearrow"></div></a></center></td>
   <td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead">
-    <a href="user?id=${user}" class="hnuser">${user}</a> <span class="age"><a href="item?id=${id}">1 hour ago</a></span>
+    <a href="user?id=${user}"${userClass ? ' class="hnuser"' : ""}>${user}</a> <span class="age"><a href="item?id=${id}">1 hour ago</a></span>
     ${voted ? `<span id="unv_${id}"> | <a id="un_${id}" class="clicky" href="vote?id=${id}&amp;how=un&amp;auth=tok${id}">unvote</a></span>` : ""}
     <span class="navs">${parent ? ` | <a href="#${parent}" class="clicky">parent</a>` : ""} | <a href="#${id}" class="clicky">next</a> <a class="togg clicky" n="1" href="javascript:void(0)">[–]</a></span>
   </span></div><br><div class="comment"><div class="commtext c00">${text}</div>
@@ -52,7 +52,7 @@ ${storyRows("2001", { rank: "", title: "Show HN: A thread", href: "https://examp
 </tbody></table><br><table class="comment-tree"><tbody>
 ${commentRow("3001", { indent: 0, user: "erin", text: "Top level <code>code</code>" })}
 ${commentRow("3002", { indent: 1, parent: "3001", user: "frank", text: "A reply", voted: true })}
-${commentRow("3003", { indent: 0, user: "grace", text: "Another one" })}
+${commentRow("3003", { indent: 0, user: "grace", text: "Another one", userClass: false })}
 </tbody></table><a href="item?id=2001&amp;p=2" class="morelink" rel="next">More</a>`);
 
 const userPage = () => layout(`<table><tbody>
@@ -151,6 +151,7 @@ test("an item page reads its head, a keyed thread with parents and depths, and i
     [["3001", 0, null], ["3002", 1, "3001"], ["3003", 0, null]]);
   const reply = comments[1].data;
   assert.equal(reply.author, "frank");
+  assert.equal(comments[2].data.author, "grace", "the user link names the author without .hnuser");
   assert.deepEqual([reply.canVote, reply.voted, reply.canReply], [false, true, true]);
   assert.deepEqual(reply.links, [], "thread rows carry no navigation links");
   assert.deepEqual(comments[0].data.parts, [{ text: "Top level " }, { text: "code", code: true }]);
