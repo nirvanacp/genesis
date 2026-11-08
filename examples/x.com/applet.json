@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 5,
+  "schemaVersion": 6,
   "id": "x-bookmarks",
   "name": "X",
   "origins": [
@@ -18,74 +18,66 @@
       "account",
       "categories",
       "save",
-      "manage",
-      "unsupported"
+      "manage"
     ]
   },
-  "sources": [
+  "adapter": "src/adapter.ts",
+  "contexts": [
     {
       "id": "primary",
-      "startUrl": "https://x.com/home",
-      "adapter": "src/sources/primary.ts"
+      "startUrl": "https://x.com/home"
     },
     {
       "id": "explore",
-      "startUrl": "https://x.com/explore",
-      "adapter": "src/sources/explore.ts"
+      "startUrl": "https://x.com/explore"
     },
     {
       "id": "account",
-      "startUrl": "https://x.com/settings/account",
-      "adapter": "src/sources/account.ts"
+      "startUrl": "https://x.com/settings/account"
     }
   ],
   "routes": [
     {
       "id": "home",
       "pattern": "/home",
-      "kind": "adapted",
-      "source": "primary",
+      "page": "timeline",
       "screen": "home",
-      "requiresSignIn": true
+      "context": "primary"
     },
     {
       "id": "notifications",
       "pattern": "/notifications",
-      "kind": "adapted",
-      "source": "primary",
+      "page": "timeline",
       "screen": "notifications",
-      "requiresSignIn": true
+      "context": "primary"
     },
     {
       "id": "bookmarks",
       "pattern": "/i/history",
-      "kind": "adapted",
-      "source": "primary",
+      "page": "timeline",
       "screen": "saved",
-      "requiresSignIn": true
+      "context": "primary"
     },
     {
       "id": "own-likes",
       "pattern": "/i/history/likes",
-      "kind": "adapted",
-      "source": "primary",
+      "page": "timeline",
       "screen": "saved",
-      "requiresSignIn": true
+      "context": "primary"
     },
     {
       "id": "bookmarks-alias",
       "pattern": "/i/bookmarks",
-      "kind": "adapted",
-      "source": "primary",
+      "page": "timeline",
       "screen": "saved",
-      "requiresSignIn": true
+      "context": "primary"
     },
     {
       "id": "explore",
       "pattern": "/explore/*",
-      "kind": "adapted",
-      "source": "explore",
-      "screen": "explore"
+      "page": "explore",
+      "screen": "explore",
+      "context": "explore"
     },
     {
       "id": "search",
@@ -93,161 +85,58 @@
       "query": [
         "q"
       ],
-      "kind": "adapted",
-      "source": "explore",
-      "screen": "explore"
+      "page": "explore",
+      "screen": "explore",
+      "context": "explore"
     },
     {
       "id": "hashtag",
       "pattern": "/hashtag/:tag",
-      "kind": "adapted",
-      "source": "explore",
-      "screen": "explore"
+      "page": "explore",
+      "screen": "explore",
+      "context": "explore"
     },
     {
       "id": "account",
       "pattern": "/settings/account",
-      "kind": "adapted",
-      "source": "account",
+      "page": "account",
       "screen": "account",
-      "requiresSignIn": true
-    },
-    {
-      "id": "root",
-      "pattern": "/",
-      "kind": "website"
-    },
-    {
-      "id": "login",
-      "pattern": "/login",
-      "kind": "website"
-    },
-    {
-      "id": "logout",
-      "pattern": "/logout",
-      "kind": "website"
-    },
-    {
-      "id": "flow",
-      "pattern": "/i/flow/*",
-      "kind": "website"
-    },
-    {
-      "id": "compose",
-      "pattern": "/compose/*",
-      "kind": "website"
-    },
-    {
-      "id": "settings",
-      "pattern": "/settings/*",
-      "kind": "website"
-    },
-    {
-      "id": "account-pages",
-      "pattern": "/account/*",
-      "kind": "website"
-    },
-    {
-      "id": "messages",
-      "pattern": "/messages/*",
-      "kind": "website"
-    },
-    {
-      "id": "internal",
-      "pattern": "/i/*",
-      "kind": "website"
-    },
-    {
-      "id": "tos",
-      "pattern": "/tos",
-      "kind": "website"
-    },
-    {
-      "id": "privacy",
-      "pattern": "/privacy",
-      "kind": "website"
-    },
-    {
-      "id": "about",
-      "pattern": "/about",
-      "kind": "website"
-    },
-    {
-      "id": "download",
-      "pattern": "/download",
-      "kind": "website"
+      "context": "account"
     },
     {
       "id": "photo",
       "pattern": "/:handle/status/:id/photo/:index",
-      "kind": "adapted",
-      "source": "primary",
+      "page": "media",
       "screen": "media"
     },
     {
       "id": "post",
       "pattern": "/:handle/status/:id",
-      "kind": "adapted",
-      "source": "primary",
+      "page": "post",
       "screen": "post"
-    },
-    {
-      "id": "post-pages",
-      "pattern": "/:handle/status/:id/*",
-      "kind": "website"
-    },
-    {
-      "id": "following",
-      "pattern": "/:handle/following",
-      "kind": "website"
-    },
-    {
-      "id": "followers",
-      "pattern": "/:handle/followers",
-      "kind": "website"
-    },
-    {
-      "id": "verified-followers",
-      "pattern": "/:handle/verified_followers",
-      "kind": "website"
-    },
-    {
-      "id": "avatar-photo",
-      "pattern": "/:handle/photo",
-      "kind": "website"
-    },
-    {
-      "id": "header-photo",
-      "pattern": "/:handle/header_photo",
-      "kind": "website"
     },
     {
       "id": "likes",
       "pattern": "/:handle/likes",
-      "kind": "adapted",
-      "source": "primary",
-      "screen": "saved",
-      "requiresSignIn": true
+      "page": "timeline",
+      "screen": "saved"
     },
     {
       "id": "replies",
       "pattern": "/:handle/with_replies",
-      "kind": "adapted",
-      "source": "primary",
+      "page": "profile",
       "screen": "profile"
     },
     {
       "id": "profile-media",
       "pattern": "/:handle/media",
-      "kind": "adapted",
-      "source": "primary",
+      "page": "profile",
       "screen": "profile"
     },
     {
       "id": "profile",
       "pattern": "/:handle",
-      "kind": "adapted",
-      "source": "primary",
+      "page": "profile",
       "screen": "profile"
     }
   ],

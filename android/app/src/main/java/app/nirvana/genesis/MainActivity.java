@@ -3,6 +3,7 @@ package app.nirvana.genesis;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Intent;
+import android.content.res.Configuration;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -83,8 +84,8 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
     private void back() {
         if (shell.closeCustomView()) return;
         if (!attached) { moveTaskToBack(true); return; }
-        try { send(Bridge.event("back").put("websiteCanGoBack", shell.websiteCanGoBack())); }
-        catch (JSONException error) { throw new IllegalStateException(error); }
+        // A revealed context's Back goes to the host too; the WebView never handles Back itself.
+        send(Bridge.event("back"));
     }
 
     private void tick() {
@@ -156,6 +157,12 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
         super.onNewIntent(intent);
         setIntent(intent);
         main.post(scan);
+    }
+
+    /** The manifest keeps the activity through rotation and appearance changes, so the applet keeps running. */
+    @Override public void onConfigurationChanged(Configuration configuration) {
+        super.onConfigurationChanged(configuration);
+        if (shell != null) shell.appearanceChanged();
     }
 
     @Override protected void onPause() {

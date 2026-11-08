@@ -89,25 +89,44 @@ export const receiptName = name => name.replace(/\.json$/, '.receipt.json');
 /** Accepts an applet directory (uses its `dist/`) or a build output directory. */
 async function findBuild(directory) {
   const dist = path.join(directory, 'dist');
-  const isBuild = await stat(path.join(directory, 'bundle.json')).then(() => true, () => false);
+  const isBuild = await stat(path.join(directory, 'revision', 'bundle.json')).then(() => true, () => false);
   return readBuild(isBuild ? directory : dist);
 }
 
+const describeMismatches = mismatches => (mismatches ?? []).map(m => `  ${m.field} ${m.applet} → ${m.host}`).join('\n');
+
+/**
+ * Sends the build to the device and reports the receipt's status. A bundle the device's Genesis
+ * classifies as incompatible is listed there but cannot launch, so that fails here too.
+ */
 export async function installApplet(directory, options = {}) {
   const { appletId, importFile } = await findBuild(directory);
   const device = new Device(options);
   const name = path.basename(importFile);
   const receipt = await device.submit(name, await readFile(importFile, 'utf8'));
-  if (!receipt.ok) throw toolError('PACKAGE_REJECTED', `Genesis rejected ${appletId}: ${receipt.error ?? 'no reason given'}`);
-  return { appletId, revision: receipt.revision };
+  if (!receipt.ok) throw toolError('PACKAGE_REJECTED', `Genesis rejected ${appletId}: ${receipt.code ? `${receipt.code} ` : ''}${receipt.error ?? 'no reason given'}`);
+  if (receipt.status === 'incompatible') {
+    const needs = receipt.direction === 'newer' ? 'needs a newer Genesis' : 'needs an update';
+    throw toolError('APPLET_INCOMPATIBLE', `Genesis on ${device.serial} lists ${appletId} as incompatible (${receipt.direction}): it ${needs} (applet → device):\n${describeMismatches(receipt.mismatches)}`);
+  }
+  return { appletId, status: receipt.status ?? 'current', revision: receipt.revision };
 }
 
-/** Lists installed applets and, for `appletId`, the last import receipt. */
+/** One index entry as `dev status` reports it. Entries from before statuses existed are current. */
+function installedEntry(entry) {
+  const status = entry.status ?? 'current';
+  const result = { appletId: entry.appletId, name: entry.name ?? '', revision: entry.revision ?? null, status };
+  if (status !== 'current') Object.assign(result, { direction: entry.direction ?? null, mismatches: entry.mismatches ?? [] });
+  return result;
+}
+
+/** Lists installed applets with their status, direction and mismatches and, for `appletId`, the last import receipt. */
 export function deviceStatus(appletId, options = {}) {
   const device = new Device(options);
   device.check();
-  let installed = [];
-  try { installed = JSON.parse(device.read('files/applets/index.json') ?? '[]'); } catch { /* No index yet. */ }
+  let index = [];
+  try { index = JSON.parse(device.read('files/applets/index.json') ?? '[]'); } catch { /* No index yet. */ }
+  const installed = (Array.isArray(index) ? index : []).filter(entry => typeof entry?.appletId === 'string').map(installedEntry);
   const result = { device: device.serial, installed };
   if (appletId !== undefined) {
     if (!/^[a-z0-9-]+$/.test(appletId)) throw toolError('USAGE', 'Applet ids match [a-z0-9-]+');

@@ -1,17 +1,23 @@
-import { ScrollMemory, useScreenSource } from "@genesis/sdk/react";
+import { ScrollMemory, usePage, useRecord } from "@genesis/sdk/react";
 import { ORIGIN, type UserData } from "../model";
-import { LoadError, Notice, RichText, Skeleton, useOpenRoute } from "../components/ui";
+import { LoadError, Notice, RichText, Skeleton, useOpenUrl } from "../components/ui";
 
+/** A profile (`/user?id=`). Its lists open as feeds. */
 export function UserScreen() {
-  const page = useScreenSource<UserData>();
-  const open = useOpenRoute();
-  const data = page.data;
-  if (page.status === "unsupported") return <div className="screen"><Notice title="This profile moved"><p>Hacker News sent this link somewhere the app doesn't show.</p></Notice></div>;
-  if (!data) return <div className="screen">{page.status === "error"
-    ? <LoadError error={page.error} url={page.url} />
-    : <Skeleton label="Loading profile" rows={4} kind="text" />}</div>;
+  const page = usePage();
+  const record = useRecord<UserData | null>("profile", null);
+  const open = useOpenUrl();
+  const data = page.pageId === "user" ? record?.data ?? null : null;
+  if (!data) return <div className="screen" aria-busy={page.status === "loading"}>
+    {page.status === "error"
+      ? <LoadError error={page.error} />
+      : page.status === "ready" && page.pageId === "user"
+        ? <Notice title="No such user"><p>Hacker News has no profile with this name.</p></Notice>
+        : <Skeleton label="Loading profile" rows={4} kind="text" />}
+  </div>;
   const id = encodeURIComponent(data.name);
-  return <ScrollMemory className="screen">
+  return <ScrollMemory className="screen" aria-busy={page.stale}>
+    {page.status === "error" && <p className="inline-error" role="alert">Couldn't refresh. Showing the last copy.</p>}
     <h1 className="screen-title">{data.name}</h1>
     <dl className="facts">
       {data.karma && <><dt>Karma</dt><dd>{data.karma}</dd></>}

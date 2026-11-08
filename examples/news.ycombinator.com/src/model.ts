@@ -23,7 +23,7 @@ export interface Story {
   /** "123 comments", "discuss", or null for job posts. */
   comments: string | null;
   rank: string | null;
-  /** True when the signed-in account can upvote it on this page. */
+  /** The page offers an upvote arrow for it. Signed out, the arrow leads to HN's login page. */
   canVote: boolean;
   voted: boolean;
 }
@@ -32,33 +32,33 @@ export interface CommentEntry {
   id: string;
   author: string | null;
   age: string | null;
+  /** Nesting level from HN's indent, 0 for a top-level comment. */
   depth: number;
+  /** The id of the comment it answers, from HN's "parent" link, or null at the top level. */
+  parent: string | null;
   parts: TextPart[];
-  /** The story a comment belongs to, on comment lists. */
+  /** The story a comment belongs to, when the item is itself a comment. */
   onStory: { id: string; title: string } | null;
-  /** Thread links such as parent, next and context, as absolute HN URLs. */
+  /** Thread links such as parent and context, as absolute HN URLs; only on an item that is a comment. */
   links: { label: string; url: string }[];
+  /** HN shows a reply link for it. */
   canReply: boolean;
+  canVote: boolean;
+  voted: boolean;
 }
 
-export interface FeedData {
-  title: string;
-  stories: Story[];
-  comments: CommentEntry[];
-  nextUrl: string | null;
-  /** True when the page lists comments rather than stories. */
-  commentList: boolean;
-}
-
-export interface ItemData {
+/** The head of a discussion page: its story, or its comment when the item is a comment. */
+export interface ItemHead {
   story: Story | null;
-  /** The top comment when the item is itself a comment. */
   comment: CommentEntry | null;
   text: TextPart[];
-  comments: CommentEntry[];
-  /** True when more comments exist than fit in one snapshot. */
-  partial: boolean;
+  /** HN shows its add-comment form on the page. */
   canComment: boolean;
+}
+
+/** HN's "More" link of a paged list or thread. */
+export interface MoreLink {
+  url: string;
 }
 
 export interface UserData {
@@ -78,9 +78,12 @@ export interface AccountData {
   karma: string | null;
 }
 
-export interface SubmitData {
-  /** Whether the page shows HN's submit form for the signed-in account. */
-  form: boolean;
+/** HN's submit form: the values its fields hold and the message HN shows after a rejection. */
+export interface SubmitForm {
+  title: string;
+  url: string;
+  text: string;
+  error: string | null;
 }
 
 /** HN's limit for submission titles. */

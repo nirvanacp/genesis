@@ -2,11 +2,56 @@
 //!
 //! JSON names are camelCase so they match `@genesis/core` and `@genesis/sdk`.
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Map, Value};
 
-pub const MANIFEST_SCHEMA_VERSION: u32 = 5;
-pub const BUNDLE_FORMAT: u32 = 2;
-pub const MAX_SOURCES: usize = 3;
+// ---------------------------------------------------------------------------------------------
+// Versions
+
+/// The version of every serialized boundary, the same values as `COMPAT` in `@genesis/core`.
+/// Only the developer changes them; `tools/check-packages.mjs` compares the two tables.
+pub mod compat {
+    pub const MANIFEST_SCHEMA: u32 = 6;
+    pub const BUNDLE_FORMAT: u32 = 3;
+    pub const PROTOCOL: u32 = 1;
+    pub const ADAPTER_API: u32 = 1;
+    pub const SESSION_STATE: u32 = 1;
+    pub const IMPORT_ENVELOPE: u32 = 1;
+    pub const CREDENTIAL_ENVELOPE: u32 = 1;
+    pub const PACKAGES_INDEX: u32 = 1;
+}
+
+/// The host's version table, sent to every document in `bound`.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HostCompat {
+    pub manifest_schema: u32,
+    pub bundle_format: u32,
+    pub protocol: u32,
+    pub adapter_api: u32,
+    pub session_state: u32,
+    pub import_envelope: u32,
+    pub credential_envelope: u32,
+    pub packages_index: u32,
+}
+
+impl Default for HostCompat {
+    fn default() -> Self {
+        Self {
+            manifest_schema: compat::MANIFEST_SCHEMA,
+            bundle_format: compat::BUNDLE_FORMAT,
+            protocol: compat::PROTOCOL,
+            adapter_api: compat::ADAPTER_API,
+            session_state: compat::SESSION_STATE,
+            import_envelope: compat::IMPORT_ENVELOPE,
+            credential_envelope: compat::CREDENTIAL_ENVELOPE,
+            packages_index: compat::PACKAGES_INDEX,
+        }
+    }
+}
+
+pub const MAX_CONTEXTS: usize = 3;
+/// The largest import file the shell reads and the host accepts.
+pub const IMPORT_MAX_BYTES: usize = 64 * 1024 * 1024;
 /// Origin that serves foreground documents through `WebViewAssetLoader`.
 pub const FOREGROUND_ORIGIN: &str = "https://appassets.androidplatform.net";
 
@@ -21,21 +66,19 @@ pub struct ViewRef {
     pub role: Role,
 }
 
-/// Serialized as `"foreground"`, `"source:<id>"` or `"website"`, the same text documentIds use.
+/// Serialized as `"foreground"` or `"context:<id>"`, the same text documentIds use.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize, Serialize)]
 #[serde(try_from = "String", into = "String")]
 pub enum Role {
     Foreground,
-    Source(String),
-    Website,
+    Context(String),
 }
 
 impl From<Role> for String {
     fn from(role: Role) -> String {
         match role {
             Role::Foreground => "foreground".into(),
-            Role::Source(id) => format!("source:{id}"),
-            Role::Website => "website".into(),
+            Role::Context(id) => format!("context:{id}"),
         }
     }
 }
@@ -43,13 +86,12 @@ impl From<Role> for String {
 impl TryFrom<String> for Role {
     type Error = String;
     fn try_from(value: String) -> Result<Self, String> {
-        match value.as_str() {
-            "foreground" => Ok(Role::Foreground),
-            "website" => Ok(Role::Website),
-            _ => match value.strip_prefix("source:") {
-                Some(id) if !id.is_empty() => Ok(Role::Source(id.into())),
-                _ => Err(format!("unknown view role {value}")),
-            },
+        if value == "foreground" {
+            return Ok(Role::Foreground);
+        }
+        match value.strip_prefix("context:") {
+            Some(id) if !id.is_empty() => Ok(Role::Context(id.into())),
+            _ => Err(format!("unknown view role {value}")),
         }
     }
 }
@@ -64,21 +106,34 @@ pub enum ShellEvent {
     Attach { files_dir: String },
     Resumed,
     Suspended,
-    /// Android Back. `website_can_go_back` reports the website sheet's own history.
-    Back {
-        #[serde(default)]
-        website_can_go_back: bool,
-    },
-    /// The website sheet's Return button.
-    WebsiteReturn,
+    /// Android Back. The WebViews never handle Back themselves.
+    Back,
+    /// The website bar's Done button over a revealed context.
+    WebsiteDone,
     OpenApplet { applet_id: String },
     Home,
     Menu { action: MenuAction },
-    /// A main-frame load started in a view.
-    DocumentLoaded { view: ViewRef, url: String },
+    /// `onPageStarted`: a new document committed in a view, with its post-redirect URL.
+    DocumentStarted { view: ViewRef, url: String },
     /// A string a document posted on `__genesisBridge`, forwarded unparsed.
     DocumentMessage { view: ViewRef, payload: String },
-    WebsiteUrlChanged { url: String },
+    /// `doUpdateVisitedHistory`, with the back-forward list's current item, index and size.
+    /// `can_go_back` is `index > 0` and `can_go_forward` is `index < size - 1`.
+    ContextNavigated {
+        view: ViewRef,
+        url: String,
+        index: i32,
+        size: i32,
+        can_go_back: bool,
+        can_go_forward: bool,
+        same_document: bool,
+        reload: bool,
+    },
+    /// `onRenderProcessGone`. Every view shares one renderer, so the shell reports each.
+    RendererGone { view: ViewRef },
+    /// A `HistoryGo` that moved nothing: `history.go` did not start a navigation and the
+    /// WebView's own list had no entry at that offset.
+    HistoryUnmoved { view: ViewRef },
     ImportFound { kind: ImportKind, path: String, payload: String },
     ServiceResponse { request_id: u64, status: u16, body: Value },
     ServiceFailed { request_id: u64, code: ErrorCode, message: String },
@@ -92,7 +147,7 @@ pub enum ShellEvent {
 pub enum MenuAction {
     Home,
     Reload,
-    OpenWebsite,
+    ViewWebsite,
     Info,
 }
 
@@ -100,6 +155,26 @@ pub enum MenuAction {
 #[serde(rename_all = "camelCase")]
 pub enum ImportKind {
     Bundle,
+}
+
+/// `push` adds a history entry; `replace` replaces the current one.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum NavigateMode {
+    #[default]
+    Push,
+    Replace,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum StatusKind {
+    /// The applet was built for another Genesis; it is listed and cannot be launched.
+    Incompatible,
+    /// The shared renderer stopped; the applet was retired.
+    RendererLost,
+    /// An import file was installed or recorded.
+    ImportReceived,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -110,12 +185,16 @@ pub enum ShellCommand {
     ShowApplet { applet_id: String, name: String, accent: Option<String> },
     CreateView { view: ViewRef, url: String, origins: Vec<String>, start_script: Option<String> },
     DestroyView { view: ViewRef },
-    LoadUrl { view: ViewRef, url: String },
+    /// `push` is `loadUrl`; `replace` is `location.replace(url)`, with `loadUrl` when the page cannot run script.
+    LoadUrl { view: ViewRef, url: String, mode: NavigateMode },
     RevealForeground,
-    /// Opens the website sheet. Top-level navigations to origins outside `origins` go to the Android browser.
-    ShowWebsite { url: String, title: String, origins: Vec<String> },
-    HideWebsite,
-    WebsiteBack,
+    /// Moves the context's WebView above the foreground and shows the website bar.
+    RevealContext { view: ViewRef, title: String },
+    /// Moves the revealed context back under the foreground.
+    CoverContext,
+    /// Page-side `history.go(delta)`, with the native fallback the shell applies.
+    HistoryGo { view: ViewRef, delta: i32 },
+    Reload { view: ViewRef },
     PostMessage { view: ViewRef, payload: String },
     /// The shell's `ServiceClient` looks up the stored credential for (`applet_id`, `service_id`).
     ServiceRequest {
@@ -128,10 +207,19 @@ pub enum ShellCommand {
     },
     ShowError { message: String },
     ShowInfo { title: String, message: String },
+    /// The status sheet: an incompatible applet, a lost renderer or a received import.
+    ShowStatus { kind: StatusKind, applet: Option<LauncherEntry>, details: String },
     OpenExternal { url: String },
     /// Asks the shell to send `Tick` after `delay_ms`, for deadlines shorter than the periodic tick.
     Wake { delay_ms: u64 },
     MoveTaskToBack,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum AppletStatus {
+    Current,
+    Incompatible,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -140,10 +228,42 @@ pub struct LauncherEntry {
     pub applet_id: String,
     pub name: String,
     pub accent: Option<String>,
+    pub status: AppletStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub direction: Option<Direction>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mismatches: Vec<Mismatch>,
 }
 
 // ---------------------------------------------------------------------------------------------
-// Manifest (schema 5) and bundle (format 2)
+// Compatibility
+
+/// `Outdated`: built for an older Genesis. `Newer`: needs a newer Genesis. `Mixed`: both.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Direction {
+    Outdated,
+    Newer,
+    Mixed,
+}
+
+/// One version that differs from the host's. `applet` is `"missing"` when the bundle has none.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Mismatch {
+    pub field: String,
+    pub applet: String,
+    pub host: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Compatibility {
+    Current,
+    Incompatible { direction: Direction, mismatches: Vec<Mismatch> },
+}
+
+// ---------------------------------------------------------------------------------------------
+// Manifest (schema 6) and bundle (format 3)
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -153,7 +273,8 @@ pub struct Manifest {
     pub name: String,
     pub origins: Vec<String>,
     pub foreground: Foreground,
-    pub sources: Vec<Source>,
+    pub adapter: String,
+    pub contexts: Vec<Context>,
     pub routes: Vec<Route>,
     pub capabilities: Capabilities,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -167,33 +288,25 @@ pub struct Foreground {
     pub screens: Vec<String>,
 }
 
+/// One WebView with its own history. The first context is active at launch.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct Source {
+pub struct Context {
     pub id: String,
     pub start_url: String,
-    pub adapter: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(tag = "kind", rename_all = "camelCase", rename_all_fields = "camelCase", deny_unknown_fields)]
-pub enum Route {
-    Adapted {
-        id: String,
-        pattern: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        query: Option<Vec<String>>,
-        source: String,
-        screen: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        requires_sign_in: Option<bool>,
-    },
-    Website {
-        id: String,
-        pattern: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        query: Option<Vec<String>>,
-    },
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Route {
+    pub id: String,
+    pub pattern: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub query: Option<Vec<String>>,
+    pub page: String,
+    pub screen: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -219,11 +332,25 @@ pub struct Shell {
     pub accent: Option<String>,
 }
 
-/// `dist/bundle.json`.
+/// The versions a bundle was built against, written by the builder.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BundleCompat {
+    pub manifest_schema: u32,
+    pub bundle_format: u32,
+    pub protocol: u32,
+    pub adapter_api: u32,
+    pub sdk: String,
+    pub tools: String,
+    pub built_at: String,
+}
+
+/// `bundle.json` in the revision directory.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Bundle {
     pub format: u32,
+    pub compat: BundleCompat,
     pub manifest: Manifest,
     pub files: Vec<BundleFile>,
 }
@@ -235,12 +362,38 @@ pub struct BundleFile {
     pub sha256: String,
 }
 
-/// `applet-<id>.bundle.json`, the transport form of a bundle.
+/// `applet-<id>.bundle.json`, the transport form of a bundle. Parsed before any version is
+/// read, so it types the bundle only as far as envelope validation and classification need.
+/// Files from before the envelope version have no `envelope` field.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct BundleImport {
-    pub bundle: Bundle,
+#[serde(rename_all = "camelCase")]
+pub struct ImportEnvelope {
+    #[serde(default)]
+    pub envelope: Option<u32>,
+    pub bundle: BundleHeader,
     pub entries: Vec<BundleEntry>,
+}
+
+/// A bundle of any format: the version fields and the file list.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BundleHeader {
+    pub format: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compat: Option<Map<String, Value>>,
+    pub manifest: ManifestHeader,
+    pub files: Vec<BundleFile>,
+}
+
+/// A manifest of any schema: the fields every schema has, and the rest unparsed.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManifestHeader {
+    pub schema_version: u32,
+    pub id: String,
+    pub name: String,
+    #[serde(flatten)]
+    pub rest: Map<String, Value>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -261,19 +414,24 @@ pub enum Encoding {
 // ---------------------------------------------------------------------------------------------
 // Limits and errors
 
-/// Sent to every document in `bound`.
+/// Sent to every document in `bound`. The same fields as `Limits` in `@genesis/core`.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Limits {
     pub rpc_deadline_ms: u64,
     pub message_max_bytes: usize,
-    pub snapshot_max_bytes: usize,
+    pub page_max_bytes: usize,
+    pub patch_max_bytes: usize,
+    pub patch_records_max: usize,
     pub stored_document_max_bytes: usize,
     pub pending_requests_max: usize,
     pub document_ready_ms: u64,
-    pub publish_throttle_ms: u64,
-    pub intent_timeout_ms: u64,
+    pub navigation_join_ms: u64,
+    pub publish_quiet_ms: u64,
+    pub publish_max_delay_ms: u64,
+    pub action_timeout_ms: u64,
     pub back_answer_ms: u64,
+    pub history_entries_max: usize,
 }
 
 impl Default for Limits {
@@ -281,13 +439,18 @@ impl Default for Limits {
         Self {
             rpc_deadline_ms: 15_000,
             message_max_bytes: 262_144,
-            snapshot_max_bytes: 196_608,
+            page_max_bytes: 196_608,
+            patch_max_bytes: 65_536,
+            patch_records_max: 200,
             stored_document_max_bytes: 32_768,
             pending_requests_max: 32,
             document_ready_ms: 15_000,
-            publish_throttle_ms: 250,
-            intent_timeout_ms: 15_000,
+            navigation_join_ms: 1_000,
+            publish_quiet_ms: 150,
+            publish_max_delay_ms: 1_000,
+            action_timeout_ms: 15_000,
             back_answer_ms: 300,
+            history_entries_max: 16,
         }
     }
 }
@@ -302,10 +465,10 @@ pub enum ErrorCode {
     DocumentTooLarge,
     StorageFailure,
     OriginNotDeclared,
-    SnapshotTooLarge,
     MessageTooLarge,
+    PageTooLarge,
+    PatchTooLarge,
     Deadline,
-    SourceReplaced,
     InvalidSteps,
     ServiceUnreachable,
     ServiceFailure,
@@ -316,6 +479,15 @@ pub enum ErrorCode {
     UnknownMethod,
     InvalidArgument,
     QuotaExceeded,
+    ProtocolMismatch,
+    AppletIncompatible,
+    EnvelopeInvalid,
+    ContextReplaced,
+    TargetNotFound,
+    PreconditionFailed,
+    AsyncRead,
+    AuthRequired,
+    Rejected,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -331,13 +503,18 @@ impl ErrorBody {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Document protocol
+// Document protocol (`compat::PROTOCOL`)
 
 /// Document to host.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum DocumentMessage {
-    Hello { url: String },
+    /// Documents from before the protocol version send no `protocol`; they read as 0.
+    Hello {
+        #[serde(default)]
+        protocol: u32,
+        url: String,
+    },
     Request {
         #[serde(default)]
         document_id: Option<String>,
@@ -346,6 +523,16 @@ pub enum DocumentMessage {
         #[serde(default)]
         params: Value,
     },
+}
+
+/// `state` of an action the context reports with `context.actionResult`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ActionState {
+    Dispatched,
+    Observed,
+    Failed,
+    Cancelled,
 }
 
 /// A request's method and parameters, decoded from `method` and `params` of `DocumentMessage::Request`.
@@ -374,31 +561,72 @@ pub enum Call {
         #[serde(default)]
         body: Option<Value>,
     },
-    #[serde(rename = "website.open")]
-    WebsiteOpen { url: String },
-    #[serde(rename = "website.close")]
-    WebsiteClose {},
-    #[serde(rename = "source.navigate")]
-    SourceNavigate { source_id: String, url: String },
-    #[serde(rename = "source.intent")]
-    SourceIntent { source_id: String, intent: Value },
-    #[serde(rename = "source.publish")]
-    SourcePublish { snapshot: Value },
-    #[serde(rename = "source.intentResult")]
-    SourceIntentResult {
-        intent_id: u64,
-        ok: bool,
+    #[serde(rename = "context.navigate")]
+    ContextNavigate {
+        id: String,
+        url: String,
         #[serde(default)]
-        error: Option<Value>,
+        mode: NavigateMode,
     },
+    /// Goes back `steps` entries (1 when absent).
+    #[serde(rename = "context.back")]
+    ContextBack {
+        id: String,
+        #[serde(default)]
+        steps: Option<u32>,
+    },
+    #[serde(rename = "context.forward")]
+    ContextForward { id: String },
+    #[serde(rename = "context.reload")]
+    ContextReload { id: String },
+    #[serde(rename = "context.reveal")]
+    ContextReveal { id: String },
+    #[serde(rename = "context.cover")]
+    ContextCover {},
+    #[serde(rename = "context.resync")]
+    ContextResync { id: String },
+    /// `action` is `{region, key, name, args}`; the host adds `actionId`.
+    #[serde(rename = "context.act")]
+    ContextAct { id: String, generation: u64, action: Map<String, Value> },
+    #[serde(rename = "context.cancel")]
+    ContextCancel { action_id: u64 },
+    #[serde(rename = "context.ping")]
+    ContextPing { id: String },
+    /// The foreground's coordinator state, handed back in `bound.session` after background retirement.
+    #[serde(rename = "session.save")]
+    SessionSave { version: u32, state: Value },
     #[serde(rename = "back.handled")]
     BackHandled { handled: bool },
     /// Leaves the applet after a Back the foreground handled by asking first, once the user confirms.
     #[serde(rename = "back.leave")]
     BackLeave {},
-    /// The foreground's screen stack, kept only to recreate it after background retirement.
-    #[serde(rename = "navigation.save")]
-    NavigationSave { navigation: Value },
+    /// Exactly one of `page` and `patch`.
+    #[serde(rename = "context.publish")]
+    ContextPublish {
+        #[serde(default)]
+        page: Option<Value>,
+        #[serde(default)]
+        patch: Option<Value>,
+    },
+    #[serde(rename = "context.actionResult")]
+    ContextActionResult {
+        action_id: u64,
+        state: ActionState,
+        #[serde(default)]
+        navigating: Option<bool>,
+        /// On a navigating `dispatched`: the destination pages the foreground judges by, passed through.
+        #[serde(default)]
+        expect: Option<Value>,
+        #[serde(default)]
+        result: Option<Value>,
+    },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum DocumentRole {
+    Foreground,
+    Context,
 }
 
 /// Host to document. Every message names the document it is for; a document ignores others.
@@ -406,14 +634,17 @@ pub enum Call {
 #[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum HostMessage {
     Bound {
+        protocol: u32,
+        compat: HostCompat,
         document_id: String,
         applet_id: String,
-        role: String,
-        source_id: Option<String>,
         revision: u64,
+        context_id: Option<String>,
+        role: DocumentRole,
+        generation: u64,
         manifest: Box<Manifest>,
         limits: Limits,
-        state: Value,
+        session: Option<Value>,
     },
     Response {
         document_id: String,
@@ -424,6 +655,8 @@ pub enum HostMessage {
         error: Option<ErrorBody>,
     },
     Event { document_id: String, name: String, data: Value },
+    /// The answer to a `hello` the host does not bind, such as one with another protocol. The document stops.
+    Refused { error: ErrorBody },
 }
 
 // ---------------------------------------------------------------------------------------------

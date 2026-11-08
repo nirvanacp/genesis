@@ -1,54 +1,129 @@
-//! Decoding and verification of bundle import files. The host's only package validation.
-use genesis_contracts::{BUNDLE_FORMAT, BundleImport, Encoding, MANIFEST_SCHEMA_VERSION, MAX_SOURCES};
-use std::collections::HashMap;
+//! Import files: envelope validation, classification, then (current bundles only) the full parse.
+//! The host's only package validation.
+use crate::compat;
+use genesis_contracts::{
+    Bundle, Compatibility, Direction, Encoding, ErrorBody, ErrorCode, IMPORT_MAX_BYTES, ImportEnvelope, MAX_CONTEXTS,
+    Mismatch,
+};
+use std::collections::{HashMap, HashSet};
 
-/// A verified bundle: every listed file, decoded, in `bundle.files` order.
+/// Files every current bundle contains besides `bundle.json`.
+const REQUIRED_FILES: [&str; 3] = ["index.html", "foreground.js", "adapter.js"];
+
+/// A verified bundle's files, decoded, in `bundle.files` order.
 pub struct VerifiedFiles(pub Vec<(String, Vec<u8>)>);
 
-pub fn verify(import: &BundleImport) -> Result<VerifiedFiles, String> {
-    let bundle = &import.bundle;
-    let manifest = &bundle.manifest;
-    if bundle.format != BUNDLE_FORMAT {
-        return Err(format!("Bundle format {} is not supported; rebuild the applet", bundle.format));
+/// An applet built for another Genesis. It is listed and cannot be launched.
+pub struct IncompatibleBundle {
+    pub id: String,
+    pub name: String,
+    pub direction: Direction,
+    pub mismatches: Vec<Mismatch>,
+}
+
+pub enum Verified {
+    Current { bundle: Box<Bundle>, files: VerifiedFiles },
+    Incompatible(IncompatibleBundle),
+}
+
+/// Validates the envelope, classifies the bundle and, when it is current, parses its manifest.
+/// Nothing is written here; a failure names the first offending field.
+pub fn verify(payload: &str) -> Result<Verified, ErrorBody> {
+    let invalid = |message: String| ErrorBody::new(ErrorCode::EnvelopeInvalid, message);
+    if payload.len() > IMPORT_MAX_BYTES {
+        return Err(invalid(format!("The import file is larger than {IMPORT_MAX_BYTES} bytes")));
     }
-    if manifest.schema_version != MANIFEST_SCHEMA_VERSION {
-        return Err(format!("Manifest schema {} is not supported", manifest.schema_version));
+    let envelope: ImportEnvelope = serde_json::from_str(payload).map_err(|e| invalid(format!("Invalid import file: {e}")))?;
+    let files = verify_files(&envelope).map_err(invalid)?;
+    let header = &envelope.bundle;
+    match compat::evaluate_import(envelope.envelope, header) {
+        Compatibility::Incompatible { direction, mismatches } => Ok(Verified::Incompatible(IncompatibleBundle {
+            id: header.manifest.id.clone(),
+            name: header.manifest.name.clone(),
+            direction,
+            mismatches,
+        })),
+        Compatibility::Current => {
+            let bundle = parse_bundle(&envelope)?;
+            let has = |path: &str| files.0.iter().any(|(p, _)| p == path);
+            if let Some(missing) = REQUIRED_FILES.iter().find(|path| !has(path)) {
+                return Err(ErrorBody::new(ErrorCode::InvalidArgument, format!("{missing} is missing")));
+            }
+            Ok(Verified::Current { bundle: Box::new(bundle), files })
+        }
     }
-    if !is_id(&manifest.id) || manifest.sources.len() > MAX_SOURCES || !manifest.sources.iter().all(|s| is_id(&s.id)) {
-        return Err("Invalid applet or source id".into());
+}
+
+/// The version-independent checks: the applet id, safe and unique paths, the same path set in
+/// `entries` and `bundle.files`, and every entry's sha256.
+fn verify_files(envelope: &ImportEnvelope) -> Result<VerifiedFiles, String> {
+    let bundle = &envelope.bundle;
+    if !is_id(&bundle.manifest.id) {
+        return Err("bundle.manifest.id must match [a-z0-9-]+".into());
     }
     let mut entries = HashMap::new();
-    for entry in &import.entries {
+    for (index, entry) in envelope.entries.iter().enumerate() {
+        if !is_safe_path(&entry.path) {
+            return Err(format!("entries[{index}].path {} is not a safe relative path", entry.path));
+        }
         let bytes = match entry.encoding {
             Encoding::Utf8 => entry.content.as_bytes().to_vec(),
-            Encoding::Base64 => base64_decode(&entry.content).ok_or_else(|| format!("{} is not valid base64", entry.path))?,
+            Encoding::Base64 => base64_decode(&entry.content).ok_or_else(|| format!("entries[{index}].content is not valid base64"))?,
         };
         if entries.insert(entry.path.as_str(), bytes).is_some() {
-            return Err(format!("{} appears twice", entry.path));
+            return Err(format!("entries[{index}].path {} repeats", entry.path));
         }
     }
-    if entries.len() != bundle.files.len() {
-        return Err("Bundle entries do not match bundle.json".into());
-    }
+    let mut listed = HashSet::new();
     let mut files = Vec::with_capacity(bundle.files.len());
-    for file in &bundle.files {
+    for (index, file) in bundle.files.iter().enumerate() {
         if !is_safe_path(&file.path) {
-            return Err(format!("Unsafe bundle path {}", file.path));
+            return Err(format!("bundle.files[{index}].path {} is not a safe relative path", file.path));
         }
-        let bytes = entries.remove(file.path.as_str()).ok_or_else(|| format!("{} is missing", file.path))?;
+        if !listed.insert(file.path.as_str()) {
+            return Err(format!("bundle.files[{index}].path {} repeats", file.path));
+        }
+        let bytes = entries.remove(file.path.as_str()).ok_or_else(|| format!("bundle.files[{index}].path {} has no entry", file.path))?;
         if hex(&sha256(&bytes)) != file.sha256 {
-            return Err(format!("{} does not match its sha256", file.path));
+            return Err(format!("bundle.files[{index}].sha256 does not match {}", file.path));
         }
         files.push((file.path.clone(), bytes));
     }
-    let has = |path: &str| files.iter().any(|(p, _)| p == path);
-    if !has("index.html") {
-        return Err("index.html is missing".into());
-    }
-    if let Some(source) = manifest.sources.iter().find(|s| !has(&format!("sources/{}.js", s.id))) {
-        return Err(format!("sources/{}.js is missing", source.id));
+    if let Some(extra) = entries.keys().next() {
+        return Err(format!("entries path {extra} is not listed in bundle.files"));
     }
     Ok(VerifiedFiles(files))
+}
+
+/// The full schema 6 parse, and the manifest rules the host relies on.
+fn parse_bundle(envelope: &ImportEnvelope) -> Result<Bundle, ErrorBody> {
+    let invalid = |message: String| ErrorBody::new(ErrorCode::InvalidArgument, message);
+    let value = serde_json::to_value(&envelope.bundle).map_err(|e| invalid(e.to_string()))?;
+    let bundle: Bundle = serde_json::from_value(value).map_err(|e| invalid(format!("Invalid bundle: {e}")))?;
+    let contexts = &bundle.manifest.contexts;
+    if contexts.is_empty() || contexts.len() > MAX_CONTEXTS {
+        return Err(invalid(format!("manifest.contexts must have 1 to {MAX_CONTEXTS} entries")));
+    }
+    let mut ids = HashSet::new();
+    if let Some(context) = contexts.iter().find(|c| !is_id(&c.id) || !ids.insert(c.id.as_str())) {
+        return Err(invalid(format!("manifest context id {} is invalid or repeats", context.id)));
+    }
+    // An origin reaches the WebView's origin rules, which reject anything but `scheme://host[:port]`.
+    if let Some(origin) = bundle.manifest.origins.iter().find(|o| !is_https_origin(o)) {
+        return Err(invalid(format!("manifest origin {origin} is not an exact https://host origin")));
+    }
+    let declared = |url: &str| url::Url::parse(url).is_ok_and(|u| {
+        u.scheme() == "https" && bundle.manifest.origins.contains(&u.origin().ascii_serialization())
+    });
+    if let Some(context) = contexts.iter().find(|c| !declared(&c.start_url)) {
+        return Err(invalid(format!("manifest context {} startUrl is not on a declared origin", context.id)));
+    }
+    Ok(bundle)
+}
+
+/// `https://host[:port]` in its serialized form: no path, credentials, default port or uppercase.
+fn is_https_origin(value: &str) -> bool {
+    url::Url::parse(value).is_ok_and(|u| u.scheme() == "https" && u.origin().ascii_serialization() == value)
 }
 
 pub fn is_id(value: &str) -> bool {

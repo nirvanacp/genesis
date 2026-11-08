@@ -1,55 +1,73 @@
 import { useState } from "react";
-import { ScrollMemory, useNavigation, useScreenSource } from "@genesis/sdk/react";
-import { profileUrl, searchUrl, type ExploreData, type Person } from "../model";
-import { usePostActions } from "../components/post";
-import { Avatar, Icon, LoadError, ModeTabs, Notice, OpenOnX, Skeleton, useOpenRoute, Verified } from "../components/ui";
-import { FeedList } from "./feed";
+import { ScrollMemory, useNavigation, usePage, useRecord, useRegion } from "@genesis/sdk/react";
+import { profileUrl, searchUrl, type Person, type PostView, type Trend } from "../model";
+import { PostCard } from "../components/post";
+import { Avatar, Icon, LoadError, ModeTabs, Notice, Skeleton, useOpenUrl, Verified } from "../components/ui";
+import { MoreButton } from "./feed";
 
 const SEARCH_TABS = [{ id: "", label: "Top" }, { id: "live", label: "Latest" }, { id: "user", label: "People" }, { id: "media", label: "Media" }];
 
-/** Explore's trends, and search and hashtag results. */
+/** Explore's trends, and search and hashtag results, in the `explore` context. */
 export function ExploreScreen() {
-  const { screen, navigate } = useNavigation();
-  const page = useScreenSource<ExploreData>();
-  const { actions, error: actionError } = usePostActions(page.stale);
-  const open = useOpenRoute();
-  const routeId = screen.source?.routeId ?? "explore";
-  const query = routeId === "search" ? page.params.q ?? "" : routeId === "hashtag" ? `#${page.params.tag}` : "";
-  const tab = new URL(screen.source?.url ?? "https://x.com/").searchParams.get("f") ?? "";
+  const { navigate } = useNavigation();
+  const page = usePage();
+  const trends = useRegion<Trend | null>("trends");
+  const people = useRegion<Person | null>("people");
+  const results = useRegion<PostView | null>("results");
+  const empty = useRecord<string | null>("empty", null);
+  const open = useOpenUrl();
+  const url = new URL(page.url ?? "https://x.com/explore");
+  const path = url.pathname;
+  const query = path === "/search" ? page.params.q ?? "" : path.startsWith("/hashtag/") ? `#${page.params.tag}` : "";
+  const tab = url.searchParams.get("f") ?? "";
   const [draft, setDraft] = useState(query);
-  const data = page.data;
+  const here = page.pageId === "explore";
+  const shown = { trends: here ? trends.order : [], people: here ? people.order : [], results: here ? results.order : [] };
+  const actionable = page.account !== null && !page.stale && !results.ephemeral;
+  const partial = here && [trends, people, results].some(region => region.status === "error");
+  const missing = partial && <p className="inline-error" role="alert">Some results couldn't be read.</p>;
 
   let body;
-  if (!data) body = page.status === "error" ? <LoadError error={page.error} url={page.url} />
-    : page.status === "unsupported" ? <Notice title="This page moved"><p>X sent this search somewhere the app doesn't show.</p>{page.url && <OpenOnX url={page.url} />}</Notice>
-    : <Skeleton label={query ? "Searching" : "Loading trends"} />;
-  else if (!data.items.length && !data.trends.length && !data.people.length) body = <Notice title={data.emptyText ?? "No results"}>
-    <p>Try a different search.</p>
-  </Notice>;
-  else body = <>
+  if (!shown.trends.length && !shown.people.length && !shown.results.length) {
+    body = partial ? missing
+      : here && page.status === "ready" ? <Notice title={empty?.data ?? "No results"}><p>Try a different search.</p></Notice>
+      : page.status === "error" ? <LoadError error={page.error} />
+      : <Skeleton label={query ? "Searching" : "Loading trends"} />;
+  } else body = <>
     {page.status === "error" && <p className="inline-error" role="alert">Couldn't refresh. Showing the last copy.</p>}
-    {actionError != null && <p className="inline-error" role="alert">That didn't go through on X. Try again.</p>}
-    {data.trends.length > 0 && <section aria-label="Trends">
+    {missing}
+    {shown.trends.length > 0 && <section aria-label="Trends">
       {!query && <h2 className="section-title">Trends for you</h2>}
-      {data.trends.map(trend => <button type="button" key={trend.context + trend.name} className="trend" onClick={() => open(searchUrl(trend.name))}>
-        <span className="post-meta">{trend.context}</span>
-        <strong>{trend.name}</strong>
-        {trend.meta && <span className="post-meta">{trend.meta}</span>}
-      </button>)}
+      {shown.trends.map(key => {
+        const trend = trends.get(key)?.data;
+        return trend && <button type="button" key={key} className="trend" onClick={() => open(searchUrl(trend.name))}>
+          {trend.context && <span className="post-meta">{trend.context}</span>}
+          <strong>{trend.name}</strong>
+          {trend.meta && <span className="post-meta">{trend.meta}</span>}
+        </button>;
+      })}
     </section>}
-    {data.people.length > 0 && <section aria-label="People">
+    {shown.people.length > 0 && <section aria-label="People">
       {tab !== "user" && <h2 className="section-title">People</h2>}
-      {data.people.map(person => <PersonRow key={person.handle} person={person} />)}
+      {shown.people.map(key => {
+        const person = people.get(key)?.data;
+        return person && <PersonRow key={key} person={person} />;
+      })}
     </section>}
-    {data.items.length > 0 && <FeedList items={data.items} actions={actions} />}
-    {data.partial && page.url && <div className="more"><OpenOnX url={page.url} label="See more on X" /></div>}
+    {shown.results.length > 0 && <div className="feed">
+      {shown.results.map(key => {
+        const post = results.get(key)?.data;
+        return post && <PostCard key={key} post={post} region="results" actionable={actionable} />;
+      })}
+    </div>}
+    {query && <MoreButton stale={page.stale} />}
   </>;
 
-  return <ScrollMemory className="screen" aria-busy={page.stale}>
+  return <ScrollMemory className="screen" aria-busy={page.stale || page.status === "loading"}>
     <form role="search" className="search-form" onSubmit={event => {
       event.preventDefault();
       const value = draft.trim();
-      if (value) void navigate({ kind: "route", url: searchUrl(value, tab || undefined), mode: routeId === "explore" ? "push" : "replace" });
+      if (value) navigate({ url: searchUrl(value, tab || undefined), mode: query ? "replace" : "push" });
     }}>
       <label className="search-field">
         <Icon name="search" />
@@ -58,14 +76,14 @@ export function ExploreScreen() {
       </label>
     </form>
     {query && <ModeTabs label="Result type" active={tab} options={SEARCH_TABS.map(option => ({
-      ...option, go: () => void navigate({ kind: "route", url: searchUrl(query, option.id || undefined), mode: "replace" }),
+      ...option, go: () => navigate({ url: searchUrl(query, option.id || undefined), mode: "replace" }),
     }))} />}
     {body}
   </ScrollMemory>;
 }
 
 export function PersonRow({ person }: { person: Person }) {
-  const open = useOpenRoute();
+  const open = useOpenUrl();
   return <button type="button" className="person" onClick={() => open(profileUrl(person.handle))}>
     <Avatar src={person.avatar} />
     <span className="person-body">

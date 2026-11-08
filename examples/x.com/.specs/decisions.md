@@ -29,3 +29,10 @@
 - Date and origin: 2026-11-06, fixes from the revamp implementation review; implementation choices by the agent.
 - Choice and rationale: Like and bookmark are declared on both `primary` and `explore`, and a post acts through the source of the screen it is shown on, so posts in search results act on the page that shows them. The account is read again with `reload("account")` from the app root on every resume instead of a custom adapter intent, so the Profile tab and the Categories handle check follow a sign-in or sign-out made elsewhere. Categories restores its search and category filter from `preferences` again, as before the SDK 0.0 rewrite.
 - Evidence and supersession: [page helpers](../src/sources/page.ts), [app](../src/app.tsx), [categories screen](../src/screens/categories.tsx). Amends decision-0003 on where intents run.
+
+## decision-0006: Adapter pages, regions and contexts
+
+- Date and origin: 2026-11-08, step 9 of the session projection migration requested by the user; implementation choices by the agent.
+- Choice and rationale: The applet moves to manifest schema 6 with an adapter instead of typed sources and intents. Home, Notifications and Saved share the `primary` context; Explore and Profile have their own, so each keeps its X history. Like and bookmark are desired-state `setLiked` and `setBookmarked` actions on the post rows, which click X's own controls. Show more is a `loadMore` page action that scrolls X's page, since X loads rows as the page scrolls. A post's thread is one region split at the post the URL names, because X shows the conversation as one column. Unrouted X pages show X itself, replacing the `website-*` routes and the `unsupported` screen; the `/:handle` profile route also matches one-segment X pages, which the profile page reports as an error.
+- Evidence and supersession: [manifest](../applet.json), [adapter](../src/adapter.ts), [app](../src/app.tsx). Supersedes the sources and intents of decision-0003 and decision-0005; the account reload at the root and restored Categories filters of decision-0005 stay in force.
+

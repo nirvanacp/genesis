@@ -1,4 +1,6 @@
 mod applets;
+mod compat;
+mod contexts;
 mod documents;
 mod host;
 mod imports;
@@ -6,7 +8,6 @@ mod rpc;
 mod services;
 mod storage;
 mod storage_worker;
-mod surfaces;
 
 use genesis_contracts::{ShellCommand, ShellEvent};
 use host::Host;

@@ -1,33 +1,47 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { ScrollMemory, useIntent, useNavigation, useScreenSource } from "@genesis/sdk/react";
-import { itemUrl, type CommentEntry, type ItemData } from "../model";
-import { CommentView, StoryRow } from "../components/story";
-import { Icon, LoadError, Notice, RichText, Skeleton, useOpenRoute } from "../components/ui";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ScrollMemory, usePage, useRecord, useRegion, type RegionView } from "@genesis/sdk/react";
+import { ORIGIN, type CommentEntry, type ItemHead, type MoreLink } from "../model";
+import { CommentRow, StoryRow } from "../components/story";
+import { loginUrl, LoadError, Notice, RichText, Skeleton, useOpenUrl } from "../components/ui";
 
-/** For each comment, the ids of its ancestors, from the depth of the flat page order. */
-function ancestorsOf(comments: CommentEntry[]): Map<string, string[]> {
-  const result = new Map<string, string[]>();
-  const path: CommentEntry[] = [];
-  for (const entry of comments) {
+/** For each comment, the ids of its ancestors (from the depths in page order) and how many replies it holds. */
+function threadOf(comments: RegionView<CommentEntry | null>) {
+  const ancestors = new Map<string, string[]>();
+  const replies = new Map<string, number>();
+  const path: { id: string; depth: number }[] = [];
+  for (const key of comments.order) {
+    const entry = comments.get(key)?.data;
+    if (!entry) continue;
     while (path.length > 0 && path[path.length - 1].depth >= entry.depth) path.pop();
-    result.set(entry.id, path.map(parent => parent.id));
-    path.push(entry);
+    ancestors.set(key, path.map(parent => parent.id));
+    for (const parent of path) replies.set(parent.id, (replies.get(parent.id) ?? 0) + 1);
+    path.push({ id: key, depth: entry.depth });
   }
-  return result;
+  return { ancestors, replies };
 }
 
+/**
+ * A discussion (`/item?id=`): the story or comment at the top, then the thread. Comment rows
+ * are `memo` components keyed by comment id; the callbacks they get keep their identity.
+ */
 export function ItemScreen() {
-  const { screen, navigate } = useNavigation();
-  const page = useScreenSource<ItemData>();
-  const vote = useIntent("primary");
-  const open = useOpenRoute();
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const page = usePage();
+  const head = useRecord<ItemHead>("story", null);
+  const comments = useRegion<CommentEntry | null>("comments");
+  const more = useRecord<MoreLink>("more", null);
+  const open = useOpenUrl();
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const [target, setTarget] = useState<string | null>(null);
   const container = useRef<HTMLDivElement>(null);
-  const data = page.data;
-  const comments = data?.comments ?? [];
-  const ancestors = useMemo(() => ancestorsOf(comments), [comments]);
-  const pageUrl = screen.source?.url ?? "";
+  const { ancestors, replies } = useMemo(() => threadOf(comments), [comments]);
+  const signedIn = page.account !== null;
+  const data = page.pageId === "item" ? head?.data ?? null : null;
+  const id = data?.story?.id ?? data?.comment?.id ?? page.params.id ?? "";
+  const storyId = data?.comment?.onStory?.id ?? id;
+
+  // Callbacks read the latest thread through a ref so memo rows keep the same props.
+  const latest = useRef({ ancestors, url: page.url });
+  latest.current = { ancestors, url: page.url };
 
   // Scroll to a comment after its collapsed ancestors have opened.
   useEffect(() => {
@@ -36,51 +50,53 @@ export function ItemScreen() {
     setTarget(null);
   }, [target]);
 
-  /** Links to a comment on this page reveal it; anything else goes through the manifest. */
-  const follow = (url: string) => {
+  /** A link to a comment on this page reveals it; anything else goes through the manifest. */
+  const follow = useCallback((url: string) => {
+    const { ancestors, url: pageUrl } = latest.current;
     const link = new URL(url);
-    const id = link.hash.slice(1);
+    const comment = link.hash.slice(1);
     link.hash = "";
-    const here = new URL(pageUrl || itemUrl("1"));
-    here.hash = "";
-    if (id && link.href === here.href && ancestors.has(id)) {
-      setCollapsed(current => new Set([...current].filter(entry => entry !== id && !ancestors.get(id)!.includes(entry))));
-      setTarget(id);
+    const here = pageUrl ? new URL(pageUrl) : null;
+    if (here) here.hash = "";
+    if (comment && here && link.href === here.href && ancestors.has(comment)) {
+      setCollapsed(current => new Set([...current].filter(entry => entry !== comment && !ancestors.get(comment)!.includes(entry))));
+      setTarget(comment);
     } else open(url);
-  };
+  }, [open]);
 
-  if (page.status === "unsupported") return <div className="screen"><Notice title="This item moved"><p>Hacker News sent this link somewhere the app doesn't show.</p></Notice></div>;
-  if (!data) return <div className="screen">{page.status === "error"
-    ? <LoadError error={page.error} url={page.url} />
-    : <Skeleton label="Loading discussion" />}</div>;
-
-  const toggle = (id: string) => setCollapsed(current => {
+  const toggle = useCallback((key: string) => setCollapsed(current => {
     const next = new Set(current);
-    if (!next.delete(id)) next.add(id);
+    if (!next.delete(key)) next.add(key);
     return next;
-  });
-  const hiddenCount = (id: string) => comments.filter(entry => ancestors.get(entry.id)!.includes(id)).length;
-  const visible = comments.filter(entry => !ancestors.get(entry.id)!.some(id => collapsed.has(id)));
-  const commentUrl = data.story ? itemUrl(data.story.id) : data.comment ? itemUrl(data.comment.id) : page.url;
+  }), []);
+
+  if (!data) return <div className="screen" aria-busy={page.status === "loading"}>
+    {page.status === "error" ? <LoadError error={page.error} /> : <Skeleton label="Loading discussion" />}
+  </div>;
+
+  const keys = page.pageId === "item" ? comments.order : [];
+  const visible = keys.filter(key => !ancestors.get(key)?.some(parent => collapsed.has(parent)));
+  const goto = `item?id=${id}`;
 
   return <ScrollMemory className="screen" aria-busy={page.stale}>
     <div ref={container}>
       {page.status === "error" && <p className="inline-error" role="alert">Couldn't refresh. Showing the last copy.</p>}
-      {data.story && <StoryRow heading story={data.story}
-        actions={{ vote: id => void vote.act({ name: "vote", id }).catch(() => {}), voting: vote.pending }} />}
-      {data.comment && <CommentView entry={data.comment} onLink={follow} showStory />}
+      {data.story && <StoryRow heading story={data.story} region="story" signedIn={signedIn} />}
+      {data.comment && <CommentRow head entry={data.comment} region="story" storyId={storyId} signedIn={signedIn} onLink={follow} />}
       {data.text.length > 0 && <div className="toptext"><RichText parts={data.text} onLink={follow} /></div>}
-      {data.canComment && commentUrl && <button type="button" className="secondary" onClick={() =>
-        void navigate({ kind: "website", url: commentUrl })}>Add a comment <Icon name="external" /></button>}
-      <h2 className="section-title">{comments.length === 0 ? "No comments yet" : "Comments"}</h2>
-      {visible.map(entry => <CommentView key={entry.id} entry={entry} onLink={follow}
-        collapsed={collapsed.has(entry.id)} hidden={hiddenCount(entry.id)} toggle={() => toggle(entry.id)} />)}
-      {data.partial && <Notice title="More comments on Hacker News">
-        <p>This thread is longer than the app shows at once.</p>
-        <button type="button" className="secondary" onClick={() => void navigate({ kind: "website", url: page.url ?? commentUrl! })}>
-          Open the full thread <Icon name="external" />
-        </button>
-      </Notice>}
+      {signedIn && data.canComment && <button type="button" className="secondary" onClick={() =>
+        open(`${ORIGIN}/reply?id=${id}&goto=${encodeURIComponent(goto)}`)}>Add a comment</button>}
+      {!signedIn && <button type="button" className="secondary" onClick={() => open(loginUrl(goto))}>Sign in to comment</button>}
+      <h2 className="section-title">{keys.length === 0 ? "No comments yet" : "Comments"}</h2>
+      {comments.status === "error" && <p className="inline-error" role="alert">Some comments couldn't be read.</p>}
+      {visible.map(key => {
+        const entry = comments.get(key)?.data;
+        return entry && <CommentRow key={key} entry={entry} region="comments" storyId={storyId} signedIn={signedIn}
+          collapsed={collapsed.has(key)} hidden={replies.get(key) ?? 0} onToggle={toggle} onLink={follow} />;
+      })}
+      {more && <button type="button" className="secondary more" disabled={page.stale} onClick={() => open(more.data.url)}>
+        More comments
+      </button>}
     </div>
   </ScrollMemory>;
 }

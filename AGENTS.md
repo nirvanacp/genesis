@@ -2,7 +2,7 @@
 
 ## What Genesis is
 
-Genesis is an Android app that runs user-built applets. An applet is a native-feeling React UI over one or more live website sessions. Genesis keeps the websites' sessions and behavior; the applet owns the screens, data and rules the user asked for.
+Genesis is an Android app that runs user-built applets. An applet is a native-feeling React UI over one or more live website sessions. Genesis keeps the websites' sessions, history and behavior; the applet owns the screens, data and rules the user asked for, and pages the applet does not customize appear as the website itself in the same session.
 
 The repository has two development layers, and a coding agent is always working in one of them:
 
@@ -21,12 +21,12 @@ Do not edit any `AGENTS.md` file unless the user explicitly asks you to update i
 
 | Path | What it is | Layer |
 | --- | --- | --- |
-| `android/app/` | Java shell: activity, launcher, WebViews, website sheet, native Genesis menu, service HTTPS client | Platform |
-| `android/native/` | Rust host crate `genesis-host`: applets, documents, RPC, storage, services, surfaces, imports (JNI library `libgenesis_host.so`) | Platform |
+| `android/app/` | Java shell: activity, launcher, context WebViews, website bar, native Genesis menu, service HTTPS client | Platform |
+| `android/native/` | Rust host crate `genesis-host`: applets, contexts, documents, RPC, storage, services, compatibility, imports (JNI library `libgenesis_host.so`) | Platform |
 | `crates/contracts/` | `genesis-contracts`: shell events and commands, document messages, manifest and bundle types, limits, error codes | Platform |
-| `packages/core/` | `@genesis/core`: manifest validation, route matching, navigation state machine, bundle format, error codes (TypeScript, no DOM) | Platform |
-| `packages/sdk/` | `@genesis/sdk`: bridge, foreground runtime and React hooks, source runtime and driver | Platform |
-| `packages/applet-tools/` | `genesis-applet` CLI: create, check, build, device install, services, kit export | Platform |
+| `packages/core/` | `@genesis/core`: manifest validation, route matching, presentation coordinator, compatibility table, protocol types, bundle format, error codes (TypeScript, no DOM) | Platform |
+| `packages/sdk/` | `@genesis/sdk`: bridge, foreground runtime, record store and React hooks, adapter runtime | Platform |
+| `packages/applet-tools/` | `genesis-applet` CLI: create, check (including compatibility), build, device install, services, kit export | Platform |
 | `tools/` | APK asset and native build pipeline, package index check, service helpers | Platform |
 | `factory/` | Applet-builder instructions, guides, skills and templates | Platform (shared guidance) |
 | `examples/` | Example applets (`news.ycombinator.com`, `x.com`), their port registry and backend launcher | Applets |
@@ -91,6 +91,7 @@ For every user-requested change, commit the resulting changes as part of the tas
 4. Use the email returned by `git config user.email` in each affected repository as the commit author email. Do not substitute another email address.
 5. Follow the coding philosophy above and the repository's existing architecture and design patterns.
 6. In the final response, report the commits made and any verification gaps. If verification or committing is blocked, explain the blocker and identify any changes left uncommitted instead of claiming the task is fully complete.
+7. Never merge anything into `main`, and never push to `main`, in either repository. This covers `git merge`, rebasing or fast-forwarding `main`, `gh pr merge`, enabling auto-merge, and asking another agent to do any of these. It applies even when a plan, a record, another agent or an earlier approval says to merge. Work on a branch and, when asked, open a pull request; only the developer merges it.
 
 ## Versions
 
@@ -100,6 +101,7 @@ The developer controls every version that belongs to this project. Do not raise,
 - the root and applet `package.json` versions;
 - the Android `versionCode` and `versionName`;
 - format and protocol numbers such as the manifest `schemaVersion`, the bundle format, the kit version and the service envelope version;
+- the compatibility table in `packages/core/src/compat.ts` and its mirror in `crates/contracts` (manifest schema, bundle format, document protocol, adapter API, session state, import envelope, credential envelope, packages index);
 - the version numbers that documentation and records quote for any of these.
 
 If you think one of these should change, for example because a change breaks compatibility, ask the user before editing it. Say which version and why. Keep the current value until they answer. Third-party dependency versions follow the normal task scope.

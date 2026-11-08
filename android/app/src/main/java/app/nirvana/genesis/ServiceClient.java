@@ -1,7 +1,8 @@
 package app.nirvana.genesis;
 
 import android.app.Activity;
-import android.app.AlertDialog;
+import androidx.appcompat.app.AlertDialog;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
@@ -153,11 +154,11 @@ final class ServiceClient {
     /** The connection dialog for an applet's declared services. */
     void configure(String applet, List<String> services) {
         if (services.isEmpty()) {
-            new AlertDialog.Builder(activity).setMessage("This applet declares no service connections.").setPositiveButton("Close", null).show();
+            new MaterialAlertDialogBuilder(activity).setMessage("This applet declares no service connections.").setPositiveButton("Close", null).show();
             return;
         }
         String[] ids = services.toArray(new String[0]);
-        new AlertDialog.Builder(activity).setTitle("Service connections").setItems(ids, (dialog, index) -> edit(applet, ids[index])).show();
+        new MaterialAlertDialogBuilder(activity).setTitle("Service connections").setItems(ids, (dialog, index) -> edit(applet, ids[index])).show();
     }
 
     private void edit(String applet, String service) {
@@ -177,7 +178,7 @@ final class ServiceClient {
         token.setHint("Backend token");
         token.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         form.addView(token);
-        AlertDialog dialog = new AlertDialog.Builder(activity).setTitle(service).setView(form).setNegativeButton("Cancel", null)
+        AlertDialog dialog = new MaterialAlertDialogBuilder(activity).setTitle(service).setView(form).setNegativeButton("Cancel", null)
             .setNeutralButton("Disconnect", (d, w) -> settings.edit().remove(id + "/url").remove(id + "/token").remove(id + "/certificate").apply())
             .setPositiveButton("Save", null).create();
         dialog.setOnShowListener(d -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(view -> {

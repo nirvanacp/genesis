@@ -4,6 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "check": "genesis-applet check .",
+    "build": "genesis-applet build .",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {

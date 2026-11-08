@@ -4,7 +4,7 @@
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { serviceMessage } from "@genesis/sdk";
-import { useAppResume, useRecords, useService, useSource } from "@genesis/sdk/react";
+import { useAppResume, usePage, useRecords, useService } from "@genesis/sdk/react";
 import {
   isObject, validBookmark, validCategory, validLibrary, validMembership, validReceipt,
   type AccountData, type Bookmark, type BookmarkPage, type Category, type Library, type Membership, type PostView, type Receipt, type Snapshot,
@@ -52,9 +52,10 @@ export interface LibraryState {
 export function useBookmarksService() {
   const request = useService("bookmarks");
   return useMemo(() => {
-    async function call<T>(path: string, body?: unknown): Promise<T> {
-      const response = await request<{ error?: { code?: string; message?: string } } & T>(path, body === undefined ? {} : { method: "POST", body });
-      if (response.status >= 200 && response.status < 300) return response.body;
+    /** Sends one request and returns the `result` of the service's `{ result }` envelope. */
+    async function call(path: string, body?: unknown): Promise<unknown> {
+      const response = await request<{ result?: unknown; error?: { code?: string; message?: string } }>(path, body === undefined ? {} : { method: "POST", body });
+      if (response.status >= 200 && response.status < 300) return response.body?.result;
       const failure = response.body?.error;
       throw new LibraryError(failure?.code ?? "SERVICE_FAILURE", failure?.message ?? "The bookmarks service refused the request.", response.status >= 500);
     }
@@ -63,20 +64,19 @@ export function useBookmarksService() {
       return value as T;
     };
     return {
-      library: async () => valid<Library>((await call<{ result: unknown }>("/v1/library")).result, validLibrary),
+      library: async () => valid<Library>(await call("/v1/library"), validLibrary),
       categories: async () => {
-        const { result } = await call<{ result: { categories?: unknown } }>("/v1/categories");
-        return valid<Category[]>(result?.categories, value => Array.isArray(value) && value.every(validCategory));
+        const result = await call("/v1/categories");
+        return valid<Category[]>(isObject(result) ? result.categories : undefined, value => Array.isArray(value) && value.every(validCategory));
       },
       lookup: async (postId: string) => {
-        const answer = await call<{ records?: unknown }>("/v1/bookmarks/lookup", { postIds: [postId] });
-        const records = valid<Membership[]>(answer.records, value => Array.isArray(value) && value.every(validMembership));
+        const result = await call("/v1/bookmarks/lookup", { postIds: [postId] });
+        const records = valid<Membership[]>(isObject(result) ? result.records : undefined, value => Array.isArray(value) && value.every(validMembership));
         return records.find(record => record.postId === postId) ?? null;
       },
-      query: async (categoryId: string | null, query: string, cursor: string | null) => {
-        const page = await call<BookmarkPage>("/v1/bookmarks/query", { categoryId, query, cursor, limit: 20 });
-        return valid<BookmarkPage>(page, value => isObject(value) && Array.isArray(value.entries) && value.entries.every(validBookmark));
-      },
+      query: async (categoryId: string | null, query: string, cursor: string | null) =>
+        valid<BookmarkPage>(await call("/v1/bookmarks/query", { categoryId, query, cursor, limit: 20 }),
+          value => isObject(value) && Array.isArray(value.entries) && value.entries.every(validBookmark)),
       operate: async (operationId: string, kind: string, payload: unknown) =>
         valid<Receipt>(await call("/v1/operations", { operationId, kind, payload }), validReceipt),
       receipt: async (operationId: string) => valid<Receipt>(await call(`/v1/operations/${operationId}`), validReceipt),
@@ -86,10 +86,10 @@ export function useBookmarksService() {
 
 export type BookmarksService = ReturnType<typeof useBookmarksService>;
 
-/** The signed-in X account as the `account` source last saw it. */
+/** The signed-in X account as the pages last showed it; X shows the same account in every context. */
 export function useAccount(): { account: AccountData | null; signedOut: boolean } {
-  const source = useSource<AccountData>("account");
-  return { account: source.data?.handle ? source.data : null, signedOut: source.status === "auth" };
+  const page = usePage("account");
+  return { account: page.account ? { handle: page.account, name: null } : null, signedOut: page.status === "auth" };
 }
 
 /** The library, its categories and any change left pending, checked against the signed-in account. */

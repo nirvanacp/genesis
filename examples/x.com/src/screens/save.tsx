@@ -23,7 +23,7 @@ function parsePost(value: string | undefined): SavePost | null {
 export function SaveScreen() {
   const { screen, back } = useNavigation();
   const library = useLibrary();
-  const post = useMemo(() => parsePost(screen.params.post), [screen.params.post]);
+  const post = useMemo(() => parsePost(screen?.params.post), [screen?.params.post]);
   const [membership, setMembership] = useState<Membership | null | undefined>(undefined);
   const [selected, setSelected] = useState<string[] | null>(null);
   const [reads, setReads] = useState(0);

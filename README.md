@@ -1,6 +1,6 @@
 # Genesis
 
-Genesis is an Android app that runs user-built applets. An applet is a native-feeling React UI over one or more live website sessions: hidden WebViews load the real websites, typed adapters publish data from them, and the applet owns the screens, data and rules. Website sign-in, cookies and protected flows stay with the website, which opens in a sheet when needed.
+Genesis is an Android app that runs user-built applets. An applet is a native-feeling React UI over one or more live website sessions: each context is a WebView that loads the real website and keeps its history, an adapter in the page publishes what the page shows as keyed records and actions, and the applet owns the screens, data and rules. Pages the applet does not customize, sign-in, cookies and protected flows stay with the website, which appears in place in the same session when needed.
 
 There are two kinds of work:
 
@@ -15,12 +15,12 @@ An applet author uses the public SDK and their own code, and does not need to le
 
 | Path | Contents |
 | --- | --- |
-| `android/app/` | Java shell: activity, launcher, WebViews, website sheet, native Genesis menu, service HTTPS client |
-| `android/native/` | Rust host `genesis-host`: applets, documents, RPC, storage, services, surfaces, imports (`libgenesis_host.so`) |
+| `android/app/` | Java shell: activity, launcher, context WebViews, website bar, native Genesis menu, service HTTPS client |
+| `android/native/` | Rust host `genesis-host`: applets, contexts, documents, RPC, storage, services, compatibility, imports (`libgenesis_host.so`) |
 | `crates/contracts/` | `genesis-contracts`: shell events and commands, document messages, bundle types, limits, error codes |
-| `packages/core/` | `@genesis/core`: manifest validation, route matching, navigation state machine, bundle format, error codes |
-| `packages/sdk/` | `@genesis/sdk`: bridge, foreground runtime and React hooks, source runtime and driver |
-| `packages/applet-tools/` | `genesis-applet` CLI: create, check, build, device install, services, kit export |
+| `packages/core/` | `@genesis/core`: manifest validation, route matching, presentation coordinator, compatibility table, protocol types, bundle format, error codes |
+| `packages/sdk/` | `@genesis/sdk`: bridge, foreground runtime, record store and React hooks, adapter runtime |
+| `packages/applet-tools/` | `genesis-applet` CLI: create, check (including compatibility), build, device install, services, kit export |
 | `tools/` | APK asset and native build pipeline, package index check, service helpers |
 | `factory/` | Applet-builder instructions, guides, skills and templates |
 | `examples/` | Example applets (`news.ycombinator.com`, `x.com`), their port registry and backend launcher |
@@ -95,4 +95,4 @@ These startup scripts are operator commands. Coding agents maintain and check th
 
 ## Current state
 
-One runtime: manifest schema 5, bundle format 2, and `@genesis/sdk` and `genesis-applet` 0.0.0. Each applet has a React foreground, up to three hidden source WebViews with typed adapters, declared intents for website actions, host storage and optional pinned HTTPS services. The Hacker News and X examples are rebuilt on it and checked on an Android emulator; website writes, several routes and physical phones are not yet verified on this runtime. Production publishing, release signing and backends reachable without a computer are separate work.
+One runtime: manifest schema 6, bundle format 3, document protocol 1, adapter API 1, and `@genesis/sdk` and `genesis-applet` 0.0.0. Each applet has a React foreground, one or more website contexts with their own history, an adapter that publishes regions of keyed records and desired-state actions from each page it knows, host storage and optional pinned HTTPS services. Genesis checks every applet against its compatibility table and marks an applet built for another version as needing an update. The Hacker News and X examples are rebuilt on it and checked on an Android emulator; physical phones and several website writes are not yet verified on this runtime. Production publishing, release signing and backends reachable without a computer are separate work.

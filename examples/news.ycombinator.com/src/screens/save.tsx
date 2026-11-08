@@ -24,8 +24,8 @@ function parseSnapshot(value: string | undefined): StorySnapshot | null {
 export function SaveScreen() {
   const { screen, back } = useNavigation();
   const { storage, bookmarkRepository, categoryRepository } = useRepositories();
-  const snapshot = useMemo(() => parseSnapshot(screen.params.snapshot), [screen.params.snapshot]);
-  const fromPage = screen.params.fresh === "1";
+  const snapshot = useMemo(() => parseSnapshot(screen?.params.snapshot), [screen?.params.snapshot]);
+  const fromPage = screen?.params.fresh === "1";
   const [state, setState] = useState<{ previous: StoredDocument<BookmarkV1> | null; categories: CategorySnapshot } | null>(null);
   const [selected, setSelected] = useState<string[] | null>(null);
   const [readFailed, setReadFailed] = useState(false);

@@ -7,18 +7,19 @@
       "types": "./dist/types/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./adapter": {
+      "types": "./dist/types/adapter/index.d.ts",
+      "default": "./dist/adapter.js"
+    },
     "./react": {
       "types": "./dist/types/react.d.ts",
       "default": "./dist/react.js"
-    },
-    "./source": {
-      "types": "./dist/types/source.d.ts",
-      "default": "./dist/source.js"
     }
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
     "build": "node build.mjs",
+    "test": "npm run build && node --test \"test/*.test.mjs\"",
     "prepack": "npm run build"
   },
   "peerDependencies": {

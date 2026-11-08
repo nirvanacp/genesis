@@ -14,33 +14,33 @@ The scaffold contains:
 
 | File | Purpose |
 | --- | --- |
-| `applet.json` | Manifest, schema 5: one source `main`, screens `home` and `unsupported`, one route |
-| `src/sources/main.ts` | The adapter for source `main` |
-| `src/main.tsx` | The foreground: `mountForeground` and the two screens |
-| `src/theme.css` | Light and dark tokens |
-| `.specs/`, `.changelog/` | Applet records, already started |
+| `applet.json` | Manifest, schema 6: one context `primary` at the origin, screen `home`, one route `/` to page `home` |
+| `src/adapter.ts` | The adapter: page `home` with a `links` collection and an `open` action |
+| `src/main.tsx` | The foreground: `mountForeground` and the `home` screen |
+| `src/theme.css` | Light and dark tokens, and the space for the menu button |
+| `.specs/`, `.changelog/` | Applet records, already started; the current spec lists the compatibility values |
 | `factory/` | This kit |
 | `AGENTS.md`, `README.md` | Pointers to the kit and the records |
 
 ## Develop
 
 1. Inspect the website and write the brief in `.specs/current.md` ([product scope](product-scope.md)).
-2. Declare origins, sources, routes and screens in `applet.json` ([SDK reference](sdk-reference.md#manifest-appletjson)).
-3. Write an extractor per adapted route and the screens that render them ([patterns](patterns.md)).
-4. Add intents for actions ([interactions](interactions.md)), and storage or a service for applet data ([services and data](services-and-data.md)).
+2. Declare origins, contexts, routes and screens in `applet.json` ([SDK reference](sdk-reference.md#manifest-appletjson), [navigation](navigation.md)).
+3. Write the adapter's pages, regions and readiness ([adapters](adapters.md)), and the screens that render them, with their loading, stale and error states ([patterns](patterns.md), [presentation](presentation.md)).
+4. Add actions for what the user does on the website ([interactions](interactions.md)), and storage or a service for applet data ([services and data](services-and-data.md)).
 
 Add the smallest set of dependencies and capabilities the requested features need. Do not reduce features to avoid a dependency.
 
 ## Check, build, install
 
 ```sh
-npm run check                                      # manifest, files and TypeScript
+npm run check                                      # compatibility, manifest, TypeScript and the adapter
 npm run build                                      # writes dist/ with the bundle
 npx genesis-applet dev install . --device emulator-5554
 npx genesis-applet dev status my-applet --device emulator-5554
 ```
 
-`check` validates the manifest against schema 5 and type-checks `src`. `build` bundles the foreground and each adapter. `dev install` takes the applet directory (it uses `dist/`) or a build output directory; it does not build, so run `build` first. It copies the bundle to the debug app, which applies it without restarting Genesis, and reports the accepted revision or the rejection reason. `dev status` lists the installed applets and, given an id, its last install receipt. Every command accepts `--json`; device commands accept `--adb <path>` and `--application <id>`.
+`check` compares the applet with the tools and fails with `APPLET_INCOMPATIBLE` on a difference, then validates the manifest against schema 6, type-checks `src` and imports the adapter to confirm it declares every route's page. Importing runs the applet's code; check only applets you trust. `build` bundles the foreground and the adapter into `dist/`; `--debug` adds runtime measurements. `dev install` takes the applet directory (it uses `dist/`) or a build output directory; it does not build, so run `build` first. It copies the bundle to the debug app, which applies it without restarting Genesis, and reports the accepted revision or the rejection reason, including an incompatible SDK. `dev status` lists the installed applets with their status and, given an id, its last install receipt. Every command accepts `--json`; device commands accept `--adb <path>` and `--application <id>`.
 
 Release builds of Genesis load only the applets bundled into the APK and refuse development installs.
 

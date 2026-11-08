@@ -1,8 +1,36 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.NirvanaGenesis" parent="android:Theme.Material.Light.NoActionBar">
-        <item name="android:colorAccent">#b93800</item>
-        <item name="android:windowBackground">#faf7f2</item>
-        <item name="android:windowLightStatusBar">true</item>
+    <!-- Material 3, following the system appearance. DynamicColors replaces these roles on Android 12 and later. -->
+    <style name="Theme.NirvanaGenesis" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/genesis_primary</item>
+        <item name="colorOnPrimary">@color/genesis_on_primary</item>
+        <item name="colorPrimaryContainer">@color/genesis_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/genesis_on_primary_container</item>
+        <item name="colorSecondary">@color/genesis_secondary</item>
+        <item name="colorOnSecondary">@color/genesis_on_secondary</item>
+        <item name="colorSecondaryContainer">@color/genesis_secondary_container</item>
+        <item name="colorOnSecondaryContainer">@color/genesis_on_secondary_container</item>
+        <item name="colorTertiary">@color/genesis_tertiary</item>
+        <item name="colorOnTertiary">@color/genesis_on_tertiary</item>
+        <item name="colorError">@color/genesis_error</item>
+        <item name="colorOnError">@color/genesis_on_error</item>
+        <item name="colorErrorContainer">@color/genesis_error_container</item>
+        <item name="colorOnErrorContainer">@color/genesis_on_error_container</item>
+        <item name="colorSurface">@color/genesis_surface</item>
+        <item name="colorOnSurface">@color/genesis_on_surface</item>
+        <item name="colorSurfaceVariant">@color/genesis_surface_variant</item>
+        <item name="colorOnSurfaceVariant">@color/genesis_on_surface_variant</item>
+        <item name="colorSurfaceContainerLowest">@color/genesis_surface_container_lowest</item>
+        <item name="colorSurfaceContainerLow">@color/genesis_surface_container_low</item>
+        <item name="colorSurfaceContainer">@color/genesis_surface_container</item>
+        <item name="colorSurfaceContainerHigh">@color/genesis_surface_container_high</item>
+        <item name="colorSurfaceContainerHighest">@color/genesis_surface_container_highest</item>
+        <item name="colorOutline">@color/genesis_outline</item>
+        <item name="colorOutlineVariant">@color/genesis_outline_variant</item>
+        <item name="colorSurfaceInverse">@color/genesis_inverse_surface</item>
+        <item name="colorOnSurfaceInverse">@color/genesis_inverse_on_surface</item>
+        <item name="colorPrimaryInverse">@color/genesis_inverse_primary</item>
+        <item name="android:colorBackground">@color/genesis_surface</item>
+        <item name="android:windowBackground">@color/genesis_surface</item>
     </style>
 </resources>

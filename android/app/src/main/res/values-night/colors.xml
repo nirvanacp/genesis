@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="genesis_primary">#ffb59c</color>
+    <color name="genesis_on_primary">#561f0a</color>
+    <color name="genesis_primary_container">#723520</color>
+    <color name="genesis_on_primary_container">#ffdbcf</color>
+    <color name="genesis_secondary">#e7bdb0</color>
+    <color name="genesis_on_secondary">#442a21</color>
+    <color name="genesis_secondary_container">#723520</color>
+    <color name="genesis_on_secondary_container">#ffdbcf</color>
+    <color name="genesis_tertiary">#d8c58d</color>
+    <color name="genesis_on_tertiary">#3b2f05</color>
+    <color name="genesis_error">#ffb4ab</color>
+    <color name="genesis_on_error">#690005</color>
+    <color name="genesis_error_container">#93000a</color>
+    <color name="genesis_on_error_container">#ffdad6</color>
+    <color name="genesis_surface">#1a110f</color>
+    <color name="genesis_on_surface">#f1dfda</color>
+    <color name="genesis_surface_variant">#53433f</color>
+    <color name="genesis_on_surface_variant">#d8c2bc</color>
+    <color name="genesis_surface_container_lowest">#140c0a</color>
+    <color name="genesis_surface_container_low">#231917</color>
+    <color name="genesis_surface_container">#271d1b</color>
+    <color name="genesis_surface_container_high">#322825</color>
+    <color name="genesis_surface_container_highest">#3d322f</color>
+    <color name="genesis_outline">#a08c87</color>
+    <color name="genesis_outline_variant">#53433f</color>
+    <color name="genesis_inverse_surface">#f1dfda</color>
+    <color name="genesis_inverse_on_surface">#392e2b</color>
+    <color name="genesis_inverse_primary">#8f4c33</color>
+</resources>

@@ -17,7 +17,11 @@ import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.webkit.WebBackForwardList;
+import android.webkit.WebHistoryItem;
 import androidx.webkit.JavaScriptReplyProxy;
+import androidx.webkit.Navigation;
+import androidx.webkit.NavigationListener;
 import androidx.webkit.ScriptHandler;
 import androidx.webkit.WebViewAssetLoader;
 import androidx.webkit.WebViewCompat;
@@ -31,17 +35,35 @@ import org.json.JSONObject;
 final class Views {
     static final String FOREGROUND_ORIGIN = "https://appassets.androidplatform.net";
     static final String BRIDGE = "__genesisBridge";
+    /** Schemes a context link may hand to another app. Others (intent:, file:, content:, javascript:, data:) do nothing. */
+    private static final java.util.List<String> EXTERNAL_SCHEMES = java.util.Arrays.asList("mailto", "tel", "sms", "smsto", "geo");
 
     /** What a view reports back to the shell. */
     interface Listener {
-        void documentLoaded(Page page, String url);
+        void documentStarted(Page page, String url);
         void documentMessage(Page page, String payload);
-        void websiteUrlChanged(String url);
+        void contextNavigated(Page page, Committed committed);
         void openExternal(String url);
         void rendererGone(Page page);
         void showCustomView(View view, WebChromeClient.CustomViewCallback callback);
         void hideCustomView();
         boolean chooseFiles(Page page, ValueCallback<Uri[]> callback, WebChromeClient.FileChooserParams params);
+    }
+
+    /** The container a revealed context is reparented into, above the foreground. */
+    static final class Revealed extends android.widget.FrameLayout {
+        Revealed(android.content.Context context) { super(context); }
+    }
+
+    /** A committed navigation of a context, as `ContextNavigated` reports it. */
+    static final class Committed {
+        String url;
+        int index, size;
+        boolean sameDocument, reload;
+
+        /** Index-derived: WebView's own canGoBack() counts entries that history.go() would skip. */
+        boolean canGoBack() { return index > 0; }
+        boolean canGoForward() { return index < size - 1; }
     }
 
     /** One WebView and the document state the shell keeps for it. */
@@ -52,6 +74,14 @@ final class Views {
         final Set<String> origins = new LinkedHashSet<>();
         JavaScriptReplyProxy reply;
         ScriptHandler script;
+        /** The last navigation the AndroidX listener reported committed; it precedes doUpdateVisitedHistory. */
+        Navigation completed;
+        /** Without the listener: an onPageStarted since the last committed navigation. */
+        boolean startedSinceCommit;
+        int lastIndex = -1;
+        String lastUrl;
+        /** Counts navigation starts and commits, so a history.go() fallback can see whether anything moved. */
+        int moves;
 
         Page(JSONObject ref, WebView web) {
             this.ref = ref;
@@ -60,7 +90,9 @@ final class Views {
         }
 
         boolean isForeground() { return "foreground".equals(role); }
-        boolean isWebsite() { return "website".equals(role); }
+        boolean isContext() { return role.startsWith("context:"); }
+        /** True exactly while the shell shows this context above the foreground. */
+        boolean isRevealed() { return web.getParent() instanceof Revealed; }
 
         @SuppressLint("RequiresFeature") // MainActivity checks WEB_MESSAGE_LISTENER before creating any view.
         void post(String payload) {
@@ -109,8 +141,8 @@ final class Views {
         return uri.getScheme() + "://" + uri.getHost() + (defaultPort ? "" : ":" + port);
     }
 
-    /** A foreground or source view. The bridge listener and start script apply on the view's origins only. */
-    @SuppressLint("RequiresFeature")
+    /** A foreground or context view. The bridge listener and start script apply on the view's origins only. */
+    @SuppressLint("RequiresFeature") // supported() and the NAVIGATION_LISTENER check gate every feature call.
     Page document(JSONObject ref, Set<String> origins, String startScript) {
         Page page = new Page(ref, base(!"foreground".equals(ref.optString("role"))));
         page.origins.addAll(origins);
@@ -123,24 +155,50 @@ final class Views {
         if (startScript != null) page.script = WebViewCompat.addDocumentStartJavaScript(page.web, startScript, page.origins);
         page.web.setWebViewClient(new Client(page));
         page.web.setWebChromeClient(new Chrome(page));
-        if (!page.isForeground()) {
+        if (page.isContext()) {
             page.web.setFocusable(false);
             page.web.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.NAVIGATION_LISTENER)) {
+                WebViewCompat.addNavigationListener(page.web, new NavigationListener() {
+                    @Override public void onNavigationStarted(Navigation navigation) { page.moves++; }
+
+                    @Override public void onNavigationCompleted(Navigation navigation) {
+                        if (navigation.didCommit()) page.completed = navigation;
+                    }
+                });
+            }
         }
         return page;
     }
 
-    /** The website sheet: the user's own browsing on the declared origins plus the origin it opened at. */
-    Page website(JSONObject ref, Set<String> origins) {
-        Page page = new Page(ref, base(true));
-        page.origins.addAll(origins);
-        page.web.setWebViewClient(new Client(page));
-        page.web.setWebChromeClient(new Chrome(page));
-        return page;
+    /**
+     * Reads the history list and the flags of the navigation that just committed. The listener's
+     * navigation describes this commit only when it ended on the same URL; otherwise the flags
+     * come from the start and history bookkeeping.
+     */
+    static Committed committed(Page page) {
+        Committed result = new Committed();
+        WebBackForwardList list = page.web.copyBackForwardList();
+        WebHistoryItem item = list.getCurrentItem();
+        result.index = list.getCurrentIndex();
+        result.size = list.getSize();
+        result.url = item == null ? page.web.getUrl() : item.getUrl();
+        if (page.completed != null && result.url != null && result.url.equals(page.completed.getUrl())) {
+            result.sameDocument = page.completed.isSameDocument();
+            result.reload = page.completed.isReload();
+        } else {
+            result.sameDocument = !page.startedSinceCommit;
+            result.reload = page.startedSinceCommit && result.index == page.lastIndex && result.url != null && result.url.equals(page.lastUrl);
+        }
+        page.completed = null;
+        page.startedSinceCommit = false;
+        page.lastIndex = result.index;
+        page.lastUrl = result.url;
+        return result;
     }
 
     @SuppressLint("SetJavaScriptEnabled")
-    private WebView base(boolean websiteCookies) {
+    private WebView base(boolean thirdPartyCookies) {
         WebView web = new WebView(activity);
         WebSettings settings = web.getSettings();
         settings.setJavaScriptEnabled(true);
@@ -151,7 +209,7 @@ final class Views {
         settings.setSupportMultipleWindows(false);
         web.setBackgroundColor(Color.WHITE);
         CookieManager.getInstance().setAcceptCookie(true);
-        CookieManager.getInstance().setAcceptThirdPartyCookies(web, websiteCookies);
+        CookieManager.getInstance().setAcceptThirdPartyCookies(web, thirdPartyCookies);
         return web;
     }
 
@@ -164,12 +222,11 @@ final class Views {
             if (!request.isForMainFrame()) return false;
             String url = request.getUrl().toString();
             String scheme = request.getUrl().getScheme();
-            boolean allowed = page.isForeground()
-                ? FOREGROUND_ORIGIN.equals(origin(url))
-                : "https".equals(scheme) && page.origins.contains(origin(url));
-            if (allowed) return false;
-            // Source views stay on declared origins; the foreground leaves only through website.open.
-            if (page.isWebsite() && ("https".equals(scheme) || "http".equals(scheme))) listener.openExternal(url);
+            boolean web = "https".equals(scheme) || "http".equals(scheme);
+            if (page.isForeground()) return !FOREGROUND_ORIGIN.equals(origin(url));
+            // A context browses any website; the bridge exists only on declared origins.
+            if (web) return false;
+            if (scheme != null && EXTERNAL_SCHEMES.contains(scheme.toLowerCase(java.util.Locale.ROOT))) listener.openExternal(url);
             return true;
         }
 
@@ -177,12 +234,19 @@ final class Views {
             return page.isForeground() ? assets.shouldInterceptRequest(request.getUrl()) : null;
         }
 
+        // onPageStarted fires at commit, once per cross-document navigation, with the final URL.
         @Override public void onPageStarted(WebView view, String url, Bitmap favicon) {
-            if (!page.isWebsite()) listener.documentLoaded(page, url);
+            if (!page.isContext()) return;
+            page.startedSinceCommit = true;
+            page.moves++;
+            listener.documentStarted(page, url);
         }
 
+        // The callback's isReload is wrong for reloads; committed() takes the flags from the listener.
         @Override public void doUpdateVisitedHistory(WebView view, String url, boolean isReload) {
-            if (page.isWebsite()) listener.websiteUrlChanged(url);
+            if (!page.isContext()) return;
+            page.moves++;
+            listener.contextNavigated(page, committed(page));
         }
 
         @Override public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail detail) {
@@ -199,11 +263,11 @@ final class Views {
         @Override public void onPermissionRequest(PermissionRequest request) { request.deny(); }
 
         @Override public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
-            return page.isWebsite() && listener.chooseFiles(page, callback, params);
+            return page.isRevealed() && listener.chooseFiles(page, callback, params);
         }
 
         @Override public void onShowCustomView(View view, CustomViewCallback callback) {
-            if (page.isWebsite()) listener.showCustomView(view, callback);
+            if (page.isRevealed()) listener.showCustomView(view, callback);
             else callback.onCustomViewHidden();
         }
 

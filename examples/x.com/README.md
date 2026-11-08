@@ -24,4 +24,4 @@ The library belongs to one X handle. Set `X_EXPECTED_HANDLE=<your handle>` only 
 
 ## Limits
 
-Categories and X bookmarks are independent: filing a post does not bookmark it on X, and nothing imports X bookmarks automatically. Composing, replying, messages, settings and sign-in open X's own pages in the website sheet. There is no offline write queue or media archive. The service is not a multi-user backend.
+Categories and X bookmarks are independent: filing a post does not bookmark it on X, and nothing imports X bookmarks automatically. Composing, replying, messages, settings and sign-in open X's own pages as the website, with the website bar's Done to return. There is no offline write queue or media archive. The service is not a multi-user backend.

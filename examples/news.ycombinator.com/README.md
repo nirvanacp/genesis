@@ -12,7 +12,7 @@ node packages/applet-tools/src/cli.mjs build examples/news.ycombinator.com
 node packages/applet-tools/src/cli.mjs dev install examples/news.ycombinator.com --device <serial>
 ```
 
-`dev install` sends the last build; run `build` first.
+`dev install` sends the last build; run `build` first. `npm test -w examples/news.ycombinator.com` runs the adapter tests.
 
 ## Operator setup
 
@@ -22,4 +22,4 @@ The backend needs Node 24, the workspace dependencies and OpenSSL. It uses port 
 
 ## Limits
 
-Search is a placeholder. Replies, sign-in and account settings open HN's own pages in the website sheet. The service is not a multi-user backend.
+Home, Post and Me each keep their own Hacker News session history; Search and Saved are app screens. Search is a placeholder. Replies, sign-in and HN pages without a screen open as the website in the same context. The service is not a multi-user backend.
