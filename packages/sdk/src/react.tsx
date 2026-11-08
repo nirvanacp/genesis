@@ -69,11 +69,14 @@ function useContextId(contextId?: string): string {
   return contextId ?? state.active;
 }
 
-/** One context's store entry; re-renders when that context changes. */
-function useContextStore(contextId: string): ContextStore | undefined {
+/**
+ * A value selected from one context's store entry. It listens to that context only and
+ * re-renders only when the selected value's identity changes.
+ */
+function useContextSelect<T>(contextId: string, select: (context: ContextStore | undefined) => T): T {
   const { store } = useForeground();
   const subscribe = useCallback((listener: () => void) => store.subscribe(listener, contextId), [store, contextId]);
-  return useSyncExternalStore(subscribe, () => store.context(contextId));
+  return useSyncExternalStore(subscribe, () => select(store.context(contextId)));
 }
 
 const samePage = (a: PageView, b: PageView) =>
@@ -156,17 +159,18 @@ function regionView(region: RegionState | undefined): RegionView {
  * record's identity changes only when that record does, so `memo` rows keyed by record stay put.
  */
 export function useRegion<T = unknown>(name: string, contextId?: string): RegionView<T> {
-  const context = useContextStore(useContextId(contextId));
-  return regionView(context?.regions[name]) as RegionView<T>;
+  return useContextSelect(useContextId(contextId), context => regionView(context?.regions[name])) as RegionView<T>;
 }
 
 /** One record of a region, or undefined. A single region's record is returned whatever `key` is when `key` is null. */
 export function useRecord<T = unknown>(name: string, key: string | null, contextId?: string): Record<T> | undefined {
-  const context = useContextStore(useContextId(contextId));
-  const region = context?.regions[name];
+  return useContextSelect(useContextId(contextId), context => recordOf(context?.regions[name], key)) as Record<T> | undefined;
+}
+
+function recordOf(region: RegionState | undefined, key: string | null): Record | undefined {
   if (!region) return undefined;
-  if (region.kind === "single") return (key === null || region.record?.key === key ? region.record ?? undefined : undefined) as Record<T> | undefined;
-  return key === null ? undefined : region.records[key] as Record<T> | undefined;
+  if (region.kind === "single") return (key === null || region.record?.key === key ? region.record ?? undefined : undefined) as Record | undefined;
+  return key === null ? undefined : region.records[key] as Record | undefined;
 }
 
 /**
