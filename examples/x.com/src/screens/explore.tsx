@@ -24,14 +24,18 @@ export function ExploreScreen() {
   const here = page.pageId === "explore";
   const shown = { trends: here ? trends.order : [], people: here ? people.order : [], results: here ? results.order : [] };
   const actionable = page.account !== null && !page.stale && !results.ephemeral;
+  const partial = here && [trends, people, results].some(region => region.status === "error");
+  const missing = partial && <p className="inline-error" role="alert">Some results couldn't be read.</p>;
 
   let body;
   if (!shown.trends.length && !shown.people.length && !shown.results.length) {
-    body = here && page.status === "ready" ? <Notice title={empty?.data ?? "No results"}><p>Try a different search.</p></Notice>
+    body = partial ? missing
+      : here && page.status === "ready" ? <Notice title={empty?.data ?? "No results"}><p>Try a different search.</p></Notice>
       : page.status === "error" ? <LoadError error={page.error} />
       : <Skeleton label={query ? "Searching" : "Loading trends"} />;
   } else body = <>
     {page.status === "error" && <p className="inline-error" role="alert">Couldn't refresh. Showing the last copy.</p>}
+    {missing}
     {shown.trends.length > 0 && <section aria-label="Trends">
       {!query && <h2 className="section-title">Trends for you</h2>}
       {shown.trends.map(key => {

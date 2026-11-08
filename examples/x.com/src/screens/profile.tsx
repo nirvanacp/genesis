@@ -18,9 +18,11 @@ export function ProfileScreen() {
   const profile = here ? header?.data ?? null : null;
   const shown = here ? posts.order : [];
   const actionable = page.account !== null && !page.stale && !posts.ephemeral;
+  const partial = here && posts.status === "error";
 
   let body;
   if (!profile && shown.length === 0) body = page.status === "error" ? <LoadError error={page.error} />
+    : partial ? <p className="inline-error" role="alert">Some posts couldn't be read.</p>
     : <Skeleton label="Loading profile" />;
   else body = <>
     {page.status === "error" && <p className="inline-error" role="alert">Couldn't refresh. Showing the last copy.</p>}
@@ -28,9 +30,11 @@ export function ProfileScreen() {
     <ModeTabs label="Profile sections" active={section} options={TABS.map(tab => ({
       ...tab, go: () => navigate({ url: `${profileUrl(handle)}${tab.id}`, mode: "replace" }),
     }))} />
-    {shown.length === 0
+    {shown.length === 0 && partial ? <p className="inline-error" role="alert">Some posts couldn't be read.</p>
+      : shown.length === 0
       ? <Notice title={empty?.data ?? "No posts yet"}><p>{profile ? "Posts show up here." : "X has nothing to show for this account."}</p></Notice>
       : <>
+        {partial && <p className="inline-error" role="alert">Some posts couldn't be read.</p>}
         <FeedList region="posts" items={posts} actionable={actionable} />
         <MoreButton stale={page.stale} />
       </>}

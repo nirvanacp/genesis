@@ -20,15 +20,18 @@ export function PostScreen() {
   const actionable = page.account !== null && !page.stale && !thread.ephemeral;
   const card = ({ key, post }: { key: string; post: PostView }, isFocus = false) =>
     <PostCard key={key} post={post} region="thread" actionable={actionable} focus={isFocus} />;
+  const partial = page.pageId === "post" && thread.status === "error";
 
   let body;
   if (focus < 0) body = page.status === "error" ? <LoadError error={page.error} />
+    : partial ? <p className="inline-error" role="alert">This post couldn't be read.</p>
     : page.status === "ready" && page.pageId === "post" ? <Notice title={empty?.data ?? "This post isn't available"}><p>X has nothing to show for it.</p></Notice>
     : <Skeleton label="Loading post" rows={3} />;
   else {
     const replies = posts.slice(focus + 1);
     body = <>
       {page.status === "error" && <p className="inline-error" role="alert">Couldn't refresh. Showing the last copy.</p>}
+      {partial && <p className="inline-error" role="alert">Some replies couldn't be read.</p>}
       <div className="feed thread">
         {posts.slice(0, focus).map(entry => card(entry))}
         {card(posts[focus], true)}

@@ -42,16 +42,19 @@ export function FeedScreen() {
   const { kind, likes, handle } = kindOf(path, page.account);
   const shown = page.pageId === "timeline" ? timeline.order : [];
   const actionable = page.account !== null && !page.stale && !timeline.ephemeral;
+  const partial = page.pageId === "timeline" && timeline.status === "error";
 
   let body;
   if (page.status === "auth") body = <SignInPrompt reason={SIGN_IN[kind] ?? "Sign in to see this page."} />;
   else if (shown.length === 0) {
-    if (page.status === "ready" && page.pageId === "timeline") body = <Notice title={empty?.data ?? "Nothing here yet"}>
+    if (partial) body = <p className="inline-error" role="alert">Some posts couldn't be read.</p>;
+    else if (page.status === "ready" && page.pageId === "timeline") body = <Notice title={empty?.data ?? "Nothing here yet"}>
       <p>{kind === "notifications" ? "New activity shows up here." : kind === "saved" ? "Posts you bookmark or like on X appear here." : "X has nothing to show here right now."}</p>
     </Notice>;
     else body = page.status === "error" ? <LoadError error={page.error} /> : <Skeleton label={`Loading ${TITLES[kind] ?? "posts"}`} />;
   } else body = <>
     {page.status === "error" && <p className="inline-error" role="alert">Couldn't refresh. Showing the last copy.</p>}
+    {partial && <p className="inline-error" role="alert">Some posts couldn't be read.</p>}
     <FeedList region="timeline" items={timeline} actionable={actionable} />
     <MoreButton stale={page.stale} />
   </>;
