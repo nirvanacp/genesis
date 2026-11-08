@@ -35,7 +35,7 @@ For the backend, run its own syntax or type check. Review the diff for selectors
 1. Install with `dev install` and confirm the receipt names the new revision with status `current`. `dev status <applet-id> --device <serial>` shows the installed revision, its status and, for an incompatible applet, the direction and mismatches.
 2. Open the applet from the Genesis launcher.
 3. For each affected journey: open the screen, watch its loading state, wait for content, perform the action, see the outcome, press Back, and confirm the previous entry returns at once with its scroll position.
-4. Exercise loading, empty, sign-in and failure on purpose where you can: a slow network, a signed-out session, airplane mode, a page with no results.
+4. Exercise loading, empty, sign-in and failure on purpose where you can: a slow network, a signed-out session, airplane mode, a page with no results. When a journey needs an account and the device is signed out, sign in with the operator's test accounts through the [test accounts skill](../skills/genesis-test-accounts/SKILL.md) instead of waiting for the user. Never read the accounts file yourself.
 5. Walk the presentation scenarios below on the changed routes.
 6. Leave the app and return; reload it from the Genesis menu.
 7. Check light and dark, large text and a narrow width on the changed screens.

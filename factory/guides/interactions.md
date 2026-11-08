@@ -13,7 +13,7 @@ A control in the foreground performs a real action on the website, in the applet
 | Writing a post, comment or message | The website by default. Rebuild the form only when the user asks and it is plain fields and one submit button. |
 | Applet data (categories, notes, saved lists) | `useRecords` or the applet's service |
 
-Never fill credentials, never solve challenges, and never submit anything the user did not explicitly request in that moment.
+Applet code never fills credentials, never solves challenges, and never submits anything the user did not explicitly request in that moment. During development checks you sign in to test accounts yourself on the website's own form, as the [test accounts skill](../skills/genesis-test-accounts/SKILL.md) describes; that never becomes applet behavior.
 
 ## Actions describe the desired state
 

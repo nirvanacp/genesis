@@ -25,6 +25,7 @@ Example request to an agent:
 | Match the source product's mobile design | [Design](guides/design.md) |
 | Store records or connect a backend | [Services and data](guides/services-and-data.md) |
 | Check and debug the result | [Verification](guides/verification.md) |
+| Sign in to test accounts during checks | [Test accounts skill](skills/genesis-test-accounts/SKILL.md) |
 | Keep applet specs and change records | [Applet records](guides/applet-records.md) |
 | Pick an agent skill | [Skills](skills/README.md) |
 
