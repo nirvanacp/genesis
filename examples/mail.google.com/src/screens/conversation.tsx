@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { ScrollMemory, useAction, useNavigation, usePage, useRecord } from "@genesis/sdk/react";
 import {
   dateKey, quickPresets, timeKey, whenLabel,
   type Conversation, type ConversationCommand, type MailList, type Message, type TextRun,
 } from "../model";
 import { useAccounts, useItems, useNow, useSettings, useToast } from "../store";
-import { AccountDot, Avatar, Icon, IconButton, Notice, Skeleton } from "../components/ui";
+import { AccountDot, Avatar, Icon, IconButton, Notice, Popover, Skeleton } from "../components/ui";
 import { CONTEXT, linkedTo, newItem, pendingReply, suggestTitle, useOpenItem, type EmailSource } from "../components/mail";
 import { ItemRow } from "../components/items";
 
@@ -164,20 +164,6 @@ export function ConversationScreen({ threadId, list }: { threadId: string; list:
       {body}
     </ScrollMemory>
   </div>;
-}
-
-function Popover({ children, onClose, className }: { children: ReactNode; onClose(): void; className: string }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    ref.current?.querySelector<HTMLElement>("button")?.focus();
-    const key = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
-    window.addEventListener("keydown", key);
-    return () => window.removeEventListener("keydown", key);
-  }, [onClose]);
-  return <>
-    <button type="button" className="popover-scrim" aria-label="Close menu" onClick={onClose} />
-    <div ref={ref} role="menu" className={`popover ${className}`}>{children}</div>
-  </>;
 }
 
 const textOf = (runs: TextRun[]) => runs.map(run => run.text).join("").replace(/\s+/g, " ").trim();

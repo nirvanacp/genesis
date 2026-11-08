@@ -5,7 +5,7 @@ import {
   type DueGroup, type Item, type SortMode,
 } from "../model";
 import { useAccounts, useItems, useNow, useSettings, useToast } from "../store";
-import { AccountDot, Chips, Highlight, Icon, IconButton, Notice, Skeleton } from "../components/ui";
+import { AccountDot, Chips, Highlight, Icon, IconButton, Notice, Popover, Skeleton } from "../components/ui";
 import { ItemRow } from "../components/items";
 import { useOpenItem } from "../components/mail";
 
@@ -89,21 +89,23 @@ export function TodoScreen() {
         <IconButton icon="close" label="Close search" onClick={() => setQuery(null)} />
       </div>}
     </header>
-    {accountMenu && <div className="popover account-menu" role="menu">
+    {accountMenu && <Popover onClose={() => setAccountMenu(false)} className="account-menu">
       <button type="button" role="menuitemradio" aria-checked={accountFilter === "all"} onClick={() => { void update({ todoAccount: "all" }); setAccountMenu(false); }}>All accounts</button>
       {accounts.accounts.map(entry => <button type="button" role="menuitemradio" key={entry.id} aria-checked={accountFilter === entry.id}
         onClick={() => { void update({ todoAccount: entry.id }); setAccountMenu(false); }}>
         <AccountDot color={entry.color} /> {entry.name} <small>{entry.email}</small>
       </button>)}
-    </div>}
+    </Popover>}
     <ScrollMemory className="screen" aria-busy={loading}>
-      <div className="segmented" role="tablist" aria-label="Sort">
+      <div className="segmented" role="tablist" aria-label="Sort" data-index={sort === "due" ? 0 : 1}>
         {(["due", "added"] as const).map(mode => <button key={mode} type="button" role="tab" aria-selected={sort === mode} onClick={() => setSort(mode)}>
           {mode === "due" ? "When it's due" : "When I added it"}
         </button>)}
       </div>
-      {sort === "due" && <WeekStrip items={visible} now={now} day={day} onDay={setDay} />}
-      {body}
+      <div className="crossfade" key={sort}>
+        {sort === "due" && <WeekStrip items={visible} now={now} day={day} onDay={setDay} />}
+        {body}
+      </div>
     </ScrollMemory>
     <button type="button" className="fab round" aria-label="Add a to-do" onClick={addManual}><Icon name="plus" /></button>
   </div>;

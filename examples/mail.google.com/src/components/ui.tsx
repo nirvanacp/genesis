@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, type ReactNode } from "react";
+import { useEffect, useId, useRef, type PointerEvent, type ReactNode } from "react";
 import { useNavigation } from "@genesis/sdk/react";
 import type { ErrorInfo } from "@genesis/sdk";
 import { avatarHue, initials } from "../model";
@@ -99,7 +99,8 @@ export function Chips<T extends string>({ label, options, value, onChange, class
 
 /**
  * A bottom sheet over a dimmed backdrop. The app keeps the screen it opened from rendered
- * underneath, so the person keeps their place. Tapping the backdrop closes the sheet.
+ * underneath, so the person keeps their place. Tapping the backdrop, Close, or dragging the
+ * sheet down by its handle or header closes it; a short drag springs back.
  */
 export function Sheet({ title, icon, tone, children, footer, onClose, labelledBy }: {
   title: string; icon: IconName; tone: "reminder" | "todo" | "neutral"; children: ReactNode; footer?: ReactNode;
@@ -107,20 +108,68 @@ export function Sheet({ title, icon, tone, children, footer, onClose, labelledBy
 }) {
   const heading = useId();
   const sheet = useRef<HTMLDivElement>(null);
+  const drag = useRef<{ id: number; y: number; dy: number } | null>(null);
   useEffect(() => { sheet.current?.focus(); }, []);
+
+  const move = (y: number) => {
+    const state = drag.current;
+    if (!state || !sheet.current) return;
+    state.dy = Math.max(0, y - state.y);
+    sheet.current.style.transform = state.dy ? `translateY(${state.dy}px)` : "";
+  };
+  const end = () => {
+    const state = drag.current;
+    drag.current = null;
+    if (!state || !sheet.current) return;
+    sheet.current.classList.remove("dragging");
+    if (state.dy > Math.min(120, sheet.current.offsetHeight / 4)) { onClose(); return; }
+    sheet.current.style.transform = "";
+  };
+  const handle = {
+    onPointerDown: (event: PointerEvent) => {
+      if ((event.target as HTMLElement).closest("button")) return;
+      drag.current = { id: event.pointerId, y: event.clientY, dy: 0 };
+      (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+      sheet.current?.classList.add("dragging");
+    },
+    onPointerMove: (event: PointerEvent) => { if (drag.current?.id === event.pointerId) move(event.clientY); },
+    onPointerUp: end,
+    onPointerCancel: end,
+  };
+
   return <div className="sheet-layer">
     <button type="button" className="sheet-backdrop" aria-label="Close" onClick={onClose} />
     <div className="sheet" role="dialog" aria-modal="true" aria-labelledby={labelledBy ?? heading} ref={sheet} tabIndex={-1}>
-      <span className="grabber" aria-hidden="true" />
-      <header className="sheet-head">
-        <span className={`tile ${tone}`}><Icon name={icon} /></span>
-        <h2 id={heading}>{title}</h2>
-        <IconButton icon="close" label="Close" onClick={onClose} />
-      </header>
+      <div className="sheet-handle" {...handle}>
+        <span className="grabber" aria-hidden="true" />
+        <header className="sheet-head">
+          <span className={`tile ${tone}`}><Icon name={icon} /></span>
+          <h2 id={heading}>{title}</h2>
+          <IconButton icon="close" label="Close" onClick={onClose} />
+        </header>
+      </div>
       <div className="sheet-body">{children}</div>
       {footer && <footer className="sheet-foot">{footer}</footer>}
     </div>
   </div>;
+}
+
+/**
+ * A menu anchored by its class, over a clear scrim that closes it. It grows from its corner,
+ * focuses its first item, and closes with Escape.
+ */
+export function Popover({ children, onClose, className }: { children: ReactNode; onClose(): void; className: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    ref.current?.querySelector<HTMLElement>("button")?.focus();
+    const key = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, [onClose]);
+  return <>
+    <button type="button" className="popover-scrim" aria-label="Close menu" onClick={onClose} />
+    <div ref={ref} role="menu" className={`popover ${className}`}>{children}</div>
+  </>;
 }
 
 export function TopBar({ title, children, onBack, backLabel = "Back", className }: {
