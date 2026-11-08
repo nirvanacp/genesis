@@ -80,7 +80,18 @@ type CollectionValue = Extract<WireRegion, { kind: "collection" }>;
 
 function start(connection: Connection, definition: AdapterDefinition): Bound {
   const { manifest, limits, generation } = connection.bound;
-  const publisher = new Publisher(params => connection.request("context.publish", params), limits);
+  const stats = {
+    batches: 0, reads: 0, lastBatchReads: 0, pages: 0, patches: 0, lastPublishBytes: 0, resyncs: 0, startedAt: Date.now(),
+  };
+  const debug = typeof __GENESIS_DEBUG__ !== "undefined" && __GENESIS_DEBUG__;
+  if (debug) (window as unknown as { __genesisStats?: unknown }).__genesisStats = stats;
+  const publisher = new Publisher(params => {
+    if (debug) {
+      if ("page" in params) stats.pages++; else stats.patches++;
+      stats.lastPublishBytes = JSON.stringify(params).length;
+    }
+    return connection.request("context.publish", params);
+  }, limits);
   let view: ViewId = { generation, n: 0, url: location.href };
 
   if (connection.bound.compat.adapterApi !== COMPAT.adapterApi) {
@@ -98,10 +109,6 @@ function start(connection: Connection, definition: AdapterDefinition): Bound {
   let regions = new Map<string, RegionState>();
   let pending: Change[] = [];
   let overflow = false;
-  const stats = { batches: 0, reads: 0, lastBatchReads: 0, startedAt: Date.now() };
-  if (typeof __GENESIS_DEBUG__ !== "undefined" && __GENESIS_DEBUG__) {
-    (window as unknown as { __genesisStats?: unknown }).__genesisStats = stats;
-  }
 
   function pageFor(value: RouteMatch): Page | null {
     return value.kind === "route" ? definition.pages[value.page] ?? null : null;
@@ -389,7 +396,7 @@ function start(connection: Connection, definition: AdapterDefinition): Bound {
     if (retireActions) actions.retire();
   }
 
-  connection.on("resync", () => { batch.cancel(); refresh(true); });
+  connection.on("resync", () => { stats.resyncs++; batch.cancel(); refresh(true); });
   connection.on("act", (request: ActionRequest) => actions.act(request));
   connection.on("cancel", ({ actionId }: { actionId: number }) => actions.cancel(actionId));
   connection.on("ping", () => {}); // The host answers pings; receiving one needs nothing here.
