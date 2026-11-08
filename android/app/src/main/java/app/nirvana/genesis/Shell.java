@@ -2,32 +2,31 @@ package app.nirvana.genesis;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
-import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
-import android.content.res.Configuration;
 import android.graphics.Color;
-import android.graphics.Typeface;
-import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
-import android.util.TypedValue;
 import android.view.Gravity;
-import android.view.Menu;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowInsets;
-import android.view.WindowInsetsController;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
-import android.widget.Button;
 import android.widget.FrameLayout;
-import android.widget.ImageButton;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
-import android.widget.PopupMenu;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import app.nirvana.genesis.ui.GenesisMenu;
+import app.nirvana.genesis.ui.Launcher;
+import app.nirvana.genesis.ui.Splash;
+import app.nirvana.genesis.ui.StatusSheet;
+import app.nirvana.genesis.ui.Tokens;
+import app.nirvana.genesis.ui.WebsiteBar;
+import com.google.android.material.color.DynamicColors;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
@@ -51,26 +50,23 @@ final class Shell implements Views.Listener {
         void cancelInvalidFiles();
     }
 
-    private static final int MENU_HOME = 1, MENU_RELOAD = 2, MENU_WEBSITE = 3, MENU_SERVICES = 4, MENU_INFO = 5;
     /** How long history.go() may take to start moving before the native fallback runs. */
     private static final long HISTORY_FALLBACK_MS = 1000;
-    private static final int BAR_DP = 56;
 
     private final Activity activity;
     private final Owner owner;
     private final Views views;
-    private final Palette palette;
+    private final Tokens tokens;
     private final FrameLayout root;
     private final ScrollView launcher;
-    private final LinearLayout launcherList;
-    private final FrameLayout applet, sources, foreground, splash;
+    private final FrameLayout applet, sources, foreground;
+    private final Splash splash;
     private final Views.Revealed revealed;
-    private final TextView splashName, barTitle;
-    private final LinearLayout bar;
+    private final WebsiteBar bar;
     private final View menu;
     private final Map<String, Views.Page> pages = new HashMap<>();
     private Views.Page revealedPage;
-    private String appletId;
+    private String appletId, appletName;
     private View customView;
     private WebChromeClient.CustomViewCallback customCallback;
     private int visualState;
@@ -78,18 +74,15 @@ final class Shell implements Views.Listener {
     Shell(Activity activity, Owner owner) {
         this.activity = activity;
         this.owner = owner;
+        DynamicColors.applyToActivityIfAvailable(activity);
         views = new Views(activity, this);
-        palette = new Palette(activity);
+        tokens = new Tokens(activity);
 
         root = new FrameLayout(activity);
-        root.setBackgroundColor(palette.paper);
+        root.setBackgroundColor(tokens.surface);
         applyInsets(root);
 
-        launcherList = new LinearLayout(activity);
-        launcherList.setOrientation(LinearLayout.VERTICAL);
-        launcherList.setPadding(dp(20), dp(24), dp(20), dp(24));
         launcher = new ScrollView(activity);
-        launcher.addView(launcherList, new ScrollView.LayoutParams(-1, -2));
         root.addView(launcher, new FrameLayout.LayoutParams(-1, -1));
 
         applet = new FrameLayout(activity);
@@ -100,65 +93,44 @@ final class Shell implements Views.Listener {
         sources.setDescendantFocusability(ViewGroup.FOCUS_BLOCK_DESCENDANTS);
         applet.addView(sources, new FrameLayout.LayoutParams(-1, -1));
         View barrier = new View(activity);
-        barrier.setBackgroundColor(palette.paper);
+        barrier.setBackgroundColor(tokens.surface);
         barrier.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         applet.addView(barrier, new FrameLayout.LayoutParams(-1, -1));
         foreground = new FrameLayout(activity);
         applet.addView(foreground, new FrameLayout.LayoutParams(-1, -1));
-        splash = new FrameLayout(activity);
-        splash.setBackgroundColor(palette.paper);
-        splash.setClickable(true);
-        splashName = text("", 28, palette.accent);
-        splashName.setTypeface(null, Typeface.BOLD);
-        splashName.setGravity(Gravity.CENTER);
-        splash.addView(splashName, new FrameLayout.LayoutParams(-1, -2, Gravity.CENTER));
+        splash = new Splash(activity, tokens);
         applet.addView(splash, new FrameLayout.LayoutParams(-1, -1));
-        // A revealed context sits below the website bar; the menu button stays on top of both.
-        revealed = new Views.Revealed(activity);
-        revealed.setBackgroundColor(palette.paper);
-        revealed.setPadding(0, dp(BAR_DP), 0, 0);
-        revealed.setVisibility(View.GONE);
-        applet.addView(revealed, new FrameLayout.LayoutParams(-1, -1));
-        bar = new LinearLayout(activity);
-        bar.setGravity(Gravity.CENTER_VERTICAL);
-        bar.setBackgroundColor(palette.paper);
-        bar.setPadding(dp(16), 0, dp(60), 0);
-        barTitle = text("", 17, palette.ink);
-        barTitle.setTypeface(null, Typeface.BOLD);
-        barTitle.setSingleLine(true);
-        bar.addView(barTitle, new LinearLayout.LayoutParams(0, -2, 1));
-        Button done = new Button(activity);
-        done.setAllCaps(false);
-        done.setText("Done");
-        done.setTextColor(palette.accent);
-        done.setBackground(null);
-        done.setMinHeight(dp(48));
-        done.setOnClickListener(v -> owner.send(Bridge.event("websiteDone")));
-        bar.addView(done, new LinearLayout.LayoutParams(-2, dp(48)));
+        // A revealed context sits below the website bar, which grows with the font size; the menu button stays on top of both.
+        LinearLayout website = new LinearLayout(activity);
+        website.setOrientation(LinearLayout.VERTICAL);
+        bar = new WebsiteBar(activity, tokens, () -> owner.send(Bridge.event("websiteDone")));
         bar.setVisibility(View.GONE);
-        applet.addView(bar, new FrameLayout.LayoutParams(-1, dp(BAR_DP), Gravity.TOP));
+        website.addView(bar, new LinearLayout.LayoutParams(-1, -2));
+        revealed = new Views.Revealed(activity);
+        revealed.setBackgroundColor(tokens.surface);
+        revealed.setVisibility(View.GONE);
+        website.addView(revealed, new LinearLayout.LayoutParams(-1, 0, 1));
+        applet.addView(website, new FrameLayout.LayoutParams(-1, -1));
         menu = menuButton();
         applet.addView(menu, menuLayout());
         applet.setVisibility(View.GONE);
         root.addView(applet, new FrameLayout.LayoutParams(-1, -1));
 
         activity.setContentView(root);
-        palette.applySystemBars(activity);
+        tokens.applySystemBars(activity);
     }
 
     /** Replaces the content with a full-screen message; used when the WebView lacks required features. */
     static void unsupported(Activity activity) {
-        Palette palette = new Palette(activity);
-        TextView message = new TextView(activity);
-        message.setText("Genesis needs a newer Android System WebView.\n\nInstalled: " + Views.providerVersion(activity)
-            + "\n\nUpdate Android System WebView from the Play Store, then reopen Genesis.");
-        message.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17);
-        message.setTextColor(palette.ink);
+        DynamicColors.applyToActivityIfAvailable(activity);
+        Tokens tokens = new Tokens(activity);
+        TextView message = tokens.text("Genesis needs a newer Android System WebView.\n\nInstalled: " + Views.providerVersion(activity)
+            + "\n\nUpdate Android System WebView from the Play Store, then reopen Genesis.", Tokens.Type.BODY_LARGE, tokens.onSurface);
         message.setGravity(Gravity.CENTER);
-        int padding = Math.round(28 * activity.getResources().getDisplayMetrics().density);
-        message.setPadding(padding, padding, padding, padding);
-        message.setBackgroundColor(palette.paper);
+        message.setPadding(tokens.dp(28), tokens.dp(28), tokens.dp(28), tokens.dp(28));
+        message.setBackgroundColor(tokens.surface);
         activity.setContentView(message);
+        tokens.applySystemBars(activity);
     }
 
     // -----------------------------------------------------------------------------------------
@@ -169,29 +141,18 @@ final class Shell implements Views.Listener {
         appletId = null;
         applet.setVisibility(View.GONE);
         launcher.setVisibility(View.VISIBLE);
-        launcherList.removeAllViews();
-        TextView brand = text("Genesis", 16, palette.accent);
-        brand.setTypeface(null, Typeface.BOLD);
-        launcherList.addView(brand);
-        TextView heading = text("Apps", 32, palette.ink);
-        heading.setTypeface(null, Typeface.BOLD);
-        heading.setPadding(0, dp(8), 0, 0);
-        launcherList.addView(heading);
-        TextView subtitle = text(applets.length() == 0 ? "Your custom apps will appear here." : "Your customized apps", 16, palette.muted);
-        subtitle.setPadding(0, dp(4), 0, dp(20));
-        launcherList.addView(subtitle);
-        for (int i = 0; i < applets.length(); i++) launcherList.addView(card(applets.getJSONObject(i)));
+        launcher.removeAllViews();
+        launcher.addView(new Launcher(activity, tokens, this::openApplet).build(applets), new ScrollView.LayoutParams(-1, -2));
         owner.launcherShown();
     }
 
     void showApplet(String id, String name, String accent) {
         destroyAll();
         appletId = id;
+        appletName = name;
         launcher.setVisibility(View.GONE);
         applet.setVisibility(View.VISIBLE);
-        splashName.setText(name);
-        splashName.setTextColor(palette.accent(accent));
-        splash.setVisibility(View.VISIBLE);
+        splash.show(name, accent);
     }
 
     void createView(JSONObject ref, String url, JSONArray origins, String startScript) throws JSONException {
@@ -250,14 +211,15 @@ final class Shell implements Views.Listener {
         Views.Page page = pages.get(key(ref));
         if (page == null || !page.isContext()) return;
         if (revealedPage != null && revealedPage != page) coverContext();
-        if (revealedPage == page) { barTitle.setText(title); return; }
+        if (revealedPage == page) { bar.setTitle(title); return; }
         sources.removeView(page.web);
         page.web.setFocusable(true);
         page.web.setFocusableInTouchMode(true);
         page.web.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);
         revealed.addView(page.web, new FrameLayout.LayoutParams(-1, -1));
         revealed.setVisibility(View.VISIBLE);
-        barTitle.setText(title);
+        bar.setTitle(title);
+        bar.setUrl(page.web.getUrl());
         bar.setVisibility(View.VISIBLE);
         revealedPage = page;
     }
@@ -301,7 +263,7 @@ final class Shell implements Views.Listener {
             @Override public void onComplete(long requestId) {
                 if (pages.get(key(page.ref)) != page) return;
                 page.web.setVisibility(View.VISIBLE);
-                splash.setVisibility(View.GONE);
+                splash.hide();
             }
         });
     }
@@ -309,30 +271,30 @@ final class Shell implements Views.Listener {
     boolean appletShown() { return appletId != null; }
 
     void showError(String message) {
-        new AlertDialog.Builder(activity).setTitle("Genesis").setMessage(message).setPositiveButton("Close", null).show();
+        new MaterialAlertDialogBuilder(activity).setTitle("Genesis").setMessage(message).setPositiveButton("Close", null).show();
     }
 
     void showInfo(String title, String message) {
-        new AlertDialog.Builder(activity).setTitle(title).setMessage(message).setPositiveButton("Close", null).show();
+        new MaterialAlertDialogBuilder(activity).setTitle(title).setMessage(message).setPositiveButton("Close", null).show();
     }
 
-    /** An applet that cannot open, stopped pages, or a received import. A plain dialog until the designed sheet. */
+    /**
+     * An applet that cannot open, an applet whose page stopped, or an import this Genesis cannot run.
+     * `entry` is the applet's launcher entry; `details` is the host's text, used when the entry has no mismatches.
+     */
     void showStatus(String kind, JSONObject entry, String details) {
-        String name = entry == null ? "Applet" : entry.optString("name", "Applet");
-        AlertDialog.Builder dialog = new AlertDialog.Builder(activity).setMessage(details).setNegativeButton("Close", null);
         switch (kind) {
             case "rendererLost":
-                dialog.setTitle(name + " stopped");
-                if (entry != null) dialog.setPositiveButton("Reload", (d, which) -> openApplet(entry.optString("appletId")));
+                String name = entry == null ? "Applet" : entry.optString("name", "Applet");
+                StatusSheet.rendererLost(activity, tokens, name, entry == null ? null : () -> openApplet(entry.optString("appletId")));
                 break;
             case "importReceived":
-                dialog.setTitle(name + " received");
+                StatusSheet.importNotice(root, activity, tokens, entry, details);
                 break;
             default:
-                dialog.setTitle(name + " can't open");
+                StatusSheet.incompatible(activity, tokens, entry, details);
                 break;
         }
-        dialog.show();
     }
 
     @Override public void openExternal(String url) {
@@ -383,6 +345,7 @@ final class Shell implements Views.Listener {
 
     @Override public void contextNavigated(Views.Page page, Views.Committed committed) {
         if (pages.get(key(page.ref)) != page) return;
+        if (page == revealedPage) bar.setUrl(committed.url);
         try {
             owner.send(Bridge.event("contextNavigated").put("view", page.ref).put("url", committed.url)
                 .put("index", committed.index).put("size", committed.size)
@@ -423,94 +386,56 @@ final class Shell implements Views.Listener {
     // -----------------------------------------------------------------------------------------
     // Pieces
 
-    private View card(JSONObject entry) throws JSONException {
-        String id = entry.getString("appletId");
-        LinearLayout card = new LinearLayout(activity);
-        card.setOrientation(LinearLayout.VERTICAL);
-        card.setGravity(Gravity.CENTER_VERTICAL);
-        card.setMinimumHeight(dp(88));
-        card.setPadding(dp(20), dp(16), dp(20), dp(16));
-        GradientDrawable shape = new GradientDrawable();
-        shape.setColor(palette.wash);
-        shape.setCornerRadius(dp(18));
-        card.setBackground(shape);
-        card.setClickable(true);
-        card.setFocusable(true);
-        TextView name = text(entry.getString("name"), 20, palette.accent(entry.optString("accent", null)));
-        name.setTypeface(null, Typeface.BOLD);
-        card.addView(name);
-        TextView detail = text(id, 14, palette.muted);
-        card.addView(detail);
-        String badge = badge(entry);
-        if (badge != null) {
-            TextView status = text(badge, 14, palette.accent);
-            status.setTypeface(null, Typeface.BOLD);
-            status.setPadding(0, dp(4), 0, 0);
-            card.addView(status);
-        }
-        card.setContentDescription(badge == null ? entry.getString("name") : entry.getString("name") + ", " + badge);
-        card.setOnClickListener(v -> openApplet(id));
-        LinearLayout.LayoutParams layout = new LinearLayout.LayoutParams(-1, -2);
-        layout.bottomMargin = dp(12);
-        card.setLayoutParams(layout);
-        return card;
-    }
-
-    /** The launcher's status line for an applet built for another Genesis; null when it is current. */
-    private static String badge(JSONObject entry) {
-        if (!"incompatible".equals(entry.optString("status"))) return null;
-        return "newer".equals(entry.optString("direction")) ? "Needs a newer Genesis" : "Needs update";
-    }
-
     private void openApplet(String id) {
         try { owner.send(Bridge.event("openApplet").put("appletId", id)); }
         catch (JSONException ignored) { /* Unreachable for string values. */ }
     }
 
+    /** The Genesis button: a 44 dp tonal square with 12 dp corners inside a 48 dp touch target. */
     private View menuButton() {
-        ImageButton button = new ImageButton(activity);
-        button.setImageResource(R.drawable.ic_nav_more);
-        button.setColorFilter(palette.ink);
-        GradientDrawable circle = new GradientDrawable();
-        circle.setShape(GradientDrawable.OVAL);
-        circle.setColor(palette.wash);
-        button.setBackground(circle);
-        button.setElevation(dp(3));
-        button.setContentDescription("Genesis menu");
-        button.setOnClickListener(this::openMenu);
-        return button;
+        FrameLayout target = new FrameLayout(activity);
+        target.setClickable(true);
+        target.setFocusable(true);
+        target.setContentDescription("Genesis menu");
+        target.setOnClickListener(v -> openMenu());
+        ImageView face = tokens.icon(R.drawable.ic_nav_more, tokens.onSecondaryContainer);
+        face.setScaleType(ImageView.ScaleType.CENTER);
+        face.setBackground(tokens.pressable(tokens.secondaryContainer, 12, 12));
+        face.setElevation(tokens.dp(3));
+        face.setDuplicateParentStateEnabled(true);
+        target.addView(face, new FrameLayout.LayoutParams(tokens.dp(44), tokens.dp(44), Gravity.CENTER));
+        return target;
     }
 
+    /** Top end, with the visible button 8 dp from the edges. */
     private FrameLayout.LayoutParams menuLayout() {
-        FrameLayout.LayoutParams layout = new FrameLayout.LayoutParams(dp(44), dp(44), Gravity.TOP | Gravity.END);
-        layout.setMargins(dp(8), dp(8), dp(8), dp(8));
+        FrameLayout.LayoutParams layout = new FrameLayout.LayoutParams(tokens.dp(48), tokens.dp(48), Gravity.TOP | Gravity.END);
+        layout.setMargins(tokens.dp(6), tokens.dp(6), tokens.dp(6), tokens.dp(6));
         return layout;
     }
 
-    private void openMenu(View anchor) {
-        PopupMenu popup = new PopupMenu(activity, anchor);
-        Menu menu = popup.getMenu();
-        menu.add(Menu.NONE, MENU_HOME, 0, "Home");
-        menu.add(Menu.NONE, MENU_RELOAD, 1, "Reload applet");
-        menu.add(Menu.NONE, MENU_WEBSITE, 2, "View website");
-        menu.add(Menu.NONE, MENU_SERVICES, 3, "Service connections");
-        menu.add(Menu.NONE, MENU_INFO, 4, "Applet info");
-        popup.setOnMenuItemClickListener(item -> {
-            String action;
-            switch (item.getItemId()) {
-                case MENU_HOME: action = "home"; break;
-                case MENU_RELOAD: action = "reload"; break;
-                case MENU_WEBSITE: action = "viewWebsite"; break;
-                case MENU_INFO: action = "info"; break;
-                case MENU_SERVICES: if (appletId != null) owner.configureServices(appletId); return true;
-                default: return false;
-            }
-            try { owner.send(Bridge.event("menu").put("action", action)); }
-            catch (JSONException ignored) { /* Unreachable for string values. */ }
-            return true;
-        });
-        popup.show();
+    private void openMenu() {
+        if (appletId == null) return;
+        GenesisMenu.show(activity, tokens, appletName == null ? appletId : appletName, appletId, revealedPage != null, this::menuAction);
     }
+
+    private void menuAction(GenesisMenu.Action action) {
+        String event;
+        switch (action) {
+            case HOME: event = "home"; break;
+            case RELOAD: event = "reload"; break;
+            case VIEW_WEBSITE: event = "viewWebsite"; break;
+            case INFO: event = "info"; break;
+            case SERVICES: if (appletId != null) owner.configureServices(appletId); return;
+            case OPEN_IN_BROWSER: { String url = revealedUrl(); if (url != null) openExternal(url); return; }
+            case COPY_LINK: { String url = revealedUrl(); if (url != null) tokens.copy("Link", url); return; }
+            default: return;
+        }
+        try { owner.send(Bridge.event("menu").put("action", event)); }
+        catch (JSONException ignored) { /* Unreachable for string values. */ }
+    }
+
+    private String revealedUrl() { return revealedPage == null ? null : revealedPage.web.getUrl(); }
 
     private Views.Page foregroundPage() {
         for (Views.Page page : pages.values()) if (page.isForeground()) return page;
@@ -525,16 +450,6 @@ final class Shell implements Views.Listener {
         return result;
     }
 
-    private TextView text(String value, int sp, int color) {
-        TextView view = new TextView(activity);
-        view.setText(value);
-        view.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp);
-        view.setTextColor(color);
-        return view;
-    }
-
-    private int dp(int value) { return Math.round(value * activity.getResources().getDisplayMetrics().density); }
-
     @SuppressWarnings("deprecation")
     private static void applyInsets(View view) {
         view.setOnApplyWindowInsetsListener((target, insets) -> {
@@ -547,40 +462,5 @@ final class Shell implements Views.Listener {
                 insets.getSystemWindowInsetRight(), insets.getSystemWindowInsetBottom());
             return insets.consumeSystemWindowInsets();
         });
-    }
-
-    /** Genesis colors for the current light or dark configuration. */
-    private static final class Palette {
-        final boolean dark;
-        final int paper, accent, ink, wash, muted;
-
-        Palette(Activity activity) {
-            dark = (activity.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
-            paper = Color.parseColor(dark ? "#1d1b18" : "#faf7f2");
-            accent = Color.parseColor(dark ? "#ff995f" : "#b93800");
-            ink = Color.parseColor(dark ? "#f5eee4" : "#24211c");
-            wash = Color.parseColor(dark ? "#363027" : "#f3e9dc");
-            muted = Color.parseColor(dark ? "#b8ad9f" : "#6b6258");
-        }
-
-        /** The applet's accent when it is a valid color; the Genesis accent otherwise. */
-        int accent(String value) {
-            if (value == null || value.isEmpty()) return accent;
-            try { return Color.parseColor(value); }
-            catch (IllegalArgumentException error) { return accent; }
-        }
-
-        @SuppressWarnings("deprecation")
-        void applySystemBars(Activity activity) {
-            if (Build.VERSION.SDK_INT >= 30) {
-                WindowInsetsController controller = activity.getWindow().getInsetsController();
-                if (controller == null) return;
-                int light = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
-                controller.setSystemBarsAppearance(dark ? 0 : light, light);
-            } else if (!dark) {
-                activity.getWindow().getDecorView().setSystemUiVisibility(
-                    View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
-            }
-        }
     }
 }

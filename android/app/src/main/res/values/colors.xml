@@ -1,10 +1,32 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Fallback Material 3 scheme from the Genesis seed #b93800. Android 12 and later replace it with wallpaper colors. -->
 <resources>
-    <color name="purple_200">#FFBB86FC</color>
-    <color name="purple_500">#FF6200EE</color>
-    <color name="purple_700">#FF3700B3</color>
-    <color name="teal_200">#FF03DAC5</color>
-    <color name="teal_700">#FF018786</color>
-    <color name="black">#FF000000</color>
-    <color name="white">#FFFFFFFF</color>
+    <color name="genesis_primary">#8f4c33</color>
+    <color name="genesis_on_primary">#ffffff</color>
+    <color name="genesis_primary_container">#ffdbcf</color>
+    <color name="genesis_on_primary_container">#390c00</color>
+    <color name="genesis_secondary">#77574c</color>
+    <color name="genesis_on_secondary">#ffffff</color>
+    <color name="genesis_secondary_container">#ffdbcf</color>
+    <color name="genesis_on_secondary_container">#723520</color>
+    <color name="genesis_tertiary">#6c5d2f</color>
+    <color name="genesis_on_tertiary">#ffffff</color>
+    <color name="genesis_error">#ba1a1a</color>
+    <color name="genesis_on_error">#ffffff</color>
+    <color name="genesis_error_container">#ffdad6</color>
+    <color name="genesis_on_error_container">#93000a</color>
+    <color name="genesis_surface">#fff8f6</color>
+    <color name="genesis_on_surface">#231917</color>
+    <color name="genesis_surface_variant">#f5ded7</color>
+    <color name="genesis_on_surface_variant">#53433f</color>
+    <color name="genesis_surface_container_lowest">#ffffff</color>
+    <color name="genesis_surface_container_low">#fff1ec</color>
+    <color name="genesis_surface_container">#fceae4</color>
+    <color name="genesis_surface_container_high">#f7e4de</color>
+    <color name="genesis_surface_container_highest">#f1dfda</color>
+    <color name="genesis_outline">#85736e</color>
+    <color name="genesis_outline_variant">#d8c2bc</color>
+    <color name="genesis_inverse_surface">#392e2b</color>
+    <color name="genesis_inverse_on_surface">#ffede8</color>
+    <color name="genesis_inverse_primary">#ffb59c</color>
 </resources>
