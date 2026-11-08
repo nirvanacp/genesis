@@ -35,6 +35,8 @@ import org.json.JSONObject;
 final class Views {
     static final String FOREGROUND_ORIGIN = "https://appassets.androidplatform.net";
     static final String BRIDGE = "__genesisBridge";
+    /** Schemes a context link may hand to another app. Others (intent:, file:, content:, javascript:, data:) do nothing. */
+    private static final java.util.List<String> EXTERNAL_SCHEMES = java.util.Arrays.asList("mailto", "tel", "sms", "smsto", "geo");
 
     /** What a view reports back to the shell. */
     interface Listener {
@@ -169,7 +171,11 @@ final class Views {
         return page;
     }
 
-    /** Reads the history list and the flags of the navigation that just committed. */
+    /**
+     * Reads the history list and the flags of the navigation that just committed. The listener's
+     * navigation describes this commit only when it ended on the same URL; otherwise the flags
+     * come from the start and history bookkeeping.
+     */
     static Committed committed(Page page) {
         Committed result = new Committed();
         WebBackForwardList list = page.web.copyBackForwardList();
@@ -177,7 +183,7 @@ final class Views {
         result.index = list.getCurrentIndex();
         result.size = list.getSize();
         result.url = item == null ? page.web.getUrl() : item.getUrl();
-        if (page.completed != null) {
+        if (page.completed != null && result.url != null && result.url.equals(page.completed.getUrl())) {
             result.sameDocument = page.completed.isSameDocument();
             result.reload = page.completed.isReload();
         } else {
@@ -220,7 +226,7 @@ final class Views {
             if (page.isForeground()) return !FOREGROUND_ORIGIN.equals(origin(url));
             // A context browses any website; the bridge exists only on declared origins.
             if (web) return false;
-            listener.openExternal(url);
+            if (scheme != null && EXTERNAL_SCHEMES.contains(scheme.toLowerCase(java.util.Locale.ROOT))) listener.openExternal(url);
             return true;
         }
 

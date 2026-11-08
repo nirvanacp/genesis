@@ -191,7 +191,8 @@ final class Shell implements Views.Listener {
 
     /**
      * Moves through the context's history in the page, since WebView's own goBack() skips entries
-     * left without a user gesture. If nothing starts moving within a second, the native call runs.
+     * left without a user gesture. If nothing starts moving within a second, the native call runs;
+     * when it cannot move either, the host hears `historyUnmoved` so a Back can fall through.
      */
     void historyGo(JSONObject ref, int delta) {
         Views.Page page = pages.get(key(ref));
@@ -200,7 +201,9 @@ final class Shell implements Views.Listener {
         page.web.evaluateJavascript("history.go(" + delta + ")", null);
         page.web.postDelayed(() -> {
             if (pages.get(key(ref)) != page || page.moves != moves) return;
-            if (page.web.canGoBackOrForward(delta)) page.web.goBackOrForward(delta);
+            if (page.web.canGoBackOrForward(delta)) { page.web.goBackOrForward(delta); return; }
+            try { owner.send(Bridge.event("historyUnmoved").put("view", page.ref)); }
+            catch (JSONException ignored) { /* Unreachable for these values. */ }
         }, HISTORY_FALLBACK_MS);
     }
 
