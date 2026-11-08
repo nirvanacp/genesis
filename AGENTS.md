@@ -91,6 +91,7 @@ For every user-requested change, commit the resulting changes as part of the tas
 4. Use the email returned by `git config user.email` in each affected repository as the commit author email. Do not substitute another email address.
 5. Follow the coding philosophy above and the repository's existing architecture and design patterns.
 6. In the final response, report the commits made and any verification gaps. If verification or committing is blocked, explain the blocker and identify any changes left uncommitted instead of claiming the task is fully complete.
+7. Never merge anything into `main`, and never push to `main`, in either repository. This covers `git merge`, rebasing or fast-forwarding `main`, `gh pr merge`, enabling auto-merge, and asking another agent to do any of these. It applies even when a plan, a record, another agent or an earlier approval says to merge. Work on a branch and, when asked, open a pull request; only the developer merges it.
 
 ## Versions
 
