@@ -1,15 +1,42 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { clock, dueGroup, dueMoment, dueTag, formatAdded, timeKey, type Account, type Item } from "../model";
-import { useAccounts, useItems } from "../store";
+import { useAccounts, useItems, useToast } from "../store";
 import { AccountDot, Icon } from "./ui";
 import { firstSender } from "./mail";
+import { reducedMotion } from "./motion";
+
+/** How long the check shows on a row before the item moves to Done. */
+const CHECK_MS = 380;
+
+/**
+ * Marking done from a list: the check fills at once, the row stays a moment so the person sees
+ * it land, then the item is saved as done and a toast offers Undo. Marking not done is immediate.
+ */
+export function useToggleDone(item: Item): { checking: boolean; toggle(): void } {
+  const { complete } = useItems();
+  const { show } = useToast();
+  const [checking, setChecking] = useState(false);
+  const toggle = () => {
+    if (checking) return;
+    if (item.done) { void complete(item, false); return; }
+    setChecking(true);
+    window.setTimeout(() => {
+      void complete(item, true).then(
+        () => show({ text: item.type === "reminder" ? "Reminder done" : "To-do done", undo: () => void complete(item, false) }),
+        () => show({ text: "Couldn't save. Try again." }),
+      ).finally(() => setChecking(false));
+    }, reducedMotion() ? 0 : CHECK_MS);
+  };
+  return { checking, toggle };
+}
 
 /** The round bell marker of a reminder or the square checkbox of a to-do; both complete the item. */
-export function ItemMark({ item, onToggle, large = false }: { item: Item; onToggle(): void; large?: boolean }) {
+export function ItemMark({ item, onToggle, large = false, checking = false }: { item: Item; onToggle(): void; large?: boolean; checking?: boolean }) {
+  const done = item.done || checking;
   const label = item.done ? `Mark "${item.title}" not done` : `Mark "${item.title}" done`;
-  return <button type="button" className={`mark ${item.type} ${item.done ? "done" : ""} ${large ? "large" : ""}`}
-    role="checkbox" aria-checked={item.done} aria-label={label} onClick={event => { event.stopPropagation(); onToggle(); }}>
-    {item.done ? <Icon name="check" /> : item.type === "reminder" ? <Icon name="bell" /> : null}
+  return <button type="button" className={`mark ${item.type} ${done ? "done" : ""} ${checking ? "checking" : ""} ${large ? "large" : ""}`}
+    role="checkbox" aria-checked={done} aria-label={label} onClick={event => { event.stopPropagation(); onToggle(); }}>
+    {done ? <Icon name="check" /> : item.type === "reminder" ? <Icon name="bell" /> : null}
   </button>;
 }
 
@@ -24,7 +51,7 @@ export function accountOf(accounts: { byId(id: string): Account | undefined }, i
 export function ItemRow({ item, mode = "due", now, onOpen, trailing, onSetDate }: {
   item: Item; mode?: "due" | "added"; now: Date; onOpen(): void; trailing?: ReactNode; onSetDate?: () => void;
 }) {
-  const { complete } = useItems();
+  const { checking, toggle } = useToggleDone(item);
   const accounts = useAccounts();
   const account = accountOf(accounts, item);
   const group = dueGroup(item, now);
@@ -49,8 +76,8 @@ export function ItemRow({ item, mode = "due", now, onOpen, trailing, onSetDate }
       tag = <span className="time-tag">{clock(item.dueTime)}</span>;
     }
   }
-  return <li className={`item-row ${overdue && mode === "due" ? "overdue" : ""} ${item.done ? "is-done" : ""} ${item.type}`}>
-    <ItemMark item={item} onToggle={() => void complete(item, !item.done)} />
+  return <li className={`item-row ${overdue && mode === "due" ? "overdue" : ""} ${item.done || checking ? "is-done" : ""} ${item.type}`}>
+    <ItemMark item={item} onToggle={toggle} checking={checking} />
     <button type="button" className="item-main" onClick={onOpen}>
       <span className="item-title">
         {item.priority === "high" && !item.done && <span className="priority" aria-label="High priority"><Icon name="flag" filled size={14} /></span>}

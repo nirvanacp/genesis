@@ -184,13 +184,34 @@ export function TopBar({ title, children, onBack, backLabel = "Back", className 
   </header>;
 }
 
-export function Skeleton({ label, rows = 7, kind = "rows" }: { label: string; rows?: number; kind?: "rows" | "text" }) {
+/**
+ * A placeholder shaped like what is loading. It fades in only if loading takes longer than a
+ * moment, so fast loads never flash, and its bars shimmer (they hold still with reduced motion).
+ */
+export function Skeleton({ label, rows = 7, kind = "rows" }: { label: string; rows?: number; kind?: "rows" | "text" | "email" }) {
+  if (kind === "email") return <div role="status" aria-busy="true" aria-label={label} className="skeleton email">
+    <span className="bar title" /><span className="bar title short" />
+    <div className="skeleton-row" aria-hidden="true"><span className="skeleton-avatar" /><div><span /><span /></div></div>
+    {Array.from({ length: rows }, (_, index) => <span key={index} className={`bar line ${index % 4 === 3 ? "short" : ""}`} aria-hidden="true" />)}
+  </div>;
   return <div role="status" aria-busy="true" aria-label={label} className={`skeleton ${kind}`}>
     {Array.from({ length: rows }, (_, index) => <div key={index} className="skeleton-row" aria-hidden="true">
       {kind === "rows" && <span className="skeleton-avatar" />}
       <div><span /><span /><span /></div>
     </div>)}
   </div>;
+}
+
+/** A thin bar under the header while something the screen already shows is being refreshed or run. */
+export function ProgressBar({ active, label = "Loading" }: { active: boolean; label?: string }) {
+  return <div className={`progress-bar${active ? " active" : ""}`} role="progressbar" aria-label={label} aria-hidden={!active} aria-busy={active} />;
+}
+
+/** True once a loading state has been shown, so content that replaces it can fade in. */
+export function useSawLoading(loading: boolean): boolean {
+  const saw = useRef(loading);
+  if (loading) saw.current = true;
+  return saw.current;
 }
 
 export function Notice({ title, children, role, icon }: { title: string; children?: ReactNode; role?: "alert" | "status"; icon?: IconName }) {

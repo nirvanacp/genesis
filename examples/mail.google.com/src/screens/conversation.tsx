@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import { ScrollMemory, useAction, useNavigation, usePage, useRecord } from "@genesis/sdk/react";
+import { ScrollMemory, useAction, useNavigation, usePage, usePending, useRecord } from "@genesis/sdk/react";
 import {
   dateKey, quickPresets, timeKey, whenLabel,
   type Conversation, type ConversationCommand, type MailList, type Message, type TextRun,
 } from "../model";
 import { useAccounts, useItems, useNow, useSettings, useToast } from "../store";
-import { AccountDot, Avatar, Icon, IconButton, Notice, Popover, Skeleton } from "../components/ui";
+import { AccountDot, Avatar, Icon, IconButton, Notice, Popover, ProgressBar, Skeleton, useSawLoading } from "../components/ui";
 import { CONTEXT, linkedTo, newItem, pendingReply, suggestTitle, useOpenItem, type EmailSource } from "../components/mail";
 import { ItemRow } from "../components/items";
 
@@ -56,10 +56,20 @@ export function ConversationScreen({ threadId, list }: { threadId: string; list:
     void respond(null, { mode: "reply" });
   }, [ready, threadId]);
 
+  // One toolbar command at a time: the bar shows progress and its buttons wait until Gmail answers.
+  const [busy, setBusy] = useState<ConversationCommand | null>(null);
   const run = (command: ConversationCommand) => {
     setMenu(null);
-    void actions[command](null).then(result => show({ text: result.outcome === "observed" ? DONE_TEXT[command] ?? "Done" : result.message ?? "Couldn't finish. Try again." }));
+    setBusy(command);
+    void actions[command](null).then(result => {
+      setBusy(null);
+      show({ text: result.outcome === "observed" ? DONE_TEXT[command] ?? "Done" : result.message ?? "Couldn't finish. Try again." });
+    });
   };
+  // The star shows the requested state while Gmail applies it.
+  const pendingStar = [...usePending("conversation", null, CONTEXT)].reverse().find(action => action.name === "setStarred");
+  const starred = pendingStar ? Boolean((pendingStar.args as { starred?: boolean }).starred) : conversation?.starred ?? false;
+  const saw = useSawLoading(!conversation);
 
   const source = (): EmailSource | null => {
     if (!conversation) return null;
@@ -94,12 +104,12 @@ export function ConversationScreen({ threadId, list }: { threadId: string; list:
 
   let body;
   if (!conversation) body = page.status === "error" ? <Notice title="Couldn't open this email" role="alert" icon="alert"><p>{page.error?.message}</p></Notice>
-    : <Skeleton label="Loading email" kind="text" rows={5} />;
+    : <Skeleton label="Loading email" kind="email" rows={6} />;
   else body = <>
     <div className="subject-row">
       <h1 className="conversation-subject">{conversation.subject}</h1>
-      <IconButton icon="star" label={conversation.starred ? "Unstar" : "Star"} filled={conversation.starred} pressed={conversation.starred}
-        className={conversation.starred ? "star on" : "star"} disabled={!ready} onClick={() => void setStarred(null, { starred: !conversation.starred })} />
+      <IconButton icon="star" label={starred ? "Unstar" : "Star"} filled={starred} pressed={starred}
+        className={starred ? "star on" : "star"} disabled={!ready} onClick={() => void setStarred(null, { starred: !starred })} />
     </div>
     <div className="conversation-meta">
       {account && <span className="account-line"><AccountDot color={account.color} /> {account.name}</span>}
@@ -130,15 +140,16 @@ export function ConversationScreen({ threadId, list }: { threadId: string; list:
       <IconButton icon="back" label={`Back to ${list.title}`} onClick={back} />
       <span className="spacer" />
       {primary.map(command => <IconButton key={command} icon={icons[command]!} label={COMMAND_LABELS[command]}
-        disabled={!ready || !commands.includes(command)} onClick={() => run(command)} />)}
-      <IconButton icon="clock" label="Snooze" disabled={!ready} onClick={() => openForm("snooze")} />
-      <IconButton icon="more" label="More" disabled={!ready} pressed={menu === "more"} onClick={() => setMenu(menu === "more" ? null : "more")} />
+        disabled={!ready || busy !== null || !commands.includes(command)} onClick={() => run(command)} />)}
+      <IconButton icon="clock" label="Snooze" disabled={!ready || busy !== null} onClick={() => openForm("snooze")} />
+      <IconButton icon="more" label="More" disabled={!ready || busy !== null} pressed={menu === "more"} onClick={() => setMenu(menu === "more" ? null : "more")} />
     </header>
     {menu === "more" && <Popover onClose={() => setMenu(null)} className="more-menu">
       {extra.map(command => <button type="button" role="menuitem" key={command} onClick={() => run(command)}>{COMMAND_LABELS[command]}</button>)}
       <button type="button" role="menuitem" onClick={() => { setMenu(null); navigate({ screen: "settings" }); }}>Gmail Only settings</button>
     </Popover>}
-    <ScrollMemory className="screen conversation" aria-busy={!ready}>
+    <ProgressBar active={busy !== null || (Boolean(conversation) && page.stale)} label={busy ? COMMAND_LABELS[busy] : "Updating"} />
+    <ScrollMemory className={`screen conversation${saw && conversation ? " reveal" : ""}`} aria-busy={!ready}>
       {settings.showAddTo && <div className="add-to">
         <button type="button" className="add-pill" aria-expanded={menu === "add"} disabled={!conversation} onClick={() => setMenu(menu === "add" ? null : "add")}>
           <Icon name="plus" /> Add to… <Icon name={menu === "add" ? "up" : "down"} />

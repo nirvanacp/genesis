@@ -468,14 +468,25 @@ mark { background: #ffe9a8; color: inherit; border-radius: 3px; padding: 0 1px; 
 .welcome .logo { font-size: 32px; margin-bottom: 12px; }
 .welcome h1 { font-size: 24px; }
 .welcome p { color: var(--ink-2); margin-bottom: 12px; }
-.skeleton { padding: 8px 12px; }
+/* Skeletons wait a moment before showing, so fast loads never flash, then shimmer. */
+.skeleton { padding: 8px 12px; animation: fade .2s .12s both; }
 .skeleton-row { display: flex; gap: 12px; padding: 12px 8px; }
-.skeleton-avatar { width: 40px; height: 40px; border-radius: 50%; background: var(--chip); flex: none; }
+.skeleton-avatar, .skeleton-row > div span, .skeleton .bar {
+  background: linear-gradient(90deg, var(--chip) 0 40%, var(--shimmer) 50%, var(--chip) 60% 100%) var(--chip);
+  background-size: 300% 100%; animation: shimmer 1.4s linear infinite;
+}
+.skeleton-avatar { width: 40px; height: 40px; border-radius: 50%; flex: none; }
 .skeleton-row > div { flex: 1; display: flex; flex-direction: column; gap: 8px; }
-.skeleton-row > div span { height: 12px; border-radius: 6px; background: var(--chip); animation: pulse 1.4s ease-in-out infinite; }
+.skeleton-row > div span { height: 12px; border-radius: 6px; }
 .skeleton-row > div span:nth-child(1) { width: 40%; }
 .skeleton-row > div span:nth-child(3) { width: 70%; }
-@keyframes pulse { 50% { opacity: .5; } }
+.skeleton.email { display: flex; flex-direction: column; gap: 10px; padding: 16px; }
+.skeleton .bar { display: block; height: 12px; border-radius: 6px; }
+.skeleton .bar.title { height: 22px; border-radius: 8px; width: 85%; }
+.skeleton .bar.title.short { width: 55%; margin-bottom: 8px; }
+.skeleton .bar.short { width: 60%; }
+.skeleton.email .skeleton-row { padding: 8px 0 12px; }
+@keyframes shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
 
 /* Tabs */
 .tabs { flex: none; display: flex; background: var(--paper); border-top: 1px solid var(--line); padding: 6px 8px calc(6px + env(safe-area-inset-bottom)); }
@@ -551,3 +562,42 @@ input[type="search"]::-webkit-search-cancel-button { display: none; }
 .app.has-toast .fab { transform: translateY(-64px); }
 .app.has-toast .fab:active { transform: translateY(-64px) scale(.94); }
 .message-body { animation: fade var(--dur-medium) var(--ease-out); }
+
+/* Loading and feedback */
+:root { --shimmer: rgba(255, 255, 255, .7); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --shimmer: rgba(255, 255, 255, .1); } }
+:root[data-theme="dark"] { --shimmer: rgba(255, 255, 255, .1); }
+/* A thin bar under the header for work on what is already shown. It appears after a short delay. */
+.progress-bar { position: relative; flex: none; height: 3px; margin-bottom: -3px; z-index: 2; overflow: hidden; opacity: 0; transition: opacity .2s; pointer-events: none; }
+.progress-bar.active { opacity: 1; transition-delay: .25s; }
+.progress-bar.active::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 40%; border-radius: 2px; background: var(--accent); animation: progress 1.2s var(--ease-out) infinite; }
+@keyframes progress { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+.spinner { width: 16px; height: 16px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.list-end { flex-direction: column; align-items: center; gap: 4px; }
+/* Pull to refresh: a disc that follows the finger, turns with the pull and spins while loading. */
+.screen { position: relative; }
+.pull-indicator { position: absolute; top: -44px; left: 50%; z-index: 3; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: var(--paper); color: var(--ink-3); box-shadow: 0 2px 8px rgba(0, 0, 0, .18); pointer-events: none; }
+.pull-indicator.armed, .pull-indicator.active { color: var(--accent); }
+.pull-indicator.active { transition: transform .25s var(--ease-out); }
+.pull-indicator span { display: grid; }
+.pull-indicator.active span { animation: spin .8s linear infinite; }
+/* Content that replaced a skeleton fades in instead of jumping. */
+.reveal { animation: fade .24s var(--ease-out); }
+/* Completing: the mark pops, the row dims, then the item leaves. */
+.mark { transition: background-color .15s, border-color .15s; }
+.mark.checking { background: var(--done); border-color: var(--done); color: #fff; animation: badge-pop .32s var(--ease-spring); }
+.today-title { transition: opacity .25s; }
+.today-row.is-done .today-title { opacity: .55; text-decoration: line-through; }
+.star.on svg { animation: star-pop .36s var(--ease-spring); }
+@keyframes star-pop { 0% { transform: scale(.5) rotate(-30deg); } 100% { transform: none; } }
+/* Swipe: the row follows the finger exactly, then settles; the action icon grows once it will fire. */
+.thread-inner { transition: background-color var(--dur-short), transform .22s var(--ease-out); }
+.thread-inner.dragging { transition: none; }
+.swipe-under svg { transition: transform .15s var(--ease-spring); }
+.swipe-under.armed svg { transform: scale(1.3); }
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-avatar, .skeleton-row > div span, .skeleton .bar, .progress-bar.active::before { animation: none; }
+  .progress-bar.active::before { width: 100%; opacity: .5; }
+  .reveal, .mark.checking, .star.on svg, .pull-indicator.active span { animation: none; }
+}

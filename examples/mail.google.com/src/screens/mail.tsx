@@ -30,7 +30,7 @@ export function MailScreen() {
     case "list": return <ListScreen list={view.kind === "list" || view.kind === "conversation" ? view.list : INBOX} />;
     case "conversation": return view.kind === "conversation"
       ? <ConversationScreen threadId={view.threadId} list={view.list} />
-      : <Frame><Skeleton label="Loading email" kind="text" rows={5} /></Frame>;
+      : <Frame><Skeleton label="Loading email" kind="email" rows={6} /></Frame>;
     case "compose": return <ComposeScreen />;
     case "menu": return <DrawerScreen />;
     case "settings": return <GmailSettingsScreen />;
