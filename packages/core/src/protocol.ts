@@ -232,6 +232,12 @@ export type Step =
  * What an action function returns for the current page. `D` is the document type, which this
  * package does not know.
  */
+/** Destination pages of a navigating action: `page` counts as success, `notPage` as rejection. */
+export interface ActionExpect {
+  page?: string | string[];
+  notPage?: string | string[];
+}
+
 export type ActionSpec<D = unknown> =
   | { satisfied: true }
   | {
@@ -241,7 +247,7 @@ export type ActionSpec<D = unknown> =
     /** Implied by a final `navigate` or `submit` step. */
     navigates?: boolean;
     /** For navigating actions: the destination pages that count as success or rejection. */
-    expect?: { page?: string | string[]; notPage?: string | string[] };
+    expect?: ActionExpect;
     deadlineMs?: number;
   };
 
@@ -274,5 +280,7 @@ export interface ActionUpdate {
   state: "dispatched" | "observed" | "failed" | "cancelled";
   /** On `dispatched`: the action is leaving the document, so the foreground observes the outcome. */
   navigating?: boolean;
+  /** On a navigating `dispatched`: the action's `expect`, which the foreground judges the destination by. */
+  expect?: ActionExpect;
   result?: ActionResult;
 }
