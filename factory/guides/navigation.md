@@ -1,52 +1,75 @@
 # Navigation
 
-The foreground owns a stack of screens. The shell owns the floating Genesis menu button, Android Back and the website sheet. Hidden source pages never appear on screen.
+An applet has one to three contexts. Each context is a live website session with one history, the website's own. The screen the user sees is the active context's current page rendered by the applet, or the website itself when the applet does not customize that page (see [presentation](presentation.md)). Overlay screens show applet data above the active context. The shell owns the floating Genesis menu button, the website bar and Android Back.
 
-## The three ways to navigate
+## One history per context
+
+Every route screen is a history entry of its context. Opening an item pushes the item's URL in the context, and Back goes back in the context's history, so the applet and the website share one history and the user can move between them without losing their place. There is no separate screen stack for route screens.
 
 ```ts
 const { navigate } = useNavigation();
 
-navigate({ kind: "route", url: "https://example.com/item?id=42" });          // a website URL
-navigate({ kind: "screen", id: "saved", mode: "root" });                     // an applet-only screen
-navigate({ kind: "website", url: "https://example.com/item?id=42" });        // the website sheet
+navigate({ url: "https://example.com/item?id=42" });                 // a page in the active context
+navigate({ url: "/newest", mode: "replace" });                        // relative to the current page, replacing it
+navigate({ url: "https://example.com/account", context: "me" });     // a page in another context
+navigate({ screen: "saved", mode: "root" });                          // an overlay screen
 ```
 
 | Target | What happens |
 | --- | --- |
-| `route` | The URL is classified by the manifest. An adapted route pushes its screen and loads the page in its source. A website route opens the sheet. A declared-origin URL that matches no route pushes the `unsupported` screen with `params.url`, or opens the sheet when the applet has no such screen. A URL on any other origin opens the sheet. The sheet is https only: an `http://` URL opens in the Android browser. |
-| `screen` | Pushes a declared screen with `params`. Pass `source: { sourceId, url, routeId }` only when you already know which page the screen shows; otherwise it has no page. |
-| `website` | Opens the URL in the website sheet. Use it only when the user asked for the website. |
+| `{ url, context?, mode? }` | Loads the URL in a context and makes that context active. The manifest decides what shows: a route renders its screen, anything else shows the website. Relative URLs resolve against the active context's page. `mode` is `push` (default) or `replace`. It closes the overlay screens. |
+| `{ screen, params?, mode? }` | Opens an overlay screen. `push` (default) adds it, `replace` swaps the top one, `root` makes it the only one. |
 
-`route` and `screen` take `mode`: `push` (default) adds an entry, `replace` swaps the current entry, `root` makes the new screen the whole stack. Use `root` for bottom tabs. Use `route` for every link that came from the website, so the manifest decides where it goes.
+Use `{ url }` for every link that came from the website, so the manifest decides where it goes. Navigating to the URL a context already shows switches to that context instead of adding an entry. Navigating to the same URL does not reload it; use `reload()`.
+
+## Which context a URL opens in
+
+`navigate({ url })` without `context` uses the active context, so a link followed from a page stays in that page's history. A route's `context` applies only from a tab root (the active context on its start page) and from an overlay screen. That way a profile link on the Home tab's feed opens in the Home history, while the same link from Search opens in the route's context.
+
+## Tabs and overlay screens
+
+Bottom tabs belong to the foreground. A tab is either a context or an overlay screen:
+
+```tsx
+const choose = () => tab.context ? select(tab.id) : navigate({ screen: tab.id, mode: "root" });
+```
+
+- `select(contextId)` switches to that context and closes the overlay screens. The context keeps its history, so each website tab returns where the user left it. Reselecting the current tab off its start page goes to the start page (as a new entry); on the start page it scrolls `ScrollMemory` to the top.
+- Overlay screens are applet-only screens (search, saved, settings, a save sheet) that render above the active context. They have no page of their own; read their data from the store, a service or another context with `usePage(contextId)` and `useRegion(name, contextId)`. Open a screen tab with `mode: "root"`.
+- Mark a tab current from `active`, or from `overlay[0]` when an overlay is open.
+
+Content tabs, filters and sort controls belong inside the screen. When they correspond to website URLs, navigate to that URL with `mode: "replace"`.
+
+## Pins: View website and Done
+
+The user can look at the website for any page: the Genesis menu's View website item, or a screen control that calls `viewWebsite()`. Genesis pins the context to the website and shows it under the website bar. Done on the bar (or `done()`) unpins it and shows the applet screen again. When the website page has no route, Done goes back one entry, or to the context's start page when there is none.
+
+Genesis also pins a context when a page is `auth` and opens the adapter's `signInUrl` there. The pin clears when a ready page with an account arrives. If the user leaves that sign-in with Done or Back, Genesis goes back past the page that needed the account; when that page was the start page, it selects the primary context instead.
+
+Open the website only on an explicit action: View website, a control whose label or cue says it opens the website, or a sign-in prompt. Never open it to cover a loading or failed screen; Genesis does that itself after the deadline.
 
 ## Back
 
 Android Back and `back()` follow the same order:
 
-1. An open website sheet goes back in its own history, then closes.
-2. A leave guard on the current screen asks for confirmation.
-3. A stacked screen pops and the previous one returns with its scroll position.
-4. On the root screen, Android Back leaves the applet. `back()` does nothing there.
+1. A leave guard asks for confirmation.
+2. The top overlay screen closes.
+3. A sign-in that Genesis opened is left, as described above.
+4. The active context goes back one entry in its history. The previous entry shows its last copy at once, marked `stale`, with its scroll position.
+5. Otherwise Android Back leaves the applet. `back()` does nothing there.
 
-The foreground must answer Back within 300 ms, so keep Back handling synchronous. `navigate` to another screen asks the same question first. Changing screens clears the leave guard. Set a guard while a draft is unsaved; replace the default `confirm()` with `useForeground().navigation.onConfirmLeave` when the product has its own dialog.
+The foreground must answer Back within 300 ms, so keep Back handling synchronous. Navigating, selecting a tab and opening an overlay screen ask the leave guard first, and any navigation clears it. Set a guard while a draft is unsaved; replace the default `confirm()` with `useForeground().navigation.onConfirmLeave` when the product has its own dialog.
 
-Menus, sheets and dialogs drawn by the foreground are not stack entries. Close them before Back leaves the screen: either render them as screens, or set a leave guard while they are open and close them from `onConfirmLeave`. A menu item that navigates clears that guard first, so the confirmation does not intercept it.
+Menus, sheets and dialogs drawn inside a screen are not history entries. Close them before Back leaves the screen: render them as overlay screens, or set a leave guard while they are open and close them from `onConfirmLeave`. A menu item that navigates clears that guard first, so the confirmation does not intercept it.
 
-## The website sheet
+## External origins
 
-The sheet shows the real website over the applet. It loads the URL it was given and pages on the applet's declared origins and on the opened URL's origin. A link to any other origin opens the system browser. Closing the sheet, by its close control or by Back, returns to the screen that opened it and fires `useAppResume`, so reread anything the user may have changed there.
-
-Open the sheet only on an explicit action: a control whose label or cue says it opens the website, a sign-in prompt, a form the applet does not rebuild, or the Genesis menu's Open website item. Never open it to cover a loading or failed screen.
+A context can browse any web page. A link to an origin the manifest does not declare loads in the same context and shows as the website, under the website bar; the adapter does not run there. Done or Back returns to the previous entry. Links with other schemes (`mailto:`, `tel:`, app links) open in Android.
 
 ## The Genesis menu
 
-The shell's menu offers Home, Reload applet, Open website, Service connections and Applet info. Do not rebuild these in the foreground. Reload applet recreates the foreground and its sources; the stack restarts at the first source's start page.
-
-## Tabs and sections
-
-Bottom tabs belong to the foreground. Each tab opens its root with `mode: "root"`. Reselecting the current tab scrolls to the top or pops to its root. Content tabs, filters and sort controls belong inside the screen and change the page with `route` navigation in `replace` mode when they correspond to website URLs. Show the destination's title and skeleton immediately while its page loads.
+The shell's menu offers Home, Reload applet, View website, Service connections and Applet info. Do not rebuild these in the foreground. Reload applet recreates the foreground and its contexts at their start pages.
 
 ## Route inventory
 
-Record every route in `.specs/current.md` by manifest route id: an example URL, the screen or website handling, its loading, empty, sign-in and error behavior, how the user gets back, and its verification status. A declared route is not evidence that the page renders; verify it on the device.
+Record every route in `.specs/current.md` by manifest route id: an example URL, its page and screen, its context, its loading, empty, sign-in and error behavior, how the user gets back, and its verification status. A declared route is not evidence that the page renders; verify it on the device.

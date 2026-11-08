@@ -4,9 +4,11 @@
 
 ```text
 applet.json
-src/main.tsx              mountForeground and the screen switch
-src/sources/<id>.ts       one adapter per source: extract functions and intents
-src/model.ts              data types shared by adapters and screens
+src/main.tsx              mountForeground
+src/app.tsx               the screen switch and the tabs
+src/adapter.ts            defineAdapter: account, signInUrl and the pages
+src/adapter/*.ts          one file per page or shared reader
+src/model.ts              data types shared by the adapter and screens
 src/screens/*.tsx         one file per screen
 src/components/*.tsx      shared rows, skeletons, sheets
 src/data/*.ts             record and service access (repositories)
@@ -14,49 +16,54 @@ src/theme.css             tokens and base styles
 backend/                  optional service
 ```
 
-Adapters import only `@genesis/sdk/source` and pure helpers. Screens import `@genesis/sdk/react`. Share types, not code with side effects, between them; each adapter is bundled separately and runs inside its website page. Extract a helper only after a second real use.
+The adapter imports only `@genesis/sdk/adapter` and pure helpers; the build rejects an adapter that imports `@genesis/sdk/react`. Screens import `@genesis/sdk/react`. Share types, not code with side effects, between them; the adapter is bundled separately and runs inside the website's page. Extract a helper only after a second real use.
 
-## Extractors
+## Adapters
 
-- Read the page in one pass and return a small typed model. Use stable attributes such as ids, `data-*` attributes and URL parameters before visual class names.
-- Resolve links with `new URL(href, doc.baseURI)` and keep only `https:` URLs. Parse numbers with explicit fallbacks: `null` means unknown, not zero.
-- Keep text as text. For rich text, return runs such as `{ text, href?, emphasis? }` built from known elements.
-- Cap list lengths and deduplicate by id. Snapshots over 192 KiB fail.
-- Keep extractors pure: no clicks, no timers, no writes to the page. Use intents for actions.
+Write one adapter page for each sort of page the site has, with `ready` as positive evidence and small, pure `read` functions. Name the nodes each read touches with `extent` or `dependsOn`, give every item a stable unique key, and express actions as desired state. [Adapters](adapters.md) covers each of these; [interactions](interactions.md) covers actions.
 
-## Loading is not empty
+## The screen switch
 
-An extractor returns data only when it recognized the page. Return `null` (loading) when the content container is missing, the page is still assembling, or a placeholder is shown. Return an empty list only when the page itself says there is nothing, such as an empty container that the site renders for no results, or a "No results" message.
-
-```ts
-extract(doc) {
-  const list = doc.querySelector("[data-testid=results]");
-  if (!list) return null;                                   // not there yet
-  const items = [...list.querySelectorAll("article")].map(readItem).filter(Boolean);
-  if (items.length === 0 && !doc.querySelector("[data-testid=empty-state]")) return null;
-  return { items };
+```tsx
+export function App() {
+  const { screen } = useNavigation();
+  const Screen = screen ? SCREENS[screen.id] : undefined;
+  return <div className="app">
+    <main className="content">{Screen && <Screen key={screen!.key} />}</main>
+    <Tabs />
+  </div>;
 }
 ```
 
-Sign-in walls, consent banners and error pages can appear at any route. Detect the ones you know: return a field such as `{ blocked: "signin" }` for the screen to explain, or use `requiresSignIn` with `isSignedIn`. If the page publishes nothing but `loading` for 15 seconds, the host reports `NOT_READY`; show it as a failure with a way to open the website.
+`screen` is `null` while the active context shows a page without a route; the website shows then, so render nothing for it. Key each screen by `screen.key` so a new history entry gets fresh component state.
 
 ## Screens
 
 ```tsx
-function ItemScreen() {
-  const page = useScreenSource<ItemData>();
-  if (page.status === "auth") return <SignInPrompt />;
-  if (page.status === "unsupported") return <OpenOnWebsite url={page.url} />;
-  if (page.status === "error" && !page.data) return <LoadError error={page.error} url={page.url} />;
-  if (!page.data) return <ItemSkeleton />;
-  return <Item data={page.data} refreshing={page.stale} />;
+function FeedScreen() {
+  const page = usePage();
+  const stories = useRegion<Story>("stories");
+  if (stories.order.length === 0) {
+    if (page.status === "ready" && stories.status === "ready") return <Empty />;
+    if (page.status === "error" || stories.status === "error") return <LoadError error={page.error ?? stories.error} />;
+    return <FeedSkeleton />;
+  }
+  return <ScrollMemory className="screen" aria-busy={page.stale || page.status === "loading"}>
+    {page.status === "error" && <p className="inline-error" role="alert">Couldn't refresh. Showing the last copy.</p>}
+    {stories.order.map(key => <StoryRow key={key} id={key} />)}
+  </ScrollMemory>;
 }
+
+const StoryRow = memo(function StoryRow({ id }: { id: string }) {
+  const story = useRecord<Story>("stories", id);
+  return story ? <Row story={story.data} /> : null;
+});
 ```
 
-- Handle every status. Loading, empty, sign-in, unsupported and failure look different and say different things.
-- Render cached `stale` data with an unobtrusive refreshing state instead of a skeleton.
-- One `useScreenSource` per screen. Read other sources with `useSource` only for what the screen needs.
-- Keep keys stable: React keys and stored record keys use the website's ids.
+- Handle each state: loading, empty, error, stale and the region's own error. `auth` and pages without a route show the website, so screens do not draw a sign-in wall of their own. See [presentation](presentation.md).
+- Render `stale` content with an unobtrusive refreshing state instead of a skeleton.
+- Read the screen's regions with `useRegion` and each row with `useRecord` in a memoized row component keyed by the record key, so an update to one record renders one row.
+- Read another context with `usePage(contextId)` and `useRegion(name, contextId)` only for what the screen needs, such as the account name on a Me tab.
 - Put each screen's scroll container in `ScrollMemory`.
 
 ## Records and services
@@ -65,4 +72,4 @@ Wrap storage and service calls in small modules under `src/data/` that screens c
 
 ## Performance
 
-Bound list sizes and paginate. Avoid re-rendering the whole tree per snapshot: memoize row components by id. Keep images lazy and sized. Do not poll; snapshots arrive when the page changes.
+Bound list sizes in the adapter's selectors; a page is at most 192 KiB of JSON. Memoize rows by key. Keep images lazy and sized. Do not poll; records arrive when the page changes.

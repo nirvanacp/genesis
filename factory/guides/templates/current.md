@@ -2,7 +2,16 @@
 
 ## Identity
 
-Name, applet id, origins, source ids, screen ids and service ids. Manifest schema, SDK and tools versions, and the kit version from `kit.json`. Write "unknown" for anything not known.
+Name, applet id, origins, context ids, screen ids and service ids. Write "unknown" for anything not known.
+
+| Compatibility | Value |
+| --- | --- |
+| Manifest schema | 6 |
+| Bundle format | 3 |
+| Protocol | 1 |
+| Adapter API | 1 |
+| SDK and tools | 0.0.0 |
+| Kit | `frameworkVersion` from `kit.json` |
 
 ## Product scope
 
@@ -12,16 +21,16 @@ The app the user asked for, its core journeys, the workflows and data to preserv
 
 | Rule id | Current choice | Origin and reason | Decision |
 | --- | --- | --- | --- |
-| default-platform-menu | Shell floating menu button and Genesis menu, splash accent from `shell.accent` | Factory default | |
+| default-platform-menu | Shell floating menu button, Genesis menu and website bar, splash accent from `shell.accent` | Factory default | |
 
 ## Routes
 
-| Route id | Example URL | Screen or website | Loading, empty, sign-in and error | Back | Status | Evidence |
-| --- | --- | --- | --- | --- | --- | --- |
+| Route id | Example URL | Page and screen | Context | Loading, empty, sign-in and error | Back | Status | Evidence |
+| --- | --- | --- | --- | --- | --- | --- | --- |
 
 ## Interactions
 
-| Screen and control | Result | Intent, route, website or store | Pending and failure | Status | Evidence |
+| Screen and control | Result | Action, navigation, website or store | Pending, failure and unknown | Status | Evidence |
 | --- | --- | --- | --- | --- | --- |
 
 ## Data

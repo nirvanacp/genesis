@@ -8,7 +8,11 @@ Use the product's native mobile app as the reference when one exists, translated
 
 ## Shell and navigation
 
-The shell draws a floating 44 dp Genesis menu button in the top-right corner, 8 dp from the edges, and handles Android Back. Keep the first row of every screen clear of that corner, for example with a 44 px right float at the top of the scroll container. Do not draw a menu of your own, a back arrow or the applet's name in a bar. Use one bottom tab bar for the main sections. Keep content tabs, filters and contextual actions inside the screen. Do not copy the website's header, footer or sidebar.
+The shell draws a floating 44 dp Genesis menu button in the top-right corner, 8 dp from the edges, over every screen and over the website. Keep the first row of every screen clear of that corner, for example with a 44 px right float at the top of the scroll container. Do not draw a menu of your own, a back arrow or the applet's name in a bar. Use one bottom tab bar for the main sections. Keep content tabs, filters and contextual actions inside the screen. Do not copy the website's header, footer or sidebar.
+
+When a context shows the website, the shell puts a 56 dp website bar above it with the page title and Done; the menu button stays on top at its right. The foreground does not draw this bar and cannot restyle it. Screens shown next to the website, such as overlay screens, should not imitate it.
+
+The launcher marks an applet that this Genesis cannot run with a status line: "Needs update" when the applet was built for an older SDK, "Needs a newer Genesis" when it was built for a newer one. Opening it shows the reason instead of the applet. Rebuild the applet with the current SDK to clear "Needs update".
 
 ## Tokens
 
@@ -23,7 +27,7 @@ Set `shell.accent` in the manifest to the brand color; the shell uses it for the
 
 ## Building screens
 
-Write semantic React from the adapter's models. The reference is a design input: do not copy its DOM or stylesheets, and never render its HTML. Show active states (voted, followed, saved) only when the page or the store confirmed them. Unknown counts and missing images get a neutral fallback, not a zero.
+Write semantic React from the adapter's models. The reference is a design input: do not copy its DOM or stylesheets, and never render its HTML. Show active states (voted, followed, saved) only when the page or the store confirmed them, or while a pending action requests them (see [interactions](interactions.md#optimistic-display-with-usepending)). Unknown counts and missing images get a neutral fallback, not a zero.
 
 ## Accessibility
 
@@ -32,7 +36,7 @@ Write semantic React from the adapter's models. The reference is a design input:
 - Focus is visible. Opening a sheet moves focus into it; closing returns focus to the control that opened it.
 - Text contrast meets 4.5:1 for body text in both themes. Text scales with the system font size; layouts survive 200% text.
 - Standalone controls have at least 48 by 48 dp of touch area. Inline links inside text may stay inline.
-- Respect `prefers-reduced-motion`.
+- Respect `prefers-reduced-motion`. See [presentation](presentation.md#motion) for motion.
 
 ## Skeletons
 

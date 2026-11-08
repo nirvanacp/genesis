@@ -8,7 +8,7 @@ An applet keeps its own data in Genesis document storage, in its own HTTPS servi
 | --- | --- |
 | Data on this device only: categories, notes, read state, preferences | Document storage (`capabilities.storage: true`) |
 | Data shared across devices or with other tools, or computed on a server | A declared service |
-| Data the website already keeps (its bookmarks, votes, follows) | The website, through intents and snapshots |
+| Data the website already keeps (its bookmarks, votes, follows) | The website, through adapter regions and actions |
 
 Do not copy website data into a store as a second source of truth. When a feature joins applet records with website data (categories over the website's bookmarks), store only what the applet owns, keyed by the website's stable ids, and read the rest from the page. Do not invent synchronization or migrations the user did not ask for.
 

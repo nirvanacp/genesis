@@ -14,35 +14,35 @@ Read the latest request, local instructions, `.specs/current.md`, relevant decis
 
 | ID | Class and obligation | Details |
 | --- | --- | --- |
-| requirement-compatibility | Requirement: the installed SDK, tools, manifest schema and host agree; public imports only | [SDK reference](sdk-reference.md) |
-| requirement-hidden-sources | Requirement: websites stay hidden; adapters publish bounded JSON; the foreground renders every screen | [Hidden sources](#hidden-sources) |
-| requirement-route-policy | Requirement: exact origins, declared routes, and the website sheet only on explicit user intent | [Navigation](navigation.md) |
-| requirement-loading-evidence | Requirement: an extractor returns data only from content it recognized; `null` while the page is not ready | [Patterns](patterns.md#loading-is-not-empty) |
-| requirement-real-interactions | Requirement: a control performs the action its label names, against the current entity and account, and reports the observed outcome | [Interactions](interactions.md) |
+| requirement-compatibility | Requirement: the applet's manifest schema, SDK and tools match the host's compatibility values; public imports only | [SDK reference](sdk-reference.md#compatibility) |
+| requirement-session-projection | Requirement: adapters read bounded JSON from the live page and act only through the page; the foreground renders routed pages, and Genesis shows the website for everything else | [Session projection](#session-projection) |
+| requirement-route-policy | Requirement: exact origins and declared routes; screens show the website only on explicit user intent and never cover a loading or failed page with it | [Navigation](navigation.md), [presentation](presentation.md) |
+| requirement-loading-evidence | Requirement: a page's `ready` returns `true` only from content it recognized; empty only when the page says so | [Adapters](adapters.md#readiness) |
+| requirement-real-interactions | Requirement: a control performs the action its label names, against the current entity and account, reports the observed outcome, and never retries an uncertain one | [Interactions](interactions.md) |
 | requirement-data-integrity | Requirement: stable keys, one authoritative store per record type, revision checks, credentials outside the bundle, no blind retry of uncertain writes | [Services and data](services-and-data.md) |
 | requirement-accessible-navigation | Authoring requirement: semantic labels, focus, readable contrast, scalable text, 48 dp touch targets and working Back | [Design](design.md) |
 | requirement-records | Authoring requirement: keep current intent, decisions and change outcomes in applet records | [Records](applet-records.md) |
 | requirement-honest-verification | Verification requirement: keep static, synthetic and live evidence apart; keep blocked journeys visible; no unrequested posts, messages, purchases or account changes | [Verification](verification.md) |
 | requirement-operator-startup | Workflow requirement: maintain backend start commands; start services only when the user asks | [Services and data](services-and-data.md#local-startup-and-ports) |
 | default-* | Initial UI and navigation choices and their compatible overrides | [Defaults](defaults.md) |
-| practice-focused-modules | Best practice: separate extraction, data types, screens, repositories and backend calls; abstract only after real reuse | [Patterns](patterns.md) |
+| practice-focused-modules | Best practice: separate adapter pages, data types, screens, repositories and backend calls; abstract only after real reuse | [Patterns](patterns.md) |
 | practice-bounded-work | Best practice: bounded lists, one subscription per concern, shared components and tokens | [Patterns](patterns.md), [design](design.md) |
 | practice-small-dependencies | Best practice: the smallest useful dependency and capability set, without shrinking the requested scope | [Getting started](getting-started.md) |
 | practice-scoped-diagnosis | Best practice: inspect evidence, find the owning component, verify the changed journeys, keep records short and current | [Verification](verification.md) |
 
-## Hidden sources
+## Session projection
 
-- A source is a hidden website page. Its adapter extracts JSON for the declared routes of that source and nothing else. The user never sees the hidden page, including while it loads, fails or redirects.
-- Adapters have no storage, services or navigation. They return data from `extract`, return driver steps from `intents`, and report sign-in state from `isSignedIn`. Only the foreground stores records and calls services.
+- Each context is a live website session that the user could also see directly. The adapter reads the declared pages of those sessions into records; the foreground renders them as screens. Pages without a route, sign-in, and pages that do not become ready show as the website itself.
+- Adapters have no storage, services or navigation. They read with `ready`, `account` and region `read` functions and act with action functions that return steps. Only the foreground stores records and calls services.
 - An adapter never executes code taken from the page, never copies whole DOM trees, and never returns HTML, cookies, form tokens or credentials. Return the smallest model a screen needs: text, numbers, validated URLs and ids.
 - The foreground renders website strings as text. Rich text uses an applet-defined model of text runs, links and emphasis, never upstream HTML. Validate link and media URLs before use.
-- Each source sees only its own website. Screens that combine several sources read each one's snapshot in the foreground; no adapter reads another source's page.
-- A route match permits extraction; it does not prove the page holds valid content. Sign-in pages, challenges, error pages and changed markup can appear at any declared URL.
-- Snapshots are capped at 192 KiB. Page large lists, and deduplicate records by id.
+- One adapter serves every context, and each read sees only its own page. Screens that combine contexts read each one in the foreground.
+- A route match permits reading; it does not prove the page holds valid content. Sign-in pages, challenges, error pages and changed markup can appear at any declared URL, so `ready` needs positive evidence.
+- A page is capped at 192 KiB of JSON (196608 bytes). Bound long lists, and give every item a stable unique key.
 
 ## Conflicts and questions
 
-Name the requested behavior, the rule it hits, the concrete consequence and two or three workable choices. Example: "Showing the website while the screen loads would expose the hidden page. Should I keep a skeleton, or add an Open website button?" Offer a platform capability request when that is the real gap. Never offer to ignore a runtime constraint; a process waiver does not waive data or runtime guarantees.
+Name the requested behavior, the rule it hits, the concrete consequence and two or three workable choices. Example: "Reading the vote state from a script variable would go stale, because Genesis only sees the page's DOM. Should I read the arrow's state from the page, or drop the vote count from this screen?" Offer a platform capability request when that is the real gap. Never offer to ignore a runtime constraint; a process waiver does not waive data or runtime guarantees.
 
 Ask only about unresolved product intent, requirement conflicts, or access and fallback choices. Choose selectors, module names and spacing yourself. Continue independent work while waiting. Silence is not approval. Missing sign-in, tools or device access blocks the affected acceptance; it does not approve a smaller app or synthetic data in its place.
 
