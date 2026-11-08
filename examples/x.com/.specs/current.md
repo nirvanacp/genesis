@@ -23,7 +23,7 @@ Excluded: automatic import or sync of X bookmarks into Categories, an offline wr
 | default-platform-menu | Shell menu button, accent `#1d9bf0`; the first row of every screen leaves the button's corner clear | Factory default | decision-0003 |
 | default-primary-navigation | One bottom tab bar of five sections; reselecting the active root tab scrolls to the top; hidden in the media viewer | Inherited user choice | decision-0001 |
 | default-pending-skeletons | Neutral, static, content-shaped skeletons | Factory default | |
-| default-compact-website-cue | External-link icon on every control that opens the website sheet | Factory default | |
+| default-compact-website-cue | External-link icon on every control that opens the website (shown with the website bar and Done) | Factory default | |
 | default-theme-and-layout | Neutral X palette, light and dark, system font, 15px/20px post text, 40px avatars, hairline separators | Inherited user design direction | decision-0002 |
 | Category editors | `save` and `manage` screens in the stack instead of keyboard-safe sheets, so Android Back closes them | Agent choice for SDK 0.0 | decision-0004 |
 

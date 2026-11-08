@@ -1,24 +1,28 @@
 import { collection, single, type ActionSpec, type Page } from "@genesis/sdk/adapter";
 import {
   account, clean, currentAccount, failureText, hash, ITEMS, itemKey, personKey, POST, readItem, readPerson, readPhoto,
-  readProfileHeader, readPost, readTrend, toggle,
+  postIdOf, readProfileHeader, readPost, readTrend, toggle,
 } from "./read.ts";
+import { postUrl } from "../model.ts";
 
 /**
- * X's pages. X is a single-page app: `ready` waits until the main column shows items, X's
- * empty state, or its error message, which becomes the page's error.
+ * X's pages. X is a single-page app: `ready` waits until the main column shows this page's
+ * content, X's empty state, or its error message, which becomes the page's error. Right after a
+ * navigation the column can still hold the previous page, so pages whose URL names their subject
+ * (a post, a profile) wait for that subject rather than for any content.
  */
 
 const MAIN = "main";
 const EMPTY = '[data-testid="emptyState"]';
 
-function shows(doc: Document, content: string): boolean {
+function shows(doc: Document, content: string | ((main: Element) => boolean)): boolean {
   if (doc.readyState === "loading") return false;
   const main = doc.querySelector(MAIN);
   if (!main) return false;
   const failure = failureText(main);
   if (failure) throw new Error(failure);
-  return main.querySelector(`${content}, ${EMPTY}`) !== null;
+  if (main.querySelector(EMPTY)) return true;
+  return typeof content === "string" ? main.querySelector(content) !== null : content(main);
 }
 
 const postActions = {
@@ -66,7 +70,10 @@ export const timelinePage: Page = {
 
 /** A post with its thread. The screen splits ancestors and replies at the post the URL names. */
 export const postPage: Page = {
-  ready: doc => shows(doc, POST),
+  ready: doc => {
+    const postId = postUrl(doc.location.href)?.postId;
+    return shows(doc, main => [...main.querySelectorAll(POST)].some(article => postIdOf(article) === postId));
+  },
   regions: { thread: timeline(POST), empty },
 };
 
@@ -80,17 +87,28 @@ export const profilePage: Page = {
   ready: doc => {
     const handle = doc.location.pathname.split("/")[1] ?? "";
     if (RESERVED.has(handle.toLowerCase()) || !/^[A-Za-z0-9_]{1,15}$/.test(handle)) throw new Error("This X page isn't a profile");
-    return shows(doc, `${POST}, [data-testid="UserName"]`);
+    // The header for this handle; X keeps the previous profile's header until it renders the new one.
+    return shows(doc, main => readProfileHeader(main) !== null);
   },
   regions: { header: single({ root: MAIN, read: readProfileHeader }), posts: timeline(), empty },
   actions: { loadMore },
 };
 
+/**
+ * A trend's key: its link when it has one, else its name. Not its whole text, which includes the
+ * post count X updates in place.
+ */
+function trendKey(element: Element): string {
+  const link = element.querySelector("a[href]")?.getAttribute("href") ?? element.closest("a[href]")?.getAttribute("href");
+  const name = readTrend(element)?.name ?? clean(element.textContent, 300);
+  return `t:${hash(link ?? name)}`;
+}
+
 /** Explore, search results and hashtags: trends, people and posts, whichever the page shows. */
 export const explorePage: Page = {
   ready: doc => shows(doc, `${POST}, [data-testid="trend"], [data-testid="UserCell"]`),
   regions: {
-    trends: collection({ root: MAIN, items: '[data-testid="trend"]', key: element => `t:${hash(clean(element.textContent, 300))}`, read: readTrend }),
+    trends: collection({ root: MAIN, items: '[data-testid="trend"]', key: trendKey, read: readTrend }),
     people: collection({ root: MAIN, items: '[data-testid="UserCell"]', key: personKey, read: readPerson }),
     results: collection({
       root: MAIN, items: POST, key: itemKey, entityType: "post",
@@ -111,5 +129,6 @@ export const mediaPage: Page = {
 export const accountPage: Page = {
   ready: doc => account(doc) !== undefined,
   requiresAccount: true,
-  regions: { handle: single({ root: "body", read: root => currentAccount(root.ownerDocument) }) },
+  // The handle comes from the whole document, including X's bootstrap script in `<head>`.
+  regions: { handle: single({ root: "html", read: root => currentAccount(root.ownerDocument) }) },
 };

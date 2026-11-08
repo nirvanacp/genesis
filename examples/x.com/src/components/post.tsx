@@ -41,6 +41,12 @@ export const PostCard = memo(function PostCard({ post, region, actionable, focus
   const { viewWebsite } = useNavigation();
   const save = useSaveToCategories();
   const openPost = () => { if (!focus) open(post.url); };
+  // The applet has no video player: X plays the video on the post's own page. From a list, open
+  // that page and keep its website shown (until Done) rather than the applet's post screen.
+  const playOnX = () => {
+    if (!focus) open(post.url);
+    viewWebsite();
+  };
   return <article className={focus ? "post focus" : "post"} aria-label={`Post by ${post.name}`}>
     {post.context && <p className="post-context">
       <Icon name={/pinned/i.test(post.context.text) ? "bookmark" : "repost"} />
@@ -71,7 +77,7 @@ export const PostCard = memo(function PostCard({ post, region, actionable, focus
             <img src={src} alt="" loading="lazy" referrerPolicy="no-referrer" />
           </button>)}
         </div>}
-        {post.videos > 0 && <button type="button" className="video-tile" onClick={() => focus ? viewWebsite() : open(post.url)}>
+        {post.videos > 0 && <button type="button" className="video-tile" onClick={playOnX}>
           <span>Video</span><span className="post-meta">Play on X <Icon name="external" /></span>
         </button>}
         {post.quote && <button type="button" className="quote" disabled={!post.quote.url} onClick={() => post.quote?.url && open(post.quote.url)}>

@@ -53,6 +53,9 @@ function identityOf(article: Element) {
   return { link: first.link, ...first.id! };
 }
 
+/** The id of the post an article shows itself (not one it quotes), or null when unclear. */
+export const postIdOf = (article: Element): string | null => identityOf(article)?.postId ?? null;
+
 /** The key of a list item: the post id, or a hash of a notification's text. */
 export function itemKey(element: Element): string {
   if (element.matches(POST)) return identityOf(element)?.postId ?? `p:${hash(clean(element.textContent, 600))}`;
@@ -307,13 +310,16 @@ export function toggle(article: Element | null, on: unknown, press: { on: string
   if (!identity) throw new Error("This post has no clear identity");
   const shows = (element: Element) => owned(element, `[data-testid="${press.off}"]`).length > 0;
   if (shows(article) === on) return { satisfied: true };
-  const post = `${POST}:has(a[href$="/status/${identity.postId}"] time)`;
+  // The article whose own permalink names the post. An article quoting it links the same post
+  // inside its quote box (`div[role="link"]`), the part `owned()` leaves out, so it is excluded.
+  const permalink = `a[href$="/status/${identity.postId}"] time`;
+  const post = `${POST}:has(${permalink}):not(:has(div[role="link"] ${permalink}))`;
   if (!owned(article, `[data-testid="${on ? press.on : press.off}"]`).length) throw new Error("X shows no control for this here");
   return {
     steps: [{ click: `${post} [data-testid="${on ? press.on : press.off}"]` }],
     until: doc => {
-      const now = doc.querySelector(post);
-      return now !== null && shows(now) === on;
+      const now = [...doc.querySelectorAll(POST)].find(element => identityOf(element)?.postId === identity.postId);
+      return now !== undefined && shows(now) === on;
     },
   };
 }
