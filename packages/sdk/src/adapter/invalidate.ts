@@ -13,6 +13,8 @@ export type ChangeKind = "childList" | "attributes" | "characterData" | "field" 
 export interface Change {
   target: TreeNode;
   kind: ChangeKind;
+  /** A `childList` change for a node the mutation removed; `target` is that node. */
+  removed?: boolean;
 }
 
 /** What the runtime knows about one region since its last read. */
@@ -72,6 +74,8 @@ export function invalidate(regions: { [name: string]: RegionIndex }, changes: Ch
     for (const change of changes) {
       if (change.kind === "field" && !region.fields) continue;
       if (change.kind === "resize" && !region.measure) continue;
+      // A removed node that holds the root (and was put back, or the root would be detached) moved the whole region.
+      if (change.removed && attached(region.root, change.target)) entry(name).whole = true;
       const place = locate(region, change.target);
       if (place.dependent) entry(name).whole = true;
       if (!place.inRoot) continue;
@@ -81,6 +85,12 @@ export function invalidate(regions: { [name: string]: RegionIndex }, changes: Ch
     }
   }
   return result;
+}
+
+/** Whether a change to `target` can affect a region's records: it is in the root, an item's extent, or a `dependsOn` node. */
+export function touches(region: RegionIndex, target: TreeNode): boolean {
+  const place = locate(region, target);
+  return place.inRoot || place.dependent;
 }
 
 /** Where a changed node sits relative to one region: the first item or extent above it, inside the root, inside a `dependsOn` node. */

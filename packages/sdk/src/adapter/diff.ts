@@ -73,9 +73,10 @@ function sameCollection(a: Extract<Region, { kind: "collection" }>, b: Extract<R
 /**
  * The items of a virtualized collection: every key read before stays, in its order, and each
  * new key goes in at its DOM position, after the nearest earlier known neighbour (or before the
- * nearest later one). Records read now replace the ones read before.
+ * nearest later one). Records read now replace the ones read before. Past `max` records, the
+ * ones farthest from the records in the DOM go (see `keepNear`).
  */
-export function mergeVirtualized(previous: PageRecord[], dom: PageRecord[]): PageRecord[] {
+export function mergeVirtualized(previous: PageRecord[], dom: PageRecord[], max = Infinity): PageRecord[] {
   const merged = previous.slice();
   const position = (key: string) => merged.findIndex(record => record.key === key);
   let anchor = -1; // Index in `merged` of the last DOM item placed.
@@ -94,7 +95,27 @@ export function mergeVirtualized(previous: PageRecord[], dom: PageRecord[]): Pag
     merged.splice(at, 0, record);
     anchor = at;
   }
-  return merged;
+  return merged.length > max ? keepNear(merged, new Set(dom.map(record => record.key)), max) : merged;
+}
+
+/**
+ * At most `max` of `items`, a run around the ones whose keys are `shown` (the records in the
+ * DOM), dropping the records farthest from them first. The shown records always stay, so the
+ * result is longer than `max` when more than `max` are shown. With none shown, the first stay.
+ */
+export function keepNear(items: PageRecord[], shown: Set<string>, max: number): PageRecord[] {
+  if (items.length <= max) return items;
+  let first = -1;
+  let last = 0;
+  for (const [i, record] of items.entries()) {
+    if (!shown.has(record.key)) continue;
+    if (first === -1) first = i;
+    last = i;
+  }
+  if (first === -1) first = 0;
+  const keep = Math.max(max, last - first + 1);
+  const start = Math.min(Math.max(0, Math.floor((first + last + 1 - keep) / 2)), items.length - keep);
+  return items.slice(start, start + keep);
 }
 
 /**

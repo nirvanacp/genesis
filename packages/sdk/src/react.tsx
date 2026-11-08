@@ -236,6 +236,12 @@ export function useNavigation(): Navigation {
 /**
  * Every document in `collection`, reloaded after each change to it. `storage` defaults to the
  * host's storage; pass an applet's own implementation, such as one over its backend, to use that.
+ *
+ * Every write is checked against a revision, so it fails with `CONFLICT` when the document
+ * changed since it was read. `put(key, value)` and `remove(key)` check against the revision the
+ * hook last loaded (absent for a key it has not loaded); `put(key, value, expectedRevision)`
+ * checks against the one given, `null` meaning the document must not exist yet. `commit` sends
+ * the batch as it is, so it must carry a check for each document it changes.
  */
 export function useRecords<T>(collection: string, options: { storage?: Storage } = {}) {
   const foreground = useForeground();
@@ -268,13 +274,20 @@ export function useRecords<T>(collection: string, options: { storage?: Storage }
     return () => { active = false; stop(); };
   }, [storage, collection]);
 
+  // The revisions last loaded, read when a write runs rather than when it was created.
+  const loaded = useRef(state.records);
+  loaded.current = state.records;
+  const revisionOf = useCallback((key: string) => loaded.current.find(record => record.key === key)?.revision ?? null, []);
+
   const commit = useCallback((batch: StorageBatch) => storage.commit(batch), [storage]);
   const put = useCallback((key: string, value: T, expectedRevision?: number | null) =>
     storage.commit({
-      checks: expectedRevision === undefined ? [] : [{ collection, key, expectedRevision }],
+      checks: [{ collection, key, expectedRevision: expectedRevision === undefined ? revisionOf(key) : expectedRevision }],
       puts: [{ collection, key, value }],
-    }), [storage, collection]);
-  const remove = useCallback((key: string) => storage.commit({ deletes: [{ collection, key }] }), [storage, collection]);
+    }), [storage, collection, revisionOf]);
+  const remove = useCallback((key: string) =>
+    storage.commit({ checks: [{ collection, key, expectedRevision: revisionOf(key) }], deletes: [{ collection, key }] }),
+  [storage, collection, revisionOf]);
   return { ...state, put, remove, commit };
 }
 

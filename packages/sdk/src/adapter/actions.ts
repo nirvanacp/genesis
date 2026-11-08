@@ -17,6 +17,8 @@ export interface ActionContext {
   connection: Connection;
   limits: Limits;
   find(request: ActionRequest): Target;
+  /** The current view's `n`; it changes with every same-document navigation. */
+  view(): number;
   /** Publishes pending page changes now, so the records reach the foreground before the outcome. */
   flush(): void;
 }
@@ -24,6 +26,8 @@ export interface ActionContext {
 interface Handle {
   request: ActionRequest;
   arrived: number;
+  /** The view `n` when the action arrived; the action runs only in that view. */
+  view: number;
   cancelled: boolean;
   dispatched: boolean;
   /** The document is retiring or leaving; stop without reporting. */
@@ -42,7 +46,7 @@ export function createActions(context: ActionContext) {
 
   return {
     act(request: ActionRequest) {
-      const handle: Handle = { request, arrived: Date.now(), cancelled: false, dispatched: false, stopped: false };
+      const handle: Handle = { request, arrived: Date.now(), view: context.view(), cancelled: false, dispatched: false, stopped: false };
       handles.set(request.actionId, handle);
       queue = queue.then(() => run(context, handle)).catch(error => {
         console.error("Genesis action failed", error);
@@ -81,6 +85,10 @@ async function run(context: ActionContext, handle: Handle) {
 
   if (handle.stopped) return;
   if (handle.cancelled) return cancelled();
+  // The foreground acted on another view's records, or the page moved on while the action queued.
+  if ((handle.request.view ?? handle.view) !== handle.view || context.view() !== handle.view) {
+    return fail("CONTEXT_REPLACED", "The page the action was for has been replaced");
+  }
 
   // Validated: the target exists in this view and the spec function ran.
   const target = context.find(handle.request);
@@ -124,9 +132,11 @@ async function run(context: ActionContext, handle: Handle) {
       }
       if (navigates && i === steps.length - 1 && !isWait(step)) {
         // The step may replace this document, so the handoff goes out first, once the step can run.
-        const leave = prepare(step);
+        prepare(step);
         await dispatch(true);
-        if (!handle.stopped) leave();
+        if (handle.stopped) return;
+        // The page may have rendered again during the handoff; find the step's element now. A throw fails NOT_FOUND below.
+        prepare(step)();
         return;
       }
       await perform(step, deadline, stop);

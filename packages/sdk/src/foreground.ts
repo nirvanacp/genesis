@@ -352,7 +352,11 @@ function foreground(connection: Connection): Foreground {
     accountChanged(id, result);
   });
 
-  /** The account rule's calls: covered contexts reload, the revealed one sends its records again. */
+  /**
+   * The account rule's calls: covered contexts reload, the revealed one sends its records again,
+   * and the actions of the other contexts can no longer be judged. The reporter's document stays,
+   * so its actions (such as the sign-in that changed the account) report their own outcome.
+   */
   function accountChanged(reporter: string, result: ApplyResult) {
     if (!result.accountChanged) return;
     const shown = revealed(state, manifest);
@@ -361,7 +365,9 @@ function foreground(connection: Connection): Foreground {
       if (id === shown) resync(id);
       else dispatchReload(id);
     }
-    for (const record of [...actions.values()]) settle(record, { outcome: "unknown", code: "CONTEXT_REPLACED", message: "The account changed" });
+    for (const record of [...actions.values()]) {
+      if (record.context !== reporter) settle(record, { outcome: "unknown", code: "CONTEXT_REPLACED", message: "The account changed" });
+    }
   }
 
   function dispatchReload(id: string) {
@@ -395,7 +401,9 @@ function foreground(connection: Connection): Foreground {
   // Actions.
   const actions = new Map<string, ActionRecord>();
   const byId = new Map<number, ActionRecord>();
+  /** Updates that arrived before their `context.act` response; kept only while a request is out. */
   const early = new Map<number, ActionUpdate[]>();
+  let requests = 0;
   const actionListeners = new Set<() => void>();
   let pendingIndex = new Map<string, readonly PendingAction[]>();
   const recordKey = (context: string, region: string | null, key: string | null) => JSON.stringify([context, region, key]);
@@ -447,7 +455,8 @@ function foreground(connection: Connection): Foreground {
   connection.on("action.update", (update: ActionUpdate) => {
     const record = byId.get(update.actionId);
     if (record) return updated(record, update);
-    // An update may arrive before the `context.act` response.
+    // An update may arrive before the `context.act` response. Without one out, its action has settled already.
+    if (requests === 0) return;
     const list = early.get(update.actionId) ?? [];
     list.push(update);
     early.set(update.actionId, list);
@@ -503,16 +512,23 @@ function foreground(connection: Connection): Foreground {
     deadline(entry, limits.actionTimeoutMs + ACTION_GRACE_MS);
     actionsChanged();
 
-    const action = { region: call.region, key: call.key, name: call.name, args: call.args ?? null };
-    connection.request<{ actionId: number }>("context.act", { id: call.context, generation: context.view.generation, action }).then(
+    // The view lets the document refuse an action meant for records it no longer shows.
+    const { view } = context;
+    const action = { region: call.region, key: call.key, name: call.name, args: call.args ?? null, view: view.n };
+    const answered = () => { if (--requests === 0) early.clear(); };
+    requests++;
+    connection.request<{ actionId: number }>("context.act", { id: call.context, generation: view.generation, action }).then(
       ({ actionId }) => {
+        const updates = early.get(actionId) ?? [];
+        early.delete(actionId);
+        answered();
         if (actions.get(dedup) !== entry) return;
         entry.actionId = actionId;
         byId.set(actionId, entry);
-        for (const update of early.get(actionId) ?? []) updated(entry, update);
-        early.delete(actionId);
+        for (const update of updates) updated(entry, update);
       },
       error => {
+        answered();
         const code = isErrorCode(error?.code) ? error.code : undefined;
         settle(entry, { outcome: "failed", code, message: error instanceof Error ? error.message : "The action failed" });
       },

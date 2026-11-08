@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 // diff.ts has only type imports, so Node runs it directly by stripping the types.
-import { assignKeys, diffRegion, mergeVirtualized } from "../src/adapter/diff.ts";
+import { assignKeys, diffRegion, keepNear, mergeVirtualized } from "../src/adapter/diff.ts";
 
 const record = (key, data = { title: key }) => ({ key, data });
 const collection = (items, extra = {}) => ({ kind: "collection", status: "ready", items, complete: true, ...extra });
@@ -80,6 +80,29 @@ describe("mergeVirtualized", () => {
 
   test("a new key with no earlier neighbour goes before its later one", () => {
     assert.deepEqual(keys(mergeVirtualized([record("b"), record("c")], [record("a"), record("c")])), ["b", "a", "c"]);
+  });
+
+  test("past the cap the records farthest from the DOM ones go", () => {
+    const previous = ["a", "b", "c", "d", "e", "f"].map(key => record(key));
+    assert.deepEqual(keys(mergeVirtualized(previous, [record("e"), record("f"), record("g")], 4)), ["d", "e", "f", "g"]);
+    assert.deepEqual(keys(mergeVirtualized(previous, [record("c")], 3)), ["b", "c", "d"]);
+  });
+});
+
+describe("keepNear", () => {
+  const keys = records => records.map(r => r.key);
+  const items = ["a", "b", "c", "d", "e"].map(key => record(key));
+
+  test("keeps the shown records and those nearest them", () => {
+    assert.deepEqual(keys(keepNear(items, new Set(["a"]), 2)), ["a", "b"]);
+    assert.deepEqual(keys(keepNear(items, new Set(["e"]), 2)), ["d", "e"]);
+    assert.deepEqual(keys(keepNear(items, new Set(["c"]), 3)), ["b", "c", "d"]);
+  });
+
+  test("never drops a shown record, and keeps the first ones when none is shown", () => {
+    assert.deepEqual(keys(keepNear(items, new Set(["b", "d"]), 2)), ["b", "c", "d"]);
+    assert.deepEqual(keys(keepNear(items, new Set(), 2)), ["a", "b"]);
+    assert.equal(keepNear(items, new Set(), 9), items);
   });
 });
 

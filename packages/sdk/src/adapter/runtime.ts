@@ -12,9 +12,9 @@ import {
 } from "@genesis/core";
 import { connect, GenesisError, type BridgeObject, type Connection } from "../bridge.js";
 import { createActions, type Target } from "./actions.js";
-import { assignKeys, mergeVirtualized } from "./diff.js";
+import { assignKeys, keepNear, mergeVirtualized } from "./diff.js";
 import type { AdapterDefinition, CollectionRegion, Page, Region, SingleRegion } from "./index.js";
-import { invalidate, type Change, type Invalidation, type RegionIndex } from "./invalidate.js";
+import { invalidate, touches, type Change, type Invalidation, type RegionIndex } from "./invalidate.js";
 import { observe, watchNavigation } from "./observe.js";
 import { debounce, Publisher, type PageContent } from "./publish.js";
 
@@ -91,7 +91,7 @@ function start(connection: Connection, definition: AdapterDefinition): Bound {
       stats.lastPublishBytes = JSON.stringify(params).length;
     }
     return connection.request("context.publish", params);
-  }, limits);
+  }, limits, shrink);
   let view: ViewId = { generation, n: 0, url: location.href };
 
   if (connection.bound.compat.adapterApi !== COMPAT.adapterApi) {
@@ -114,15 +114,19 @@ function start(connection: Connection, definition: AdapterDefinition): Bound {
     return value.kind === "route" ? definition.pages[value.page] ?? null : null;
   }
 
-  /** The account the page shows; undefined when the page does not show one either way. */
-  function readAccount(): string | null | undefined {
+  /**
+   * The account the page shows; undefined when the page does not show one either way. `failed`
+   * is set when the reader threw, which says nothing about the account either.
+   */
+  function readAccount(): { account: string | null | undefined; failed: boolean } {
     const read = page?.account ?? definition.account;
     try {
       const value = read?.(document);
-      if (value === undefined && read) return undefined;
-      return typeof value === "string" && value !== "" ? value : null;
-    } catch {
-      return null;
+      if (value === undefined && read) return { account: undefined, failed: false };
+      return { account: typeof value === "string" && value !== "" ? value : null, failed: false };
+    } catch (error) {
+      console.error("Genesis adapter account failed", error);
+      return { account: undefined, failed: true };
     }
   }
 
@@ -137,8 +141,11 @@ function start(connection: Connection, definition: AdapterDefinition): Bound {
     return null;
   }
 
-  /** The page's status now. An `auth` page needs positive evidence: ready, or a parsed document. */
-  function evaluate(account: string | null | undefined): { status: PageStatus; error?: { code: ErrorCode; message: string } } {
+  /**
+   * The page's status now. An `auth` page needs positive evidence: ready, or a parsed document.
+   * A page that needs an account stays `loading` while its account cannot be read.
+   */
+  function evaluate({ account, failed }: ReturnType<typeof readAccount>): { status: PageStatus; error?: { code: ErrorCode; message: string } } {
     if (match.kind !== "route") return { status: "unsupported" };
     if (!page) return { status: "error", error: { code: "NOT_FOUND", message: `The adapter declares no page ${match.page}` } };
     let ready: boolean;
@@ -147,6 +154,7 @@ function start(connection: Connection, definition: AdapterDefinition): Bound {
     } catch (error) {
       return { status: "error", error: { code: "INVALID_ARGUMENT", message: messageOf(error) } };
     }
+    if (page.requiresAccount === true && failed) return { status: "loading" };
     const signedOut = page.requiresAccount === true && account === null;
     if (ready) return { status: signedOut ? "auth" : "ready" };
     if (signedOut && document.readyState !== "loading") return { status: "auth" };
@@ -224,7 +232,7 @@ function start(connection: Connection, definition: AdapterDefinition): Bound {
     const region: CollectionValue = {
       kind: "collection",
       status: "ready",
-      items: def.virtualized && !ephemeral && !previous.ephemeral ? mergeVirtualized(previous.items, items) : items,
+      items: def.virtualized && !ephemeral && !previous.ephemeral ? mergeVirtualized(previous.items, items, limits.patchRecordsMax) : items,
       complete: completeOf(def),
     };
     if (ephemeral) region.ephemeral = true;
@@ -256,7 +264,9 @@ function start(connection: Connection, definition: AdapterDefinition): Bound {
     for (const key of keys) {
       const element = state.elements.get(key);
       const i = items.findIndex(record => record.key === key);
-      if (!element?.isConnected || i === -1 || keyOf(def.key, element) !== key) return guarded(state, () => readCollection(state, def, keys));
+      // An element that is gone, or no longer an item, leaves the region: query the items again.
+      const member = element?.isConnected && state.root?.contains(element) && element.matches(def.items);
+      if (!member || i === -1 || keyOf(def.key, element) !== key) return guarded(state, () => readCollection(state, def, keys));
       try {
         items[i] = readItem(state, def, element, key);
       } catch {
@@ -279,13 +289,35 @@ function start(connection: Connection, definition: AdapterDefinition): Bound {
 
   // ---- Publishing -----------------------------------------------------------------------------
 
+  /**
+   * For a page over `pageMaxBytes`: drops a quarter of the records of each virtualized region
+   * beyond the ones in the DOM, farthest from those first. Null when no region can drop more.
+   */
+  function shrink(content: PageContent): PageContent | null {
+    if (content.view.n !== view.n) return null;
+    const next: PageContent = { ...content, regions: { ...content.regions } };
+    let dropped = false;
+    for (const [name, value] of Object.entries(content.regions)) {
+      const region = regions.get(name);
+      if (region?.def.kind !== "collection" || !region.def.virtualized || value.kind !== "collection" || value.ephemeral) continue;
+      const items = keepNear(value.items, new Set(region.elements.keys()), Math.floor(value.items.length * 3 / 4));
+      if (items.length === value.items.length) continue;
+      next.regions[name] = { ...value, items };
+      // The runtime keeps what it published, so the next patch does not send the dropped records again.
+      if (region.value === value) region.value = next.regions[name];
+      dropped = true;
+    }
+    return dropped ? next : null;
+  }
+
   /** Reads everything and publishes it: a full page when `force` is set, else what changed. */
   function refresh(force = false) {
     if (stopped) return;
     pending = [];
     overflow = false;
-    const account = readAccount();
-    const state = evaluate(account);
+    const read = readAccount();
+    const { account } = read;
+    const state = evaluate(read);
     const previous = regions;
     regions = new Map();
     if (state.status === "ready") {
@@ -306,8 +338,9 @@ function start(connection: Connection, definition: AdapterDefinition): Bound {
     const whole = overflow;
     pending = [];
     overflow = false;
-    const account = readAccount();
-    const state = evaluate(account);
+    const read = readAccount();
+    const { account } = read;
+    const state = evaluate(read);
     if (state.status !== "ready" || status !== "ready" || whole) {
       refresh();
     } else {
@@ -342,7 +375,9 @@ function start(connection: Connection, definition: AdapterDefinition): Bound {
   const observer = observe(changes => {
     if (stopped) return;
     if (status === "ready" && !overflow) {
-      pending.push(...changes);
+      // Attribute changes outside every region change no record; the batch still checks readiness and the account.
+      const indexes = [...regions.values()].map(indexOf);
+      pending.push(...changes.filter(change => change.kind !== "attributes" || indexes.some(index => touches(index, change.target))));
       if (pending.length > CHANGES_MAX) { pending = []; overflow = true; }
     }
     batch.schedule();
@@ -355,6 +390,7 @@ function start(connection: Connection, definition: AdapterDefinition): Bound {
     limits,
     flush: () => { batch.cancel(); flush(); },
     find,
+    view: () => view.n,
   });
 
   function find(request: ActionRequest): Target {
@@ -419,8 +455,11 @@ function start(connection: Connection, definition: AdapterDefinition): Bound {
       page = pageFor(match);
       status = null;
       regions = new Map();
+      // The website renders the new route after it changes the URL; read once the DOM settles, so
+      // the previous route's DOM is not published as this view. Timers, unlike animation frames,
+      // also run in a hidden WebView.
       batch.cancel();
-      refresh();
+      batch.schedule();
     },
     stop: () => stop(),
   };

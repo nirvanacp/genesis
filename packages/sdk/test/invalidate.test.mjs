@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 // invalidate.ts has no imports, so Node runs it directly by stripping the types.
-import { invalidate } from "../src/adapter/invalidate.ts";
+import { invalidate, touches } from "../src/adapter/invalidate.ts";
 
 // A tree of plain nodes: document > body > list > (a > a-title, b > b-title), body > a-comments, body > header.
 const node = parentNode => ({ parentNode });
@@ -69,6 +69,25 @@ describe("invalidate", () => {
     const detached = node(node(null));
     const result = invalidate({ list: region({ root: detached }) }, [{ target: header, kind: "attributes" }], document);
     assert.equal(only(result).resolve, true);
+  });
+
+  test("a removed extent outside the root invalidates its item", () => {
+    const removed = node(null); // An extent of item a, now detached.
+    const items = new Map([[a, "a"], [b, "b"], [removed, "a"]]);
+    const result = invalidate({ list: region({ items }) }, [{ target: removed, kind: "childList", removed: true }], document);
+    assert.deepEqual(only(result), { keys: ["a"], whole: false, membership: true, resolve: false });
+  });
+
+  test("a removed node that holds the root and was put back reads the whole region", () => {
+    const result = invalidate({ list: region() }, [{ target: body, kind: "childList", removed: true }], document);
+    assert.equal(only(result).whole, true);
+  });
+
+  test("touches: only changes in the root, an extent or a dependsOn node count", () => {
+    assert.equal(touches(region(), aTitle), true);
+    assert.equal(touches(region(), aComments), true);
+    assert.equal(touches(region(), header), false);
+    assert.equal(touches(region({ dependsOn: [header] }), header), true);
   });
 
   test("field and size changes count only for regions that ask for them", () => {

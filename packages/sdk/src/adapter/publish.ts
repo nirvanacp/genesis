@@ -7,6 +7,9 @@ export type PageContent = Omit<Page, "epoch">;
 
 type Send = (params: { page: Page } | { patch: Patch }) => Promise<unknown>;
 
+/** Returns `content` with fewer records, or null when nothing more can go. */
+export type Shrink = (content: PageContent) => PageContent | null;
+
 const encoder = new TextEncoder();
 const bytes = (value: unknown) => encoder.encode(JSON.stringify(value)).length;
 
@@ -20,13 +23,21 @@ export class Publisher {
   private seq = 0;
   private last: Page | null = null;
 
-  constructor(private readonly send: Send, private readonly limits: Limits) {}
+  constructor(private readonly send: Send, private readonly limits: Limits, private readonly shrink: Shrink = () => null) {}
 
-  /** Publishes `content` as a full page. */
+  /**
+   * Publishes `content` as a full page. A page over `pageMaxBytes` drops the records `shrink`
+   * gives up until it fits, and becomes a `PAGE_TOO_LARGE` error page only when none are left.
+   */
   page(content: PageContent) {
     let page: Page = { ...content, epoch: ++this.epoch };
-    if (bytes(page) > this.limits.pageMaxBytes) {
-      page = { ...page, status: "error", error: { code: "PAGE_TOO_LARGE", message: "The page is too large to show" }, regions: {} };
+    while (bytes(page) > this.limits.pageMaxBytes) {
+      const smaller = this.shrink(page);
+      if (!smaller) {
+        page = { ...page, status: "error", error: { code: "PAGE_TOO_LARGE", message: "The page is too large to show" }, regions: {} };
+        break;
+      }
+      page = { ...smaller, epoch: page.epoch };
     }
     this.seq = 0;
     this.last = page;

@@ -12,7 +12,13 @@ export interface Observer {
 
 export function observe(onChanges: (changes: Change[]) => void): Observer {
   const mutations = new MutationObserver(records => {
-    onChanges(records.map(record => ({ target: record.target, kind: record.type })));
+    const changes: Change[] = [];
+    for (const record of records) {
+      changes.push({ target: record.target, kind: record.type });
+      // A removed node no longer leads up to the region it left; report it so an item or extent it was is found by itself.
+      for (const node of record.removedNodes) changes.push({ target: node, kind: "childList", removed: true });
+    }
+    onChanges(changes);
   });
   mutations.observe(document, { childList: true, subtree: true, attributes: true, characterData: true });
 
