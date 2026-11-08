@@ -58,7 +58,7 @@ async function assets() {
   await rm(output, { recursive: true, force: true });
   await mkdir(path.join(output, "bundles"), { recursive: true });
   for (const { base, manifest } of await readPackages()) {
-    const built = await buildApplet(base, path.join(intermediates, "bundles", manifest.id));
+    const built = await buildApplet(base, path.join(intermediates, "bundles", manifest.id), { debug: variant === "debug" });
     await copyFile(built.importFile, path.join(output, "bundles", path.basename(built.importFile)));
   }
   console.log(`Generated applet bundles: ${path.join(output, "bundles")}`);

@@ -1,12 +1,11 @@
-import { access, mkdir, cp, readdir, readFile, writeFile, lstat } from 'node:fs/promises';
+import { access, mkdir, cp, readdir, writeFile, lstat } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { BUNDLE_FORMAT, MANIFEST_SCHEMA_VERSION } from '@genesis/core';
+import { COMPAT, FRAMEWORK_VERSION } from '@genesis/core';
 import { toolError as creatorError } from './manifest.mjs';
 
-const own = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
-/** The kit, the tools and the SDK they build against share one version. */
-export const VERSIONS = { kitVersion: own.version, toolsVersion: own.version, sdkVersion: own.version, manifestSchemaVersion: MANIFEST_SCHEMA_VERSION, bundleFormat: BUNDLE_FORMAT };
+/** `kit.json`: the kit, the tools and the SDK share `FRAMEWORK_VERSION`, and build against `COMPAT`. */
+export const VERSIONS = Object.freeze({ frameworkVersion: FRAMEWORK_VERSION, compat: COMPAT });
 export async function emptyDirectory(directory) {
   const target = path.resolve(directory);
   try {
