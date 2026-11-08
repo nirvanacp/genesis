@@ -1,5 +1,6 @@
 package app.nirvana.genesis;
 
+import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
@@ -17,6 +18,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
+import android.view.accessibility.AccessibilityNodeInfo;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.widget.Button;
@@ -35,8 +37,9 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 /**
- * The view tree: launcher, applet container (hidden sources, foreground, splash, Genesis menu),
- * website sheet and dialogs. It executes commands and reports user input; it holds no applet policy.
+ * The view tree: launcher, applet container (hidden contexts, foreground, splash, the revealed
+ * context with its website bar, Genesis menu) and dialogs. It executes commands and reports user
+ * input; it holds no applet policy.
  */
 final class Shell implements Views.Listener {
     /** The activity services the shell needs. */
@@ -49,6 +52,9 @@ final class Shell implements Views.Listener {
     }
 
     private static final int MENU_HOME = 1, MENU_RELOAD = 2, MENU_WEBSITE = 3, MENU_SERVICES = 4, MENU_INFO = 5;
+    /** How long history.go() may take to start moving before the native fallback runs. */
+    private static final long HISTORY_FALLBACK_MS = 1000;
+    private static final int BAR_DP = 56;
 
     private final Activity activity;
     private final Owner owner;
@@ -57,11 +63,13 @@ final class Shell implements Views.Listener {
     private final FrameLayout root;
     private final ScrollView launcher;
     private final LinearLayout launcherList;
-    private final FrameLayout applet, sources, foreground, splash, sheetContent;
-    private final TextView splashName, sheetTitle;
-    private final LinearLayout sheet;
+    private final FrameLayout applet, sources, foreground, splash;
+    private final Views.Revealed revealed;
+    private final TextView splashName, barTitle;
+    private final LinearLayout bar;
+    private final View menu;
     private final Map<String, Views.Page> pages = new HashMap<>();
-    private Views.Page website;
+    private Views.Page revealedPage;
     private String appletId;
     private View customView;
     private WebChromeClient.CustomViewCallback customCallback;
@@ -105,34 +113,34 @@ final class Shell implements Views.Listener {
         splashName.setGravity(Gravity.CENTER);
         splash.addView(splashName, new FrameLayout.LayoutParams(-1, -2, Gravity.CENTER));
         applet.addView(splash, new FrameLayout.LayoutParams(-1, -1));
-        applet.addView(menuButton(), menuLayout());
+        // A revealed context sits below the website bar; the menu button stays on top of both.
+        revealed = new Views.Revealed(activity);
+        revealed.setBackgroundColor(palette.paper);
+        revealed.setPadding(0, dp(BAR_DP), 0, 0);
+        revealed.setVisibility(View.GONE);
+        applet.addView(revealed, new FrameLayout.LayoutParams(-1, -1));
+        bar = new LinearLayout(activity);
+        bar.setGravity(Gravity.CENTER_VERTICAL);
+        bar.setBackgroundColor(palette.paper);
+        bar.setPadding(dp(16), 0, dp(60), 0);
+        barTitle = text("", 17, palette.ink);
+        barTitle.setTypeface(null, Typeface.BOLD);
+        barTitle.setSingleLine(true);
+        bar.addView(barTitle, new LinearLayout.LayoutParams(0, -2, 1));
+        Button done = new Button(activity);
+        done.setAllCaps(false);
+        done.setText("Done");
+        done.setTextColor(palette.accent);
+        done.setBackground(null);
+        done.setMinHeight(dp(48));
+        done.setOnClickListener(v -> owner.send(Bridge.event("websiteDone")));
+        bar.addView(done, new LinearLayout.LayoutParams(-2, dp(48)));
+        bar.setVisibility(View.GONE);
+        applet.addView(bar, new FrameLayout.LayoutParams(-1, dp(BAR_DP), Gravity.TOP));
+        menu = menuButton();
+        applet.addView(menu, menuLayout());
         applet.setVisibility(View.GONE);
         root.addView(applet, new FrameLayout.LayoutParams(-1, -1));
-
-        sheet = new LinearLayout(activity);
-        sheet.setOrientation(LinearLayout.VERTICAL);
-        sheet.setBackgroundColor(palette.paper);
-        sheet.setClickable(true);
-        LinearLayout bar = new LinearLayout(activity);
-        bar.setGravity(Gravity.CENTER_VERTICAL);
-        bar.setPadding(dp(16), 0, dp(8), 0);
-        sheetTitle = text("", 17, palette.ink);
-        sheetTitle.setTypeface(null, Typeface.BOLD);
-        sheetTitle.setSingleLine(true);
-        bar.addView(sheetTitle, new LinearLayout.LayoutParams(0, -2, 1));
-        Button back = new Button(activity);
-        back.setAllCaps(false);
-        back.setText("Return to applet");
-        back.setTextColor(palette.accent);
-        back.setBackground(null);
-        back.setMinHeight(dp(48));
-        back.setOnClickListener(v -> owner.send(Bridge.event("websiteReturn")));
-        bar.addView(back, new LinearLayout.LayoutParams(-2, dp(48)));
-        sheet.addView(bar, new LinearLayout.LayoutParams(-1, dp(56)));
-        sheetContent = new FrameLayout(activity);
-        sheet.addView(sheetContent, new LinearLayout.LayoutParams(-1, 0, 1));
-        sheet.setVisibility(View.GONE);
-        root.addView(sheet, new FrameLayout.LayoutParams(-1, -1));
 
         activity.setContentView(root);
         palette.applySystemBars(activity);
@@ -201,12 +209,83 @@ final class Shell implements Views.Listener {
 
     void destroyView(JSONObject ref) {
         Views.Page page = pages.remove(key(ref));
-        if (page != null) page.destroy();
+        if (page == null) return;
+        if (page == revealedPage) dropRevealed();
+        page.destroy();
     }
 
-    void loadUrl(JSONObject ref, String url) {
+    /** `replace` swaps the current history entry through the page, falling back to a push when it cannot run script. */
+    void loadUrl(JSONObject ref, String url, String mode) {
         Views.Page page = pages.get(key(ref));
-        if (page != null) page.web.loadUrl(url);
+        if (page == null) return;
+        if (!"replace".equals(mode)) { page.web.loadUrl(url); return; }
+        String script = "(location.replace(" + JSONObject.quote(url) + "), true)";
+        page.web.evaluateJavascript(script, result -> {
+            if (pages.get(key(ref)) == page && !"true".equals(result)) page.web.loadUrl(url);
+        });
+    }
+
+    /**
+     * Moves through the context's history in the page, since WebView's own goBack() skips entries
+     * left without a user gesture. If nothing starts moving within a second, the native call runs.
+     */
+    void historyGo(JSONObject ref, int delta) {
+        Views.Page page = pages.get(key(ref));
+        if (page == null) return;
+        int moves = page.moves;
+        page.web.evaluateJavascript("history.go(" + delta + ")", null);
+        page.web.postDelayed(() -> {
+            if (pages.get(key(ref)) != page || page.moves != moves) return;
+            if (page.web.canGoBackOrForward(delta)) page.web.goBackOrForward(delta);
+        }, HISTORY_FALLBACK_MS);
+    }
+
+    void reload(JSONObject ref) {
+        Views.Page page = pages.get(key(ref));
+        if (page != null) page.web.reload();
+    }
+
+    /** Reparents the context's WebView above the foreground. Nothing reloads; the page keeps running. */
+    void revealContext(JSONObject ref, String title) {
+        Views.Page page = pages.get(key(ref));
+        if (page == null || !page.isContext()) return;
+        if (revealedPage != null && revealedPage != page) coverContext();
+        if (revealedPage == page) { barTitle.setText(title); return; }
+        sources.removeView(page.web);
+        page.web.setFocusable(true);
+        page.web.setFocusableInTouchMode(true);
+        page.web.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);
+        revealed.addView(page.web, new FrameLayout.LayoutParams(-1, -1));
+        revealed.setVisibility(View.VISIBLE);
+        barTitle.setText(title);
+        bar.setVisibility(View.VISIBLE);
+        revealedPage = page;
+    }
+
+    /**
+     * Returns the revealed WebView to the hidden contexts. The page a screen reader was reading
+     * disappears, so its focus moves to the menu button instead of falling to an arbitrary view.
+     */
+    @SuppressLint("AccessibilityFocus")
+    void coverContext() {
+        Views.Page page = revealedPage;
+        if (page == null) return;
+        closeCustomView();
+        dropRevealed();
+        page.web.clearFocus();
+        page.web.setFocusable(false);
+        page.web.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
+        sources.addView(page.web, new FrameLayout.LayoutParams(-1, -1));
+        owner.cancelInvalidFiles();
+        menu.performAccessibilityAction(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS, null);
+    }
+
+    /** Hides the revealed container and forgets its page, leaving the WebView detached. */
+    private void dropRevealed() {
+        if (revealedPage != null) revealed.removeView(revealedPage.web);
+        revealedPage = null;
+        revealed.setVisibility(View.GONE);
+        bar.setVisibility(View.GONE);
     }
 
     void postMessage(JSONObject ref, String payload) {
@@ -227,34 +306,6 @@ final class Shell implements Views.Listener {
         });
     }
 
-    void showWebsite(String url, String title, JSONArray origins) throws JSONException {
-        sheetTitle.setText(title);
-        if (website == null) {
-            JSONObject ref = new JSONObject().put("appletId", appletId == null ? "" : appletId).put("role", "website");
-            website = views.website(ref, set(origins));
-            sheetContent.addView(website.web, new FrameLayout.LayoutParams(-1, -1));
-        } else {
-            website.origins.clear();
-            website.origins.addAll(set(origins));
-        }
-        sheet.setVisibility(View.VISIBLE);
-        website.web.loadUrl(url);
-    }
-
-    void hideWebsite() {
-        closeCustomView();
-        sheet.setVisibility(View.GONE);
-        if (website != null) website.destroy();
-        website = null;
-        owner.cancelInvalidFiles();
-    }
-
-    void websiteBack() {
-        if (website != null && website.web.canGoBack()) website.web.goBack();
-    }
-
-    boolean websiteCanGoBack() { return website != null && website.web.canGoBack(); }
-
     boolean appletShown() { return appletId != null; }
 
     void showError(String message) {
@@ -263,6 +314,25 @@ final class Shell implements Views.Listener {
 
     void showInfo(String title, String message) {
         new AlertDialog.Builder(activity).setTitle(title).setMessage(message).setPositiveButton("Close", null).show();
+    }
+
+    /** An applet that cannot open, stopped pages, or a received import. A plain dialog until the designed sheet. */
+    void showStatus(String kind, JSONObject entry, String details) {
+        String name = entry == null ? "Applet" : entry.optString("name", "Applet");
+        AlertDialog.Builder dialog = new AlertDialog.Builder(activity).setMessage(details).setNegativeButton("Close", null);
+        switch (kind) {
+            case "rendererLost":
+                dialog.setTitle(name + " stopped");
+                if (entry != null) dialog.setPositiveButton("Reload", (d, which) -> openApplet(entry.optString("appletId")));
+                break;
+            case "importReceived":
+                dialog.setTitle(name + " received");
+                break;
+            default:
+                dialog.setTitle(name + " can't open");
+                break;
+        }
+        dialog.show();
     }
 
     @Override public void openExternal(String url) {
@@ -289,7 +359,9 @@ final class Shell implements Views.Listener {
     }
 
     private void destroyAll() {
-        hideWebsite();
+        closeCustomView();
+        dropRevealed();
+        owner.cancelInvalidFiles();
         for (Views.Page page : pages.values()) page.destroy();
         pages.clear();
     }
@@ -297,9 +369,9 @@ final class Shell implements Views.Listener {
     // -----------------------------------------------------------------------------------------
     // View reports
 
-    @Override public void documentLoaded(Views.Page page, String url) {
+    @Override public void documentStarted(Views.Page page, String url) {
         if (pages.get(key(page.ref)) != page) return;
-        try { owner.send(Bridge.event("documentLoaded").put("view", page.ref).put("url", url)); }
+        try { owner.send(Bridge.event("documentStarted").put("view", page.ref).put("url", url)); }
         catch (JSONException ignored) { /* Unreachable for string values. */ }
     }
 
@@ -309,15 +381,24 @@ final class Shell implements Views.Listener {
         catch (JSONException ignored) { /* Unreachable for string values. */ }
     }
 
-    @Override public void websiteUrlChanged(String url) {
-        try { owner.send(Bridge.event("websiteUrlChanged").put("url", url)); }
-        catch (JSONException ignored) { /* Unreachable for string values. */ }
+    @Override public void contextNavigated(Views.Page page, Views.Committed committed) {
+        if (pages.get(key(page.ref)) != page) return;
+        try {
+            owner.send(Bridge.event("contextNavigated").put("view", page.ref).put("url", committed.url)
+                .put("index", committed.index).put("size", committed.size)
+                .put("canGoBack", committed.canGoBack()).put("canGoForward", committed.canGoForward())
+                .put("sameDocument", committed.sameDocument).put("reload", committed.reload));
+        } catch (JSONException ignored) { /* Unreachable for these values. */ }
     }
 
+    /** The dead WebView goes now; the host decides what the applet shows. */
     @Override public void rendererGone(Views.Page page) {
-        if (page == website) hideWebsite();
-        else if (pages.remove(key(page.ref)) == page) page.destroy();
-        showError("A page of this applet stopped. Choose Reload applet in the Genesis menu.");
+        if (pages.get(key(page.ref)) != page) return;
+        pages.remove(key(page.ref));
+        if (page == revealedPage) dropRevealed();
+        page.destroy();
+        try { owner.send(Bridge.event("rendererGone").put("view", page.ref)); }
+        catch (JSONException ignored) { /* Unreachable for these values. */ }
     }
 
     @Override public void showCustomView(View view, WebChromeClient.CustomViewCallback callback) {
@@ -336,7 +417,7 @@ final class Shell implements Views.Listener {
     }
 
     @Override public boolean chooseFiles(Views.Page page, ValueCallback<Uri[]> callback, WebChromeClient.FileChooserParams params) {
-        return owner.chooseFiles(params, callback, () -> website == page);
+        return owner.chooseFiles(params, callback, () -> pages.get(key(page.ref)) == page && page.isRevealed());
     }
 
     // -----------------------------------------------------------------------------------------
@@ -360,15 +441,30 @@ final class Shell implements Views.Listener {
         card.addView(name);
         TextView detail = text(id, 14, palette.muted);
         card.addView(detail);
-        card.setContentDescription(entry.getString("name"));
-        card.setOnClickListener(v -> {
-            try { owner.send(Bridge.event("openApplet").put("appletId", id)); }
-            catch (JSONException ignored) { /* Unreachable for string values. */ }
-        });
+        String badge = badge(entry);
+        if (badge != null) {
+            TextView status = text(badge, 14, palette.accent);
+            status.setTypeface(null, Typeface.BOLD);
+            status.setPadding(0, dp(4), 0, 0);
+            card.addView(status);
+        }
+        card.setContentDescription(badge == null ? entry.getString("name") : entry.getString("name") + ", " + badge);
+        card.setOnClickListener(v -> openApplet(id));
         LinearLayout.LayoutParams layout = new LinearLayout.LayoutParams(-1, -2);
         layout.bottomMargin = dp(12);
         card.setLayoutParams(layout);
         return card;
+    }
+
+    /** The launcher's status line for an applet built for another Genesis; null when it is current. */
+    private static String badge(JSONObject entry) {
+        if (!"incompatible".equals(entry.optString("status"))) return null;
+        return "newer".equals(entry.optString("direction")) ? "Needs a newer Genesis" : "Needs update";
+    }
+
+    private void openApplet(String id) {
+        try { owner.send(Bridge.event("openApplet").put("appletId", id)); }
+        catch (JSONException ignored) { /* Unreachable for string values. */ }
     }
 
     private View menuButton() {
@@ -396,7 +492,7 @@ final class Shell implements Views.Listener {
         Menu menu = popup.getMenu();
         menu.add(Menu.NONE, MENU_HOME, 0, "Home");
         menu.add(Menu.NONE, MENU_RELOAD, 1, "Reload applet");
-        menu.add(Menu.NONE, MENU_WEBSITE, 2, "Open website");
+        menu.add(Menu.NONE, MENU_WEBSITE, 2, "View website");
         menu.add(Menu.NONE, MENU_SERVICES, 3, "Service connections");
         menu.add(Menu.NONE, MENU_INFO, 4, "Applet info");
         popup.setOnMenuItemClickListener(item -> {
@@ -404,7 +500,7 @@ final class Shell implements Views.Listener {
             switch (item.getItemId()) {
                 case MENU_HOME: action = "home"; break;
                 case MENU_RELOAD: action = "reload"; break;
-                case MENU_WEBSITE: action = "openWebsite"; break;
+                case MENU_WEBSITE: action = "viewWebsite"; break;
                 case MENU_INFO: action = "info"; break;
                 case MENU_SERVICES: if (appletId != null) owner.configureServices(appletId); return true;
                 default: return false;
