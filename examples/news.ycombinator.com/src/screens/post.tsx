@@ -22,6 +22,17 @@ export function PostScreen() {
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [sent, setSent] = useState<Sent>(null);
+  const shown = page.pageId === "submit" && !page.stale ? form?.data ?? null : null;
+  // A rejected submission lands on `/r`, a new history entry that mounts this screen again with
+  // empty fields. HN's returned form carries the draft back, so the fields start from it once.
+  const [seeded, setSeeded] = useState(false);
+  useEffect(() => {
+    if (seeded || !shown) return;
+    setSeeded(true);
+    setTitle(shown.title);
+    setUrl(shown.url);
+    setText(shown.text);
+  }, [seeded, shown]);
   const draft = sent === null && (title.trim() !== "" || url.trim() !== "" || text.trim() !== "");
   useEffect(() => setLeaveGuard(draft ? "Discard this post?" : null), [draft, setLeaveGuard]);
 
@@ -64,7 +75,6 @@ export function PostScreen() {
     </Notice>
   </div>;
 
-  const shown = page.pageId === "submit" && !page.stale ? form?.data ?? null : null;
   let body;
   if (!shown) body = page.status === "error"
     ? <LoadError error={page.error} />

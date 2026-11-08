@@ -22,7 +22,7 @@ Open work: Search is a placeholder, as it was before the migration (decision-000
 | default-platform-menu | Shell menu button, accent `#ff6600`; the first row of every screen leaves the button's corner clear | Factory default; layout fix by the agent | decision-0003 |
 | default-primary-navigation | One bottom tab bar; reselecting the active root tab scrolls to the top | Factory default | decision-0001 |
 | default-pending-skeletons | Neutral, static, content-shaped skeletons | Factory default | |
-| default-compact-website-cue | External-link icon on every control that opens the website sheet | Factory default | |
+| default-compact-website-cue | External-link icon on every control that opens the website (shown with the website bar and Done) | Factory default | |
 | default-theme-and-layout | Warm paper and HN orange, Verdana, light and dark, 48px controls, compact 15px story titles | Inherited user design direction | decision-0002 |
 | Saved editor | A `save` screen in the stack instead of a sheet, so Android Back closes it | Agent choice for SDK 0.0 | decision-0004 |
 

@@ -1,5 +1,5 @@
 import { collection, single, type Page } from "@genesis/sdk/adapter";
-import type { ItemHead } from "../model.ts";
+import { validItemId, type ItemHead } from "../model.ts";
 import { comment, hnPage, moreLink, richText, setVoted, story } from "./read.ts";
 
 /** The item at the top of `/item?id=`: a story with its text, or a comment on its own page. */
@@ -14,8 +14,16 @@ function itemHead(table: Element): ItemHead {
   };
 }
 
-/** The id of the item at the top of the page, which `setVoted` on the head acts on. */
-const headId = (table: Element) => table.querySelector("tr.athing")?.id ?? "";
+/**
+ * The id of the item at the top of the page, which `setVoted` on the head acts on. A head without
+ * an item row falls back to the `id` in the page's URL, so the record always has a key.
+ */
+function headId(table: Element): string {
+  const row = table.querySelector("tr.athing")?.id;
+  if (row) return row;
+  const routed = new URLSearchParams(table.ownerDocument?.location?.search ?? "").get("id");
+  return validItemId(routed) ? routed : "item";
+}
 
 /**
  * An item page. HN renders the thread flat: each comment row carries its depth in

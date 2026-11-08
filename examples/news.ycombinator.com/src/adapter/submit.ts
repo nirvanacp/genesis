@@ -38,6 +38,8 @@ export const submit: Page = {
   regions: {
     form: single({
       root: FORM,
+      // The rejection message sits beside the form, in the page's box, outside the region's root.
+      dependsOn: ["#hnmain"],
       fields: true,
       read: readForm,
       actions: {
