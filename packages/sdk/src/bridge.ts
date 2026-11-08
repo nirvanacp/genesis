@@ -1,33 +1,11 @@
-import type { ErrorCode, Manifest } from "@genesis/core";
+import { COMPAT, type Bound, type ErrorCode, type Hello, type Method } from "@genesis/core";
+
+export type { Bound, Limits } from "@genesis/core";
 
 /** The object `addWebMessageListener` installs as `window.__genesisBridge`. */
 export interface BridgeObject {
   postMessage(message: string): void;
   addEventListener(type: "message", listener: (event: { data: unknown }) => void): void;
-}
-
-/** The host's limits, sent in `bound`. */
-export interface Limits {
-  rpcDeadlineMs: number;
-  messageMaxBytes: number;
-  snapshotMaxBytes: number;
-  storedDocumentMaxBytes: number;
-  pendingRequestsMax: number;
-  documentReadyMs: number;
-  publishThrottleMs: number;
-  intentTimeoutMs: number;
-  backAnswerMs: number;
-}
-
-export interface Bound {
-  documentId: string;
-  appletId: string;
-  role: "foreground" | "source";
-  sourceId: string | null;
-  revision: number;
-  manifest: Manifest;
-  limits: Limits;
-  state: unknown;
 }
 
 /** An error the host or the SDK reports, with one of the shared error codes. */
@@ -43,8 +21,11 @@ export class GenesisError extends Error {
 export interface Connection {
   readonly bound: Bound;
   readonly retired: boolean;
-  request<T = unknown>(method: string, params?: unknown): Promise<T>;
-  /** Subscribes to a host event. Returns the unsubscribe function. */
+  request<T = unknown>(method: Method, params?: unknown): Promise<T>;
+  /**
+   * Subscribes to a host event. The connection also emits `pagehide` itself, right before the
+   * document retires, while requests can still be sent. Returns the unsubscribe function.
+   */
   on(name: string, handler: (data: any) => void): () => void;
 }
 
@@ -58,12 +39,13 @@ interface Pending {
 }
 
 /**
- * Says hello to the host and resolves once the document is bound. The connection owns the
+ * Says hello to the host and resolves once the document is bound, or rejects with
+ * `PROTOCOL_MISMATCH` when the host refuses the hello. The connection owns the
  * pending-request table: each request settles on its response, on the deadline, or with
  * `RETIRED` when the host retires the document. After `retired` every later event is ignored.
  */
 export function connect(bridge: BridgeObject, url: string): Promise<Connection> {
-  return new Promise(resolveBound => {
+  return new Promise((resolveBound, rejectBound) => {
     let bound: Bound | null = null;
     let retired = false;
     let nextRequestId = 1;
@@ -73,7 +55,7 @@ export function connect(bridge: BridgeObject, url: string): Promise<Connection> 
     const connection: Connection = {
       get bound() { return bound!; },
       get retired() { return retired; },
-      request<T>(method: string, params: unknown = {}) {
+      request<T>(method: Method, params: unknown = {}) {
         if (retired) return Promise.reject(new GenesisError("RETIRED", "This page was closed"));
         const requestId = nextRequestId++;
         return new Promise<T>((resolve, reject) => {
@@ -112,6 +94,11 @@ export function connect(bridge: BridgeObject, url: string): Promise<Connection> 
       if (retired || typeof event.data !== "string") return;
       let message: any;
       try { message = JSON.parse(event.data); } catch { return; }
+      if (message?.type === "refused" && !bound) {
+        retired = true;
+        rejectBound(new GenesisError(message.error?.code ?? "PROTOCOL_MISMATCH", message.error?.message ?? "The host refused this page"));
+        return;
+      }
       if (message?.type === "bound") {
         if (bound) return;
         bound = message as Bound;
@@ -135,7 +122,12 @@ export function connect(bridge: BridgeObject, url: string): Promise<Connection> 
         }
       }
     });
-    addEventListener("pagehide", retire);
-    bridge.postMessage(JSON.stringify({ type: "hello", url }));
+    addEventListener("pagehide", () => {
+      if (retired) return;
+      emit("pagehide", {});
+      retire();
+    });
+    const hello: Hello = { type: "hello", protocol: COMPAT.protocol, url };
+    bridge.postMessage(JSON.stringify(hello));
   });
 }

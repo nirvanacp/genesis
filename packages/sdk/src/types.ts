@@ -1,44 +1,30 @@
-import type { ErrorCode, Screen } from "@genesis/core";
+import type { ErrorCode, PageRecord, PageStatus } from "@genesis/core";
 import { GenesisError } from "./bridge.js";
 
 export { GenesisError };
 
-export type SnapshotStatus = "loading" | "ready" | "auth" | "unsupported" | "error";
+export type { ActionResult } from "@genesis/core";
 
 export interface ErrorInfo {
   code: string;
   message: string;
 }
 
-/** What a source document publishes about the page it shows. */
-export interface Snapshot<T = unknown> {
-  /** Null for snapshots the host writes itself, such as a page that did not load in time. */
-  documentId: string | null;
-  url: string;
-  routeId: string | null;
-  params: Record<string, string>;
-  status: SnapshotStatus;
-  data?: T;
-  error?: ErrorInfo;
+/** One record of a region as a screen sees it: the published record with its data typed. */
+export interface Record<T = unknown> extends Omit<PageRecord, "data"> {
+  data: T;
 }
 
-/** A snapshot as a screen sees it. `stale` marks cached data shown while the page reloads. */
-export interface SourceView<T> {
-  status: SnapshotStatus;
-  data: T | null;
+/** The page a screen shows, apart from its regions. `stale` marks records kept while the page reloads. */
+export interface PageState {
+  pageId: string | null;
+  status: PageStatus;
   stale: boolean;
-  url: string | null;
-  routeId: string | null;
-  params: Record<string, string>;
+  generation: number | null;
+  params: { [name: string]: string };
   error: ErrorInfo | null;
+  account: string | null;
 }
-
-export type NavigateMode = "push" | "replace" | "root";
-
-export type NavigateTarget =
-  | { kind: "screen"; id: string; params?: Record<string, string>; mode?: NavigateMode; source?: Screen["source"] }
-  | { kind: "website"; url: string }
-  | { kind: "route"; url: string; mode?: NavigateMode };
 
 export interface StoredDocument<T = unknown> {
   key: string;
