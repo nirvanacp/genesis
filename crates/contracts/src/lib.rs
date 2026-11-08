@@ -606,6 +606,9 @@ pub enum Call {
         state: ActionState,
         #[serde(default)]
         navigating: Option<bool>,
+        /// On a navigating `dispatched`: the destination pages the foreground judges by, passed through.
+        #[serde(default)]
+        expect: Option<Value>,
         #[serde(default)]
         result: Option<Value>,
     },

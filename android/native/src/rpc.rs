@@ -308,7 +308,7 @@ impl Host {
                 self.foreground_event(name, json!({ "id": id, "generation": generation, name: body }));
                 ok()
             }
-            Call::ContextActionResult { action_id, state, navigating, result } => {
+            Call::ContextActionResult { action_id, state, navigating, expect, result } => {
                 let session = self.contexts.session.as_mut().expect("active session");
                 let Some(handle) = session.actions.get_mut(&action_id).filter(|a| a.context_document == document_id) else {
                     return ok(); // Expired or cancelled by the host already.
@@ -324,6 +324,9 @@ impl Host {
                 let mut update = json!({ "actionId": action_id, "state": state });
                 if let Some(navigating) = navigating {
                     update["navigating"] = json!(navigating);
+                }
+                if let Some(expect) = expect.filter(|_| navigating == Some(true)) {
+                    update["expect"] = expect;
                 }
                 if let Some(result) = result {
                     update["result"] = result;
