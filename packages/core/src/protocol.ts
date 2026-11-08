@@ -179,7 +179,8 @@ export interface Page {
   params: Record<string, string>;
   status: PageStatus;
   error?: { code: ErrorCode; message: string };
-  account: string | null;
+  /** The signed-in account, null when signed out, absent when the page does not show it. */
+  account?: string | null;
   /** Where the coordinator sends an `auth` page, resolved by the adapter for this URL. */
   signInUrl?: string | null;
   regions: Record<string, Region>;

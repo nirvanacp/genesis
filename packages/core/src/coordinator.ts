@@ -65,7 +65,7 @@ export type CoordinatorEvent =
   }
   | {
     type: "context.page"; id: string; generation: number; view: ViewId; status: PageStatus;
-    pageId: string | null; routeId: string | null; account: string | null;
+    pageId: string | null; routeId: string | null; account?: string | null;
     /** Whether the store holds a stale page for the context's current history index. */
     stale: boolean;
     signInUrl?: string | null;
