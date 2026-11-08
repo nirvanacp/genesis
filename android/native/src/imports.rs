@@ -108,6 +108,10 @@ fn parse_bundle(envelope: &ImportEnvelope) -> Result<Bundle, ErrorBody> {
     if let Some(context) = contexts.iter().find(|c| !is_id(&c.id) || !ids.insert(c.id.as_str())) {
         return Err(invalid(format!("manifest context id {} is invalid or repeats", context.id)));
     }
+    // An origin reaches the WebView's origin rules, which reject anything but `scheme://host[:port]`.
+    if let Some(origin) = bundle.manifest.origins.iter().find(|o| !is_https_origin(o)) {
+        return Err(invalid(format!("manifest origin {origin} is not an exact https://host origin")));
+    }
     let declared = |url: &str| url::Url::parse(url).is_ok_and(|u| {
         u.scheme() == "https" && bundle.manifest.origins.contains(&u.origin().ascii_serialization())
     });
@@ -115,6 +119,11 @@ fn parse_bundle(envelope: &ImportEnvelope) -> Result<Bundle, ErrorBody> {
         return Err(invalid(format!("manifest context {} startUrl is not on a declared origin", context.id)));
     }
     Ok(bundle)
+}
+
+/// `https://host[:port]` in its serialized form: no path, credentials, default port or uppercase.
+fn is_https_origin(value: &str) -> bool {
+    url::Url::parse(value).is_ok_and(|u| u.scheme() == "https" && u.origin().ascii_serialization() == value)
 }
 
 pub fn is_id(value: &str) -> bool {

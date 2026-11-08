@@ -114,8 +114,9 @@ impl Applets {
             .map_err(|e| format!("Cannot read {path}: {e}"))
     }
 
-    /// Writes the next revision, switches the index to it and deletes the previous revision.
-    pub fn install(&mut self, bundle: &Bundle, files: VerifiedFiles) -> Result<u64, String> {
+    /// Writes the next revision and switches the index to it. Returns the new revision and the
+    /// previous one, whose files the caller removes once no view uses them.
+    pub fn install(&mut self, bundle: &Bundle, files: VerifiedFiles) -> Result<(u64, Option<u64>), String> {
         let id = bundle.manifest.id.clone();
         let previous = self.installed.get(&id).and_then(revision_of);
         let revision = previous.unwrap_or(0) + 1;
@@ -129,14 +130,12 @@ impl Applets {
             let _ = fs::remove_dir_all(&directory);
             return Err(error);
         }
-        if let Some(previous) = previous {
-            let _ = fs::remove_dir_all(self.root.join(&id).join(previous.to_string()));
-        }
-        Ok(revision)
+        Ok((revision, previous))
     }
 
     /// Lists an incompatible bundle in place of any installed revision of the same applet.
-    pub fn record_incompatible(&mut self, bundle: IncompatibleBundle) -> Result<(), String> {
+    /// Returns the replaced revision, whose files the caller removes once no view uses them.
+    pub fn record_incompatible(&mut self, bundle: IncompatibleBundle) -> Result<Option<u64>, String> {
         let previous = self.installed.get(&bundle.id).and_then(revision_of);
         let installed = Installed::Incompatible {
             revision: None,
@@ -146,10 +145,12 @@ impl Applets {
             mismatches: bundle.mismatches,
         };
         self.replace(&bundle.id, installed)?;
-        if let Some(previous) = previous {
-            let _ = fs::remove_dir_all(self.root.join(&bundle.id).join(previous.to_string()));
-        }
-        Ok(())
+        Ok(previous)
+    }
+
+    /// Deletes a revision's files that the index no longer lists.
+    pub fn remove_revision(&self, applet_id: &str, revision: u64) {
+        let _ = fs::remove_dir_all(self.root.join(applet_id).join(revision.to_string()));
     }
 
     /// Replaces the entry and writes the index; on a write failure memory keeps agreeing with disk.

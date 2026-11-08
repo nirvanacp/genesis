@@ -131,6 +131,9 @@ pub enum ShellEvent {
     },
     /// `onRenderProcessGone`. Every view shares one renderer, so the shell reports each.
     RendererGone { view: ViewRef },
+    /// A `HistoryGo` that moved nothing: `history.go` did not start a navigation and the
+    /// WebView's own list had no entry at that offset.
+    HistoryUnmoved { view: ViewRef },
     ImportFound { kind: ImportKind, path: String, payload: String },
     ServiceResponse { request_id: u64, status: u16, body: Value },
     ServiceFailed { request_id: u64, code: ErrorCode, message: String },

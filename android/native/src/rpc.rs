@@ -83,6 +83,10 @@ impl Host {
             let message = format!("The page speaks protocol {protocol}; this Genesis speaks {}", compat::PROTOCOL);
             self.post(&view, &HostMessage::Refused { error: ErrorBody::new(ErrorCode::ProtocolMismatch, &message) });
             if let Some(id) = context_id {
+                // Reported gone now, so the unbound-document deadline must not report it again.
+                if let Some(context) = self.context_mut(&id) {
+                    context.navigating_since = None;
+                }
                 self.foreground_event("context.gone", json!({ "id": id, "code": ErrorCode::ProtocolMismatch, "message": message }));
             }
             return;
@@ -93,7 +97,7 @@ impl Host {
             Some(id) => self.context_mut(id).and_then(|c| c.navigating_since.take()).is_some(),
             None => true,
         };
-        let session = self.contexts.session.as_mut().expect("active session");
+        let Some(session) = self.contexts.session.as_mut() else { return };
         let saved = match (&context_id, session.restored) {
             (None, true) => {
                 session.restored = false;
@@ -253,19 +257,24 @@ impl Host {
                     context_id: id,
                     context_document: document.id.clone(),
                     dispatched: false,
+                    navigating: false,
                     deadline_ms: now + self.limits.action_timeout_ms,
                 };
-                let action_id = self.contexts.session.as_mut().expect("active session").begin_action(handle);
+                let Some(session) = self.contexts.session.as_mut() else {
+                    return error(ErrorCode::Retired, "The applet is not active");
+                };
+                let action_id = session.begin_action(handle);
                 let mut data: Map<String, Value> = action;
                 data.insert("actionId".into(), json!(action_id));
                 self.event(&target, "act", Value::Object(data));
                 Outcome::Now(Ok(json!({ "actionId": action_id })))
             }
             Call::ContextCancel { action_id } => {
-                let session = self.contexts.session.as_ref().expect("active session");
-                let handle = session.actions.get(&action_id).filter(|a| a.foreground_document == document_id);
-                if let Some(handle) = handle.filter(|a| !a.dispatched) {
-                    let target = self.context_view(&handle.context_id.clone()).expect("declared context");
+                let Some(session) = self.contexts.session.as_ref() else {
+                    return error(ErrorCode::Retired, "The applet is not active");
+                };
+                let handle = session.actions.get(&action_id).filter(|a| a.foreground_document == document_id && !a.dispatched);
+                if let Some(target) = handle.and_then(|a| self.context_view(&a.context_id)) {
                     self.event(&target, "cancel", json!({ "actionId": action_id }));
                 }
                 ok()
@@ -314,17 +323,20 @@ impl Host {
                 ok()
             }
             Call::ContextActionResult { action_id, state, navigating, expect, result } => {
-                let session = self.contexts.session.as_mut().expect("active session");
+                let Some(session) = self.contexts.session.as_mut() else {
+                    return error(ErrorCode::Retired, "The applet is not active");
+                };
                 let Some(handle) = session.actions.get_mut(&action_id).filter(|a| a.context_document == document_id) else {
                     return ok(); // Expired or cancelled by the host already.
                 };
                 let foreground_document = handle.foreground_document.clone();
-                // A navigating action's outcome is observed by the foreground, not reported here.
-                let finished = state != ActionState::Dispatched || navigating == Some(true);
-                if finished {
+                // A navigating action's outcome is observed by the foreground, not reported here. Its handle
+                // stays until the page goes, so a step that fails after the handoff still reaches the foreground.
+                if state != ActionState::Dispatched {
                     session.actions.remove(&action_id);
                 } else {
                     handle.dispatched = true;
+                    handle.navigating = navigating == Some(true);
                 }
                 let mut update = json!({ "actionId": action_id, "state": state });
                 if let Some(navigating) = navigating {

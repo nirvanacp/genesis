@@ -1,7 +1,7 @@
 //! Document registry: the current document per view, its generation, and pending operations.
 use genesis_contracts::ViewRef;
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::atomic::{AtomicU64, Ordering},
 };
 
@@ -32,8 +32,11 @@ pub struct PendingOp {
 pub struct Documents {
     counter: u64,
     current: HashMap<ViewRef, Document>,
-    /// The last generation bound in each context view; it survives the document's retirement.
+    /// The last generation taken in each context view, bound or reserved; it survives the
+    /// document's retirement.
     generations: HashMap<ViewRef, u64>,
+    /// Views whose last generation is reserved for a committed document that has not bound.
+    reserved: HashSet<ViewRef>,
     ops: HashMap<u64, PendingOp>,
 }
 
@@ -50,19 +53,31 @@ impl Documents {
         self.current(view).is_some_and(|d| d.id == document_id)
     }
 
-    /// The generation the next document bound in `view` receives.
+    /// The generation the next document bound in `view` receives: the reserved one, or the next.
     pub fn next_generation(&self, view: &ViewRef) -> u64 {
-        self.generations.get(view).copied().unwrap_or(0) + 1
+        let last = self.generations.get(view).copied().unwrap_or(0);
+        if self.reserved.contains(view) { last } else { last + 1 }
     }
 
-    /// Binds a new document to `view`. Context documents take the next generation; the
-    /// foreground's is always 0. The caller retires the previous document first.
+    /// Takes a new generation for a document that committed in `view` and has not bound. A page
+    /// that never binds (an undeclared origin) keeps its number, so generations alone order documents.
+    pub fn reserve_generation(&mut self, view: &ViewRef) -> u64 {
+        let next = self.generations.get(view).copied().unwrap_or(0) + 1;
+        self.generations.insert(view.clone(), next);
+        self.reserved.insert(view.clone());
+        next
+    }
+
+    /// Binds a new document to `view`. A context document whose `DocumentStarted` came first
+    /// (`started`) takes the generation reserved for it; one whose hello came first takes the next.
+    /// The foreground's is always 0. The caller retires the previous document first.
     pub fn bind(&mut self, view: &ViewRef, url: &str, context: bool, started: bool) -> &Document {
         self.counter += 1;
         let id = format!("{}/{}/{}", view.applet_id, String::from(view.role.clone()), self.counter);
         let generation = match context {
             true => {
-                let next = self.next_generation(view);
+                let last = self.generations.get(view).copied().unwrap_or(0);
+                let next = if self.reserved.remove(view) && started { last } else { last + 1 };
                 self.generations.insert(view.clone(), next);
                 next
             }
@@ -83,6 +98,7 @@ impl Documents {
     /// Retires every document of the applet and forgets its generations.
     pub fn retire_applet(&mut self, applet_id: &str) -> Vec<(ViewRef, String)> {
         self.generations.retain(|view, _| view.applet_id != applet_id);
+        self.reserved.retain(|view| view.applet_id != applet_id);
         let views: Vec<ViewRef> = self.current.keys().filter(|v| v.applet_id == applet_id).cloned().collect();
         views.into_iter().filter_map(|v| self.retire(&v).map(|id| (v, id))).collect()
     }

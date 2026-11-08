@@ -27,6 +27,9 @@ pub struct ActionHandle {
     pub context_document: String,
     /// The context reported `dispatched`: the action left the host's hands.
     pub dispatched: bool,
+    /// The context handed a navigating action to the foreground, which observes its outcome. The handle
+    /// stays only so a step that fails after the handoff can still report it.
+    pub navigating: bool,
     pub deadline_ms: u64,
 }
 
@@ -38,6 +41,8 @@ pub struct Session {
     /// The context whose WebView is revealed above the foreground.
     pub revealed: Option<String>,
     pub back: Option<BackSlot>,
+    /// The context a Back stepped back in, until it moves or the shell reports it did not.
+    pub back_history: Option<String>,
     pub contexts: BTreeMap<String, ContextView>,
     pub actions: HashMap<u64, ActionHandle>,
     next_action: u64,
@@ -55,6 +60,7 @@ impl Session {
             foreground_shown: false,
             revealed: None,
             back: None,
+            back_history: None,
             contexts: BTreeMap::new(),
             actions: HashMap::new(),
             next_action: 0,

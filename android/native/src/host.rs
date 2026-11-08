@@ -63,6 +63,7 @@ impl Host {
                 self.context_navigated(view, reported, same_document, reload);
             }
             ShellEvent::RendererGone { view } => self.renderer_gone(&view),
+            ShellEvent::HistoryUnmoved { view } => self.history_unmoved(&view),
             ShellEvent::ImportFound { kind: ImportKind::Bundle, path, payload } => self.import_bundle(&path, &payload),
             ShellEvent::ServiceResponse { request_id, status, body } => {
                 self.finish_op(request_id, None, Ok(crate::services::result(status, body)));
@@ -313,7 +314,7 @@ impl Host {
         }
         let Some(view) = self.foreground_view() else { return };
         let Some(document_id) = self.documents.current(&view).map(|d| d.id.clone()) else {
-            return self.back_fallback();
+            return self.back_fallback(true);
         };
         let delay_ms = self.limits.back_answer_ms;
         if let Some(session) = self.contexts.session.as_mut() {
@@ -328,37 +329,61 @@ impl Host {
         if session.back.as_ref().is_some_and(|slot| slot.document_id == document_id) {
             session.back = None;
             if !handled {
-                self.back_fallback();
+                self.back_fallback(false);
             }
         }
     }
 
-    /// Back the foreground did not take: the revealed context's history, else Home.
-    fn back_fallback(&mut self) {
-        let session = self.contexts.session.as_ref();
-        let revealed = session.and_then(|s| s.revealed.clone());
-        let can_go_back = revealed.as_ref().and_then(|id| session?.contexts.get(id)).is_some_and(|c| c.can_go_back);
-        match (revealed.and_then(|id| self.context_view(&id)), can_go_back) {
-            (Some(view), true) => self.out.push(ShellCommand::HistoryGo { view, delta: -1 }),
-            _ => self.home(),
+    /// Back the foreground did not take: a step back in the revealed context's history, else Home.
+    /// A Back the foreground could not answer (`unanswered`) steps back in the first context, in
+    /// manifest order, that has history when none is revealed, so a stalled screen does not leave
+    /// the applet. The shell reports `HistoryUnmoved` when the step does nothing, and Home follows.
+    fn back_fallback(&mut self, unanswered: bool) {
+        let Some(session) = self.contexts.session.as_ref() else { return };
+        let candidates: Vec<String> = match (&session.revealed, unanswered) {
+            (Some(id), _) => vec![id.clone()],
+            (None, true) => self.active_manifest().map(|(_, m)| m.contexts.iter().map(|c| c.id.clone()).collect()).unwrap_or_default(),
+            (None, false) => Vec::new(),
+        };
+        let target = candidates.into_iter().find(|id| session.contexts.get(id).is_some_and(|c| c.can_go_back));
+        let Some((id, view)) = target.and_then(|id| self.context_view(&id).map(|view| (id, view))) else {
+            return self.home();
+        };
+        if let Some(session) = self.contexts.session.as_mut() {
+            session.back_history = Some(id);
+        }
+        self.out.push(ShellCommand::HistoryGo { view, delta: -1 });
+    }
+
+    /// A history step did not move the context. A Back that fell through to it leaves the applet.
+    fn history_unmoved(&mut self, view: &ViewRef) {
+        let Role::Context(id) = &view.role else { return };
+        let Some(session) = self.contexts.session.as_mut().filter(|s| s.applet_id == view.applet_id) else { return };
+        if session.back_history.as_ref() == Some(id) {
+            session.back_history = None;
+            self.home();
         }
     }
 
     // -----------------------------------------------------------------------------------------
     // Context documents
 
-    /// A new document committed in a context. Its hello may already have arrived.
+    /// A new document committed in a context. Its hello may already have arrived: a bound
+    /// document not started yet is this one when it is on the same origin, since its URL may have
+    /// changed through the history API before the hello. Otherwise the document waits for its hello
+    /// under a reserved generation.
     fn document_started(&mut self, view: ViewRef, url: String, now: u64) {
         let Role::Context(id) = &view.role else { return };
         if self.contexts.session.as_ref().is_none_or(|s| s.applet_id != view.applet_id) {
             return;
         }
-        let without_fragment = |u: &str| u.split('#').next().unwrap_or_default().to_owned();
+        let origin = |u: &str| url::Url::parse(u).map(|u| u.origin().ascii_serialization()).ok();
         match self.documents.current_mut(&view) {
-            Some(document) if !document.started && without_fragment(&document.url) == without_fragment(&url) => {
+            Some(document) if !document.started && origin(&document.url).is_some_and(|o| Some(o) == origin(&url)) => {
                 document.started = true;
             }
             _ => {
+                self.documents.reserve_generation(&view);
                 if let Some(context) = self.context_mut(id) {
                     context.navigating_since = Some(now);
                 }
@@ -368,11 +393,14 @@ impl Host {
     }
 
     /// A committed navigation. A cross-document one that has not bound yet retires the previous
-    /// document and is stamped with the generation its document will receive.
+    /// document and is stamped with the generation reserved for its document.
     fn context_navigated(&mut self, view: ViewRef, reported: ContextView, same_document: bool, reload: bool) {
         let Role::Context(id) = &view.role else { return };
         if self.contexts.session.as_ref().is_none_or(|s| s.applet_id != view.applet_id) {
             return;
+        }
+        if let Some(session) = self.contexts.session.as_mut().filter(|s| s.back_history.as_ref() == Some(id)) {
+            session.back_history = None; // The Back step moved.
         }
         let Some(context) = self.context_mut(id) else { return };
         let waiting = context.navigating_since.is_some();
@@ -415,16 +443,19 @@ impl Host {
         });
     }
 
-    /// Retires a context's or the foreground's document: it receives `retired`, and the
-    /// foreground learns that actions the document had not dispatched failed.
+    /// Retires a context's or the foreground's document: it receives `retired`, and its actions
+    /// are dropped. Every action of a retired context document was delivered to it and some of
+    /// its steps may have run, so the foreground learns that their outcome is unknown. Actions a
+    /// retired foreground document asked for are only forgotten.
     pub fn retire_document(&mut self, view: &ViewRef) {
         let Some(document_id) = self.documents.retire(view) else { return };
         let message = HostMessage::Event { document_id: document_id.clone(), name: "retired".into(), data: json!({}) };
         self.post(view, &message);
         let Some(session) = self.contexts.session.as_mut() else { return };
+        session.take_actions(|a| a.foreground_document == document_id);
         let actions = session.take_actions(|a| a.context_document == document_id);
-        for (action_id, handle) in actions.into_iter().filter(|(_, a)| !a.dispatched) {
-            let result = json!({ "outcome": "failed", "code": ErrorCode::ContextReplaced, "message": "The page changed before the action ran" });
+        for (action_id, handle) in actions.into_iter().filter(|(_, a)| !a.navigating) {
+            let result = json!({ "outcome": "unknown", "code": ErrorCode::ContextReplaced, "message": "The page changed before the action finished" });
             self.action_update(&handle.foreground_document, json!({ "actionId": action_id, "state": "failed", "result": result }));
         }
     }
@@ -474,16 +505,16 @@ impl Host {
             self.respond(&op.view, &op.document_id, op.request_id, Err(error));
         }
         let Some(session) = self.contexts.session.as_mut() else { return };
-        for (action_id, handle) in session.take_actions(|a| a.deadline_ms <= now) {
-            // A dispatched action may have taken effect; its outcome is unknown.
-            let outcome = if handle.dispatched { "unknown" } else { "failed" };
-            let result = json!({ "outcome": outcome, "code": ErrorCode::Deadline, "message": "The page did not finish the action in time" });
+        let expired = session.take_actions(|a| a.deadline_ms <= now);
+        for (action_id, handle) in expired.into_iter().filter(|(_, a)| !a.navigating) {
+            // The document received the action and may have run some of its steps; the outcome is unknown.
+            let result = json!({ "outcome": "unknown", "code": ErrorCode::Deadline, "message": "The page did not finish the action in time" });
             self.action_update(&handle.foreground_document, json!({ "actionId": action_id, "state": "failed", "result": result }));
         }
         let Some(session) = self.contexts.session.as_mut() else { return };
         if session.back.as_ref().is_some_and(|slot| slot.deadline_ms <= now) {
             session.back = None;
-            return self.back_fallback();
+            return self.back_fallback(true);
         }
         self.expire_unbound_documents(now);
         self.retire_if_long_suspended(now);
@@ -514,13 +545,14 @@ impl Host {
     // -----------------------------------------------------------------------------------------
     // Imports
 
-    /// Installs a current bundle, or lists an incompatible one, then writes the receipt.
+    /// Installs a current bundle, or lists an incompatible one, then writes the receipt. An
+    /// active applet is retired before its previous revision's files are deleted.
     fn import_bundle(&mut self, path: &str, payload: &str) {
         let outcome = imports::verify(payload).and_then(|verified| match verified {
             Verified::Current { bundle, files } => {
                 let applet_id = bundle.manifest.id.clone();
-                let revision = self.applets.install(&bundle, files).map_err(storage_error)?;
-                Ok((applet_id, json!({ "ok": true, "appletId": bundle.manifest.id, "revision": revision, "status": "current" })))
+                let (revision, previous) = self.applets.install(&bundle, files).map_err(storage_error)?;
+                Ok((applet_id, previous, json!({ "ok": true, "appletId": bundle.manifest.id, "revision": revision, "status": "current" })))
             }
             Verified::Incompatible(bundle) => {
                 let applet_id = bundle.id.clone();
@@ -528,29 +560,37 @@ impl Host {
                     "ok": true, "appletId": bundle.id, "status": "incompatible",
                     "direction": bundle.direction, "mismatches": bundle.mismatches,
                 });
-                self.applets.record_incompatible(bundle).map_err(storage_error)?;
-                Ok((applet_id, receipt))
+                let previous = self.applets.record_incompatible(bundle).map_err(storage_error)?;
+                Ok((applet_id, previous, receipt))
             }
         });
         let receipt = match &outcome {
-            Ok((_, receipt)) => receipt.clone(),
+            Ok((_, _, receipt)) => receipt.clone(),
             Err(error) => json!({ "ok": false, "code": error.code, "error": error.message }),
         };
         let receipt_path = path.strip_suffix(".json").unwrap_or(path).to_owned() + ".receipt.json";
         let _ = applets::write_atomic(Path::new(&receipt_path), receipt.to_string().as_bytes());
         let _ = std::fs::remove_file(path);
-        let applet_id = match outcome {
-            Ok((applet_id, _)) => applet_id,
+        let (applet_id, previous) = match outcome {
+            Ok((applet_id, previous, _)) => (applet_id, previous),
             Err(error) => return self.out.push(ShellCommand::ShowError { message: error.message }),
         };
+        let incompatible = self.applets.entry(&applet_id).filter(|e| e.status == AppletStatus::Incompatible);
         let active = self.contexts.session.as_ref().map(|s| s.applet_id.clone());
         if active.as_deref() == Some(applet_id.as_str()) {
             self.retire_active();
-            self.activate(&applet_id, None);
+            // An incompatible import cannot start; the notice below explains it, once.
+            match incompatible {
+                Some(_) => self.show_launcher(),
+                None => self.activate(&applet_id, None),
+            }
         } else if active.is_none() {
             self.show_launcher();
         }
-        if let Some(entry) = self.applets.entry(&applet_id).filter(|e| e.status == AppletStatus::Incompatible) {
+        if let Some(previous) = previous {
+            self.applets.remove_revision(&applet_id, previous);
+        }
+        if let Some(entry) = incompatible {
             let details = match entry.direction {
                 Some(Direction::Newer) => "Needs a newer Genesis",
                 _ => "Needs update",
