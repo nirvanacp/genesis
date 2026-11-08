@@ -183,7 +183,10 @@ function foreground(connection: Connection): Foreground {
         leftBy(effect.id);
         void request("context.navigate", { id: effect.id, url: effect.url, mode: effect.mode });
         return true;
-      case "context.back": leftBy(effect.id); void request("context.back", { id: effect.id }); return true;
+      case "context.back":
+        leftBy(effect.id);
+        void request("context.back", effect.steps ? { id: effect.id, steps: effect.steps } : { id: effect.id });
+        return true;
       case "context.reload": leftBy(effect.id); void request("context.reload", { id: effect.id }); return true;
       case "schedule":
         setTimeout(() => dispatch({ type: "deadline", id: effect.id, token: effect.token }), limits.documentReadyMs);
