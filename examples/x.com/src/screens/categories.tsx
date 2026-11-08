@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { ScrollMemory, useNavigation, useRecords } from "@genesis/sdk/react";
 import { libraryMessage, useLibrary, type Bookmark } from "../library";
 import { profileUrl } from "../model";
-import { Icon, Notice, SignInPrompt, Skeleton, useOpenRoute } from "../components/ui";
+import { Icon, Notice, SignInPrompt, Skeleton, useOpenUrl } from "../components/ui";
 import { SavedTabs } from "./feed";
 
 type Library = ReturnType<typeof useLibrary>;
@@ -106,7 +106,7 @@ export function CategoriesScreen() {
             onChange={event => { setDraft(event.target.value); if (!event.target.value) setQuery(""); }} />
         </label>
       </form>
-      <button type="button" className="secondary" onClick={() => void navigate({ kind: "screen", id: "manage" })}>
+      <button type="button" className="secondary" onClick={() => navigate({ screen: "manage" })}>
         <Icon name="folder" /> Manage categories
       </button>
       {page.error != null && <p className="inline-error" role="alert">{libraryMessage(page.error)}</p>}
@@ -125,7 +125,7 @@ export function CategoriesScreen() {
 }
 
 function SavedRow({ entry, names }: { entry: Bookmark; names: Map<string, string> }) {
-  const open = useOpenRoute();
+  const open = useOpenUrl();
   const { navigate } = useNavigation();
   const { snapshot } = entry;
   return <article className="post saved-post">
@@ -141,8 +141,8 @@ function SavedRow({ entry, names }: { entry: Bookmark; names: Map<string, string
       </button>
       <div className="pills">
         {entry.categoryIds.map(id => names.has(id) && <span key={id} className="pill">{names.get(id)}</span>)}
-        <button type="button" className="text-button" onClick={() => void navigate({
-          kind: "screen", id: "save", params: { post: JSON.stringify({ postId: entry.postId, url: entry.url, snapshot }) },
+        <button type="button" className="text-button" onClick={() => navigate({
+          screen: "save", params: { post: JSON.stringify({ postId: entry.postId, url: entry.url, snapshot }) },
         })}>Edit</button>
       </div>
     </div>

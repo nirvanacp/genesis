@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useCallback, type ReactNode } from "react";
 import { useNavigation } from "@genesis/sdk/react";
 import type { ErrorInfo } from "@genesis/sdk";
 import { ORIGIN, type TextPart } from "../model";
@@ -26,15 +26,21 @@ export function Icon({ name, filled = false }: { name: IconName; filled?: boolea
   return <svg viewBox="0 0 24 24" aria-hidden="true" className={filled ? "filled" : undefined}><path d={ICONS[name]} /></svg>;
 }
 
-/** Website links go through the manifest, which picks a screen or the website sheet. */
-export function useOpenRoute() {
+/** Website links go through the manifest, which picks a screen or shows X's own page. */
+export function useOpenUrl() {
   const { navigate } = useNavigation();
-  return (url: string) => void navigate({ kind: "route", url });
+  return useCallback((url: string) => {
+    try {
+      navigate({ url });
+    } catch (error) {
+      console.error("Genesis could not open", url, error);
+    }
+  }, [navigate]);
 }
 
 /** Post text with its links, mentions and hashtags. Text is never parsed as HTML. */
 export function RichText({ parts, className }: { parts: TextPart[]; className?: string }) {
-  const open = useOpenRoute();
+  const open = useOpenUrl();
   return <p className={className ?? "post-text"} dir="auto">{parts.map((part, index) => part.href
     ? <a key={index} href={part.href} onClick={event => { event.preventDefault(); event.stopPropagation(); open(part.href!); }}>{part.text}</a>
     : <span key={index}>{part.text}</span>)}</p>;
@@ -67,29 +73,29 @@ export function Notice({ title, children, role }: { title: string; children?: Re
   return <section className="notice" role={role}><h2>{title}</h2>{children}</section>;
 }
 
-export function OpenOnX({ url, label = "Open on X" }: { url: string; label?: string }) {
-  const { navigate } = useNavigation();
-  return <button type="button" className="secondary" onClick={() => void navigate({ kind: "website", url })}>
+/** Shows the current page as X's website, or opens `url`, which no route maps, as X's website. */
+export function OpenOnX({ url, label = "Open on X" }: { url?: string; label?: string }) {
+  const { navigate, viewWebsite } = useNavigation();
+  return <button type="button" className="secondary" onClick={() => url ? navigate({ url }) : viewWebsite()}>
     {label} <Icon name="external" />
   </button>;
 }
 
-export function LoadError({ error, url }: { error: ErrorInfo | null; url: string | null }) {
-  const message = error?.code === "NOT_READY" ? "X did not answer in time."
-    : error?.code === "SNAPSHOT_TOO_LARGE" ? "This page has more than the app can show at once."
+export function LoadError({ error }: { error: ErrorInfo | null }) {
+  const message = error?.code === "NOT_READY" || error?.code === "DEADLINE" ? "X did not answer in time."
     : error?.message || "This page could not be read.";
   return <Notice title="Couldn't load this page" role="alert">
     <p>{message}</p>
-    {url && <OpenOnX url={url} />}
+    <OpenOnX />
   </Notice>;
 }
 
-/** Sign-in happens on X's own page in the website sheet. */
+/** Sign-in happens on X's own page. Genesis opens it by itself for pages that need the account. */
 export function SignInPrompt({ reason }: { reason: string }) {
   const { navigate } = useNavigation();
   return <Notice title="Sign in to X">
     <p>{reason}</p>
-    <button type="button" className="primary" onClick={() => void navigate({ kind: "website", url: `${ORIGIN}/i/flow/login` })}>
+    <button type="button" className="primary" onClick={() => navigate({ url: `${ORIGIN}/i/flow/login` })}>
       Sign in <Icon name="external" />
     </button>
   </Notice>;

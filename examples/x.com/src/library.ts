@@ -4,7 +4,7 @@
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { serviceMessage } from "@genesis/sdk";
-import { useAppResume, useRecords, useService, useSource } from "@genesis/sdk/react";
+import { useAppResume, usePage, useRecords, useService } from "@genesis/sdk/react";
 import {
   isObject, validBookmark, validCategory, validLibrary, validMembership, validReceipt,
   type AccountData, type Bookmark, type BookmarkPage, type Category, type Library, type Membership, type PostView, type Receipt, type Snapshot,
@@ -86,10 +86,10 @@ export function useBookmarksService() {
 
 export type BookmarksService = ReturnType<typeof useBookmarksService>;
 
-/** The signed-in X account as the `account` source last saw it. */
+/** The signed-in X account as the pages last showed it; X shows the same account in every context. */
 export function useAccount(): { account: AccountData | null; signedOut: boolean } {
-  const source = useSource<AccountData>("account");
-  return { account: source.data?.handle ? source.data : null, signedOut: source.status === "auth" };
+  const page = usePage("account");
+  return { account: page.account ? { handle: page.account, name: null } : null, signedOut: page.status === "auth" };
 }
 
 /** The library, its categories and any change left pending, checked against the signed-in account. */

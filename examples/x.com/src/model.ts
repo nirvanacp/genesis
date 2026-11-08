@@ -49,14 +49,6 @@ export interface NoticeView {
 
 export type FeedItem = { kind: "post"; post: PostView } | { kind: "notice"; notice: NoticeView };
 
-export interface FeedData {
-  items: FeedItem[];
-  /** True when the page held more items than one snapshot carries. */
-  partial: boolean;
-  /** X's own empty-state heading, when it shows one. */
-  emptyText: string | null;
-}
-
 export interface Person {
   handle: string;
   name: string;
@@ -71,11 +63,6 @@ export interface Trend {
   meta: string;
 }
 
-export interface ExploreData extends FeedData {
-  trends: Trend[];
-  people: Person[];
-}
-
 export interface ProfileHeader {
   handle: string;
   name: string;
@@ -87,18 +74,6 @@ export interface ProfileHeader {
   /** Following and followers counts as X labels them, with their links. */
   links: { label: string; url: string }[];
   own: boolean;
-}
-
-export interface ProfileData extends FeedData {
-  profile: ProfileHeader | null;
-}
-
-export interface PostData {
-  /** Posts above the focused one in the thread. */
-  ancestors: PostView[];
-  focus: PostView | null;
-  replies: PostView[];
-  partial: boolean;
 }
 
 export interface MediaData {
