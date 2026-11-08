@@ -1,5 +1,6 @@
 import { memo, useState, type CSSProperties } from "react";
-import { useAction, usePending } from "@genesis/sdk/react";
+import { useAction, useNavigation, usePending } from "@genesis/sdk/react";
+import { snapshotOf } from "../library";
 import { itemUrl, ORIGIN, userUrl, type CommentEntry, type Story } from "../model";
 import { Icon, Meta, RichText, useOpenUrl } from "./ui";
 
@@ -37,12 +38,19 @@ function VoteButton({ vote, canVote, title, signedIn, small = false }: {
 const VoteFailed = ({ vote }: { vote: Vote }) =>
   vote.failed ? <p className="inline-error" role="alert">The vote didn't go through. Try again.</p> : null;
 
+/** Opens the save editor for a story read from the current page. */
+function useSaveStory() {
+  const { navigate } = useNavigation();
+  return (story: Story) => navigate({ screen: "save", params: { snapshot: JSON.stringify(snapshotOf(story)), fresh: "1" } });
+}
+
 /** A story in a list (`region` "stories") or at the top of its discussion (`region` "story"). */
 export const StoryRow = memo(function StoryRow({ story, region, signedIn, heading = false }: {
   story: Story; region: string; signedIn: boolean; heading?: boolean;
 }) {
   const open = useOpenUrl();
   const vote = useVote(region, story.id, story.voted);
+  const save = useSaveStory();
   const Title = heading ? "h1" : "h2";
   const discussion = itemUrl(story.id);
   return <article className="story">
@@ -63,6 +71,9 @@ export const StoryRow = memo(function StoryRow({ story, region, signedIn, headin
       ]} />
       <VoteFailed vote={vote} />
     </div>
+    <button type="button" className="icon-button" aria-label={`Save story: ${story.title}`} onClick={() => save(story)}>
+      <Icon name="bookmark" />
+    </button>
   </article>;
 });
 

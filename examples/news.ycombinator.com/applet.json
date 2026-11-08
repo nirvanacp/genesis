@@ -10,7 +10,14 @@
     "screens": [
       "feed",
       "item",
-      "user"
+      "user",
+      "info",
+      "search",
+      "post",
+      "saved",
+      "categories",
+      "save",
+      "me"
     ]
   },
   "adapter": "src/adapter.ts",
@@ -18,9 +25,27 @@
     {
       "id": "primary",
       "startUrl": "https://news.ycombinator.com/"
+    },
+    {
+      "id": "post",
+      "startUrl": "https://news.ycombinator.com/submit"
+    },
+    {
+      "id": "me",
+      "startUrl": "https://news.ycombinator.com/news?account=1"
     }
   ],
   "routes": [
+    {
+      "id": "account",
+      "pattern": "/news",
+      "query": [
+        "account"
+      ],
+      "page": "account",
+      "screen": "me",
+      "context": "me"
+    },
     {
       "id": "home",
       "pattern": "/",
@@ -36,14 +61,124 @@
       "context": "primary"
     },
     {
+      "id": "newest",
+      "pattern": "/newest",
+      "page": "feed",
+      "screen": "feed"
+    },
+    {
+      "id": "front",
+      "pattern": "/front",
+      "page": "feed",
+      "screen": "feed"
+    },
+    {
+      "id": "newcomments",
+      "pattern": "/newcomments",
+      "page": "feed",
+      "screen": "feed"
+    },
+    {
+      "id": "ask",
+      "pattern": "/ask",
+      "page": "feed",
+      "screen": "feed"
+    },
+    {
+      "id": "show",
+      "pattern": "/show",
+      "page": "feed",
+      "screen": "feed"
+    },
+    {
+      "id": "shownew",
+      "pattern": "/shownew",
+      "page": "feed",
+      "screen": "feed"
+    },
+    {
+      "id": "asknew",
+      "pattern": "/asknew",
+      "page": "feed",
+      "screen": "feed"
+    },
+    {
+      "id": "jobs",
+      "pattern": "/jobs",
+      "page": "feed",
+      "screen": "feed"
+    },
+    {
+      "id": "best",
+      "pattern": "/best",
+      "page": "feed",
+      "screen": "feed"
+    },
+    {
+      "id": "active",
+      "pattern": "/active",
+      "page": "feed",
+      "screen": "feed"
+    },
+    {
+      "id": "from",
+      "pattern": "/from",
+      "page": "feed",
+      "screen": "feed"
+    },
+    {
+      "id": "submitted",
+      "pattern": "/submitted",
+      "query": [
+        "id"
+      ],
+      "page": "feed",
+      "screen": "feed"
+    },
+    {
+      "id": "threads",
+      "pattern": "/threads",
+      "query": [
+        "id"
+      ],
+      "page": "feed",
+      "screen": "feed"
+    },
+    {
+      "id": "favorites",
+      "pattern": "/favorites",
+      "query": [
+        "id"
+      ],
+      "page": "feed",
+      "screen": "feed"
+    },
+    {
+      "id": "hidden",
+      "pattern": "/hidden",
+      "query": [
+        "id"
+      ],
+      "page": "private-feed",
+      "screen": "feed"
+    },
+    {
+      "id": "upvoted",
+      "pattern": "/upvoted",
+      "query": [
+        "id"
+      ],
+      "page": "private-feed",
+      "screen": "feed"
+    },
+    {
       "id": "item",
       "pattern": "/item",
       "query": [
         "id"
       ],
       "page": "item",
-      "screen": "item",
-      "context": "primary"
+      "screen": "item"
     },
     {
       "id": "user",
@@ -52,8 +187,50 @@
         "id"
       ],
       "page": "user",
-      "screen": "user",
-      "context": "primary"
+      "screen": "user"
+    },
+    {
+      "id": "formatdoc",
+      "pattern": "/formatdoc",
+      "page": "info",
+      "screen": "info"
+    },
+    {
+      "id": "faq",
+      "pattern": "/newsfaq.html",
+      "page": "info",
+      "screen": "info"
+    },
+    {
+      "id": "guidelines",
+      "pattern": "/newsguidelines.html",
+      "page": "info",
+      "screen": "info"
+    },
+    {
+      "id": "lists",
+      "pattern": "/lists",
+      "page": "info",
+      "screen": "info"
+    },
+    {
+      "id": "leaders",
+      "pattern": "/leaders",
+      "page": "info",
+      "screen": "info"
+    },
+    {
+      "id": "submit",
+      "pattern": "/submit",
+      "page": "submit",
+      "screen": "post",
+      "context": "post"
+    },
+    {
+      "id": "submit-result",
+      "pattern": "/r",
+      "page": "submit",
+      "screen": "post"
     }
   ],
   "capabilities": {

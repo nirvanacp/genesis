@@ -84,7 +84,8 @@ test("pages are ready on HN's layout only", () => {
 test("the account comes from #me", () => {
   assert.equal(adapter.account(parse(feedPage())), "alice");
   assert.equal(adapter.account(parse(feedPage({ signedIn: false }))), null);
-  assert.equal(adapter.signInUrl, "/login");
+  // Sign-in returns to the page that needed it.
+  assert.equal(adapter.signInUrl("https://news.ycombinator.com/upvoted?id=alice"), "/login?goto=upvoted%3Fid%3Dalice");
 });
 
 test("feed stories are keyed by item id and read their subtext row", () => {
@@ -110,7 +111,7 @@ test("the feed's more link and loadMore", () => {
   const doc = parse(feedPage());
   assert.deepEqual(readRegion(doc, "feed", "more").data, { url: "https://news.ycombinator.com/?p=2" });
   assert.deepEqual(adapter.pages.feed.actions.loadMore(null, undefined),
-    { steps: [{ click: "a.morelink" }], navigates: true, expect: { page: "feed" } });
+    { steps: [{ click: "a.morelink" }], navigates: true, expect: { page: ["feed", "private-feed"] } });
 });
 
 test("setVoted clicks HN's vote link and waits for the page to show the vote", () => {
@@ -169,4 +170,61 @@ test("a user page reads the profile table", () => {
     name: "bob", created: "January 1, 2010", karma: "4242",
     about: [{ text: "Writes " }, { text: "parsers", em: true }, { text: "." }],
   });
+});
+
+const submitPage = ({ form = true, message = "" } = {}) => layout(form
+  ? `${message}<form action="/r" method="post"><input type="hidden" name="fnid" value="tok"><input type="hidden" name="fnop" value="submit-page">
+<table><tbody><tr><td>title</td><td><input type="text" name="title" value="Draft"></td></tr>
+<tr><td>url</td><td><input type="url" name="url" value=""></td></tr>
+<tr><td>text</td><td><textarea name="text">Body</textarea></td></tr>
+<tr><td></td><td><input type="submit" value="submit"></td></tr></tbody></table></form><script>tlen()</script>`
+  : `<b>Login</b><form action="login" method="post"><input type="text" name="acct"></form>`, { me: null });
+
+test("the submit page reads HN's form and the message above it", () => {
+  const plain = readRegion(parse(submitPage()), "submit", "form");
+  assert.deepEqual(plain.data, { title: "Draft", url: "", text: "Body", error: null });
+  const rejected = readRegion(parse(submitPage({ message: "That's not a valid url." })), "submit", "form");
+  assert.equal(rejected.data.error, "That's not a valid url.");
+  // The page has no top bar; the form is the evidence of an account, and HN's login form of none.
+  assert.equal(adapter.pages.submit.account(parse(submitPage())), undefined);
+  assert.equal(adapter.pages.submit.account(parse(submitPage({ form: false }))), null);
+});
+
+test("setField fills one of HN's fields and submit lets HN judge the post", () => {
+  const { root } = readRegion(parse(submitPage()), "submit", "form");
+  const { setField, submit } = adapter.pages.submit.regions.form.actions;
+  assert.deepEqual(setField(root, { name: "title", value: "Draft" }), { satisfied: true });
+  const fill = setField(root, { name: "url", value: "https://example.com" });
+  assert.deepEqual(fill.steps, [{ fill: "form[action='/r'] [name='url']", value: "https://example.com" }]);
+  assert.throws(() => setField(root, { name: "fnid", value: "x" }));
+  assert.throws(() => setField(root, { name: "title", value: "x".repeat(81) }));
+  assert.deepEqual(submit(root, undefined).expect, { page: ["item", "feed"], notPage: "submit" });
+});
+
+test("the account page reads the name and karma, and signOut follows HN's logout link", () => {
+  const doc = parse(layout("").replace("</a> | <a id=\"logout\"", '</a> (<span id="karma">7</span>) | <a id="logout"'));
+  const account = readRegion(doc, "account", "account");
+  assert.deepEqual(account.data, { name: "alice", karma: "7" });
+  assert.deepEqual(adapter.pages.account.regions.account.actions.signOut(account.root, undefined),
+    { steps: [{ click: "a#logout" }], navigates: true });
+  const out = readRegion(parse(layout("", { me: null })), "account", "account");
+  assert.equal(out.data, null);
+  assert.deepEqual(adapter.pages.account.regions.account.actions.signOut(out.root, undefined), { satisfied: true });
+});
+
+test("information pages read their text, and only HN's layout shows the account", () => {
+  const guidelines = parse(`<html><head><title>Hacker News Guidelines</title></head><body><center><table><tr><td><b>Hacker News Guidelines</b></td></tr><tr><td><br><br>
+<p>Be kind. Don't
+be snarky.</p><p> </p><p><i>Thanks</i> <b>all</b>.</p></td></tr></table></center></body></html>`);
+  const page = adapter.pages.info;
+  assert.equal(page.ready(guidelines), true);
+  assert.equal(page.account(guidelines), undefined);
+  assert.equal(page.account(parse(feedPage())), "alice");
+  const sections = readRegion(guidelines, "info", "sections");
+  assert.equal(sections.data.title, "Hacker News Guidelines");
+  // One break per run, wrapped lines joined, the repeated title dropped, spaces between words kept.
+  assert.deepEqual(sections.data.parts, [
+    { text: "Be kind. Don't be snarky." }, { text: "\n\n" },
+    { text: "Thanks", em: true }, { text: " " }, { text: "all", strong: true }, { text: "." },
+  ]);
 });

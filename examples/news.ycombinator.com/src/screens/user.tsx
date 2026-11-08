@@ -1,8 +1,8 @@
 import { ScrollMemory, usePage, useRecord } from "@genesis/sdk/react";
 import { ORIGIN, type UserData } from "../model";
-import { Icon, LoadError, Notice, RichText, Skeleton, useOpenUrl } from "../components/ui";
+import { LoadError, Notice, RichText, Skeleton, useOpenUrl } from "../components/ui";
 
-/** A profile (`/user?id=`). Its lists open on the website until their screens return in step 8. */
+/** A profile (`/user?id=`). Its lists open as feeds. */
 export function UserScreen() {
   const page = usePage();
   const record = useRecord<UserData | null>("profile", null);
@@ -25,9 +25,9 @@ export function UserScreen() {
     </dl>
     {data.about.length > 0 && <section className="card"><h2 className="section-title">About</h2><RichText parts={data.about} /></section>}
     <nav className="list" aria-label={`${data.name} on Hacker News`}>
-      <button type="button" onClick={() => open(`${ORIGIN}/submitted?id=${id}`)}>Submissions <Icon name="external" /></button>
-      <button type="button" onClick={() => open(`${ORIGIN}/threads?id=${id}`)}>Comments <Icon name="external" /></button>
-      <button type="button" onClick={() => open(`${ORIGIN}/favorites?id=${id}`)}>Favorites <Icon name="external" /></button>
+      <button type="button" onClick={() => open(`${ORIGIN}/submitted?id=${id}`)}>Submissions</button>
+      <button type="button" onClick={() => open(`${ORIGIN}/threads?id=${id}`)}>Comments</button>
+      <button type="button" onClick={() => open(`${ORIGIN}/favorites?id=${id}`)}>Favorites</button>
     </nav>
   </ScrollMemory>;
 }

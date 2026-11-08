@@ -22,4 +22,4 @@ The backend needs Node 24, the workspace dependencies and OpenSSL. It uses port 
 
 ## Limits
 
-This revision ports only Home, discussions and profiles to the adapter runtime; Search, Post, Saved and Me are disabled until the rest of the migration lands (see the current spec). Replies, sign-in and HN pages without a screen open as the website in the same context. The service is not a multi-user backend.
+Home, Post and Me each keep their own Hacker News session history; Search and Saved are app screens. Search is a placeholder. Replies, sign-in and HN pages without a screen open as the website in the same context. The service is not a multi-user backend.

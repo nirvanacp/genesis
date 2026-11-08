@@ -78,9 +78,12 @@ export interface AccountData {
   karma: string | null;
 }
 
-export interface SubmitData {
-  /** Whether the page shows HN's submit form for the signed-in account. */
-  form: boolean;
+/** HN's submit form: the values its fields hold and the message HN shows after a rejection. */
+export interface SubmitForm {
+  title: string;
+  url: string;
+  text: string;
+  error: string | null;
 }
 
 /** HN's limit for submission titles. */

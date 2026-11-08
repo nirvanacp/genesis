@@ -1,13 +1,5 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": { "allowImportingTsExtensions": true },
-  "include": ["src"],
-  "exclude": [
-    "src/screens/info.tsx",
-    "src/screens/me.tsx",
-    "src/screens/post.tsx",
-    "src/screens/save.tsx",
-    "src/screens/saved.tsx",
-    "src/screens/search.tsx"
-  ]
+  "include": ["src"]
 }
