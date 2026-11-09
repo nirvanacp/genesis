@@ -1,0 +1,138 @@
+# Reusable workflow for applet repositories, run on a version tag: checks the tag against the
+# applet's version, rebuilds the applet and compares it with the committed build, then publishes
+# the bundle and its release record as a GitHub Release with build provenance attestations.
+# Callers: factory/templates/github/genesis-release.yml.
+name: Genesis applet release
+
+on:
+  workflow_call:
+    inputs:
+      genesis-repository:
+        description: The Genesis repository that holds these workflows and the applet tools.
+        type: string
+        default: nirvanacp/genesis
+      genesis-ref:
+        description: The Genesis commit whose tools read the tag. Pass the same sha the caller pins in `uses:`.
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    name: Read tag
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: source
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ inputs.genesis-repository }}
+          ref: ${{ inputs.genesis-ref }}
+          path: genesis
+          persist-credentials: false
+      # Node and npm match `engines` in the Genesis package.json.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.15.0
+      - run: npm install -g npm@11.14.1
+      - name: Install Genesis tools
+        working-directory: genesis
+        run: npm install --no-audit --no-fund && npm run build -w packages/core
+      - id: plan
+        working-directory: genesis
+        env:
+          TAG: ${{ github.ref_name }}
+        run: node tools/applet-ci.mjs plan --source ../source --tag "$TAG"
+
+  verify:
+    name: Verify ${{ fromJSON(needs.plan.outputs.matrix)[0].appletId }}
+    needs: plan
+    runs-on: ubuntu-24.04
+    env:
+      APPLET_PATH: ${{ fromJSON(needs.plan.outputs.matrix)[0].path }}
+      GENESIS_COMMIT: ${{ fromJSON(needs.plan.outputs.matrix)[0].genesisCommit }}
+    steps:
+      - name: Require a published release
+        if: ${{ !fromJSON(needs.plan.outputs.matrix)[0].genesisCommit }}
+        run: |
+          echo "::error::$APPLET_PATH/published has no release record. Run genesis-applet publish, commit published/ and tag again."
+          exit 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: source
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ inputs.genesis-repository }}
+          ref: ${{ fromJSON(needs.plan.outputs.matrix)[0].genesisCommit }}
+          path: genesis
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.15.0
+      - run: npm install -g npm@11.14.1
+      - name: Rebuild and compare
+        working-directory: genesis
+        run: node tools/applet-ci.mjs verify --source ../source --path "$APPLET_PATH"
+
+  release:
+    name: Publish ${{ github.ref_name }}
+    needs: [plan, verify]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPOSITORY: ${{ github.repository }}
+      TAG: ${{ github.ref_name }}
+      APPLET_ID: ${{ fromJSON(needs.plan.outputs.matrix)[0].appletId }}
+      APPLET_PATH: ${{ fromJSON(needs.plan.outputs.matrix)[0].path }}
+      VERSION: ${{ fromJSON(needs.plan.outputs.matrix)[0].version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: source
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ inputs.genesis-repository }}
+          ref: ${{ fromJSON(needs.plan.outputs.matrix)[0].genesisCommit }}
+          path: genesis
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.15.0
+      - run: npm install -g npm@11.14.1
+      - name: Write release assets
+        working-directory: genesis
+        env:
+          REPOSITORY_ID: ${{ github.repository_id }}
+          COMMIT: ${{ github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          npm install --no-audit --no-fund
+          npm run build -w packages/core
+          node tools/applet-ci.mjs assets --source ../source --path "$APPLET_PATH" --out ../out \
+            --repository-id "$REPOSITORY_ID" --repository "$REPOSITORY" --commit "$COMMIT" --tag "$TAG" --run "$RUN_URL"
+      - name: Create a draft release
+        run: |
+          prerelease=()
+          case "$VERSION" in *-*) prerelease=(--prerelease) ;; esac
+          gh release create "$TAG" --repo "$REPOSITORY" --draft --verify-tag --title "$APPLET_ID $VERSION" --generate-notes "${prerelease[@]}"
+          gh release upload "$TAG" --repo "$REPOSITORY" "out/applet-$APPLET_ID.bundle.json" "out/applet-$APPLET_ID.release.json"
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            out/applet-${{ fromJSON(needs.plan.outputs.matrix)[0].appletId }}.bundle.json
+            out/applet-${{ fromJSON(needs.plan.outputs.matrix)[0].appletId }}.release.json
+      # Published last, so immutable releases lock the assets only once they are all attached.
+      - name: Publish the release
+        run: gh release edit "$TAG" --repo "$REPOSITORY" --draft=false

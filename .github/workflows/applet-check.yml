@@ -1,0 +1,83 @@
+# Reusable workflow for applet repositories: rebuilds every applet with the Genesis commit its
+# published release record names, and fails unless the rebuild equals the committed build.
+# Callers: factory/templates/github/genesis-check.yml.
+name: Genesis applet check
+
+on:
+  workflow_call:
+    inputs:
+      genesis-repository:
+        description: The Genesis repository that holds these workflows and the applet tools.
+        type: string
+        default: nirvanacp/genesis
+      genesis-ref:
+        description: The Genesis commit whose tools list the applets. Pass the same sha the caller pins in `uses:`.
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    name: List applets
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: source
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ inputs.genesis-repository }}
+          ref: ${{ inputs.genesis-ref }}
+          path: genesis
+          persist-credentials: false
+      # Node and npm match `engines` in the Genesis package.json.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.15.0
+      - run: npm install -g npm@11.14.1
+      - name: Install Genesis tools
+        working-directory: genesis
+        run: npm install --no-audit --no-fund && npm run build -w packages/core
+      - id: plan
+        working-directory: genesis
+        run: node tools/applet-ci.mjs plan --source ../source
+
+  verify:
+    name: Verify ${{ matrix.applet.appletId }}
+    needs: plan
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        applet: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    env:
+      APPLET_ID: ${{ matrix.applet.appletId }}
+      APPLET_PATH: ${{ matrix.applet.path }}
+    steps:
+      - name: Require a published release
+        if: ${{ !matrix.applet.genesisCommit }}
+        run: |
+          echo "::error::$APPLET_PATH/published has no release record of $APPLET_ID. Run genesis-applet publish and commit published/."
+          exit 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: source
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ inputs.genesis-repository }}
+          ref: ${{ matrix.applet.genesisCommit }}
+          path: genesis
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.15.0
+      - run: npm install -g npm@11.14.1
+      - name: Rebuild and compare
+        working-directory: genesis
+        run: node tools/applet-ci.mjs verify --source ../source --path "$APPLET_PATH"
