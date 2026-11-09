@@ -9,7 +9,7 @@ Genesis is an Android app that runs user-built applets. An applet is a native-fe
 This file applies to every task in this repository. Two more instruction sets add to it, one for each development layer, and a coding agent is always working in at least one layer:
 
 - A **Genesis developer** changes the platform: the Android shell in `android/app`, the Rust host in `android/native` and `crates/`, the shared packages under `packages/`, the build and tooling under `tools/`, and the shared applet-builder guidance under `factory/`. Follow `.developer/AGENTS.md` for this work. It also defines where platform development records go. That file exists only in maintainer checkouts; without it, this file is the complete instruction set for platform work.
-- An **applet builder** creates or customizes an applet: its website adapters, screens, application rules, stored data and optional backend. Applets live in their own directories (in this repository under `examples/`). Follow `factory/AGENTS.md` for this work, and `examples/AGENTS.md` for the example collection.
+- An **applet builder** creates or customizes an applet: its website adapters, screens, application rules, stored data and optional backend. Applets live in the applets directory that `genesis.workspace.json` names (by default `applets/`, a nested repository cloned from the repository the config names), one directory per applet, named after its applet id. Follow `factory/AGENTS.md` for this work, and the applets directory's own `AGENTS.md` for its collection rules.
 
 Decide the layer from the paths the task changes. A task that changes both layers follows both files for their respective files, and keeps platform capabilities independent of any single applet.
 
@@ -31,8 +31,9 @@ Do not edit any `AGENTS.md` file unless the user explicitly asks you to update i
 | `packages/applet-tools/` | `genesis-applet` CLI: create, check (including compatibility), build, device install, services, kit export | Platform |
 | `tools/` | APK asset and native build pipeline, package index check, service helpers, git hooks | Platform |
 | `factory/` | Applet-builder instructions, guides, skills and templates | Platform (shared guidance) |
-| `examples/` | Example applets (`news.ycombinator.com`, `x.com`, `mail.google.com`), their port registry and backend launcher | Applets |
-| `genesis.packages.json` | Applets bundled into the APK | Platform |
+| `applets/` | The applets directory, a nested repository (`hn-bookmarks`, `x-bookmarks`, `gmail-only`), with its port registry and backend launcher | Applets |
+| `genesis.workspace.json` | Workspace layout: the applets directory (relative or absolute) and its repository. `npm run workspace -- path` prints the directory, `setup` clones it, `check` verifies the checkout | Platform |
+| `genesis.packages.json` | Applets bundled into the APK, by directory name inside the applets directory | Platform |
 
 The untracked root folders `notes/` and `.skills/` stay local to each machine. Never commit them.
 
@@ -56,6 +57,7 @@ A git worktree holds only the files its own repository tracks, so a new worktree
 - Install the hook once per clone, from the main checkout: `ln -s ../../tools/git-hooks/post-checkout .git/hooks/post-checkout`. Every worktree of the repository uses it.
 - Before working in a worktree, check that it has each nested repository the main checkout has (the first entry of `git worktree list` is the main checkout). If one is missing, because the hook is not installed, the worktree was made with `--no-checkout` or the hook printed a warning, add it with `git -C <main>/<path> worktree add <worktree>/<path> <branch>`. Never symlink or copy a nested repository into a worktree; that shares one working tree between agents or splits its history.
 - In a detached nested worktree, create a branch with `git -C <path> switch -c <branch>` before committing.
+- An applets directory that `genesis.workspace.json` places outside the repository is not nested: `npm run workspace -- sync` links `applets/` in every worktree to that one checkout. For parallel applet work in that layout, make a worktree of the applets repository for each Genesis worktree and point that worktree's uncommitted `genesis.workspace.json` at it.
 - `git worktree remove` deletes nested worktrees without checking them for changes. Commit the nested work first, remove the nested worktrees innermost first with `git -C <main>/<path> worktree remove <worktree>/<path>`, which refuses while changes are uncommitted, then remove the outer worktree. When a nested worktree was already deleted, run `git -C <main>/<path> worktree prune`.
 
 ## Questions and change requests

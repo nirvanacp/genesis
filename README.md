@@ -23,14 +23,16 @@ An applet author uses the public SDK and their own code, and does not need to le
 | `packages/applet-tools/` | `genesis-applet` CLI: create, check (including compatibility), build, device install, services, kit export |
 | `tools/` | APK asset and native build pipeline, package index check, service helpers |
 | `factory/` | Applet-builder instructions, guides, skills and templates |
-| `examples/` | Example applets (`news.ycombinator.com`, `x.com`), their port registry and backend launcher |
-| `genesis.packages.json` | Applets bundled into the APK |
+| `applets/` | The applets directory: a separate repository ([nirvanacp/applets](https://github.com/nirvanacp/applets)) with the `hn-bookmarks`, `x-bookmarks` and `gmail-only` applets, their port registry and backend launcher. Not tracked here |
+| `genesis.workspace.json` | Where the workspace's parts live: the applets directory and the repository it is cloned from |
+| `genesis.packages.json` | Applets bundled into the APK, named by their directory in the applets directory |
 
 ## Build and run
 
 Requirements: Node 24, Cargo 1.94.0 with `cargo-ndk` 4.1.2, the Android SDK with NDK 28.2.13676358 and `ANDROID_HOME` set, and OpenSSL for the example backends. `tools/build.mjs` checks these versions and names the install command for a missing one. From the repository root:
 
 ```sh
+npm run workspace -- setup   # clone the applets repository into the configured directory
 npm install
 npm run typecheck
 npm run build
@@ -39,29 +41,48 @@ npm run build
 android/gradlew -p android :app:installDebug
 
 # Build an applet and install it on a connected device without reinstalling the APK.
-node packages/applet-tools/src/cli.mjs check examples/x.com
-node packages/applet-tools/src/cli.mjs build examples/x.com
-node packages/applet-tools/src/cli.mjs dev install examples/x.com --device emulator-5554
+node packages/applet-tools/src/cli.mjs check applets/x-bookmarks
+node packages/applet-tools/src/cli.mjs build applets/x-bookmarks
+node packages/applet-tools/src/cli.mjs dev install applets/x-bookmarks --device emulator-5554
 ```
 
 `dev install` sends the last build, so run `build` first. Hacker News is bundled into the APK through `genesis.packages.json`; X is installed with `dev install`.
+
+## Applets directory
+
+The applets live in their own repository, outside this one's history. `genesis.workspace.json` says where:
+
+```json
+{ "applets": { "directory": "applets", "repository": "git@github.com:nirvanacp/applets.git" } }
+```
+
+`directory` is relative to the repository root or absolute. Name each applet's directory after its applet id, a short product name such as `hn-bookmarks` rather than a website domain, since one applet can span several websites. The root installs every applet's dependencies through the npm workspace `applets/*`, so all of them share one `node_modules` and one React. `npm run workspace -- <command>` keeps the checkout in line with the config:
+
+| Command | What it does |
+| --- | --- |
+| `path` | Prints the applets directory |
+| `setup` | Clones `repository` into `directory` when it is missing, then runs `sync` |
+| `sync` | When `directory` is not `applets`, links `applets/` to it; when it is outside the repository, also links its `node_modules` to the root install |
+| `check` | Fails with the repairing command when the checkout differs from the config. `npm run check:packages` runs it too |
+
+Run `npm install` after `setup`. The Gradle build, `tools/check-packages.mjs` and `genesis.packages.json` all read the configured directory. Inside the repository, the applets directory is a nested repository, so new worktrees get their own copy of it on the same branch name (see `AGENTS.md`); an applets directory outside the repository is shared by every worktree.
 
 ## Running local applet servers
 
 Start the applet backends before using features that depend on them. HN's Saved library and X's Categories need their own servers; opening Genesis does not start them. After restarting your computer, restart the servers. After restarting or reconnecting Android, restore its adb tunnels too.
 
-Use Node 24, installed workspace dependencies and OpenSSL. Device connection also requires an authorized adb device, a Genesis debug build and the applets installed in it. Run these commands from the repository root.
+Use Node 24, installed workspace dependencies and OpenSSL. Device connection also requires an authorized adb device, a Genesis debug build and the applets installed in it. Run these commands from the applets directory.
 
 ```sh
 # Start every applet's local backend in the background.
-./examples/start-applet-servers.sh
+./start-applet-servers.sh
 
 # Start backends and restore Android tunnels and service connections.
 # Replace emulator-5554 with your device's serial from adb devices.
-./examples/start-applet-servers.sh --device emulator-5554
+./start-applet-servers.sh --device emulator-5554
 
 # Stop all managed backends, preserving data and credentials.
-./examples/start-applet-servers.sh --stop
+./start-applet-servers.sh --stop
 ```
 
 Use the device command after a reboot to make backend features reachable from Genesis. Servers keep running after the launcher exits or the terminal closes. Repeated starts reuse healthy managed processes. To restart them, run the stop command followed by the appropriate start command.
@@ -69,14 +90,14 @@ Use the device command after a reboot to make backend features reachable from Ge
 To operate one applet instead:
 
 ```sh
-./examples/news.ycombinator.com/start.sh --device emulator-5554
-./examples/news.ycombinator.com/start.sh --stop
+./hn-bookmarks/start.sh --device emulator-5554
+./hn-bookmarks/start.sh --stop
 
-./examples/x.com/start.sh --device emulator-5554
-./examples/x.com/start.sh --stop
+./x-bookmarks/start.sh --device emulator-5554
+./x-bookmarks/start.sh --stop
 ```
 
-Omit `--device emulator-5554` to start only the computer-side backend. HN uses port 8787 and X uses 8788. Port reservations live in [examples/ports.json](examples/ports.json).
+Omit `--device emulator-5554` to start only the computer-side backend. HN uses port 8787 and X uses 8788. Port reservations live in the applets directory's `ports.json`.
 
 SQLite is built into Node; no separate database server is needed. Existing databases, tokens, TLS files and `server.log` files are preserved under `~/.local/share/genesis/services/<applet-id>/<service-id>/`. If you previously set `GENESIS_SERVICE_STATE_ROOT`, keep using that value to reach the same data. On X's first database creation only, prefix startup with `X_EXPECTED_HANDLE=your_handle`; an existing library keeps its stored account.
 
@@ -84,11 +105,11 @@ If startup fails, read the named service's private `server.log`, check adb autho
 
 ```sh
 # Validate port reservations and declarations without starting services.
-node examples/scripts/applet-servers.mjs all --check
+./start-applet-servers.sh --check
 
 # Inspect recorded process status without starting a backend.
-npx --no-install genesis-applet service status examples/news.ycombinator.com --local --json
-npx --no-install genesis-applet service status examples/x.com --local --json
+npx --no-install genesis-applet service status hn-bookmarks --local --json
+npx --no-install genesis-applet service status x-bookmarks --local --json
 ```
 
 These startup scripts are operator commands. Coding agents maintain and check them, but do not run services unless asked. See [services and data](factory/guides/services-and-data.md#local-startup-and-ports) for configuration and the contract for applets with several servers.
