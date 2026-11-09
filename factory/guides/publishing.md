@@ -1,6 +1,6 @@
 # Publishing
 
-Publish an applet so people can add it to Genesis from its GitHub repository and receive its updates. Genesis installs only builds that GitHub Actions has rebuilt from your sources and found identical to the build you committed.
+Publish an applet so people can add it to Genesis from its GitHub repository and receive its updates. On the release channel, GitHub Actions rebuilds each tagged version from your sources and publishes the GitHub Release only when the rebuild is identical to the build you committed. Builds installed from a branch or from a file are not rebuilt: Genesis installs the committed build as it is, after checking it against its release record.
 
 ## What a release is
 
@@ -30,7 +30,7 @@ Run these from the applet directory unless noted. `publish` runs inside a Genesi
 2. Write the published build: `npx genesis-applet publish .`. It runs `check`, refuses a version that is not semver, a dependency range that is not an exact version, or uncommitted changes in the Genesis checkout's `packages/`, `tools/`, `package.json` or `package-lock.json`, then builds a release bundle and writes both files into `published/`.
 3. Optionally rebuild and compare before committing: `npx genesis-applet publish . --verify`. CI runs the same comparison.
 4. Commit the version change and `published/` together.
-5. Create the tag: `npx genesis-applet release .`. It refuses uncommitted changes, a published build that is missing, out of date or ignored by git, an existing tag, and a version not higher than the last tag of this applet. `--dry-run` shows the tag without creating it. It never pushes.
+5. Create the tag: `npx genesis-applet release .`. It refuses uncommitted changes, a published build that is missing, out of date or ignored by git, an existing tag, and a version not higher than the last tag of this applet. It then rebuilds the applet as CI will and refuses a build that differs from `published/`, such as one written before a later source change. The rebuild needs the Genesis checkout at the commit the record names, so run `release` before moving the checkout to another commit. `--dry-run` shows the tag without creating it. It never pushes.
 6. Push the commit, then the tag: `git push`, then `git push origin <tag>`. The release workflow publishes the GitHub Release.
 
 `publish` warns when the Genesis commit is on no remote branch. CI checks Genesis out at the recorded commit, so that commit must be on GitHub before you push the tag.
@@ -50,6 +50,8 @@ In both workflows, replace each `<genesis-sha>` with the same full commit sha of
 
 The repository must be public: Genesis reads releases without an account.
 
+The check workflow builds the sources of every pull request, including pull requests from forks, and so runs their `package.json` scripts and build code. It runs with read-only repository access and no secrets, so this is safe while the repository has none. If you add secrets to the repository, keep them out of this workflow.
+
 ## Best practices
 
 - Turn on immutable releases in the repository settings, so a published release's assets and tag cannot change.
@@ -63,20 +65,21 @@ The repository must be public: Genesis reads releases without an account.
 
 ## How people install
 
-In Genesis, the user opens **Add applet** from the Genesis menu on the launcher and enters the repository as `owner/name` or a GitHub URL. A URL can point at a folder (`/tree/<branch>/<path>`) or a release (`/releases/tag/<tag>`).
+In Genesis, the user opens **Add applet** from the Genesis menu on the launcher and enters the repository as `owner/name` or a GitHub URL. A URL can point at a folder on a branch (`/tree/<branch>/<path>`) or a release (`/releases/tag/<tag>`).
 
-- **Release channel**: Genesis lists the applets that have GitHub Releases with a release record and offers the newest stable version that this Genesis supports. Prereleases appear only when the user turns on **Show prereleases**.
-- **Branch channel**: a repository with no qualifying release offers the committed `published/` build on the default branch, pinned to its commit.
+- **Release channel**: Genesis lists the applets that have GitHub Releases with a release record and offers the newest stable version that this Genesis supports. Prereleases appear only when the user turns on **Show prereleases**. A `/releases/tag/<tag>` link offers only that release, and Genesis reports when the tag has no applet release.
+- **Branch channel**: a `/tree/<branch>` link, or a repository with no qualifying release, offers the committed `published/` build on that branch (the default branch when none is named), pinned to its commit.
 
-Before installing, Genesis shows the name, version, source, origins and capabilities, and asks again when the install would update, downgrade or replace another applet with the same id. Replacing another publisher's applet asks whether to keep or erase its stored data.
+Before installing, Genesis shows the name, version, source, origins and capabilities, and asks again when the install would update, downgrade or replace another applet with the same id. Choosing the build that is already installed offers to reinstall it, which only records the new source. Replacing another publisher's applet asks whether to keep or erase its stored data; with erase, Genesis installs the new build only after the old data is deleted.
 
-Genesis checks for updates when the launcher opens, at most every six hours, and on **Check for updates** in the Genesis menu. An update shows as a badge on the applet and installs only after the user reviews it. A user can also install a downloaded `applet-<id>.bundle.json`, together with its `.release.json`, through **Add from file** in the same dialog, or by opening the file with Genesis from another app. **Install another version** on the repository screen installs an older release.
+Genesis checks for updates when the launcher opens, at most every six hours, and on **Check for updates** in the Genesis menu. It offers the newest release newer than the installed one that this Genesis supports, and reports any applet it could not check without stopping the others. An update shows as a badge on the applet and installs only after the user reviews it. Genesis reads the newest 100 releases of a repository, so it reports a release as withdrawn only when the repository has fewer. A user can also install a downloaded `applet-<id>.bundle.json`, together with its `.release.json`, through **Add from file** in the same dialog, or by opening the file with Genesis from another app. **Install another version** on the repository screen installs an older release.
 
 ## Troubleshooting
 
 | Problem | Fix |
 | --- | --- |
-| `PUBLISH_MISMATCH` from `publish --verify` or the check workflow | The listed fields differ between the committed build and a rebuild. Run `publish` again and commit, with the Genesis commit checked out that the record names. A changed line ending in `published/` means `.gitattributes` is missing |
+| `PUBLISH_MISMATCH` from `publish --verify`, `release` or the check workflow | The listed fields differ between the committed build and a rebuild. Run `publish` again and commit, with the Genesis commit checked out that the record names. A changed line ending in `published/` means `.gitattributes` is missing. The Node version in the record is not compared |
+| `release` says the build was made with another Genesis commit | Check out the Genesis commit the record names, or run `publish` again with the current one and commit |
 | `was published with Genesis <sha>; check out that commit` | The record names a different Genesis commit than the checkout. Check out that commit, or run `publish` again with the current one |
 | The release workflow names a different version for the tag | The tag does not match `package.json`. Delete the unpushed tag, fix the version, publish, commit and tag again |
 | The check workflow cannot check out Genesis | The recorded Genesis commit is not on GitHub |
