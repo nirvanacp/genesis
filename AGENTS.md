@@ -140,7 +140,7 @@ Follow these steps only when the user asks you to push or to open pull requests.
 The developer controls every version that belongs to this project. Do not raise, lower or reset one on your own, even when a change seems to call for it. This includes:
 
 - the versions of the packages and crates in this repository (`@genesis/core`, `@genesis/sdk`, `@genesis/applet-tools`, `genesis-contracts`, `genesis-host`) and the dependency ranges that point at them;
-- the root `package.json` version, and the applet `package.json` versions except where the applet version rules in `factory/AGENTS.md` allow a change;
+- the root `package.json` version. Applet versions are not platform versions: applet work follows `factory/AGENTS.md` for them;
 - the Android `versionCode` and `versionName`;
 - format and protocol numbers such as the manifest `schemaVersion`, the bundle format, the kit version and the service envelope version;
 - the compatibility table in `packages/core/src/compat.ts` and its mirror in `crates/contracts` (manifest schema, bundle format, document protocol, adapter API, session state, import envelope, credential envelope, packages index);
