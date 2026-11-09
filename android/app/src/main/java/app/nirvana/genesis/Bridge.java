@@ -15,11 +15,13 @@ final class Bridge {
 
     private final Shell shell;
     private final ServiceClient services;
+    private final Fetcher fetcher;
     private final Task task;
 
-    Bridge(Shell shell, ServiceClient services, Task task) {
+    Bridge(Shell shell, ServiceClient services, Fetcher fetcher, Task task) {
         this.shell = shell;
         this.services = services;
+        this.fetcher = fetcher;
         this.task = task;
     }
 
@@ -71,6 +73,11 @@ final class Bridge {
             case "openExternal": shell.openExternal(command.getString("url")); break;
             case "wake": task.wake(command.getLong("delayMs")); break;
             case "moveTaskToBack": task.moveToBack(); break;
+            case "fetch": fetcher.fetch(command); break;
+            case "showProgress": shell.showProgress(command.isNull("message") ? null : command.optString("message", null)); break;
+            case "showRepositoryApplets": shell.showRepositoryApplets(command); break;
+            case "showImportReview": shell.showImportReview(command); break;
+            case "forgetApplet": services.forget(command.getString("appletId")); break;
             default: throw new IllegalArgumentException("Unknown command " + type);
         }
     }

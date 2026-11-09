@@ -299,6 +299,13 @@ final class ServiceClient {
         return new String(cipher.doFinal(Base64.decode(parts[1], Base64.NO_WRAP)), StandardCharsets.UTF_8);
     }
 
+    /** Deletes every stored connection of a removed or erased applet. */
+    void forget(String applet) {
+        SharedPreferences.Editor editor = settings.edit();
+        for (String key : settings.getAll().keySet()) if (key.startsWith(applet + "/")) editor.remove(key);
+        editor.apply();
+    }
+
     void close() {
         closed = true;
         worker.shutdownNow();

@@ -19,7 +19,9 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import app.nirvana.genesis.ui.AddApplet;
 import app.nirvana.genesis.ui.GenesisMenu;
+import app.nirvana.genesis.ui.ImportReview;
 import app.nirvana.genesis.ui.Launcher;
 import app.nirvana.genesis.ui.Splash;
 import app.nirvana.genesis.ui.StatusSheet;
@@ -48,6 +50,8 @@ final class Shell implements Views.Listener {
         void launcherShown();
         boolean chooseFiles(WebChromeClient.FileChooserParams params, ValueCallback<Uri[]> callback, java.util.function.BooleanSupplier valid);
         void cancelInvalidFiles();
+        /** Opens the system picker for a bundle file, with its release record if the user picks one. */
+        void pickAppletFile();
     }
 
     /** How long history.go() may take to start moving before the native fallback runs. */
@@ -72,6 +76,16 @@ final class Shell implements Views.Listener {
     private View customView;
     private WebChromeClient.CustomViewCallback customCallback;
     private int visualState;
+    /** The host's progress message, and the repository list or review the running flow shows. */
+    private androidx.appcompat.app.AlertDialog progress, flowDialog;
+    private TextView progressText;
+    private final Launcher.Listener launcherListener = new Launcher.Listener() {
+        @Override public void open(String id) { openApplet(id); }
+        @Override public void update(String id) { checkUpdates(id); }
+        @Override public void options(JSONObject entry) { appletOptions(entry); }
+        @Override public void menu() { GenesisMenu.showLauncher(activity, tokens, Shell.this::menuAction); }
+        @Override public void add() { addApplet(); }
+    };
 
     Shell(Activity activity, Owner owner) {
         this.activity = activity;
@@ -145,7 +159,7 @@ final class Shell implements Views.Listener {
         applet.setVisibility(View.GONE);
         launcher.setVisibility(View.VISIBLE);
         launcher.removeAllViews();
-        launcher.addView(new Launcher(activity, tokens, this::openApplet).build(applets), new ScrollView.LayoutParams(-1, -2));
+        launcher.addView(new Launcher(activity, tokens, launcherListener).build(applets), new ScrollView.LayoutParams(-1, -2));
         owner.launcherShown();
     }
 
@@ -276,6 +290,105 @@ final class Shell implements Views.Listener {
     }
 
     boolean appletShown() { return appletId != null; }
+
+    /** A running applet flow's message; null hides it. Cancel ends the flow in the host. */
+    void showProgress(String message) {
+        if (message == null) {
+            if (progress != null) progress.dismiss();
+            progress = null;
+            progressText = null;
+            return;
+        }
+        if (progress != null) { progressText.setText(message); return; }
+        LinearLayout row = new LinearLayout(activity);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(tokens.dp(24), tokens.dp(20), tokens.dp(24), tokens.dp(8));
+        com.google.android.material.progressindicator.CircularProgressIndicator spinner =
+            new com.google.android.material.progressindicator.CircularProgressIndicator(activity);
+        spinner.setIndeterminate(true);
+        row.addView(spinner, new LinearLayout.LayoutParams(-2, -2));
+        progressText = tokens.text(message, Tokens.Type.BODY_LARGE, tokens.onSurface);
+        LinearLayout.LayoutParams textLayout = new LinearLayout.LayoutParams(0, -2, 1);
+        textLayout.setMarginStart(tokens.dp(16));
+        row.addView(progressText, textLayout);
+        progress = new MaterialAlertDialogBuilder(activity).setView(row).setCancelable(false)
+            .setNegativeButton("Cancel", (d, w) -> {
+                progress = null;
+                progressText = null;
+                owner.send(Bridge.event("cancelFlow"));
+            }).show();
+    }
+
+    void showRepositoryApplets(JSONObject command) throws JSONException {
+        closeFlowDialogs();
+        String note = command.isNull("note") ? null : command.optString("note", null);
+        flowDialog = AddApplet.repository(activity, tokens, command.getString("repository"), note, command.getJSONArray("applets"), addListener);
+    }
+
+    void showImportReview(JSONObject command) {
+        closeFlowDialogs();
+        String reviewId = command.optString("reviewId");
+        flowDialog = ImportReview.show(activity, tokens, command, (accept, replace) -> {
+            flowDialog = null;
+            try {
+                owner.send(Bridge.event("reviewDecision").put("reviewId", reviewId).put("accept", accept)
+                    .put("replace", replace == null ? JSONObject.NULL : replace));
+            } catch (JSONException ignored) { /* Unreachable for these values. */ }
+        });
+    }
+
+    /** Closes the dialogs of a flow the host moved past, without answering for the user. */
+    private void closeFlowDialogs() {
+        showProgress(null);
+        if (flowDialog != null) flowDialog.dismiss();
+        flowDialog = null;
+    }
+
+    private final AddApplet.Listener addListener = new AddApplet.Listener() {
+        @Override public void addFromRepository(String input) {
+            try { owner.send(Bridge.event("addFromRepository").put("input", input)); }
+            catch (JSONException ignored) { /* Unreachable for string values. */ }
+        }
+        @Override public void pickFile() { owner.pickAppletFile(); }
+        @Override public void choose(String id, String version) {
+            flowDialog = null;
+            try { owner.send(Bridge.event("chooseCandidate").put("appletId", id).put("version", version == null ? JSONObject.NULL : version)); }
+            catch (JSONException ignored) { /* Unreachable for string values. */ }
+        }
+        @Override public void cancel() {
+            flowDialog = null;
+            owner.send(Bridge.event("cancelFlow"));
+        }
+    };
+
+    private void addApplet() { AddApplet.show(activity, tokens, addListener); }
+
+    private void checkUpdates(String id) {
+        try { owner.send(Bridge.event("checkUpdates").put("appletId", id == null ? JSONObject.NULL : id).put("manual", true)); }
+        catch (JSONException ignored) { /* Unreachable for these values. */ }
+    }
+
+    /** The launcher's long press: Check for update for a GitHub applet, and Remove behind a confirmation. */
+    private void appletOptions(JSONObject entry) {
+        String id = entry.optString("appletId");
+        String name = entry.optString("name", id);
+        String source = entry.isNull("source") ? null : entry.optString("source", null);
+        boolean github = source != null && source.startsWith("GitHub");
+        MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(activity).setTitle(name);
+        if (source != null) builder.setMessage(source);
+        if (github) builder.setNeutralButton("Check for update", (d, w) -> checkUpdates(id));
+        builder.setPositiveButton("Remove", (d, w) -> confirmRemove(id, name)).setNegativeButton("Cancel", null).show();
+    }
+
+    private void confirmRemove(String id, String name) {
+        new MaterialAlertDialogBuilder(activity).setTitle("Remove " + name + "?")
+            .setMessage(name + "'s stored data and service connections are deleted. Website sign-ins stay with the websites.")
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Remove", (d, w) -> {
+                try { owner.send(Bridge.event("removeApplet").put("appletId", id)); }
+                catch (JSONException ignored) { /* Unreachable for string values. */ }
+            }).show();
+    }
 
     void showError(String message) {
         new MaterialAlertDialogBuilder(activity).setTitle("Genesis").setMessage(message).setPositiveButton("Close", null).show();
@@ -411,7 +524,7 @@ final class Shell implements Views.Listener {
         tokens.applySystemBars(activity);
         if (launcher.getVisibility() == View.VISIBLE && launcherApplets != null) {
             launcher.removeAllViews();
-            launcher.addView(new Launcher(activity, tokens, this::openApplet).build(launcherApplets), new ScrollView.LayoutParams(-1, -2));
+            launcher.addView(new Launcher(activity, tokens, launcherListener).build(launcherApplets), new ScrollView.LayoutParams(-1, -2));
         }
     }
 
@@ -463,6 +576,8 @@ final class Shell implements Views.Listener {
             case RELOAD: event = "reload"; break;
             case VIEW_WEBSITE: event = "viewWebsite"; break;
             case INFO: event = "info"; break;
+            case ADD_APPLET: addApplet(); return;
+            case CHECK_UPDATES: checkUpdates(null); return;
             case SERVICES: if (appletId != null) owner.configureServices(appletId); return;
             case OPEN_IN_BROWSER: { String url = revealedUrl(); if (url != null) openExternal(url); return; }
             case COPY_LINK: { String url = revealedUrl(); if (url != null) tokens.copy("Link", url); return; }
