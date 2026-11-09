@@ -3,7 +3,7 @@ use crate::{
     applets::Applets,
     contexts::{BackSlot, ContextView, Contexts, Resume, Session},
     documents::Documents,
-    flows::{Deletion, Flow, Updates},
+    flows::{Deletion, Flow, Updates, erasing_message},
     storage_worker,
 };
 use genesis_contracts::*;
@@ -184,6 +184,10 @@ impl Host {
     /// Starts an applet, or recreates it from `resume` at its contexts' last committed URLs.
     /// An incompatible applet answers the status sheet and does not start.
     pub fn activate(&mut self, applet_id: &str, resume: Option<Resume>) {
+        if self.erasing(applet_id) {
+            self.out.push(ShellCommand::ShowError { message: erasing_message(applet_id) });
+            return self.show_launcher();
+        }
         let Some((revision, manifest)) = self.applets.current(applet_id).map(|(r, m)| (r, m.clone())) else {
             match self.applets.entry(applet_id) {
                 Some(entry) => self.out.push(ShellCommand::ShowStatus {

@@ -54,11 +54,19 @@ pub struct Flow {
     failed: BTreeMap<String, String>,
 }
 
-/// A storage job erasing an applet's data, and what follows once the data is gone.
+/// A storage job erasing an applet's data, and what follows once the data is gone. The job
+/// holds the reviewed build itself, so the install still follows when a new Activity ends the flow.
 pub enum Deletion {
-    /// The reviewed build waiting in the flow, installed with "replace and erase".
-    Install { applet_id: String },
+    /// The reviewed build, installed with "replace and erase".
+    Install { applet_id: String, review: Box<PendingReview> },
     Remove { applet_id: String },
+}
+
+impl Deletion {
+    fn applet_id(&self) -> &str {
+        let (Deletion::Install { applet_id, .. } | Deletion::Remove { applet_id }) = self;
+        applet_id
+    }
 }
 
 #[derive(Clone, PartialEq)]
@@ -83,14 +91,18 @@ enum Stage {
 
 enum Step {
     Repository,
-    Releases,
+    /// One page of releases, numbered from 1.
+    Releases { page: u32 },
+    /// The release of the tag a `/releases/tag/<tag>` link names.
+    TagRelease,
     Record(Release),
     Commit,
     Tree { commit: String },
     BranchRecord { commit: String, applet_path: String },
     Bundle { candidate: Box<Candidate>, older_allowed: bool },
     CheckRepository { applet_id: String },
-    CheckReleases { applet_id: String },
+    /// `found` holds this applet's releases from the earlier pages.
+    CheckReleases { applet_id: String, page: u32, found: Vec<Release> },
     /// `older` holds the next newer releases, newest first, tried when this one does not run here.
     CheckRecord { applet_id: String, release: Release, older: Vec<Release>, withdrawn: bool },
     CheckCommit { applet_id: String },
@@ -102,7 +114,7 @@ impl Step {
     fn checked_applet(&self) -> Option<&str> {
         match self {
             Step::CheckRepository { applet_id }
-            | Step::CheckReleases { applet_id }
+            | Step::CheckReleases { applet_id, .. }
             | Step::CheckRecord { applet_id, .. }
             | Step::CheckCommit { applet_id }
             | Step::CheckBranchRecord { applet_id, .. } => Some(applet_id),
@@ -121,7 +133,7 @@ struct Candidate {
     note: Option<String>,
 }
 
-struct PendingReview {
+pub struct PendingReview {
     review_id: String,
     file: PathBuf,
     source: Source,
@@ -360,6 +372,8 @@ impl Host {
                 Err(format!("GitHub rate limit reached, try again in {minutes} minutes"))
             }
             304 => self.cache().and_then(|c| c.get(&url)).map(|c| c.body).ok_or_else(|| "GitHub's cached answer is missing; try again".into()),
+            // A tag with no release: settle reports it as a missing applet release.
+            404 if matches!(step, Step::TagRelease) => Ok(String::new()),
             404 => Err(format!("Not found on GitHub: {url}")),
             200..=299 => {
                 if let (true, Some(body), Some(cache)) = (fetch::is_api(&url), body.as_ref(), self.cache()) {
@@ -409,20 +423,35 @@ impl Host {
         match step {
             Step::Repository => {
                 let repository = github::parse_repository(&parse_json(&got)?)?;
-                let url = github::releases_url(&repository.full_name);
-                self.progress(format!("Reading {}…", repository.full_name));
+                let full_name = repository.full_name.clone();
+                self.progress(format!("Reading {full_name}…"));
                 let flow = self.flow_mut()?;
                 flow.repository = Some(repository);
                 // A `/tree/<branch>` link names the branch channel; releases are not consulted.
                 if flow.target.branch.is_some() {
                     return self.start_branch();
                 }
-                self.request(url, Step::Releases, API, false)
+                match flow.target.tag.clone() {
+                    Some(tag) => self.request(github::release_by_tag_url(&full_name, &tag), Step::TagRelease, API, false),
+                    None => self.request(github::releases_url(&full_name, 1), Step::Releases { page: 1 }, API, false),
+                }
             }
-            Step::Releases => {
-                let tag = self.flow_mut()?.target.tag.clone();
-                let releases = github::parse_releases(&parse_json(&got)?);
-                for release in releases.into_iter().filter(|r| tag.as_ref().is_none_or(|t| *t == r.tag)) {
+            Step::Releases { page } => {
+                let body = parse_json(&got)?;
+                for release in github::parse_releases(&body) {
+                    self.request(release.record_url.clone(), Step::Record(release), API, false)?;
+                }
+                if github::page_full(&body) && page < github::MAX_RELEASE_PAGES {
+                    let full_name = self.flow_mut()?.repository.as_ref().ok_or("No repository")?.full_name.clone();
+                    self.request(github::releases_url(&full_name, page + 1), Step::Releases { page: page + 1 }, API, false)?;
+                }
+                Ok(())
+            }
+            Step::TagRelease => {
+                if got.is_empty() {
+                    return Ok(());
+                }
+                for release in github::parse_releases(&Value::Array(vec![parse_json(&got)?])) {
                     self.request(release.record_url.clone(), Step::Record(release), API, false)?;
                 }
                 Ok(())
@@ -468,7 +497,7 @@ impl Host {
                 self.review_bundle(file, candidate.source, Some(&candidate.record), older_allowed, Vec::new())
             }
             Step::CheckRepository { applet_id } => self.check_repository(applet_id, &got),
-            Step::CheckReleases { applet_id } => self.check_releases(applet_id, &got),
+            Step::CheckReleases { applet_id, page, found } => self.check_releases(applet_id, page, found, &got),
             Step::CheckRecord { applet_id, release, older, withdrawn } => self.check_record(applet_id, release, older, withdrawn, &got),
             Step::CheckCommit { applet_id } => self.check_commit(applet_id, &got),
             Step::CheckBranchRecord { applet_id, commit } => self.check_branch_record(applet_id, commit, &got),
@@ -667,6 +696,9 @@ impl Host {
     fn install_reviewed(&mut self, review: PendingReview, replace: Option<ReplaceMode>) -> Result<bool, String> {
         let (bundle, files) = Self::read_reviewed(&review)?;
         let id = bundle.manifest.id.clone();
+        if self.erasing(&id) {
+            return Err(erasing_message(&id));
+        }
         let again = source::review(self.applets.source(&id), &review.source, review.older_allowed);
         if json!(again.outcome) != json!(review.outcome) {
             return Err("The installed applet changed during the review. Try again.".into());
@@ -688,11 +720,15 @@ impl Host {
         };
         if erase {
             self.retire_active_applet(&id);
-            self.erase_data(Deletion::Install { applet_id: id.clone() })?;
+            // The erase owns the reviewed file from here, so ending the flow keeps it.
+            let file = review.file.clone();
+            self.flow_mut()?.files.retain(|f| *f != file);
+            if let Err(message) = self.erase_data(Deletion::Install { applet_id: id, review: Box::new(review) }) {
+                let _ = fs::remove_file(&file);
+                return Err(message);
+            }
             self.progress(format!("Erasing the data of {}…", bundle.manifest.name));
-            let flow = self.flow_mut()?;
-            flow.stage = Stage::Erasing;
-            flow.review = Some(review);
+            self.flow_mut()?.stage = Stage::Erasing;
             return Ok(false);
         }
         self.install_bundle(&bundle, files, review.source)?;
@@ -727,7 +763,7 @@ impl Host {
     /// Deletes the applet's stored documents and namespace. The install or removal waits for
     /// `deletion_completed`, so an applet whose data could not be erased stays as it was.
     fn erase_data(&mut self, deletion: Deletion) -> Result<(), String> {
-        let (Deletion::Install { applet_id } | Deletion::Remove { applet_id }) = &deletion;
+        let applet_id = deletion.applet_id().to_string();
         let job_id = documents::next_op_id();
         let job = StorageJob { job_id, applet_id: applet_id.clone(), operation: StorageOperation::DeleteApplet };
         if !storage_worker::submit(job) {
@@ -737,13 +773,18 @@ impl Host {
         Ok(())
     }
 
-    /// Finishes what waited for the erase. The shell forgets the service credentials only once
-    /// the stored data is gone.
+    /// An applet whose data is being erased: it cannot be opened, installed or removed until the
+    /// erase finishes.
+    pub fn erasing(&self, applet_id: &str) -> bool {
+        self.deletions.values().any(|d| d.applet_id() == applet_id)
+    }
+
+    /// Finishes what waited for the erase, also when a new Activity ended the flow. The shell
+    /// forgets the service credentials only once the stored data is gone.
     pub fn deletion_completed(&mut self, deletion: Deletion, erased: Result<(), String>) {
         match deletion {
-            Deletion::Install { applet_id } => {
-                let review = self.flow.as_mut().filter(|f| f.stage == Stage::Erasing).and_then(|f| f.review.take());
-                let Some(review) = review else { return };
+            Deletion::Install { applet_id, review } => {
+                let file = review.file.clone();
                 let installed = erased
                     .map_err(|e| format!("The stored data of {applet_id} was not erased, so the new build was not installed: {e}"))
                     .and_then(|()| {
@@ -751,9 +792,14 @@ impl Host {
                         let (bundle, files) = Self::read_reviewed(&review)?;
                         self.install_bundle(&bundle, files, review.source)
                     });
-                match installed {
-                    Ok(()) => self.end_flow(),
-                    Err(message) => self.fail(message),
+                let _ = fs::remove_file(&file);
+                // Another flow may have started after a new Activity ended this one; leave it alone.
+                let waiting = self.flow.as_ref().is_some_and(|f| f.stage == Stage::Erasing);
+                match (installed, waiting) {
+                    (Ok(()), true) => self.end_flow(),
+                    (Ok(()), false) => self.refresh_launcher(),
+                    (Err(message), true) => self.fail(message),
+                    (Err(message), false) => self.out.push(ShellCommand::ShowError { message }),
                 }
             }
             Deletion::Remove { applet_id } => {
@@ -854,6 +900,9 @@ impl Host {
             Verified::Current { bundle, files } => {
                 let id = bundle.manifest.id.clone();
                 let source = Source::Dev { bundle_sha256: imports::sha256_hex(payload.as_bytes()) };
+                if self.erasing(&id) {
+                    return Err(ErrorBody::new(ErrorCode::Rejected, erasing_message(&id)));
+                }
                 if matches!(self.applets.source(&id), Some(Some(Source::Github { .. } | Source::File { .. }))) {
                     self.review_dev(payload, source).map_err(|m| ErrorBody::new(ErrorCode::Rejected, m))?;
                     return Ok(None);
@@ -918,7 +967,7 @@ impl Host {
                     bundle_sha256,
                     home: record.and_then(|r| r.home),
                 };
-                if self.applets.removed_bundled(&id) || !self.bundled_wins(&id, &source) {
+                if self.applets.removed_bundled(&id) || self.erasing(&id) || !self.bundled_wins(&id, &source) {
                     return;
                 }
                 self.applets.install(&bundle, files, source).map(|(_, previous)| (id, previous))
@@ -947,7 +996,7 @@ impl Host {
 
     pub fn remove_applet(&mut self, applet_id: &str) {
         let reviewing = self.flow.as_ref().and_then(|f| f.review.as_ref()).is_some();
-        if reviewing {
+        if reviewing || self.erasing(applet_id) {
             return self.out.push(ShellCommand::ShowError { message: BUSY.into() });
         }
         if self.applets.source(applet_id).is_none() {
@@ -1038,20 +1087,26 @@ impl Host {
             self.applets.set_source(&applet_id, installed)?;
         }
         let (url, step) = match channel {
-            Channel::Release => (github::releases_url(&repository.full_name), Step::CheckReleases { applet_id }),
+            Channel::Release => (github::releases_url(&repository.full_name, 1), Step::CheckReleases { applet_id, page: 1, found: Vec::new() }),
             Channel::Branch => (github::commit_url(&repository.full_name, &branch), Step::CheckCommit { applet_id }),
         };
         self.request(url, step, FETCH_API_MAX_BYTES, false)
     }
 
-    fn check_releases(&mut self, applet_id: String, got: &str) -> Result<(), String> {
-        let Some(Source::Github { tag, version, prerelease: on_prerelease, .. }) = self.github_source(&applet_id) else { return Ok(()) };
-        let page = parse_json(got)?;
-        // Only the newest page is read: a tag missing from a full page may be on an older one.
-        let full_page = page.as_array().is_some_and(|a| a.len() >= github::RELEASES_PER_PAGE);
-        let releases: Vec<Release> = github::parse_releases(&page).into_iter().filter(|r| r.applet_id == applet_id).collect();
-        let withdrawn = !full_page && tag.as_ref().is_some_and(|t| !releases.iter().any(|r| r.tag == *t));
-        let mut newer: Vec<Release> = releases.into_iter().filter(|r| (on_prerelease || !r.prerelease) && newer(&r.version, &version)).collect();
+    /// Reads release pages, newest first, until the installed tag appears or the list ends.
+    fn check_releases(&mut self, applet_id: String, page: u32, mut found: Vec<Release>, got: &str) -> Result<(), String> {
+        let Some(Source::Github { full_name, tag, version, prerelease: on_prerelease, .. }) = self.github_source(&applet_id) else { return Ok(()) };
+        let body = parse_json(got)?;
+        found.extend(github::parse_releases(&body).into_iter().filter(|r| r.applet_id == applet_id));
+        let seen = tag.as_ref().is_some_and(|t| found.iter().any(|r| r.tag == *t));
+        let more = github::page_full(&body);
+        if more && tag.is_some() && !seen && page < github::MAX_RELEASE_PAGES {
+            let step = Step::CheckReleases { applet_id, page: page + 1, found };
+            return self.request(github::releases_url(&full_name, page + 1), step, FETCH_API_MAX_BYTES, false);
+        }
+        // A tag missing from a list cut off after the last page read may still exist.
+        let withdrawn = !more && tag.is_some() && !seen;
+        let mut newer: Vec<Release> = found.into_iter().filter(|r| (on_prerelease || !r.prerelease) && newer(&r.version, &version)).collect();
         newer.sort_by(|a, b| semver::compare(&a.version, &b.version).unwrap_or(Ordering::Equal));
         self.check_next_release(applet_id, newer, withdrawn)
     }
@@ -1163,4 +1218,8 @@ impl Host {
         }
         self.refresh_launcher();
     }
+}
+
+pub fn erasing_message(applet_id: &str) -> String {
+    format!("The data of {applet_id} is being erased; try again in a moment")
 }

@@ -56,11 +56,25 @@ pub fn repository_by_id_url(id: u64) -> String {
     format!("{API}/repositories/{id}")
 }
 
-/// GitHub's largest page. Genesis reads only the newest page of releases.
+/// GitHub's largest page.
 pub const RELEASES_PER_PAGE: usize = 100;
+/// Genesis reads at most the newest 1000 releases of a repository.
+pub const MAX_RELEASE_PAGES: u32 = 10;
 
-pub fn releases_url(full_name: &str) -> String {
-    format!("{API}/repos/{full_name}/releases?per_page={RELEASES_PER_PAGE}")
+/// One page of releases, newest first; `page` starts at 1.
+pub fn releases_url(full_name: &str, page: u32) -> String {
+    format!("{API}/repos/{full_name}/releases?per_page={RELEASES_PER_PAGE}&page={page}")
+}
+
+/// Whether a later page may hold more releases: this page is full. A page past
+/// `MAX_RELEASE_PAGES` is never read, and the caller treats the list as incomplete.
+pub fn page_full(page: &Value) -> bool {
+    page.as_array().is_some_and(|a| a.len() >= RELEASES_PER_PAGE)
+}
+
+/// The release of one tag, wherever it sits in the release list.
+pub fn release_by_tag_url(full_name: &str, tag: &str) -> String {
+    format!("{API}/repos/{full_name}/releases/tags/{}", tag.split('/').map(encode).collect::<Vec<_>>().join("/"))
 }
 
 pub fn commit_url(full_name: &str, branch: &str) -> String {
