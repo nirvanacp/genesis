@@ -211,8 +211,12 @@ function apply(state: CoordinatorState, event: CoordinatorEvent, manifest: Manif
 
     case "user.viewWebsite": {
       const context = state.contexts[event.id];
-      if (!context || context.pin === "user") return unchanged;
-      return { state: withContext(state, { ...context, pin: "user" }), effects };
+      if (!context) return unchanged;
+      // The website shows only with no overlay above it, so viewing it leaves the overlay screens.
+      const shown = state.active === event.id && state.overlay.length === 0
+        ? state
+        : { ...state, active: event.id, overlay: [], leaveGuard: null };
+      return { state: context.pin === "user" ? shown : withContext(shown, { ...context, pin: "user" }), effects };
     }
 
     case "user.done": {
