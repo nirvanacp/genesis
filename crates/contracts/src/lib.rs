@@ -949,6 +949,8 @@ pub enum StorageOperation {
     Get(StorageKey),
     List(StorageList),
     Commit(StorageBatch),
+    /// Deletes the applet's documents and namespace. Sent by the host only, never by a document.
+    DeleteApplet,
 }
 
 /// Host to storage worker.
