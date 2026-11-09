@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, type PointerEvent, type ReactNode } from "react";
-import { useNavigation } from "@genesis/sdk/react";
+import { useForeground, useNavigation } from "@genesis/sdk/react";
 import type { ErrorInfo } from "@genesis/sdk";
 import { avatarHue, initials } from "../model";
 
@@ -109,7 +109,12 @@ export function Sheet({ title, icon, tone, children, footer, onClose, labelledBy
   const heading = useId();
   const sheet = useRef<HTMLDivElement>(null);
   const drag = useRef<{ id: number; y: number; dy: number } | null>(null);
-  useEffect(() => { sheet.current?.focus(); }, []);
+  // Focus moves into the sheet and returns to the control that opened it when the sheet closes.
+  useEffect(() => {
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    sheet.current?.focus();
+    return () => { if (opener?.isConnected) opener.focus({ preventScroll: true }); };
+  }, []);
 
   const move = (y: number) => {
     const state = drag.current;
@@ -158,8 +163,37 @@ export function Sheet({ title, icon, tone, children, footer, onClose, labelledBy
  * A menu anchored by its class, over a clear scrim that closes it. It grows from its corner,
  * focuses its first item, and closes with Escape.
  */
+/** How many menus are open. The shell drops a menu screen left on top when none is. */
+export const openMenus = { count: 0 };
+
+/**
+ * A menu over the screen. It opens a `menu` screen of its own, so Back closes the menu first;
+ * closing the menu any other way takes that screen away again.
+ */
 export function Popover({ children, onClose, className }: { children: ReactNode; onClose(): void; className: string }) {
   const ref = useRef<HTMLDivElement>(null);
+  const navigation = useForeground().navigation;
+  const { screen } = useNavigation();
+  const menu = useRef<{ key: string | null; seen: boolean }>({ key: null, seen: false });
+  const close = useRef(onClose);
+  close.current = onClose;
+  useEffect(() => {
+    openMenus.count++;
+    navigation.navigate({ screen: "menu" });
+    menu.current = { key: navigation.screen()?.key ?? null, seen: false };
+    return () => {
+      openMenus.count--;
+      if (menu.current.key && navigation.screen()?.key === menu.current.key) navigation.back();
+      menu.current = { key: null, seen: false };
+    };
+  }, [navigation]);
+  // Back, or a link from the menu, made another screen current: the menu has closed.
+  useEffect(() => {
+    const state = menu.current;
+    if (!state.key) return;
+    if (screen?.key === state.key) state.seen = true;
+    else if (state.seen) { menu.current = { key: null, seen: false }; close.current(); }
+  }, [screen?.key]);
   useEffect(() => {
     ref.current?.querySelector<HTMLElement>("button")?.focus();
     const key = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };

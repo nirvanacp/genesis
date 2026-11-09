@@ -22,7 +22,7 @@ export function useToggleDone(item: Item): { checking: boolean; toggle(): void }
     setChecking(true);
     window.setTimeout(() => {
       void complete(item, true).then(
-        () => show({ text: item.type === "reminder" ? "Reminder done" : "To-do done", undo: () => void complete(item, false) }),
+        () => show({ text: item.type === "reminder" ? "Reminder done" : "To-do done", undo: () => complete(item, false) }),
         () => show({ text: "Couldn't save. Try again." }),
       ).finally(() => setChecking(false));
     }, reducedMotion() ? 0 : CHECK_MS);

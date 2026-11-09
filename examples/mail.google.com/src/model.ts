@@ -48,7 +48,8 @@ export interface ListInfo {
   selected: number;
 }
 
-export interface Attachment { name: string; size: string }
+/** `href` is Gmail's page that shows the file, set only for files the app can show. */
+export interface Attachment { name: string; size: string; href?: string }
 
 export interface Message {
   id: string;

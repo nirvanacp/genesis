@@ -3,13 +3,14 @@ import { ScrollMemory, useNavigation } from "@genesis/sdk/react";
 import { ACCOUNT_COLORS, COLOR_NAMES } from "../model";
 import { useAccounts, useToast } from "../store";
 import { Icon, Toggle, TopBar } from "../components/ui";
+import { useScreenParams } from "../components/screen";
 
 /** Name, color and visibility for one account. Param: `id`. */
 export function AccountSetupScreen() {
-  const { screen, back } = useNavigation();
+  const { back } = useNavigation();
   const { byId, save } = useAccounts();
   const { show } = useToast();
-  const account = byId(screen?.params.id ?? "");
+  const account = byId(useScreenParams().id ?? "");
   const [name, setName] = useState(account?.name ?? "");
   const [color, setColor] = useState(account?.color ?? ACCOUNT_COLORS[0]);
   const [inbox, setInbox] = useState(account?.showInInbox ?? true);

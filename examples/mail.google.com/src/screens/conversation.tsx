@@ -96,7 +96,7 @@ export function ConversationScreen({ threadId, list }: { threadId: string; list:
     const item = newItem("reminder", email, account?.id ?? "unknown", { title: suggestTitle(email.subject), dueDate: dateKey(date), dueTime: timeKey(date) });
     try {
       await saveMany([item]);
-      show({ text: `Reminder set · ${whenLabel(item, now)}`, undo: () => void removeMany([item.id]), view: () => openItem(item.id) });
+      show({ text: `Reminder set · ${whenLabel(item, now)}`, undo: () => removeMany([item.id]), view: () => openItem(item.id) });
     } catch {
       show({ text: "Couldn't save. Try again." });
     }
@@ -181,10 +181,25 @@ const textOf = (runs: TextRun[]) => runs.map(run => run.text).join("").replace(/
 
 function MessageView({ message, last }: { message: Message; last: boolean }) {
   const { navigate } = useNavigation();
+  const expand = useAction<{ id: string }>("expandMessage", "conversation", CONTEXT);
   const [open, setOpen] = useState(last || message.body.length > 0);
+  const [opening, setOpening] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
   const hasBody = message.body.length > 0;
+  // Gmail sends a collapsed message without its body, so opening one asks Gmail to expand it.
+  const toggle = () => {
+    if (hasBody) { setOpen(!open); return; }
+    setOpening(true);
+    setFailure(null);
+    const done = (ok: boolean, message?: string) => {
+      setOpening(false);
+      if (ok) setOpen(true);
+      else setFailure(message ?? "Couldn't open this message. Try again.");
+    };
+    void expand(null, { id: message.id }).then(result => done(result.outcome === "observed", result.message), () => done(false));
+  };
   return <li className="message">
-    <button type="button" className="message-head" aria-expanded={open} disabled={!hasBody} onClick={() => setOpen(!open)}>
+    <button type="button" className="message-head" aria-expanded={open && hasBody} aria-busy={opening} disabled={opening} onClick={toggle}>
       <Avatar name={message.sender} size={36} />
       <span className="message-who">
         <strong>{message.sender}</strong>
@@ -196,12 +211,18 @@ function MessageView({ message, last }: { message: Message; last: boolean }) {
         ? <a key={index} href={run.href} onClick={event => { event.preventDefault(); navigate({ url: run.href! }); }}>{run.text}</a>
         : run.bold ? <strong key={index}>{run.text}</strong> : <span key={index}>{run.text}</span>)}
       {message.truncated && <p className="muted">This message is long. The rest is in Gmail.</p>}
-    </div> : <p className="message-snippet">{message.snippet}</p>}
+    </div> : <p className="message-snippet">{opening ? "Opening…" : failure ?? message.snippet}</p>}
     {message.attachments.length > 0 && <ul className="attachments">
-      {message.attachments.map((file, index) => <li key={index} className="attachment-card">
-        <span className="file-tile">{(file.name.split(".").pop() ?? "file").slice(0, 4).toUpperCase()}</span>
-        <span><strong>{file.name}</strong>{file.size && <small>{file.size}</small>}</span>
-      </li>)}
+      {message.attachments.map((file, index) => {
+        const card = <>
+          <span className="file-tile">{(file.name.split(".").pop() ?? "file").slice(0, 4).toUpperCase()}</span>
+          <span><strong>{file.name}</strong><small>{[file.size, file.href ? "Opens in Gmail" : ""].filter(Boolean).join(" · ")}</small></span>
+        </>;
+        // The card opens Gmail's page that shows the file.
+        return <li key={index}>{file.href
+          ? <a className="attachment-card" href={file.href} onClick={event => { event.preventDefault(); navigate({ url: file.href! }); }}>{card}</a>
+          : <span className="attachment-card">{card}</span>}</li>;
+      })}
     </ul>}
   </li>;
 }

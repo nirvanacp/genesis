@@ -14,11 +14,11 @@ export function SnoozedScreen() {
 
   const backNow = async (item: Item) => {
     await save({ ...item, dueDate: dateKey(now), dueTime: timeKey(now), returned: false });
-    show({ text: "Back in your inbox", undo: () => void save(item) });
+    show({ text: "Back in your inbox", undo: () => save(item) });
   };
   const cancel = async (item: Item) => {
     await complete(item, true);
-    show({ text: "Snooze removed. The email stays in All mail.", undo: () => void save(item) });
+    show({ text: "Snooze removed. The email stays in All mail.", undo: () => save(item) });
   };
 
   return <div className="screen-frame">

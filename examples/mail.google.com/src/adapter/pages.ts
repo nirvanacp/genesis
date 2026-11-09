@@ -124,6 +124,20 @@ function conversationCommand(command: ConversationCommand) {
   };
 }
 
+/** Opens a message Gmail shows collapsed by tapping its header there. Its body appearing is the evidence. */
+function expandMessage(_root: Element | null, args: { id?: unknown }): ActionSpec {
+  const id = args?.id;
+  if (typeof id !== "string" || !/^[\w-]+$/.test(id)) throw new Error("Expected a message id");
+  const opened = (doc: Document) => {
+    const body = doc.getElementById(`cvcmsgbod_${id}`);
+    return body instanceof HTMLElement && body.getClientRects().length > 0 && (body.textContent ?? "").trim() !== "";
+  };
+  if (opened(document)) return { satisfied: true };
+  const header = `[data-control-type^="cvasnip"][data-onclick-arg="${id}"]`;
+  if (!document.querySelector(header)) throw new Error("Gmail can't open this message here");
+  return { steps: [{ click: header }], until: opened, deadlineMs: 10_000 };
+}
+
 function setConversationStarred(_root: Element | null, args: { starred?: unknown }): ActionSpec {
   if (typeof args?.starred !== "boolean") throw new Error("Expected starred: true or false");
   const isStarred = () => {
@@ -221,6 +235,7 @@ export const mailPage: Page = {
         markUnread: conversationCommand("markUnread"),
         spam: conversationCommand("spam"),
         setStarred: setConversationStarred,
+        expandMessage,
         respond,
       },
     }),

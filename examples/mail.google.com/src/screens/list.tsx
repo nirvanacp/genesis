@@ -402,7 +402,7 @@ function BackSection({ items }: { items: Item[] }) {
   const { show } = useToast();
   const dismiss = (item: Item) => {
     const done = item.snooze ? complete(item, true) : save({ ...item, returned: true });
-    void done.then(() => show({ text: "Dismissed", undo: () => void save(item) }), () => show({ text: "Couldn't save. Try again." }));
+    void done.then(() => show({ text: "Dismissed", undo: () => save(item) }), () => show({ text: "Couldn't save. Try again." }));
   };
   return <section className="back-section" aria-label="Back in your inbox">
     <h2 className="section-label"><Icon name="bell" size={14} /> Back in your inbox</h2>

@@ -157,8 +157,8 @@ export function textRuns(node: Element | null, limit = 6000): { runs: TextRun[];
     if (!(current instanceof Element)) return;
     if (current.matches("script,style,head,title,svg,button,[aria-hidden=true],.adL,.gmail_quote,blockquote.gmail_quote")) return;
     if (current instanceof HTMLElement && current.style.display === "none") return;
-    // Attachments show as cards, so skip Gmail's attachment block inside the body.
-    if (current.matches('a[id^="att_"]') || current.querySelector(':scope > a[id^="att_"]')) return;
+    // Attachments show as cards, so skip Gmail's attachment links; text beside them stays.
+    if (current.matches('a[id^="att_"]')) return;
     if (current.tagName === "IMG") {
       const alt = clean(current.getAttribute("alt"), 80);
       return alt ? push(alt, href, bold) : undefined;
@@ -190,8 +190,25 @@ function readAttachments(message: Element): Attachment[] {
     const text = (link instanceof HTMLElement ? link.innerText : link.textContent ?? "").split("\n").map(line => clean(line, 120)).filter(Boolean);
     const name = clean(link.getAttribute("download"), 120) || text.find(line => /\.[a-z0-9]{2,5}$/i.test(line)) || text[0] || "Attachment";
     const size = text.find(line => /\d\s*(K|M|G)?B$/i.test(line)) ?? "";
-    return { name, size };
+    const href = viewLink(name, link);
+    return { name, size, ...(href ? { href } : {}) };
   });
+}
+
+/** Files the WebView shows by itself. Anything else Gmail would download, which the app cannot do. */
+const VIEWABLE = /\.(jpe?g|png|gif|webp|bmp|svg|txt|csv|mp4|webm|mp3|m4a|ogg|wav)$/i;
+
+/**
+ * Gmail's link downloads the file (`disp=attd`); `disp=inline` asks Gmail to show it instead,
+ * which opens it as a web page in the same session. Only files the WebView can show get a link.
+ */
+function viewLink(name: string, link: Element): string | undefined {
+  const href = safeLink(link.getAttribute("href"), link.ownerDocument.location.href);
+  if (!href || !VIEWABLE.test(name)) return undefined;
+  const url = new URL(href);
+  if (url.searchParams.get("view") !== "att") return undefined;
+  url.searchParams.set("disp", "inline");
+  return url.href;
 }
 
 /** The "to me / 56 minutes ago" block, without the text of its "Details" button. */

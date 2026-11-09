@@ -6,11 +6,12 @@ import {
 import { useAccounts, useItems, useNow, useSettings, useToast } from "../store";
 import { AccountDot, Avatar, Icon, IconButton, Notice, TopBar, type IconName } from "../components/ui";
 import { ItemMark } from "../components/items";
+import { useScreenParams } from "../components/screen";
 import { firstSender, pendingReply, useMailNav } from "../components/mail";
 
 /** One reminder or to-do, with the email it came from. Param: `id`. */
 export function ItemScreen() {
-  const { screen, back, navigate } = useNavigation();
+  const { back, navigate } = useNavigation();
   const { items, loading, complete, save, remove } = useItems();
   const accounts = useAccounts();
   const { settings } = useSettings();
@@ -18,7 +19,8 @@ export function ItemScreen() {
   const mail = useMailNav();
   const now = useNow();
   const [snoozing, setSnoozing] = useState(false);
-  const item = items.find(entry => entry.id === screen?.params.id);
+  const params = useScreenParams();
+  const item = items.find(entry => entry.id === params.id);
 
   if (!item) return <div className="screen-frame">
     <TopBar title="Item" />
@@ -34,21 +36,21 @@ export function ItemScreen() {
     const before = item;
     await complete(item, !item.done);
     const repeats = !item.done && reminder && item.repeat !== "never";
-    show({ text: item.done ? "Marked not done" : repeats ? "Done. Next one scheduled" : "Marked done", undo: () => void save(before) });
+    show({ text: item.done ? "Marked not done" : repeats ? "Done. Next one scheduled" : "Marked done", undo: () => save(before) });
   };
 
   const snooze = async (date: Date) => {
     setSnoozing(false);
     const before = item;
     await save({ ...item, dueDate: dateKey(date), dueTime: timeKey(date), returned: false });
-    show({ text: `Snoozed to ${whenLabel({ dueDate: dateKey(date), dueTime: timeKey(date) }, now)}`, undo: () => void save(before) });
+    show({ text: `Snoozed to ${whenLabel({ dueDate: dateKey(date), dueTime: timeKey(date) }, now)}`, undo: () => save(before) });
   };
 
   const deleteItem = async () => {
     const before = item;
     back();
     await remove(item.id);
-    show({ text: reminder ? "Reminder deleted" : "To-do deleted", undo: () => void save(before) });
+    show({ text: reminder ? "Reminder deleted" : "To-do deleted", undo: () => save(before) });
   };
 
   const openEmail = (reply = false) => {

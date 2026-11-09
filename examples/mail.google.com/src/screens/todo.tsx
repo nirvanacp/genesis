@@ -50,7 +50,7 @@ export function TodoScreen() {
     const moved = overdue.map(item => ({ ...item, dueDate: today }));
     try {
       await saveMany(moved);
-      show({ text: `${moved.length} moved to today`, undo: () => void saveMany(overdue) });
+      show({ text: `${moved.length} moved to today`, undo: () => saveMany(overdue) });
     } catch {
       show({ text: "Couldn't move them. Try again." });
     }

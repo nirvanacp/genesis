@@ -64,7 +64,7 @@ export function ComposeScreen() {
       });
       try {
         await saveMany([item]);
-        show({ text: `Follow-up added for ${longDay(follow)}`, undo: () => void removeMany([item.id]) });
+        show({ text: `Follow-up added for ${longDay(follow)}`, undo: () => removeMany([item.id]) });
       } catch {
         show({ text: "Couldn't save the follow-up." });
       }

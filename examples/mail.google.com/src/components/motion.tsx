@@ -87,8 +87,8 @@ function playExit(layer: HTMLElement | null, copy: Copy, motion: Motion, zIndex:
  * One animated screen slot. When `id` changes, the previous screen leaves and the new one
  * arrives with `motion`. A null `id` renders nothing, so a sheet slot can close with motion.
  */
-export function Stage({ id, motion, layer, zIndex, children }: {
-  id: string | null; motion: Motion; layer: RefObject<HTMLDivElement | null>; zIndex: number; children?: ReactNode;
+export function Stage({ id, motion, layer, zIndex, inert, children }: {
+  id: string | null; motion: Motion; layer: RefObject<HTMLDivElement | null>; zIndex: number; inert?: boolean; children?: ReactNode;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const shown = useRef<{ id: string | null; at: number }>({ id, at: 0 });
@@ -113,7 +113,7 @@ export function Stage({ id, motion, layer, zIndex, children }: {
   }, [id, layer, zIndex]);
 
   if (id === null) return null;
-  return <div ref={host} className="stage" style={{ zIndex }}>{children}</div>;
+  return <div ref={host} className="stage" style={{ zIndex }} inert={inert}>{children}</div>;
 }
 
 /** Where outgoing copies play, stacked against the stages by their z-index. */

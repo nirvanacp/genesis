@@ -3,6 +3,7 @@ import { ScrollMemory, useNavigation } from "@genesis/sdk/react";
 import { useItems, useNow, useSettings } from "../store";
 import { Icon, IconButton } from "../components/ui";
 import { ItemRow } from "../components/items";
+import { useScreenParams } from "../components/screen";
 import { useMailNav, useOpenItem } from "../components/mail";
 
 const SUGGESTIONS = [
@@ -14,13 +15,14 @@ const SUGGESTIONS = [
 
 /** Search entry: recent searches, Gmail filters and matching to-dos. Param: `q`. */
 export function SearchScreen() {
-  const { screen, back } = useNavigation();
+  const { back } = useNavigation();
   const nav = useMailNav();
   const { settings, update } = useSettings();
   const { items } = useItems();
   const openItem = useOpenItem();
   const now = useNow();
-  const [query, setQuery] = useState(screen?.params.q ?? "");
+  const params = useScreenParams();
+  const [query, setQuery] = useState(params.q ?? "");
 
   const run = (text: string) => {
     const value = text.trim();

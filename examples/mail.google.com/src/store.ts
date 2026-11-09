@@ -32,6 +32,8 @@ export interface AccountsApi {
 
 export interface SettingsApi {
   settings: Settings;
+  /** True until the stored settings are read; until then `settings` holds the defaults. */
+  loading: boolean;
   update(patch: Partial<Settings>): Promise<void>;
 }
 
@@ -42,8 +44,11 @@ const DataContext = createContext<Data | null>(null);
 function useItemsStore(): ItemsApi {
   const records = useRecords<Item>("items");
   const items = useMemo(() => records.records.map(record => record.value).filter(validItem), [records.records]);
-  const revisions = useMemo(() => new Map(records.records.map(record => [record.key, record.revision])), [records.records]);
-  const revisionOf = (id: string) => revisions.get(id) ?? null;
+  // Writes read the latest revisions when they run, so a callback kept from an earlier render
+  // (an Undo in a toast) checks against what is stored now rather than what was stored then.
+  const revisions = useRef(new Map<string, number>());
+  revisions.current = useMemo(() => new Map(records.records.map(record => [record.key, record.revision])), [records.records]);
+  const revisionOf = (id: string) => revisions.current.get(id) ?? null;
 
   const saveMany = useCallback(async (next: Item[]) => {
     if (!next.length) return;
@@ -51,16 +56,16 @@ function useItemsStore(): ItemsApi {
       checks: next.map(item => ({ collection: "items", key: item.id, expectedRevision: revisionOf(item.id) })),
       puts: next.map(item => ({ collection: "items", key: item.id, value: item })),
     });
-  }, [records, revisions]);
+  }, [records]);
 
   const removeMany = useCallback(async (ids: string[]) => {
-    const present = ids.filter(id => revisions.has(id));
+    const present = ids.filter(id => revisions.current.has(id));
     if (!present.length) return;
     await records.commit({
       checks: present.map(id => ({ collection: "items", key: id, expectedRevision: revisionOf(id) })),
       deletes: present.map(id => ({ collection: "items", key: id })),
     });
-  }, [records, revisions]);
+  }, [records]);
 
   const complete = useCallback(async (item: Item, done: boolean) => {
     if (done && item.type === "reminder" && item.repeat !== "never" && item.dueDate) {
@@ -127,7 +132,7 @@ function useSettingsStore(): SettingsApi {
   const update = useCallback(async (patch: Partial<Settings>) => {
     await records.put("prefs", { ...settings, ...patch, v: 1 });
   }, [records, settings]);
-  return { settings, update };
+  return { settings, loading: records.loading, update };
 }
 
 /** Loads the data once for every screen. */
@@ -152,21 +157,23 @@ export const useSettings = () => useData().settings;
 /** Removes done items older than the setting allows, once per launch. */
 export function usePurgeDone() {
   const { items, loading, removeMany } = useItems();
-  const { settings } = useSettings();
+  const { settings, loading: settingsLoading } = useSettings();
   const ran = useRef(false);
   useEffect(() => {
-    if (loading || ran.current) return;
+    // The limit comes from the stored settings, so wait for them as well as for the items.
+    if (loading || settingsLoading || ran.current) return;
     ran.current = true;
     const cutoff = Date.now() - settings.keepDoneDays * 86_400_000;
     const old = items.filter(item => item.done && (item.completedAt ?? 0) < cutoff).map(item => item.id);
     if (old.length) void removeMany(old).catch(() => {});
-  }, [loading, items, settings.keepDoneDays, removeMany]);
+  }, [loading, settingsLoading, items, settings.keepDoneDays, removeMany]);
 }
 
 // ---------------------------------------------------------------------------------------------
 // Toasts: one at a time, with an optional Undo and View.
 
-export interface Toast { id: number; text: string; undo?: () => void; view?: () => void }
+/** `undo` may return the write it starts; the toast reports when that write fails. */
+export interface Toast { id: number; text: string; undo?: () => void | Promise<unknown>; view?: () => void }
 
 const ToastContext = createContext<{ toast: Toast | null; show(toast: Omit<Toast, "id">): void; clear(): void } | null>(null);
 

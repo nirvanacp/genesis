@@ -2,8 +2,9 @@ import { useEffect, useLayoutEffect, useRef, useState, type ComponentType } from
 import { useNavigation, type CurrentScreen } from "@genesis/sdk/react";
 import { INBOX, isDueNow, type MailView } from "./model";
 import { DataProvider, ToastProvider, useAccounts, useItems, useNow, usePurgeDone, useSettings, useToast, type Toast } from "./store";
-import { Icon } from "./components/ui";
+import { Icon, openMenus } from "./components/ui";
 import { CONTEXT, resetCounts, useCount, useMailNav, useMailView } from "./components/mail";
+import { ScreenParams } from "./components/screen";
 import { GhostLayer, Stage, usePlaceMotion, type Motion, type Place } from "./components/motion";
 import { MailScreen } from "./screens/mail";
 import { TodoScreen } from "./screens/todo";
@@ -28,15 +29,15 @@ const SHEETS = new Set(["add", "bulk"]);
 const BASE_Z = 10;
 const SHEET_Z = 30;
 
-type Base = Pick<CurrentScreen, "key" | "id" | "overlay">;
+type Base = Pick<CurrentScreen, "key" | "id" | "overlay" | "params">;
 
 export function App() {
   return <DataProvider><ToastProvider><Shell /></ToastProvider></DataProvider>;
 }
 
 /** The overlay screen under a sheet, when the app opened straight onto the sheet. */
-function underSheet(entry: { key: string; id: string } | undefined): Base | undefined {
-  return entry && { key: entry.key, id: entry.id, overlay: true };
+function underSheet(entry: { key: string; id: string; params: Record<string, string> } | undefined): Base | undefined {
+  return entry && { key: entry.key, id: entry.id, overlay: true, params: entry.params };
 }
 
 /** What makes two mail screens different: a new history entry, or another Gmail view in the same entry. */
@@ -50,7 +51,7 @@ function viewSignature(view: MailView): string {
 }
 
 function Shell() {
-  const { screen, overlay, select, navigate } = useNavigation();
+  const { screen, overlay, select, navigate, back } = useNavigation();
   const { view } = useMailView();
   const nav = useMailNav();
   const { items } = useItems();
@@ -76,12 +77,14 @@ function Shell() {
 
   // A sheet keeps the screen it opened from mounted behind it, under the same key, so that
   // screen keeps its scroll position and state. The last screen that was not a sheet is it.
+  // An open menu is a screen of its own too, so Back closes it; the screen below stays as it is.
   const sheet = screen && SHEETS.has(screen.id) ? screen : null;
+  const menu = screen?.id === "menu";
   const lastBase = useRef<Base | null>(null);
-  if (screen && !sheet) lastBase.current = screen;
-  const base: Base = sheet
-    ? lastBase.current ?? underSheet(overlay[overlay.length - 2]) ?? { key: `${CONTEXT}:base`, id: "mail", overlay: false }
-    : screen ?? { key: `${CONTEXT}:base`, id: "mail", overlay: false };
+  if (screen && !sheet && !menu) lastBase.current = screen;
+  const base: Base = sheet || menu
+    ? lastBase.current ?? underSheet(overlay[overlay.length - 2]) ?? { key: `${CONTEXT}:base`, id: "mail", overlay: false, params: {} }
+    : screen ?? { key: `${CONTEXT}:base`, id: "mail", overlay: false, params: {} };
   const Base = SCREENS[base.id];
   const Sheet = sheet ? SCREENS[sheet.id] : undefined;
 
@@ -97,11 +100,13 @@ function Shell() {
   const place: Place = {
     id: base.id === "mail" ? `${base.key}|${viewSignature(view)}` : base.key,
     index: contextIndex.current,
-    depth: sheet ? Math.max(0, overlay.length - 1) : overlay.length,
+    depth: sheet || menu ? Math.max(0, overlay.length - 1) : overlay.length,
     tab: onTodo || onList,
     drawer: base.id === "mail" && view.kind === "menu",
   };
   const baseMotion = usePlaceMotion(place);
+  // A menu screen with no menu showing, after Back from a screen the menu opened: go past it.
+  useEffect(() => { if (menu && openMenus.count === 0) back(); }, [menu, back]);
   const sheetMotion = useSheetMotion(sheet?.key ?? null);
 
   const mailTab = () => {
@@ -114,8 +119,9 @@ function Shell() {
 
   return <div className={`app${tabs ? " has-tabs" : ""}${toast ? " has-toast" : ""}`}>
     <main className="content">
-      <Stage id={place.id} motion={baseMotion} layer={ghosts} zIndex={BASE_Z}>
-        {Base && <Base key={base.key} />}
+      {/* While a sheet is open the screen behind it takes no focus or input. */}
+      <Stage id={place.id} motion={baseMotion} layer={ghosts} zIndex={BASE_Z} inert={!!sheet}>
+        {Base && <ScreenParams.Provider value={base.params}><Base key={base.key} /></ScreenParams.Provider>}
       </Stage>
       <Stage id={sheet?.key ?? null} motion={sheetMotion} layer={ghosts} zIndex={SHEET_Z}>
         {Sheet && <Sheet key={sheet!.key} />}
@@ -144,9 +150,20 @@ function useSheetMotion(key: string | null): Motion {
   return last.current.motion;
 }
 
+/** Runs an Undo and says so when its write fails, instead of dropping the failure. */
+function runUndo(undo: NonNullable<Toast["undo"]>, show: (toast: Omit<Toast, "id">) => void) {
+  const fail = () => show({ text: "Couldn't undo. Try again." });
+  try {
+    const result = undo();
+    if (result) result.then(undefined, fail);
+  } catch {
+    fail();
+  }
+}
+
 /** The toast stays on screen for its exit, so it slides away instead of vanishing. */
 function ToastView() {
-  const { toast, clear } = useToast();
+  const { toast, clear, show } = useToast();
   const [shown, setShown] = useState<{ toast: Toast; leaving: boolean } | null>(toast ? { toast, leaving: false } : null);
   useEffect(() => {
     if (toast) { setShown({ toast, leaving: false }); return; }
@@ -158,7 +175,7 @@ function ToastView() {
   return <div className="toast-region" role="status" aria-live="polite">
     {current && <div className={`toast${shown.leaving ? " leaving" : ""}`} key={current.id}>
       <span>{current.text}</span>
-      {current.undo && <button type="button" disabled={shown.leaving} onClick={() => { const undo = current.undo!; clear(); undo(); }}>Undo</button>}
+      {current.undo && <button type="button" disabled={shown.leaving} onClick={() => { const undo = current.undo!; clear(); runUndo(undo, show); }}>Undo</button>}
       {current.view && <button type="button" disabled={shown.leaving} onClick={() => { const view = current.view!; clear(); view(); }}>View</button>}
     </div>}
   </div>;

@@ -17,7 +17,8 @@
       "settings",
       "accounts",
       "account-setup",
-      "snoozed"
+      "snoozed",
+      "menu"
     ]
   },
   "adapter": "src/adapter.ts",

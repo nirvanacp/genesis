@@ -66,11 +66,14 @@ export function useCommitItems() {
       return false;
     }
     back();
-    const archived = archiveHow ? archive(archiveHow, emails) : null;
+    // Archiving is part of what the toast reports, so it waits for Gmail's answer.
+    const result = archiveHow ? await archive(archiveHow, emails).catch(() => ({ outcome: "failed" as const })) : null;
+    const archived = result?.outcome === "observed";
+    const missed = result !== null && !archived;
     show({
-      text: message,
-      undo: () => {
-        void removeMany(items.map(item => item.id));
+      text: missed ? `${message}. Gmail didn't archive the email, so it's still in the inbox.` : message,
+      undo: async () => {
+        await removeMany(items.map(item => item.id));
         if (archived) show({ text: "Item removed. The email is in All mail." });
       },
       view: items.length === 1 ? () => navigate({ screen: "item", params: { id: items[0].id } }) : () => navigate({ screen: "todo", mode: "root" }),
