@@ -35,7 +35,7 @@ export function App() {
 }
 ```
 
-`screen` is `null` while the active context shows a page without a route; the website shows then, so render nothing for it. Key each screen by `screen.key` so a new history entry gets fresh component state.
+`screen` is `null` while the active context shows a page without a route; the website shows then, so render nothing for it. Key each screen by `screen.key` so a new history entry gets fresh component state. To give the switch direction, wrap the slot in an unkeyed stage that animates a copy of the outgoing screen, and keep a sheet's base screen mounted under it; [motion](motion.md#the-stage-and-the-ghost-layer) shows the full version.
 
 ## Screens
 

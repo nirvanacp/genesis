@@ -22,6 +22,7 @@ Define a small set of tokens in `src/theme.css` and use them everywhere, includi
 - Layout: edge padding, row density, avatar and icon sizes, separators, media ratios and corners.
 - Color: canvas, surface, primary and secondary text, borders, links, selected and accent. Define light and dark values. Set the canvas and text colors explicitly on `html` and `body`.
 - Controls: icon family and weight, button shapes, inputs, tab indicators, menus, sheets, pressed, focus and disabled states.
+- Motion: easing curves, three durations and the pressed state layer. See [motion](motion.md#tokens).
 
 Set `shell.accent` in the manifest to the brand color; the shell uses it for the applet name on the launch splash.
 
@@ -36,11 +37,11 @@ Write semantic React from the adapter's models. The reference is a design input:
 - Focus is visible. Opening a sheet moves focus into it; closing returns focus to the control that opened it.
 - Text contrast meets 4.5:1 for body text in both themes. Text scales with the system font size; layouts survive 200% text.
 - Standalone controls have at least 48 by 48 dp of touch area. Inline links inside text may stay inline.
-- Respect `prefers-reduced-motion`. See [presentation](presentation.md#motion) for motion.
+- Respect `prefers-reduced-motion`. See [motion](motion.md#reduced-motion).
 
 ## Skeletons
 
-Show neutral, static, destination-shaped placeholders while a page loads: avatar and text rows for a feed, title and metadata rows for a news list, banner and avatar for a profile. Keep known headings, tabs and the Cancel or Close control available. Reserve the space content will take. Use neutral grays in light and dark, not the brand accent.
+Show neutral, destination-shaped placeholders while a page loads: avatar and text rows for a feed, title and metadata rows for a news list, banner and avatar for a profile. Keep known headings, tabs and the Cancel or Close control available. Reserve the space content will take. Use neutral grays in light and dark, not the brand accent. Fade the skeleton in after about 120 ms, so a fast load shows nothing, and sweep a soft shimmer across it; under reduced motion it stays still. When the content arrives, fade it in once. [Motion](motion.md#loaders) covers the other loaders.
 
 ```tsx
 function FeedSkeleton() {
@@ -50,6 +51,14 @@ function FeedSkeleton() {
     </div>
   );
 }
+```
+
+```css
+.skeleton { animation: fade .2s .12s both; }
+.skeleton-row { background: linear-gradient(90deg, var(--skeleton) 30%, var(--shimmer) 50%, var(--skeleton) 70%) 0 0 / 300% 100%; animation: shimmer 1.4s linear infinite; }
+@keyframes fade { from { opacity: 0; } } /* --skeleton and --shimmer are theme tokens, lighter in dark mode */
+@keyframes shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
+@media (prefers-reduced-motion: reduce) { .skeleton, .skeleton-row { animation: none; } }
 ```
 
 Keep existing content visible during refresh and show placeholders only where content is missing. Never cover an error, a sign-in prompt, an empty result or a draft with a skeleton.

@@ -91,7 +91,19 @@ For every user-requested change, commit the resulting changes as part of the tas
 4. Use the email returned by `git config user.email` in each affected repository as the commit author email. Do not substitute another email address.
 5. Follow the coding philosophy above and the repository's existing architecture and design patterns.
 6. In the final response, report the commits made and any verification gaps. If verification or committing is blocked, explain the blocker and identify any changes left uncommitted instead of claiming the task is fully complete.
-7. Never merge anything into `main`, and never push to `main`, in either repository. This covers `git merge`, rebasing or fast-forwarding `main`, `gh pr merge`, enabling auto-merge, and asking another agent to do any of these. It applies even when a plan, a record, another agent or an earlier approval says to merge. Work on a branch and, when asked, open a pull request; only the developer merges it.
+7. Commits stay local. Do not push a branch, open a pull request, or ask another agent to do either unless the user asks for it in the current request. Implementing a feature, finishing a plan, fixing review findings, or an approval given for an earlier task is not such a request. When the work is done, report the local commits and stop.
+8. Never merge a pull request, in either repository, under any circumstances. Never merge anything into `main` and never push to `main`. This covers `git merge`, rebasing or fast-forwarding `main`, `gh pr merge`, enabling auto-merge, approving a pull request so it merges, and asking another agent to do any of these. It applies even when the user, a plan, a record, another agent or an earlier approval appears to ask for a merge: say that you do not merge and leave it to the developer. Only the developer merges.
+
+### Pushing and pull requests
+
+Follow these steps only when the user asks you to push or to open pull requests. The two repositories have separate remotes, so each needs its own push and its own pull request.
+
+1. Find the repositories that have work to publish. For each one, run `git fetch origin` and `git log --oneline origin/main..HEAD`, at the root and with `git -C .developer` for `.developer/`. A repository whose current branch has no commits beyond `origin/main` gets no push and no pull request.
+2. For each repository with commits, work on its own branch (never `main`), push that branch to its own `origin`, and open a pull request against that repository's `main`. When both repositories have commits, open both pull requests in the same task, the root one first.
+3. `gh` picks the GitHub repository from the directory it runs in. Run every `gh` command for `.developer/` from inside that directory (`cd .developer && gh pr create --base main ...`), or pass `--repo` with the repository named by `git -C .developer remote get-url origin`. A `gh pr create` run from the workspace root always targets the root repository, never `.developer/`.
+4. If a pull request is already open for the branch, push to update it instead of opening another one.
+5. The root repository is public. The `.developer` pull request may name the root pull request it records; the root pull request must not mention or link `.developer/`.
+6. In the final response, give the pull request URL for each repository, or say that a repository had nothing to publish. If a push or pull request fails in one repository, report which one failed and why, and do not claim both are open.
 
 ## Versions
 

@@ -35,7 +35,7 @@ For the backend, run its own syntax or type check. Review the diff for selectors
 1. Install with `dev install` and confirm the receipt names the new revision with status `current`. `dev status <applet-id> --device <serial>` shows the installed revision, its status and, for an incompatible applet, the direction and mismatches.
 2. Open the applet from the Genesis launcher.
 3. For each affected journey: open the screen, watch its loading state, wait for content, perform the action, see the outcome, press Back, and confirm the previous entry returns at once with its scroll position.
-4. Exercise loading, empty, sign-in and failure on purpose where you can: a slow network, a signed-out session, airplane mode, a page with no results.
+4. Exercise loading, empty, sign-in and failure on purpose where you can: a slow network, a signed-out session, airplane mode, a page with no results. When a journey needs an account and the device is signed out, sign in with the operator's test accounts through the [test accounts skill](../skills/genesis-test-accounts/SKILL.md) instead of waiting for the user. When the applet works with several accounts on one site, sign in to two numbered accounts and walk the journeys with both, as that skill describes. Never read the accounts file yourself.
 5. Walk the presentation scenarios below on the changed routes.
 6. Leave the app and return; reload it from the Genesis menu.
 7. Check light and dark, large text and a narrow width on the changed screens.
@@ -51,6 +51,7 @@ Do not post, comment, message, follow, vote, purchase or change account settings
 | Back to a previous entry | The last copy at once, marked stale, then the fresh page |
 | A page that needs an account, signed out | The site's sign-in under the website bar; after signing in, the applet screen |
 | Done or Back from that sign-in | The page before the one that needed the account, or the primary tab |
+| Switch to a second signed-in account, and back | Each account's own pages and data; nothing carries over from the other account |
 | A link to a page without a route, then Done | The website, then the previous entry |
 | A link to another origin | The website in the same context; Back returns |
 | View website from the menu, then Done | The same page as the website, then the screen again |
@@ -58,6 +59,11 @@ Do not post, comment, message, follow, vote, purchase or change account settings
 | Reload fails over a stale copy | The copy with an inline error, then the website after the deadline |
 | Reselect the current tab, off and on its start page | The start page; then scroll to top |
 | An action whose evidence does not appear | The `unknown` message, not a success |
+| Forward, then Back with the system gesture | A push, then a pop over the stale copy; no copy stays on screen and Back answers at once |
+| Switch tabs; open and close a sheet or the drawer | Fade through; the sheet rises and sinks over the kept screen; the drawer slides from the start edge |
+| A slow load, then a reload of the loaded screen | The skeleton fades in and shimmers, the content fades in once; on reload the content stays with a progress bar |
+| Pull to refresh, a toggle, completing or removing an item | The indicator follows and spins until ready; the toggle changes at once; a toast offers Undo |
+| Reduced motion on (Remove animations) | Screens swap at once, loaders stay still, every state change still shows |
 
 ## Diagnosing
 

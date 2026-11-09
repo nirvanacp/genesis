@@ -21,10 +21,12 @@ Example request to an agent:
 | Move between screens, tabs and the website | [Navigation](guides/navigation.md) |
 | Make buttons perform website actions | [Interactions](guides/interactions.md) |
 | Show loading, stale and error states, and the switch to the website | [Presentation](guides/presentation.md) |
+| Animate screen changes, loaders and the feedback after each tap | [Motion](guides/motion.md) |
 | Lay out an applet's code and screens | [Patterns](guides/patterns.md) |
 | Match the source product's mobile design | [Design](guides/design.md) |
 | Store records or connect a backend | [Services and data](guides/services-and-data.md) |
 | Check and debug the result | [Verification](guides/verification.md) |
+| Sign in to test accounts during checks | [Test accounts skill](skills/genesis-test-accounts/SKILL.md) |
 | Keep applet specs and change records | [Applet records](guides/applet-records.md) |
 | Pick an agent skill | [Skills](skills/README.md) |
 

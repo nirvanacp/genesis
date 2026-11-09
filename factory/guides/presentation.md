@@ -37,7 +37,7 @@ Treat empty as a ready page with an empty region, never as "no records yet".
 
 Genesis keeps the last ready copy of each history entry (up to 16 per context). When the user goes Back, or a page reloads, the screen shows that copy at once with `page.stale === true` while the page loads again, and updates in place when the new page is ready.
 
-- Render stale content normally with an unobtrusive refreshing state, such as `aria-busy` on the scroll container. Do not replace it with a skeleton.
+- Render stale content normally with an unobtrusive refreshing state: `aria-busy` on the scroll container and a thin progress bar under the header that appears after a short delay (see [motion](motion.md#loaders)). Do not replace it with a skeleton.
 - Disable controls that act on the page while it is stale; the records may no longer match what the site shows.
 - When the reload fails, keep the stale content and show a short inline error ("Couldn't refresh. Showing the last copy."). After the deadline the website takes over.
 
@@ -55,9 +55,9 @@ When a context starts showing the website, the shell reveals that context's page
 
 ## Motion
 
-Genesis does not animate the switch between the applet and the website, or between history entries. Keep the foreground's own motion small and purposeful:
+Genesis does not animate the switch between the applet and the website, and it swaps the foreground's screen at once when the page changes. The foreground gives its own changes direction and feedback, following [motion](motion.md):
 
-- Do not animate a whole screen in when the page changes; the user expects the next screen at once, and Back should feel instant over a stale copy.
-- Keep skeletons static. Fade content in only where it replaces a skeleton, briefly.
+- Animate screen changes from where the screens sit: forward pushes, Back pops, tab roots fade through, sheets rise. Animate a copy of the outgoing screen, so the new screen is live from its first frame and Back never waits for motion. A stale copy shown on Back appears at once, inside the same pop.
+- Fade skeletons in after a short delay and let them shimmer; fade content in once where it replaces a skeleton. Cached content shows without a fade.
 - Animate state changes on a control the user touched, such as a vote arrow or a saved icon, within about 200 ms.
-- Respect `prefers-reduced-motion`: drop non-essential motion entirely.
+- Respect `prefers-reduced-motion`: drop non-essential motion entirely, and keep every state change and progress indicator.
