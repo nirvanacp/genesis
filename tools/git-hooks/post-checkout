@@ -47,9 +47,14 @@ add_worktree() {
 }
 
 # Walks the untracked directories of the repository at `$1` (the main
-# checkout's copy), and mirrors each nested repository under `$2`.
+# checkout's copy), and mirrors each nested repository under `$2`. The plain
+# listing stops at the first untracked folder, so `collections/` hides an
+# ignored `collections/applets/`; the ignored listing descends to it.
 mirror_nested() {
-  git -C "$1" -c core.quotePath=false ls-files --others --directory |
+  {
+    git -C "$1" -c core.quotePath=false ls-files --others --directory
+    git -C "$1" -c core.quotePath=false ls-files --others --ignored --exclude-standard --directory
+  } | sort -u |
     while IFS= read -r path; do
       case "$path" in */) ;; *) continue ;; esac
       path=${path%/}
