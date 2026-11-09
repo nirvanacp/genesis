@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { readFile, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { readBuild } from './build.mjs';
 import { toolError } from './manifest.mjs';
@@ -10,10 +11,16 @@ const IMPORT_NAME = /^(applet-[a-z0-9-]+\.bundle|service-[a-z0-9-]+)\.json$/;
 const RECEIPT_MS = 15000;
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
+/** adb from the SDK named by the environment, then the default SDK folders, then `adb` on PATH. */
 function defaultAdb() {
-  const home = process.env.ANDROID_HOME ?? process.env.ANDROID_SDK_ROOT;
-  const bundled = home && path.join(home, 'platform-tools', 'adb');
-  return bundled && existsSync(bundled) ? bundled : 'adb';
+  const sdks = [
+    process.env.ANDROID_HOME,
+    process.env.ANDROID_SDK_ROOT,
+    path.join(os.homedir(), 'Library', 'Android', 'sdk'),
+    path.join(os.homedir(), 'Android', 'Sdk'),
+  ];
+  const found = sdks.filter(Boolean).map(sdk => path.join(sdk, 'platform-tools', 'adb')).find(adb => existsSync(adb));
+  return found ?? 'adb';
 }
 
 /** One debuggable Genesis install on one adb device. Every file goes through `run-as`. */
@@ -28,6 +35,7 @@ export class Device {
 
   run(args, input, timeout = 15000) {
     const result = spawnSync(this.adb, ['-s', this.serial, ...args], { input, encoding: 'utf8', timeout, maxBuffer: 4 * 1024 * 1024, shell: false });
+    if (result.error?.code === 'ENOENT') throw toolError('ADB_NOT_FOUND', 'adb was not found. Set ANDROID_HOME to the Android SDK folder or pass --adb <path>.');
     if (result.error || result.status !== 0) {
       throw toolError('DEVICE_UNAVAILABLE', `adb ${args[0]} failed on ${this.serial}: ${(result.stderr || result.error?.message || '').trim() || 'check that the device is connected and authorized'}`);
     }
