@@ -13,3 +13,7 @@ Read [factory instructions](../../AGENTS.md), [rules](../../guides/rules.md), [d
 4. Apply defaults only where they are relevant and not overridden. Give new screens and controls the applet's existing motion and feedback, or those in [motion](../../guides/motion.md) when it has none. Keep Back, scroll restoration, the return from the website with Done and keyboard-safe sheets working.
 5. Run `npm run check` and `npm run build`, install, and walk the changed journeys and their neighbors. Start services only when the user asks.
 6. Update the current spec and a change record, and commit. Report anything unverified.
+
+## Publishing
+
+Publish only when the user asks for a release. Follow [publishing](../../guides/publishing.md): raise the version with `npm version <patch|minor|major> --no-git-tag-version`, run `genesis-applet publish` and `publish --verify`, commit `published/` with the version change, then run `genesis-applet release`. Never push the tag, never move or reuse one, and never change a published applet's id; tell the user to push.

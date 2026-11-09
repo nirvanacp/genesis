@@ -20,7 +20,7 @@ export async function exportKit(directory) {
   let source = fileURLToPath(new URL('../../../factory/', import.meta.url));
   try { await access(path.join(source, 'AGENTS.md')); }
   catch { source = packed; }
-  for (const name of ['AGENTS.md','README.md','guides','skills']) await cp(path.join(source, name), path.join(output, name), { recursive: true, errorOnExist: true, force: false });
+  for (const name of ['AGENTS.md','README.md','guides','skills','templates']) await cp(path.join(source, name), path.join(output, name), { recursive: true, errorOnExist: true, force: false });
   await writeFile(path.join(output, 'kit.json'), JSON.stringify(VERSIONS, null, 2) + '\n');
   return { output, ...VERSIONS };
 }

@@ -28,6 +28,7 @@ Example request to an agent:
 | Check and debug the result | [Verification](guides/verification.md) |
 | Sign in to test accounts during checks | [Test accounts skill](skills/genesis-test-accounts/SKILL.md) |
 | Keep applet specs and change records | [Applet records](guides/applet-records.md) |
+| Publish versions that people add from GitHub | [Publishing](guides/publishing.md) |
 | Pick an agent skill | [Skills](skills/README.md) |
 
 Agents work from an ordinary product request. They ask focused questions when unresolved intent would change the result and choose routine implementation details themselves. A short product brief and real acceptance journeys keep incremental work aligned. These instructions reduce avoidable mistakes; they cannot overcome missing website access or a capability the host does not have.
@@ -36,10 +37,10 @@ Agents work from an ordinary product request. They ask focused questions when un
 
 This kit matches SDK 0.0.0, tools 0.0.0, manifest schema 6, bundle format 3, protocol 1, adapter API 1. `kit.json` in an exported copy records the same versions. Applets use TypeScript and React, up to three website contexts, one adapter with pages, regions and desired-state actions, declared routes, overlay screens, applet document storage and declared HTTPS services. Genesis refuses an applet built for other versions, and the tools report the difference.
 
-The `genesis-applet` CLI creates, checks and builds applets with Node only. A debug build of the Genesis app accepts development installs over adb and applies them without restarting. Release builds load only the applets bundled into the APK. Publisher signing and public distribution do not exist yet.
+The `genesis-applet` CLI creates, checks and builds applets with Node only. A debug build of the Genesis app accepts development installs over adb and applies them without restarting. Release builds install applets bundled into the APK and applets that people add from a public GitHub repository, whose releases CI rebuilt and compared with the committed build ([publishing](guides/publishing.md)). Publisher signing does not exist yet.
 
 ## Handing the kit to another coding agent
 
-Copy the whole `factory/` tree (`AGENTS.md`, `README.md`, `guides/`, `skills/`) next to the applet and give the agent the path to `AGENTS.md`. Do not assume the agent discovers it on its own. An agent without skill support can read a `SKILL.md` as plain instructions. Skills link to the guides, so never hand over a skill file without the tree.
+Copy the whole `factory/` tree (`AGENTS.md`, `README.md`, `guides/`, `skills/`, `templates/`) next to the applet and give the agent the path to `AGENTS.md`. Do not assume the agent discovers it on its own. An agent without skill support can read a `SKILL.md` as plain instructions. Skills link to the guides, so never hand over a skill file without the tree.
 
 `genesis-applet kit export --out <new-directory>` writes this tree plus `kit.json`. `genesis-applet create` includes it under the new applet's `factory/`. The recipient also needs the matching SDK and tools packages and a debug Genesis APK from a Genesis maintainer. Neither the Genesis repository nor Rust or Android compilers are needed to create, build or install an applet.
