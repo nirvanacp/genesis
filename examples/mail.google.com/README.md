@@ -18,7 +18,7 @@ Sign in to Google in the applet the first time it opens. No service or secrets a
 
 ## Multiple accounts
 
-Multi-account support is written but switched off. To try it, set `MULTI_ACCOUNT_ENABLED` to `true` in `src/model.ts`, rebuild, and add a second Google session from the account switcher in the drawer.
+Add a second Google account from the account switcher (the avatar in the inbox header, or the drawer) with "Add another account". Each account keeps its own color and name, and its reminders and to-dos open their emails in that account. "Show in inbox" and "Show in To-do" in the account's setup choose where its items appear. To build without it, set `MULTI_ACCOUNT_ENABLED` to `false` in `src/model.ts`.
 
 ## Known limits
 

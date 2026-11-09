@@ -15,7 +15,7 @@ Name Gmail Only, id `gmail-only`, origin https://mail\.google\.com. Created 2026
 
 ## Product scope
 
-The user asked for a Gmail app built around the feature brief "To-do & Reminders from Email" (decision-0002), with every Gmail page drawn by the applet (decision-0003) and multi-account support written but switched off (decision-0006).
+The user asked for a Gmail app built around the feature brief "To-do & Reminders from Email" (decision-0002), with every Gmail page drawn by the applet (decision-0003) and multi-account support, built switched off (decision-0006) and now turned on (decision-0010).
 
 Core journeys:
 
@@ -41,7 +41,7 @@ Open questions for the user:
 | --- | --- | --- | --- |
 | default-platform-menu | Shell floating menu button, Genesis menu and website bar, splash accent `#2347d9` from `shell.accent` | Factory default; accent from the user's mockups | |
 | theme | Light and dark tokens in `src/theme.css`, following the system or the Theme setting | Agent, matching the mockups' palette | decision-0007 |
-| multi-account | Built, hidden behind `MULTI_ACCOUNT_ENABLED = false` in `src/model.ts` | User instruction | decision-0006 |
+| multi-account | On (`MULTI_ACCOUNT_ENABLED = true` in `src/model.ts`); sessions addressed by `authuser=<address>` | User instruction | decision-0006, decision-0010 |
 | motion-and-feedback | Directional screen motion, sheet and popover motion, delayed shimmer skeletons, progress bar, pull to refresh, optimistic star and selection, Undo toasts; none of it plays with reduced motion | User instruction to make screens and events feel less rigid | decision-0009 |
 
 ## Routes
@@ -90,22 +90,27 @@ The `mail` screen picks a view from the one Gmail shows (decision-0003):
 | Mail and To-do tabs | Switch sections | Inbox URL or `todo` screen | | verified | device |
 | Gmail Only settings | Stored preferences | Store `settings/prefs` | | verified (opened) | device |
 | Accounts, Snoozed | Account list, snoozed emails | Store `accounts`, `items` | | verified (opened) | device |
+| Accounts row | Switches to that account's inbox | Navigates to `/mail/mu/?authuser=<address>#tl/…` | Unread counts clear, then show the new inbox's | verified (both directions) | device |
+| Add another account | Google's add-session page, then the new session's inbox | Navigates `primary` to `accounts.google.com/AddSession` | The new session becomes an account when Gmail shows it | implemented (Google asked for a CAPTCHA) | static |
+| Saved email from another account | Opens it in that account's session | `nav.email` with the item's `accountId` | | verified | device |
 
 ## Data
 
 | Collection or service path | Owner | Key | Shape version | Notes |
 | --- | --- | --- | --- | --- |
 | `items` | Applet | Random item id | `v: 1` | Reminders, to-dos and snoozes. Each keeps the linked email (thread id, sender, subject, snippet) and its account id. Done items are purged after the "Keep done items" setting. |
-| `accounts` | Applet | Id derived from the email address | `v: 1` | Name, color, Gmail session index, "Show in inbox" and "Show in To-do". Created when a signed-in account is first seen. |
+| `accounts` | Applet | Id derived from the email address | `v: 1` | Name, color, Gmail session index, "Show in inbox" and "Show in To-do". Created when a signed-in account is first seen; the session index is corrected from the page when Google renumbers sessions. A second account on the same domain is named after its address. |
 | `settings/prefs` | Applet | `prefs` | `v: 1` | Brief section 12 settings, swipe actions, theme, recent searches. |
 
 ## Current work and verification
 
 Verified on 2026-11-09 on emulator-5556 (Android 17, `app.nirvana.genesis`), installed revision 12, with the one test Google account, light and dark mode. Evidence kind: device with the real website. Checked: inbox, Today card, reminder chip, open email with attachment, "Add to…" and the reminder sheet, item detail with Mark done and Undo, To-do in both views, manual to-do add and delete, drawer, accounts, snoozed, Gmail Only settings, Gmail settings, search, compose open and close, and the tabs. Static checks: `npm run typecheck`, `npm run check`, `npm run build`, and `tsc --noUnusedLocals`.
 
-Not verified, because each changes the Google account or needs a second one: archive, delete, mark unread, spam and the other conversation commands; bulk archive and delete; swipes; snooze (it archives); archive after adding a to-do; sending mail; account switching and setup with a second session. Also not seen: the fallback screen for unknown Gmail views, the sign-in screen, and list error states.
+Not verified, because each changes the Google account or needs a second one: archive, delete, mark unread, spam and the other conversation commands; bulk archive and delete; swipes; snooze (it archives); archive after adding a to-do; sending mail. Also not seen: the fallback screen for unknown Gmail views, the sign-in screen, and list error states.
 
 Motion and feedback, verified on 2026-11-09 with revision 14 on the same device, dark then light mode: push and pop between list and email, the drawer sliding in and out, tab fade-through, sheets opening, dragging closed and closing with Back with the screen under them kept in place, the segmented thumb, the shimmer list skeleton, Today card completion with the Undo toast lifting the Compose button, pull to refresh, the email star and its pending state. Not seen: swipe archive and toolbar commands (they change the account), the email skeleton on a slow load, and reduced motion on the device (checked in code: every motion path reads `prefers-reduced-motion`). Once, after the Today card emptied, the emulator showed a stale strip over the category chips; the WebView's own capture was clean and the strip cleared on the next screen change.
+
+Multiple accounts, verified on 2026-11-09 with revisions 17 to 19 on the same device and two Google sessions: the accounts screen lists both; switching goes to the right session both ways (`mp/239` and `mp/450`, checked by the signed-in address); unread counts clear on a switch and come back for the first inbox; a reminder saved from the first account opens its email in the first session from the second account; "Show in inbox" off hides that account's reminder from the Today card and on brings it back; To-do lists it under All accounts. Not run: "Add another account" through to a new session, because Google asked for a CAPTCHA during the scripted second sign-in; the second session on the device was added before it. Found and fixed during this check: session indices were always 0, saved emails opened in the current session, "Show in inbox" was ignored, the search placeholder claimed to search all inboxes, and counts carried over between accounts.
 
 Known limits:
 
