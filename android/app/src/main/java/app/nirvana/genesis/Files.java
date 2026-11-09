@@ -16,33 +16,47 @@ import org.json.JSONObject;
 
 /**
  * The shell's file IO. The host owns {@code files/applets/}; the shell only reads manifests from it
- * and moves files into {@code files/genesis-import/}, where the CLI also writes.
+ * and moves files into {@code files/genesis-import/}, where the CLI also writes, and
+ * {@code files/genesis-bundled/}, where it stages the APK's applets.
  */
 final class Files {
     static final String IMPORT_DIRECTORY = "genesis-import";
     static final String BUNDLED_ASSETS = "bundles";
+    static final String BUNDLED_DIRECTORY = "genesis-bundled";
     private static final long IMPORT_MAX_BYTES = 64L * 1024 * 1024;
 
     private final Activity activity;
     private final File imports;
+    private final File bundled;
 
     Files(Activity activity) {
         this.activity = activity;
         imports = new File(activity.getFilesDir(), IMPORT_DIRECTORY);
+        bundled = new File(activity.getFilesDir(), BUNDLED_DIRECTORY);
     }
 
     File importDirectory() { return imports; }
 
     /** Bundle files to hand to the host, oldest first. */
-    List<File> bundleImports() { return list(name -> name.startsWith("applet-") && name.endsWith(".bundle.json")); }
+    List<File> bundleImports() { return list(imports, Files::isBundle); }
+
+    /** Staged APK applets to hand to the host, oldest first. */
+    List<File> bundledImports() { return list(bundled, Files::isBundle); }
+
+    /** `applet-<id>.release.json` beside a bundle, or null. */
+    static File releaseRecord(File bundle) {
+        return new File(bundle.getParentFile(), bundle.getName().replaceFirst("\\.bundle\\.json$", ".release.json"));
+    }
+
+    private static boolean isBundle(String name) { return name.startsWith("applet-") && name.endsWith(".bundle.json"); }
 
     /** Service credential records, handled by {@link ServiceClient}. */
     List<File> serviceImports() {
-        return list(name -> name.startsWith("service-") && name.endsWith(".json") && !name.endsWith(".receipt.json"));
+        return list(imports, name -> name.startsWith("service-") && name.endsWith(".json") && !name.endsWith(".receipt.json"));
     }
 
-    private List<File> list(java.util.function.Predicate<String> accept) {
-        File[] found = imports.listFiles(file -> file.isFile() && accept.test(file.getName()));
+    private static List<File> list(File directory, java.util.function.Predicate<String> accept) {
+        File[] found = directory.listFiles(file -> file.isFile() && accept.test(file.getName()));
         if (found == null) return new ArrayList<>();
         Arrays.sort(found, (a, b) -> Long.compare(a.lastModified(), b.lastModified()));
         return new ArrayList<>(Arrays.asList(found));
@@ -61,8 +75,8 @@ final class Files {
     }
 
     /**
-     * Copies the APK's bundled applets into the import directory once per APK install or update,
-     * so they install through the same path as a CLI import.
+     * Copies the APK's bundled applets, with their release records, into the bundled directory once
+     * per APK install or update. The host installs them like an import.
      */
     void stageBundledApplets() throws IOException {
         long installed;
@@ -72,12 +86,12 @@ final class Files {
         if (state.getLong("bundledInstall", 0) == installed) return;
         String[] names = activity.getAssets().list(BUNDLED_ASSETS);
         for (String name : names == null ? new String[0] : names) {
-            if (!name.startsWith("applet-") || !name.endsWith(".bundle.json")) continue;
+            if (!isBundle(name) && !(name.startsWith("applet-") && name.endsWith(".release.json"))) continue;
             try (InputStream input = activity.getAssets().open(BUNDLED_ASSETS + "/" + name)) {
                 java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
                 byte[] buffer = new byte[65536];
                 for (int count; (count = input.read(buffer)) != -1; ) bytes.write(buffer, 0, count);
-                writeAtomic(new File(imports, name), bytes.toByteArray());
+                writeAtomic(new File(bundled, name), bytes.toByteArray());
             }
         }
         if (!state.edit().putLong("bundledInstall", installed).commit()) throw new IOException("Could not record bundled install");

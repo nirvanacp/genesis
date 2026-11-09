@@ -80,6 +80,7 @@ pub fn validate(operation: &StorageOperation) -> Result<()> {
     }
     match operation {
         StorageOperation::Get(k) => key(&k.collection, &k.key)?,
+        StorageOperation::DeleteApplet => {}
         StorageOperation::List(list) => {
             key(&list.collection, "validation")?;
             if list.limit == 0 || list.limit > 100 {
@@ -172,6 +173,10 @@ impl Database {
         operation: &StorageOperation,
     ) -> Result<(Value, Vec<StorageKey>)> {
         validate(operation)?;
+        if let StorageOperation::DeleteApplet = operation {
+            let deleted = self.delete_applet("local", applet)?;
+            return Ok((json!({ "deleted": deleted }), Vec::new()));
+        }
         if schema != 1 {
             return Err(invalid("Unsupported applet schema; data preserved"));
         }
@@ -189,6 +194,8 @@ impl Database {
         }
         let mut changed = Vec::new();
         let result = match operation {
+            // Handled above, before the namespace is created.
+            StorageOperation::DeleteApplet => return Err(invalid("Delete runs on its own")),
             StorageOperation::Get(k) => {
                 let document: Option<(String, i64, i64)> = transaction
                     .query_row(GET_DOCUMENT, params![applet, k.collection, k.key], |r| {
@@ -291,6 +298,16 @@ impl Database {
         };
         transaction.commit()?; // A successful response exists only after the durable commit.
         Ok((result, changed))
+    }
+
+    /// Deletes an applet's documents, then its namespace, in one transaction. Returns the number
+    /// of documents deleted.
+    pub fn delete_applet(&mut self, profile_id: &str, applet_id: &str) -> Result<usize> {
+        let transaction = self.connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let deleted = transaction.execute("DELETE FROM documents WHERE profile_id=?1 AND applet_id=?2", params![profile_id, applet_id])?;
+        transaction.execute("DELETE FROM namespaces WHERE profile_id=?1 AND applet_id=?2", params![profile_id, applet_id])?;
+        transaction.commit()?;
+        Ok(deleted)
     }
 }
 fn stored_document(key: &str, value: &str, revision: i64, time: i64) -> Result<Value> {

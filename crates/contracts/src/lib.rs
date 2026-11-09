@@ -102,8 +102,13 @@ impl TryFrom<String> for Role {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum ShellEvent {
-    /// First event after process start. `files_dir` is the app's private files directory.
-    Attach { files_dir: String },
+    /// First event after process start. `files_dir` is the app's private files directory;
+    /// `debuggable` is true on a debug build, the only build that accepts development imports.
+    Attach {
+        files_dir: String,
+        #[serde(default)]
+        debuggable: bool,
+    },
     Resumed,
     Suspended,
     /// Android Back. The WebViews never handle Back themselves.
@@ -134,12 +139,47 @@ pub enum ShellEvent {
     /// A `HistoryGo` that moved nothing: `history.go` did not start a navigation and the
     /// WebView's own list had no entry at that offset.
     HistoryUnmoved { view: ViewRef },
-    ImportFound { kind: ImportKind, path: String, payload: String },
+    /// An import file. `release` is the text of a bundled applet's release record, when the APK has one.
+    ImportFound {
+        kind: ImportKind,
+        path: String,
+        payload: String,
+        #[serde(default)]
+        release: Option<String>,
+    },
     ServiceResponse { request_id: u64, status: u16, body: Value },
     ServiceFailed { request_id: u64, code: ErrorCode, message: String },
     /// A storage worker result, relayed by the shell to the UI thread.
     StorageCompleted { payload: String },
     Tick,
+    /// The answer to `Fetch`. `status` is 0 when no response arrived and `error` says why. `body` is
+    /// the UTF-8 body for an in-memory fetch, `path` the written file for `to_file`. `rate_remaining`
+    /// and `rate_reset` (epoch seconds) are GitHub's rate limit headers.
+    FetchCompleted {
+        request_id: String,
+        status: u16,
+        error: Option<String>,
+        etag: Option<String>,
+        final_url: Option<String>,
+        rate_remaining: Option<u32>,
+        rate_reset: Option<u64>,
+        body: Option<String>,
+        path: Option<String>,
+    },
+    /// Add applet: a repository as `owner/name` or a GitHub URL.
+    AddFromRepository { input: String },
+    /// Add from file: a copied bundle file, with a copied release record when the user picked one.
+    ReviewFile { path: String, release: Option<String> },
+    /// A choice on the repository screen. `version` None is the newest compatible stable version.
+    ChooseCandidate { applet_id: String, version: Option<String> },
+    /// The user's answer to `ShowImportReview`. `replace` is required to accept a replacement.
+    ReviewDecision { review_id: String, accept: bool, replace: Option<ReplaceMode> },
+    /// Checks GitHub-sourced applets for updates: one applet, or all. `manual` is false for the
+    /// launcher's automatic check, which the host runs at most every six hours.
+    CheckUpdates { applet_id: Option<String>, manual: bool },
+    /// Ends the running add, review or update flow, from a dismissed screen.
+    CancelFlow,
+    RemoveApplet { applet_id: String },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
@@ -154,7 +194,10 @@ pub enum MenuAction {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ImportKind {
+    /// A development import from `genesis-applet dev install`.
     Bundle,
+    /// An applet bundled into the APK, staged by the shell.
+    Bundled,
 }
 
 /// `push` adds a history entry; `replace` replaces the current one.
@@ -213,6 +256,35 @@ pub enum ShellCommand {
     /// Asks the shell to send `Tick` after `delay_ms`, for deadlines shorter than the periodic tick.
     Wake { delay_ms: u64 },
     MoveTaskToBack,
+    /// An HTTPS GET for the host. The shell follows redirects only to `hosts`, which must also be
+    /// in its own `FETCH_HOSTS`. With `to_file`, the body is written to that path (through
+    /// `<to_file>.part`) and refused beyond `max_bytes`.
+    Fetch {
+        request_id: String,
+        url: String,
+        max_bytes: u64,
+        etag: Option<String>,
+        to_file: Option<String>,
+        hosts: Vec<String>,
+    },
+    /// A modal progress message for a running applet flow; None hides it. Cancel sends `CancelFlow`.
+    ShowProgress { message: Option<String> },
+    /// The applets a repository offers.
+    ShowRepositoryApplets { repository: String, note: Option<String>, applets: Vec<RepositoryApplet> },
+    /// The review before installing. The buttons follow `outcome`.
+    ShowImportReview {
+        review_id: String,
+        applet_id: String,
+        name: String,
+        version: Option<String>,
+        source_label: String,
+        origins: Vec<String>,
+        capabilities: ReleaseCapabilities,
+        outcome: ReviewOutcome,
+        warnings: Vec<String>,
+    },
+    /// The shell deletes the applet's stored service credentials.
+    ForgetApplet { applet_id: String },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
@@ -233,6 +305,105 @@ pub struct LauncherEntry {
     pub direction: Option<Direction>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub mismatches: Vec<Mismatch>,
+    /// The installed version, when the source names one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    /// Where the applet came from, for display: a repository, a file, bundled or development.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_kind: Option<SourceKind>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub update: Option<AppletUpdate>,
+}
+
+/// The kind of source an applet was installed from, for the shell's choices.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SourceKind {
+    Github,
+    File,
+    Bundled,
+    Dev,
+}
+
+/// An update found for a GitHub-sourced applet. `withdrawn` is set when the installed release no
+/// longer exists; `version` is then the release offered in its place, if any.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppletUpdate {
+    pub version: Option<String>,
+    pub prerelease: bool,
+    pub withdrawn: bool,
+}
+
+// ---------------------------------------------------------------------------------------------
+// Adding, reviewing and updating applets
+
+/// Hosts the shell may fetch from. The shell keeps an equal list in `Fetcher.FETCH_HOSTS`.
+pub const FETCH_HOSTS: [&str; 5] = [
+    "api.github.com",
+    "github.com",
+    "raw.githubusercontent.com",
+    "objects.githubusercontent.com",
+    "release-assets.githubusercontent.com",
+];
+/// The largest API response or release record the host fetches.
+pub const FETCH_API_MAX_BYTES: u64 = 2 * 1024 * 1024;
+
+/// Release: GitHub Releases with a release record. Branch: the committed `published/` build on a
+/// branch, pinned to its commit.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Channel {
+    Release,
+    Branch,
+}
+
+/// What a replacement does with the replaced applet's stored data.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ReplaceMode {
+    Keep,
+    Erase,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase", rename_all_fields = "camelCase")]
+pub enum ReviewOutcome {
+    Install,
+    Update { from: Option<String> },
+    Reinstall,
+    Downgrade { from: String },
+    /// Another source's applet with the same id is installed; `from_source` describes it.
+    Replace { from_source: String },
+    Blocked { reason: String },
+}
+
+/// An applet on the repository screen.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryApplet {
+    pub applet_id: String,
+    pub name: String,
+    pub path: String,
+    pub channel: Channel,
+    /// The version Add installs: the newest compatible stable one, or None when there is none.
+    pub version: Option<String>,
+    /// Every version, newest first. The shell shows prereleases only with "Show prereleases".
+    pub versions: Vec<CandidateVersion>,
+    /// The installed version, when this applet is installed from this repository.
+    pub installed: Option<String>,
+    pub note: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CandidateVersion {
+    pub version: String,
+    pub prerelease: bool,
+    pub compatible: bool,
+    pub note: Option<String>,
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -409,6 +580,89 @@ pub struct BundleEntry {
 pub enum Encoding {
     Utf8,
     Base64,
+}
+
+// ---------------------------------------------------------------------------------------------
+// Release records
+
+/// The format of the release record, `published/applet-<id>.release.json`. Versioned on its own,
+/// outside `compat`.
+pub const RELEASE_FORMAT: u32 = 1;
+
+/// Written by `genesis-applet publish` beside the bundle, and uploaded by CI with a `source`
+/// block. The same fields as `ReleaseRecord` in `@genesis/core`.
+///
+/// Unknown fields are ignored, here and in the nested blocks, so a newer `genesis-applet` can add
+/// fields without hiding its releases from older phones; `releaseFormat` marks a breaking change.
+/// The CLI's `validateReleaseRecord` stays strict.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReleaseRecord {
+    pub release_format: u32,
+    pub applet_id: String,
+    pub name: String,
+    pub version: String,
+    pub bundle: ReleaseBundle,
+    /// An exact copy of the bundle's `compat` block, kept unparsed so any format can be evaluated.
+    pub compat: Map<String, Value>,
+    pub origins: Vec<String>,
+    pub capabilities: ReleaseCapabilities,
+    pub toolchain: ReleaseToolchain,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub home: Option<ReleaseHome>,
+    pub built_at: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<ReleaseSource>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReleaseBundle {
+    pub file: String,
+    pub sha256: String,
+    pub size: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReleaseCapabilities {
+    pub storage: bool,
+    pub services: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReleaseToolchain {
+    pub genesis_commit: String,
+    pub node: String,
+    pub tools: String,
+    pub sdk: String,
+}
+
+/// Where the applet is published, from the git remote. `path` is `.` for a single-applet repository.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReleaseHome {
+    pub full_name: String,
+    pub path: String,
+}
+
+/// Added by CI to the uploaded copy. The host compares it with what it asked GitHub for.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReleaseSource {
+    pub repository: ReleaseRepository,
+    pub path: String,
+    pub commit: String,
+    pub tag: String,
+    pub workflow_run: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReleaseRepository {
+    pub id: u64,
+    pub full_name: String,
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -711,6 +965,8 @@ pub enum StorageOperation {
     Get(StorageKey),
     List(StorageList),
     Commit(StorageBatch),
+    /// Deletes the applet's documents and namespace. Sent by the host only, never by a document.
+    DeleteApplet,
 }
 
 /// Host to storage worker.

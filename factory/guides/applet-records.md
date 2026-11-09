@@ -16,6 +16,8 @@ Read the current spec first, then the relevant decisions and recent changes. The
 
 Append material decisions to `decisions.md` with a stable id, local date, origin, rationale, the rules and journeys affected, evidence, and any decision it supersedes. Update the current spec so a reader does not need the whole history. Never drop an earlier explicit choice while summarizing.
 
+When you publish a version ([publishing](publishing.md)), record the version and its tag in the current spec and in the change record.
+
 Write one change record per logical change, keep it updated until verification is known, and finish it before committing. Use four short bullets of about 100 to 200 words in total: goal, changes, decisions, verification. Record blockers and the exact limits of the evidence. A small routine edit can point to existing decisions instead of creating new ones.
 
 The README is the human entry point: purpose, operator setup, links to the current spec and known limits. Do not duplicate route tables there. Account data, tokens, cookies, page dumps and private screenshots never go into records. Changes to the shared factory, the platform or the tools keep the records their own workspace requires; describe a related change in words when the other record is not visible to the same readers.

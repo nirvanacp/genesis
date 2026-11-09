@@ -83,9 +83,14 @@ async function prepareOutput(base, output) {
  * Builds `dist/`: `revision/` is the revision directory (`bundle.json`, `index.html`,
  * `foreground.js`, `foreground.css`, `adapter.js`, `assets/**`) and `applet-<id>.bundle.json`
  * is the import file that `dev install` and the APK carry. `debug` defines `__GENESIS_DEBUG__`,
- * which turns on the adapter runtime's measurements.
+ * which turns on the adapter runtime's measurements. `builtAt` (an ISO time) fixes
+ * `compat.builtAt`, so two builds of the same sources are byte-identical; without it the build
+ * records the current time.
  */
-export async function buildApplet(directory, output, { debug = false } = {}) {
+export async function buildApplet(directory, output, { debug = false, builtAt } = {}) {
+  const time = builtAt === undefined ? new Date() : new Date(builtAt);
+  requireValue(builtAt === undefined || (typeof builtAt === 'string' && !Number.isNaN(time.getTime())
+    && [time.toISOString(), time.toISOString().replace(/\.\d{3}Z$/, 'Z')].includes(builtAt)), `builtAt must be an ISO time such as 2026-11-09T16:00:00Z, not ${builtAt}`);
   const { base, manifest } = await checkApplet(directory);
   const destination = await prepareOutput(base, output ?? path.join(base, 'dist'));
   const outdir = path.join(destination, REVISION);
@@ -114,7 +119,7 @@ export async function buildApplet(directory, output, { debug = false } = {}) {
   const sdk = await installedSdk(base);
   requireValue(sdk, `${base} does not resolve @genesis/sdk; run npm install`);
   const bundleJson = {
-    format: BUNDLE_FORMAT, compat: bundleCompat(sdk), manifest,
+    format: BUNDLE_FORMAT, compat: bundleCompat(sdk, time), manifest,
     files: names.map(name => ({ path: name, sha256: sha256(files.get(name)) })),
   };
   const entries = names.map(name => TEXT.has(path.extname(name))

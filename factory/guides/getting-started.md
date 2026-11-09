@@ -44,8 +44,8 @@ npx genesis-applet dev status my-applet --device emulator-5554
 
 `check` compares the applet with the tools and fails with `APPLET_INCOMPATIBLE` on a difference, then validates the manifest against schema 6, type-checks `src` and imports the adapter to confirm it declares every route's page. Importing runs the applet's code; check only applets you trust. `build` bundles the foreground and the adapter into `dist/`; `--debug` adds runtime measurements. `dev install` takes the applet directory (it uses `dist/`) or a build output directory; it does not build, so run `build` first. It copies the bundle to the debug app, which applies it without restarting Genesis, and reports the accepted revision or the rejection reason, including an incompatible SDK. `dev status` lists the installed applets with their status and, given an id, its last install receipt. Every command accepts `--json`; device commands accept `--adb <path>` and `--application <id>`.
 
-Release builds of Genesis load only the applets bundled into the APK and refuse development installs.
+Release builds of Genesis refuse development installs. They install the applets bundled into the APK and published releases that people add from GitHub; see [publishing](publishing.md) for versions, tags and the CI workflows.
 
 ## Hand off the kit
 
-`npx genesis-applet kit export --out <new-directory>` writes `AGENTS.md`, `README.md`, `guides/`, `skills/` and `kit.json` with the matching versions. Give a coding agent the path to `AGENTS.md`.
+`npx genesis-applet kit export --out <new-directory>` writes `AGENTS.md`, `README.md`, `guides/`, `skills/`, `templates/` and `kit.json` with the matching versions. Give a coding agent the path to `AGENTS.md`.

@@ -6,3 +6,6 @@ export { Device, deviceStatus, installApplet } from './device.mjs';
 export { manageService } from './services.mjs';
 export { createApplet } from './create.mjs';
 export { exportKit, VERSIONS } from './kit.mjs';
+export { publishApplet, releaseRecord } from './publish.mjs';
+export { listRepository, releaseApplet } from './release.mjs';
+export { findRepository, listApplets, tagFor, tagsFor } from './repo.mjs';

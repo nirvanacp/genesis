@@ -8,6 +8,7 @@ Check the change you made, on the journeys it affects, and report exactly what t
 | --- | --- | --- |
 | `npm run check` | The applet matches the installed SDK and tools, the manifest is valid schema 6, the code type-checks, and the adapter loads and declares every route's page | That any page becomes ready, any region reads correctly or any screen renders |
 | `npm run build` | The bundle builds | That the device accepts or runs it |
+| `genesis-applet publish --verify` | The committed `published/` build equals a rebuild with the recorded Genesis commit | That the build works on a device |
 | `dev install` receipt | The device accepted this revision as current | That screens work |
 | Device walkthrough with the real website | The journeys you walked, with the account you used | Journeys you did not walk, other accounts |
 | Screenshot | What one frame looked like | Interactions, other states, accessibility |
@@ -29,6 +30,8 @@ npm run build
 `check` first compares the applet with the tools: `applet.json`'s schema version, the `@genesis/sdk` dependency and the installed SDK. A difference fails with `APPLET_INCOMPATIBLE` and lists each `field applet → current`; update the applet to the current SDK and run `check` again. It then validates the manifest, type-checks `src` and imports the adapter in Node. Importing runs your code, so check only applets you trust. Read its warnings: an unreachable route never matches, and an async `read` fails on the device.
 
 For the backend, run its own syntax or type check. Review the diff for selectors that depend on visual class names, unbounded lists, reads outside an item's extent, non-unique keys, missing states and secrets.
+
+Before tagging a release, run `npx genesis-applet publish . --verify` and `npx genesis-applet release . --dry-run` ([publishing](publishing.md)). A mismatch lists the differing fields; run `publish` again and commit.
 
 ## Device walkthrough
 

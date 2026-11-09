@@ -1,0 +1,19 @@
+# Copy to .github/workflows/genesis-check.yml in your applet repository.
+# Replace both <genesis-sha> values with the same full Genesis commit sha, one that is on GitHub.
+# The check rebuilds every applet with the Genesis commit its release record names and fails
+# unless the rebuild equals the committed published/ build.
+name: Genesis check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    uses: nirvanacp/genesis/.github/workflows/applet-check.yml@<genesis-sha>
+    with:
+      genesis-ref: <genesis-sha>

@@ -14,10 +14,11 @@ import com.google.android.material.bottomsheet.BottomSheetDragHandleView;
 
 /**
  * The Genesis menu, a bottom sheet over the applet. While a website is revealed, "View website"
- * gives way to the actions for that page: open it in the browser or copy its link.
+ * gives way to the actions for that page: open it in the browser or copy its link. On the
+ * launcher it offers adding an applet and checking for updates.
  */
 public final class GenesisMenu {
-    public enum Action { HOME, RELOAD, VIEW_WEBSITE, OPEN_IN_BROWSER, COPY_LINK, SERVICES, INFO }
+    public enum Action { HOME, RELOAD, VIEW_WEBSITE, OPEN_IN_BROWSER, COPY_LINK, SERVICES, INFO, ADD_APPLET, CHECK_UPDATES }
 
     public interface Listener { void onMenuAction(Action action); }
 
@@ -55,6 +56,27 @@ public final class GenesisMenu {
         column.addView(row(context, tokens, dialog, listener, R.drawable.ic_services, "Service connections", Action.SERVICES));
         column.addView(row(context, tokens, dialog, listener, R.drawable.ic_info, "Applet info", Action.INFO));
 
+        ScrollView scroll = new ScrollView(context);
+        scroll.addView(column);
+        dialog.setContentView(scroll);
+        BottomSheetBehavior<?> behavior = dialog.getBehavior();
+        behavior.setSkipCollapsed(true);
+        behavior.setState(BottomSheetBehavior.STATE_EXPANDED);
+        dialog.show();
+    }
+
+    public static void showLauncher(Context context, Tokens tokens, Listener listener) {
+        BottomSheetDialog dialog = new BottomSheetDialog(context);
+        LinearLayout column = new LinearLayout(context);
+        column.setOrientation(LinearLayout.VERTICAL);
+        column.setPadding(0, 0, 0, tokens.dp(16));
+        column.addView(new BottomSheetDragHandleView(context));
+        TextView title = tokens.text("Genesis", Tokens.Type.TITLE_LARGE, tokens.onSurface);
+        title.setAccessibilityHeading(true);
+        title.setPadding(tokens.dp(24), 0, tokens.dp(24), tokens.dp(8));
+        column.addView(title);
+        column.addView(row(context, tokens, dialog, listener, R.drawable.ic_add, "Add applet", Action.ADD_APPLET));
+        column.addView(row(context, tokens, dialog, listener, R.drawable.ic_reload, "Check for updates", Action.CHECK_UPDATES));
         ScrollView scroll = new ScrollView(context);
         scroll.addView(column);
         dialog.setContentView(scroll);
