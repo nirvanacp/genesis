@@ -35,7 +35,7 @@ impl Host {
     pub fn dispatch(&mut self, event: ShellEvent) -> Result<Vec<ShellCommand>, String> {
         let now = now_ms();
         match event {
-            ShellEvent::Attach { files_dir } => {
+            ShellEvent::Attach { files_dir, debuggable: _ } => {
                 self.contexts = Contexts::default();
                 self.documents = Documents::default();
                 self.applets = Applets::load(Path::new(&files_dir));
@@ -64,7 +64,10 @@ impl Host {
             }
             ShellEvent::RendererGone { view } => self.renderer_gone(&view),
             ShellEvent::HistoryUnmoved { view } => self.history_unmoved(&view),
-            ShellEvent::ImportFound { kind: ImportKind::Bundle, path, payload } => self.import_bundle(&path, &payload),
+            // Bundled and development imports install alike until the host records sources.
+            ShellEvent::ImportFound { kind: ImportKind::Bundle | ImportKind::Bundled, path, payload, release: _ } => {
+                self.import_bundle(&path, &payload)
+            }
             ShellEvent::ServiceResponse { request_id, status, body } => {
                 self.finish_op(request_id, None, Ok(crate::services::result(status, body)));
             }
@@ -73,6 +76,15 @@ impl Host {
             }
             ShellEvent::StorageCompleted { payload } => self.storage_completed(&payload)?,
             ShellEvent::Tick => self.tick(now),
+            // The shell sends these only once the add, review and remove screens exist.
+            ShellEvent::FetchCompleted { .. }
+            | ShellEvent::AddFromRepository { .. }
+            | ShellEvent::ReviewFile { .. }
+            | ShellEvent::ChooseCandidate { .. }
+            | ShellEvent::ReviewDecision { .. }
+            | ShellEvent::CheckUpdates { .. }
+            | ShellEvent::CancelFlow
+            | ShellEvent::RemoveApplet { .. } => {}
         }
         Ok(std::mem::take(&mut self.out))
     }

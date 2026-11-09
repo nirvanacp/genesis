@@ -225,6 +225,9 @@ fn entry(applet_id: &str, installed: &Installed) -> LauncherEntry {
             status: AppletStatus::Current,
             direction: None,
             mismatches: Vec::new(),
+            version: None,
+            source: None,
+            update: None,
         },
         Installed::Incompatible { name, accent, direction, mismatches, .. } => LauncherEntry {
             applet_id: applet_id.into(),
@@ -233,6 +236,9 @@ fn entry(applet_id: &str, installed: &Installed) -> LauncherEntry {
             status: AppletStatus::Incompatible,
             direction: Some(*direction),
             mismatches: mismatches.clone(),
+            version: None,
+            source: None,
+            update: None,
         },
     }
 }
