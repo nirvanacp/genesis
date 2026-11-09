@@ -1,7 +1,7 @@
 import { memo, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type TouchEvent } from "react";
 import { ScrollMemory, useAction, useNavigation, usePage, usePending, useRecord, useRegion } from "@genesis/sdk/react";
 import {
-  dueTag, INBOX, isBack, isDueNow, LISTS, MULTI_ACCOUNT_ENABLED, dateKey,
+  dueTag, INBOX, isBack, isDueNow, LISTS, dateKey,
   type Item, type ListInfo, type MailList, type ThreadRow,
 } from "../model";
 import { useAccounts, useItems, useNow, useSettings, useToast } from "../store";
@@ -45,15 +45,18 @@ export function ListScreen({ list }: { list: MailList }) {
   const isInbox = list.id === INBOX.id;
   const isCategory = LISTS.some(entry => entry.category && entry.id === list.id);
 
-  useEffect(() => { if (info && !search) reportCount(list.id, info.unread ?? 0); }, [info, list.id, search]);
+  // Reports again after an account switch, which clears the counts.
+  useEffect(() => { if (info && !search) reportCount(list.id, info.unread ?? 0); }, [info, list.id, search, accounts.current?.id]);
   useEffect(() => { setNoMore(false); }, [list.path]);
 
   const rows = threads.order.map(key => threads.get(key)?.data).filter((row): row is ThreadRow => !!row);
   const selected = rows.filter(row => row.selected);
   const ready = page.status === "ready" && !page.stale;
   const actionable = ready && !threads.ephemeral;
-  const back = isInbox ? items.filter(item => isBack(item, now) && !item.returned) : [];
-  const today = isInbox ? items.filter(item => isDueNow(item, now) && accountVisible(accounts.byId(item.accountId))) : [];
+  // "Show in inbox" on an account decides whether its items join this inbox's Today card and "Back in your inbox".
+  const inInbox = (item: Item) => accounts.byId(item.accountId)?.showInInbox !== false;
+  const back = isInbox ? items.filter(item => isBack(item, now) && !item.returned && inInbox(item)) : [];
+  const today = isInbox ? items.filter(item => isDueNow(item, now) && inInbox(item)) : [];
 
   const loading = page.status === "loading" || page.stale;
   const saw = useSawLoading(!rows.length && loading);
@@ -109,7 +112,6 @@ export function ListScreen({ list }: { list: MailList }) {
   </div>;
 }
 
-const accountVisible = (account: { showInTodo: boolean } | undefined) => account?.showInTodo !== false;
 
 /** Distance (px) a pull must reach to refresh, and the most the indicator travels. */
 const PULL_TRIGGER = 72;
@@ -184,7 +186,7 @@ function MailHeader({ title }: { title: string }) {
     <div className="search-pill">
       <IconButton icon="menu" label="Menu" onClick={() => nav.menu()} />
       <button type="button" className="search-pill-text" onClick={() => navigate({ screen: "search" })}>
-        {MULTI_ACCOUNT_ENABLED && accounts.length > 1 ? "Search all inboxes" : `Search in ${title === "Primary" ? "mail" : title}`}
+        {`Search in ${title === "Primary" ? "mail" : title}`}
       </button>
       <button type="button" className="me" aria-label={`Account ${current?.email ?? ""}`} onClick={() => navigate({ screen: "accounts" })}>
         <span className="me-avatar" style={{ borderColor: current?.color ?? "var(--accent)" }}>{(current?.name ?? current?.email ?? "?").slice(0, 2).toUpperCase()}</span>
@@ -406,7 +408,7 @@ function BackSection({ items }: { items: Item[] }) {
     <h2 className="section-label"><Icon name="bell" size={14} /> Back in your inbox</h2>
     <ul className="back-list">
       {items.slice(0, 5).map(item => <li key={item.id} className="back-row">
-        <button type="button" className="back-main" onClick={() => { void save({ ...item, returned: true }); if (item.link?.threadId) nav.thread(item.link.threadId); }}>
+        <button type="button" className="back-main" onClick={() => { void save({ ...item, returned: true }); if (item.link?.threadId) nav.email(item.link.threadId, item.accountId); }}>
           <strong>{item.link?.subject ?? item.title}</strong>
           <span>{item.snooze ? "Snoozed" : item.title} · {item.link?.sender}</span>
         </button>

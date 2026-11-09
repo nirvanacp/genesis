@@ -27,7 +27,7 @@ export function SnoozedScreen() {
       {!snoozed.length ? <Notice title="Nothing snoozed" icon="clock"><p>Snooze an email from its toolbar to hide it until later.</p></Notice>
         : <ul className="plain-list card">
           {snoozed.map(item => <li key={item.id} className="snooze-row">
-            <button type="button" className="list-button" onClick={() => item.link?.threadId && nav.thread(item.link.threadId)}>
+            <button type="button" className="list-button" onClick={() => item.link?.threadId && nav.email(item.link.threadId, item.accountId)}>
               <Avatar name={item.link?.sender ?? item.title} size={36} />
               <span>
                 <strong>{item.link?.subject ?? item.title}</strong>

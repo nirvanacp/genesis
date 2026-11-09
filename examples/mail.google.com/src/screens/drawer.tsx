@@ -30,7 +30,7 @@ export function DrawerScreen() {
       const entry = byArg.get(list.arg);
       if (entry) reportCount(list.id, entry.count ?? 0);
     }
-  }, [entries]);
+  }, [entries, current?.id]);
 
   const row = (key: string, icon: IconName, label: string, count: number | null, onClick: () => void, tone?: string) =>
     <li key={key}><button type="button" className={`drawer-row ${tone ?? ""}`} onClick={onClick}>

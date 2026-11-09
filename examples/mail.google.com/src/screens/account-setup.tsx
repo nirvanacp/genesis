@@ -57,6 +57,7 @@ export function AccountSetupScreen() {
         <Toggle label="Show in inbox" checked={inbox} onChange={setInbox} />
         <Toggle label="Show in To-do" checked={todo} onChange={setTodo} />
       </div>
+      <p className="hint padded">Show in inbox puts this account's due items on the inbox's Today card. Show in To-do lists them under All accounts.</p>
     </ScrollMemory>
     <footer className="action-bar">
       <button type="button" className="accent block" onClick={() => void submit()}>Save</button>

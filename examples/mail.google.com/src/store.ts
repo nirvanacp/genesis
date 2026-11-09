@@ -4,7 +4,7 @@
  * save without a connection. Each hook reloads after every change to its collection.
  */
 import { createContext, createElement, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { usePage, useRecords } from "@genesis/sdk/react";
+import { usePage, useRecord, useRecords } from "@genesis/sdk/react";
 import {
   ACCOUNT_COLORS, accountIdOf, DEFAULT_SETTINGS, defaultAccountName, isObject, nextOccurrence, validAccount, validItem,
   type Account, type Item, type Settings,
@@ -83,21 +83,29 @@ function useAccountsStore(): AccountsApi {
   const accounts = useMemo(() => records.records.map(record => record.value).filter(validAccount)
     .sort((a, b) => a.addedAt - b.addedAt), [records.records]);
   const email = page.account;
-  const index = sessionIndexOf(page.url);
+  // The adapter reads Gmail's session index from the page; the URL carries it only before Gmail settles.
+  const session = useRecord<{ session?: number | null }>("view", null, "primary")?.data.session;
+  const index = typeof session === "number" ? session : sessionIndexOf(page.url);
 
   const save = useCallback(async (account: Account) => { await records.put(account.id, account); }, [records]);
 
   // The first time Gmail shows a signed-in account, record it with the next unused color.
+  // A known account keeps the index Gmail gives it now: Google renumbers sessions after a sign-out.
   const adding = useRef<string | null>(null);
   useEffect(() => {
     if (records.loading || !email) return;
     const id = accountIdOf(email);
-    if (accounts.some(account => account.id === id) || adding.current === id) return;
+    const known = accounts.find(account => account.id === id);
+    if (known) {
+      if (index !== null && known.sessionIndex !== index) void records.put(id, { ...known, sessionIndex: index }).catch(() => undefined);
+      return;
+    }
+    if (adding.current === id) return;
     adding.current = id;
     const used = new Set(accounts.map(account => account.color));
     const color = ACCOUNT_COLORS.find(value => !used.has(value)) ?? ACCOUNT_COLORS[accounts.length % ACCOUNT_COLORS.length];
     void records.put(id, {
-      v: 1, id, email, name: defaultAccountName(email), color, sessionIndex: index, showInInbox: true, showInTodo: true, addedAt: Date.now(),
+      v: 1, id, email, name: defaultAccountName(email, accounts.map(account => account.name)), color, sessionIndex: index ?? 0, showInInbox: true, showInTodo: true, addedAt: Date.now(),
     }, null).catch(() => { adding.current = null; });
   }, [records, accounts, email, index]);
 
@@ -106,10 +114,10 @@ function useAccountsStore(): AccountsApi {
   return { accounts, current, byId, save };
 }
 
-/** Gmail's `/mail/u/<n>/` index; the mobile app path does not carry it, so it defaults to 0. */
-function sessionIndexOf(url: string | null): number {
-  const match = /\/mail\/u\/(\d+)\//.exec(url ?? "");
-  return match ? Number(match[1]) : 0;
+/** The session index in `/mail/u/<n>/` or `?authuser=<n>`, or null when the URL has neither. */
+function sessionIndexOf(url: string | null): number | null {
+  const match = /\/mail\/u\/(\d+)\/|[?&]authuser=(\d+)/.exec(url ?? "");
+  return match ? Number(match[1] ?? match[2]) : null;
 }
 
 function useSettingsStore(): SettingsApi {

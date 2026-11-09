@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState, type ComponentType } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ComponentType } from "react";
 import { useNavigation, type CurrentScreen } from "@genesis/sdk/react";
 import { INBOX, isDueNow, type MailView } from "./model";
-import { DataProvider, ToastProvider, useItems, useNow, usePurgeDone, useSettings, useToast, type Toast } from "./store";
+import { DataProvider, ToastProvider, useAccounts, useItems, useNow, usePurgeDone, useSettings, useToast, type Toast } from "./store";
 import { Icon } from "./components/ui";
-import { CONTEXT, useCount, useMailNav, useMailView } from "./components/mail";
+import { CONTEXT, resetCounts, useCount, useMailNav, useMailView } from "./components/mail";
 import { GhostLayer, Stage, usePlaceMotion, type Motion, type Place } from "./components/motion";
 import { MailScreen } from "./screens/mail";
 import { TodoScreen } from "./screens/todo";
@@ -58,6 +58,14 @@ function Shell() {
   const { toast } = useToast();
   const now = useNow();
   const unread = useCount(INBOX.id);
+  // Gmail's counts belong to one inbox, so an account switch clears them. A layout effect runs
+  // before the screens' effects, which then report the new inbox's counts.
+  const accountId = useAccounts().current?.id ?? null;
+  const lastAccount = useRef(accountId);
+  useLayoutEffect(() => {
+    if (accountId && lastAccount.current && accountId !== lastAccount.current) resetCounts();
+    if (accountId) lastAccount.current = accountId;
+  }, [accountId]);
   const ghosts = useRef<HTMLDivElement>(null);
   usePurgeDone();
 

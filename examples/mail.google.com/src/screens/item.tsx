@@ -54,7 +54,7 @@ export function ItemScreen() {
   const openEmail = (reply = false) => {
     if (!item.link?.threadId) return;
     if (reply) pendingReply.threadId = item.link.threadId;
-    mail.thread(item.link.threadId);
+    mail.email(item.link.threadId, item.accountId);
   };
 
   const today = startOfDay(now);

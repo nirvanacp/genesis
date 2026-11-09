@@ -47,6 +47,24 @@ export function sessionEmail(doc: Document): string | null | undefined {
   return undefined;
 }
 
+const sessions = new WeakMap<Document, number | null>();
+
+/**
+ * Gmail's session index for this page (the `N` of `/mail/u/N/` and `?authuser=N`). The mobile app
+ * path (`/mail/mu/mp/<n>/`) does not carry it, so it is read once per document from the bootstrap
+ * script, where Gmail writes `authuser=N` for its own links.
+ */
+export function sessionIndex(doc: Document): number | null {
+  if (sessions.has(doc)) return sessions.get(doc)!;
+  let index: number | null = null;
+  for (const script of doc.scripts) {
+    const match = /authuser\\u003d(\d+)/.exec(script.textContent ?? "");
+    if (match) { index = Number(match[1]); break; }
+  }
+  sessions.set(doc, index);
+  return index;
+}
+
 /** Google's sign-in page, or Gmail's "choose an account" page, means no Gmail session. */
 export function account(doc: Document): string | null | undefined {
   if (doc.location.hostname !== "mail.google.com") return null;

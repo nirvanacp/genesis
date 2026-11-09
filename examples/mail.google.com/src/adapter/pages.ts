@@ -2,7 +2,7 @@ import { collection, single, type ActionSpec, type Page, type Step } from "@gene
 import type { ConversationCommand } from "../model.ts";
 import {
   account, clean, commandSelector, MENU_ITEM, menuEmail, readCompose, readConversation, readList, readMenuEntry, readThread,
-  ROW, threadIdOf, visibleView, type ViewId,
+  ROW, sessionIndex, threadIdOf, visibleView, type ViewId,
 } from "./read.ts";
 
 /**
@@ -191,7 +191,7 @@ export const mailPage: Page = {
     /** Which Gmail screen is showing, so the foreground can draw its own. */
     view: single({
       root: "#views",
-      read: root => ({ view: visibleView(root.ownerDocument), hash: root.ownerDocument.location.hash.slice(0, 600) }),
+      read: root => ({ view: visibleView(root.ownerDocument), hash: root.ownerDocument.location.hash.slice(0, 600), session: sessionIndex(root.ownerDocument) }),
     }),
     list: single({ root: "#tl_", dependsOn: ["#tltbt"], read: readList, actions: { clearSelection, loadMore, refresh } }),
     threads: collection({

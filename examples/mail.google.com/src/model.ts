@@ -10,10 +10,10 @@ export const MOBILE_PATH = "/mail/mu/mp/239/";
 
 /**
  * Multi-account switch. Everything account-aware (colors, filters, the switcher, account setup)
- * is built and stored per account; this flag only hides the entry points that add or switch to a
- * second Google session. See `.specs/decisions.md` (decision-0006).
+ * is built and stored per account; turning this off hides the entry points that add or switch to
+ * a second Google session. See `.specs/decisions.md` (decision-0006 and decision-0010).
  */
-export const MULTI_ACCOUNT_ENABLED = false;
+export const MULTI_ACCOUNT_ENABLED = true;
 
 // ---------------------------------------------------------------------------------------------
 // What the adapter reads
@@ -164,15 +164,26 @@ export function parseHash(hash: string): MailView {
   return { kind: "other", hash: value };
 }
 
-/** The base of every Gmail URL in this session: the mobile app path the page is on. */
+/**
+ * The base of every Gmail URL in this session: the mobile app path the page is on. Each Google
+ * session has its own path (`/mail/mu/mp/<n>/`); before Gmail settles on it the page can be at
+ * `/mail/mu/?authuser=N`, so the query is kept too.
+ */
 export function mailBase(url: string | null | undefined): string {
   try {
     const parsed = new URL(url ?? "");
-    if (parsed.origin === ORIGIN && parsed.pathname.startsWith("/mail/mu/")) return `${ORIGIN}${parsed.pathname}`;
+    if (parsed.origin === ORIGIN && parsed.pathname.startsWith("/mail/mu/")) return `${ORIGIN}${parsed.pathname}${parsed.search}`;
   } catch { /* fall through */ }
   return `${ORIGIN}${MOBILE_PATH}`;
 }
 
+/**
+ * The base for one account's Google session. Gmail moves to that session's own path and keeps
+ * the hash. `authuser` takes the address, which stays right when Google renumbers its sessions
+ * after a sign-out; the session index is the fallback for an account saved without one.
+ */
+export const sessionBase = (account: Pick<Account, "email" | "sessionIndex">) =>
+  `${ORIGIN}/mail/mu/?authuser=${encodeURIComponent(account.email || String(account.sessionIndex))}`;
 export const listUrl = (base: string, path: string) => `${base}#tl/${path}`;
 export const searchUrl = (base: string, query: string) => `${base}#tl/search/${encodeURIComponent(query.trim())}`;
 export const threadUrl = (base: string, threadId: string, listPath = "All%20Mail") => `${base}#cv/${listPath}/${threadId}`;
@@ -238,7 +249,7 @@ export interface Account {
   email: string;
   name: string;
   color: string;
-  /** Gmail's session index: `/mail/u/<index>/`. */
+  /** Gmail's session index (`authuser`), read from the open page; Google renumbers it after a sign-out. */
   sessionIndex: number;
   showInInbox: boolean;
   showInTodo: boolean;
@@ -283,12 +294,14 @@ export const DEFAULT_SETTINGS: Settings = {
 
 export const accountIdOf = (email: string) => email.trim().toLowerCase();
 
-/** A short name from an email: "ritwik.a@gmail.com" becomes "Personal" for consumer Gmail, else the domain. */
-export function defaultAccountName(email: string): string {
-  const domain = email.split("@")[1]?.toLowerCase() ?? "";
-  if (domain === "gmail.com" || domain === "googlemail.com") return "Personal";
-  const name = domain.split(".")[0] ?? email;
-  return name ? name[0].toUpperCase() + name.slice(1) : email;
+/** A short name from an email: "Personal" for consumer Gmail, else the domain; the address's name when another account has it. */
+export function defaultAccountName(email: string, taken: readonly string[] = []): string {
+  const [local = "", host = ""] = email.split("@");
+  const domain = host.toLowerCase();
+  const word = domain === "gmail.com" || domain === "googlemail.com" ? "Personal" : domain.split(".")[0] ?? "";
+  const name = word ? word[0].toUpperCase() + word.slice(1) : email;
+  // A second account on the same domain would read the same everywhere, so it takes its address's name.
+  return taken.includes(name) && local ? local : name;
 }
 
 export function isObject(value: unknown): value is Record<string, unknown> {

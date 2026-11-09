@@ -4,9 +4,10 @@
  */
 import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { useNavigation, usePage } from "@genesis/sdk/react";
+import { useAccounts } from "../store";
 import {
-  composeUrl, INBOX, listUrl, mailBase, menuUrl, newId, parseHash, searchUrl, threadUrl,
-  type Item, type ItemType, type LinkedEmail, type MailView,
+  composeUrl, INBOX, listUrl, mailBase, menuUrl, newId, parseHash, searchUrl, sessionBase, threadUrl,
+  type Account, type Item, type ItemType, type LinkedEmail, type MailView,
 } from "../model";
 
 export const CONTEXT = "primary";
@@ -25,15 +26,24 @@ export function useMailView(): { view: MailView; base: string; url: string | nul
 export function useMailNav() {
   const { navigate } = useNavigation();
   const { base } = useMailView();
+  const { current, byId } = useAccounts();
   return useMemo(() => ({
     base,
     list: (path: string, mode: "push" | "replace" = "push") => navigate({ url: listUrl(base, path), context: CONTEXT, mode }),
     inbox: (mode: "push" | "replace" = "push") => navigate({ url: listUrl(base, INBOX.path), context: CONTEXT, mode }),
     thread: (threadId: string, listPath?: string) => navigate({ url: threadUrl(base, threadId, listPath), context: CONTEXT }),
+    /** Opens a saved email in the Google session it came from, switching accounts when needed. */
+    email: (threadId: string, accountId: string) => {
+      const account = byId(accountId);
+      const other = account && current && account.id !== current.id;
+      navigate({ url: threadUrl(other ? sessionBase(account) : base, threadId), context: CONTEXT });
+    },
+    /** Switches to another Google session's inbox. */
+    inboxOf: (account: Account) => navigate({ url: listUrl(sessionBase(account), INBOX.path), context: CONTEXT }),
     search: (query: string, mode: "push" | "replace" = "push") => navigate({ url: searchUrl(base, query), context: CONTEXT, mode }),
     compose: () => navigate({ url: composeUrl(base), context: CONTEXT }),
     menu: () => navigate({ url: menuUrl(base), context: CONTEXT }),
-  }), [navigate, base]);
+  }), [navigate, base, current, byId]);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -46,6 +56,14 @@ let version = 0;
 export function reportCount(id: string, value: number | null) {
   if (value === null || counts.get(id) === value) return;
   counts.set(id, value);
+  version++;
+  for (const listener of listeners) listener();
+}
+
+/** Forgets every count, for when the Google session changes and the counts belong to another inbox. */
+export function resetCounts() {
+  if (!counts.size) return;
+  counts.clear();
   version++;
   for (const listener of listeners) listener();
 }

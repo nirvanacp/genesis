@@ -2,28 +2,30 @@ import { ScrollMemory, useNavigation } from "@genesis/sdk/react";
 import { isDueNow, MULTI_ACCOUNT_ENABLED, ORIGIN, type Account } from "../model";
 import { useAccounts, useItems, useNow } from "../store";
 import { AccountDot, Icon, TopBar } from "../components/ui";
-import { CONTEXT } from "../components/mail";
+import { useMailNav } from "../components/mail";
 
 /**
- * The account switcher. Each Google session in this context is `/mail/u/<index>/`; switching
- * loads that index. Adding a session goes through Google's own sign-in. Both stay hidden until
- * `MULTI_ACCOUNT_ENABLED` is turned on.
+ * The account switcher. Every Google session signed in to this context has an index (`?authuser=N`);
+ * switching opens that session's inbox in the same context, so Back returns to the previous
+ * account. Adding a session goes through Google's own sign-in. Both hide when
+ * `MULTI_ACCOUNT_ENABLED` is off.
  */
 export function AccountsScreen() {
   const { accounts, current } = useAccounts();
   const { items } = useItems();
   const { navigate } = useNavigation();
+  const mail = useMailNav();
   const now = useNow();
 
   const due = (account: Account) => items.filter(item => item.accountId === account.id && isDueNow(item, now)).length;
   const switchTo = (account: Account) => {
     if (account.id === current?.id) return;
-    navigate({ url: `${ORIGIN}/mail/u/${account.sessionIndex}/`, context: CONTEXT });
+    mail.inboxOf(account);
   };
   const addAccount = () => {
     const next = accounts.reduce((max, account) => Math.max(max, account.sessionIndex), -1) + 1;
     const target = `${ORIGIN}/mail/u/${next}/`;
-    navigate({ url: `https://accounts.google.com/AddSession?continue=${encodeURIComponent(target)}`, context: CONTEXT });
+    navigate({ url: `https://accounts.google.com/AddSession?continue=${encodeURIComponent(target)}`, context: "primary" });
   };
 
   return <div className="screen-frame">
