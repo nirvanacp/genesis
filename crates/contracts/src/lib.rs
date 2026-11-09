@@ -312,7 +312,19 @@ pub struct LauncherEntry {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_kind: Option<SourceKind>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub update: Option<AppletUpdate>,
+}
+
+/// The kind of source an applet was installed from, for the shell's choices.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SourceKind {
+    Github,
+    File,
+    Bundled,
+    Dev,
 }
 
 /// An update found for a GitHub-sourced applet. `withdrawn` is set when the installed release no
@@ -579,8 +591,12 @@ pub const RELEASE_FORMAT: u32 = 1;
 
 /// Written by `genesis-applet publish` beside the bundle, and uploaded by CI with a `source`
 /// block. The same fields as `ReleaseRecord` in `@genesis/core`.
+///
+/// Unknown fields are ignored, here and in the nested blocks, so a newer `genesis-applet` can add
+/// fields without hiding its releases from older phones; `releaseFormat` marks a breaking change.
+/// The CLI's `validateReleaseRecord` stays strict.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct ReleaseRecord {
     pub release_format: u32,
     pub applet_id: String,
@@ -600,7 +616,7 @@ pub struct ReleaseRecord {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct ReleaseBundle {
     pub file: String,
     pub sha256: String,
@@ -608,14 +624,14 @@ pub struct ReleaseBundle {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct ReleaseCapabilities {
     pub storage: bool,
     pub services: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct ReleaseToolchain {
     pub genesis_commit: String,
     pub node: String,
@@ -625,7 +641,7 @@ pub struct ReleaseToolchain {
 
 /// Where the applet is published, from the git remote. `path` is `.` for a single-applet repository.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct ReleaseHome {
     pub full_name: String,
     pub path: String,
@@ -633,7 +649,7 @@ pub struct ReleaseHome {
 
 /// Added by CI to the uploaded copy. The host compares it with what it asked GitHub for.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct ReleaseSource {
     pub repository: ReleaseRepository,
     pub path: String,
@@ -643,7 +659,7 @@ pub struct ReleaseSource {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct ReleaseRepository {
     pub id: u64,
     pub full_name: String,
