@@ -18,6 +18,18 @@ The shell draws the floating Genesis menu button, the website bar and the launch
 
 Use only public SDK imports and follow [patterns](guides/patterns.md). Keep loading, empty, sign-in, unsupported and real failure visibly different. Preserve record keys, drafts and the authoritative store for each record type as described in [services and data](guides/services-and-data.md). Never start backend services unless the user asks.
 
+## Applet versions in the Genesis repository
+
+This section applies only to Genesis developers changing applets inside the Genesis repository, where the root `AGENTS.md` controls every version. Anywhere else, such as a portable kit or an applet repository outside Genesis, ignore this section and raise versions as [publishing](guides/publishing.md) describes.
+
+An applet's version is `version` in its `package.json`, as `MAJOR.MINOR.PATCH`. Before creating a pull request that changes an applet, raise the version of each changed applet with `npm version <patch|minor|major> --no-git-tag-version`, run `genesis-applet publish`, and commit the version with `published/`:
+
+- **Patch** (the last number, such as `0.0.1` to `0.0.2`): raise it without asking, at most once per pull request.
+- **Minor** (the middle number, such as `0.1.0`): ask the developer first, unless the request makes clear that the developer knows the change is a minor upgrade and wants it.
+- **Major** (the first number, such as `1.0.0`): always ask the developer first, even when the request seems to call for it.
+
+Never lower a version, create a tag or push a tag unless the developer asks.
+
 ## Records and completion
 
 Keep flat `.specs/` and `.changelog/` folders in the applet, as described in [records](guides/applet-records.md). Create the current spec and decisions on creation or first customization, record material choices before the code that depends on them, and finish the change record before committing. The applet README links to the current spec and explains operator setup.
