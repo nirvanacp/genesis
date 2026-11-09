@@ -77,6 +77,9 @@ jobs:
         with:
           node-version: 24.15.0
       - run: npm install -g npm@11.14.1
+      - name: Install Genesis tools
+        working-directory: genesis
+        run: npm install --no-audit --no-fund && npm run build -w packages/core
       - name: Rebuild and compare
         working-directory: genesis
         run: node tools/applet-ci.mjs verify --source ../source --path "$APPLET_PATH"
@@ -126,7 +129,8 @@ jobs:
         run: |
           prerelease=()
           case "$VERSION" in *-*) prerelease=(--prerelease) ;; esac
-          gh release create "$TAG" --repo "$REPOSITORY" --draft --verify-tag --title "$APPLET_ID $VERSION" --generate-notes "${prerelease[@]}"
+          gh release create "$TAG" --repo "$REPOSITORY" --draft --verify-tag --title "$APPLET_ID $VERSION" \
+            --notes "$APPLET_ID $VERSION from $APPLET_PATH at $GITHUB_SHA." "${prerelease[@]}"
           gh release upload "$TAG" --repo "$REPOSITORY" "out/applet-$APPLET_ID.bundle.json" "out/applet-$APPLET_ID.release.json"
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:

@@ -78,6 +78,9 @@ jobs:
         with:
           node-version: 24.15.0
       - run: npm install -g npm@11.14.1
+      - name: Install Genesis tools
+        working-directory: genesis
+        run: npm install --no-audit --no-fund && npm run build -w packages/core
       - name: Rebuild and compare
         working-directory: genesis
         run: node tools/applet-ci.mjs verify --source ../source --path "$APPLET_PATH"
