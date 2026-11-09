@@ -65,7 +65,8 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
         }
         try {
             attached = true;
-            send(Bridge.event("attach").put("filesDir", getFilesDir().getAbsolutePath()));
+            boolean debuggable = (getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0;
+            send(Bridge.event("attach").put("filesDir", getFilesDir().getAbsolutePath()).put("debuggable", debuggable));
         } catch (JSONException error) {
             throw new IllegalStateException(error);
         }
@@ -105,19 +106,29 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
     private void scanImports() {
         if (!attached) return;
         for (File file : files.serviceImports()) services.importCredential(file);
-        for (File file : files.bundleImports()) {
-            try {
-                JSONObject event = Bridge.event("importFound").put("kind", "bundle").put("path", file.getAbsolutePath())
-                    .put("payload", files.read(file, BUNDLE_MAX_BYTES));
-                send(event);
-                // The host deletes the file; never offer the same file twice.
-                if (file.exists() && !file.delete()) file.deleteOnExit();
-            } catch (java.io.IOException | JSONException error) {
+        for (File file : files.bundledImports()) importBundle(file, "bundled");
+        for (File file : files.bundleImports()) importBundle(file, "bundle");
+    }
+
+    /** `bundled` is an APK applet with its optional release record; `bundle` is a development import. */
+    private void importBundle(File file, String kind) {
+        File record = Files.releaseRecord(file);
+        try {
+            JSONObject event = Bridge.event("importFound").put("kind", kind).put("path", file.getAbsolutePath())
+                .put("payload", files.read(file, BUNDLE_MAX_BYTES));
+            if (kind.equals("bundled") && record.isFile()) event.put("release", files.read(record, 1024 * 1024));
+            send(event);
+        } catch (java.io.IOException | JSONException error) {
+            if (kind.equals("bundle")) {
                 try { files.receipt(file, new JSONObject().put("ok", false).put("error", String.valueOf(error.getMessage()))); }
                 catch (JSONException ignored) { /* The CLI times out instead. */ }
-                if (!file.delete()) file.deleteOnExit();
+            } else {
+                shell.showError("A bundled applet could not be read: " + error.getMessage());
             }
         }
+        // The host deletes the bundle; never offer the same file twice.
+        if (file.exists() && !file.delete()) file.deleteOnExit();
+        if (kind.equals("bundled") && record.exists() && !record.delete()) record.deleteOnExit();
     }
 
     @Override public void launcherShown() { main.post(scan); }
