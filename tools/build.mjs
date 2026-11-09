@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
-import { access, copyFile, mkdir, rm } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { access, copyFile, mkdir, readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -48,8 +49,32 @@ async function check() {
   run(process.execPath, ["node_modules/typescript/lib/tsc.js", "-p", "packages/sdk/tsconfig.json"]);
 }
 
-// Each selected applet becomes assets/bundles/applet-<id>.bundle.json, which the shell
-// stages into its import directory on first launch.
+// The committed release of an applet, when it is current: `published/` holds the bundle and its
+// release record, the record names this applet and its package.json version, and the bundle
+// matches the record's hash. Rebuilding would change `builtAt` and break the match with GitHub.
+async function publishedRelease(base, id) {
+  const record = path.join(base, "published", `applet-${id}.release.json`);
+  const bundle = path.join(base, "published", `applet-${id}.bundle.json`);
+  let release, bytes;
+  try {
+    release = JSON.parse(await readFile(record, "utf8"));
+    bytes = await readFile(bundle);
+  } catch {
+    return { reason: "no published release" };
+  }
+  const { version } = JSON.parse(await readFile(path.join(base, "package.json"), "utf8"));
+  if (release.appletId !== id || release.version !== version) {
+    return { reason: `published release ${release.version} is not package.json version ${version}` };
+  }
+  if (createHash("sha256").update(bytes).digest("hex") !== release.bundle?.sha256) {
+    return { reason: "published bundle does not match its release record" };
+  }
+  return { record, bundle, version };
+}
+
+// Each selected applet becomes assets/bundles/applet-<id>.bundle.json, which the shell stages on
+// the first launch after an install or update. The release variant ships the committed release
+// with its record; the debug variant, and an applet without a current release, is built here.
 async function assets() {
   // The applet tools import @genesis/core, which check() has just built.
   const { readPackages } = await import("./check-packages.mjs");
@@ -58,8 +83,19 @@ async function assets() {
   await rm(output, { recursive: true, force: true });
   await mkdir(path.join(output, "bundles"), { recursive: true });
   for (const { base, manifest } of await readPackages()) {
+    if (variant === "release") {
+      const published = await publishedRelease(base, manifest.id);
+      if (published.record) {
+        await copyFile(published.bundle, path.join(output, "bundles", path.basename(published.bundle)));
+        await copyFile(published.record, path.join(output, "bundles", path.basename(published.record)));
+        console.log(`${manifest.id}: published release ${published.version}`);
+        continue;
+      }
+      console.warn(`Warning: ${manifest.id}: ${published.reason}; bundling a fresh build without a release record.`);
+    }
     const built = await buildApplet(base, path.join(intermediates, "bundles", manifest.id), { debug: variant === "debug" });
     await copyFile(built.importFile, path.join(output, "bundles", path.basename(built.importFile)));
+    console.log(`${manifest.id}: built from source`);
   }
   console.log(`Generated applet bundles: ${path.join(output, "bundles")}`);
 }
