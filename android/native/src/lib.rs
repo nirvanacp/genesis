@@ -2,10 +2,15 @@ mod applets;
 mod compat;
 mod contexts;
 mod documents;
+mod fetch;
+mod flows;
+mod github;
 mod host;
 mod imports;
 mod rpc;
+mod semver;
 mod services;
+mod source;
 mod storage;
 mod storage_worker;
 

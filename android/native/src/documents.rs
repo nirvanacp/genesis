@@ -9,6 +9,11 @@ use std::{
 /// Activity and a host reset, so ids stay unique for the process, not for one registry.
 static NEXT_OP: AtomicU64 = AtomicU64::new(1);
 
+/// An op id for a storage job no document waits for, such as deleting an applet's data.
+pub fn next_op_id() -> u64 {
+    NEXT_OP.fetch_add(1, Ordering::Relaxed)
+}
+
 pub struct Document {
     pub id: String,
     /// `location.href` the document reported in `hello`.
@@ -108,7 +113,7 @@ impl Documents {
     }
 
     pub fn begin_op(&mut self, op: PendingOp) -> u64 {
-        let op_id = NEXT_OP.fetch_add(1, Ordering::Relaxed);
+        let op_id = next_op_id();
         self.ops.insert(op_id, op);
         op_id
     }

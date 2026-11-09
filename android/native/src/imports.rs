@@ -3,7 +3,7 @@
 use crate::compat;
 use genesis_contracts::{
     Bundle, Compatibility, Direction, Encoding, ErrorBody, ErrorCode, IMPORT_MAX_BYTES, ImportEnvelope, MAX_CONTEXTS,
-    Mismatch,
+    Mismatch, RELEASE_FORMAT, ReleaseRecord,
 };
 use std::collections::{HashMap, HashSet};
 
@@ -142,6 +142,33 @@ fn is_safe_path(path: &str) -> bool {
                 && segment != ".."
                 && segment.bytes().all(|b| b.is_ascii_alphanumeric() || b"._@-".contains(&b))
         })
+}
+
+pub fn sha256_hex(data: &[u8]) -> String {
+    hex(&sha256(data))
+}
+
+/// Parses a release record and checks the fields the host relies on.
+pub fn parse_release(text: &str) -> Result<ReleaseRecord, String> {
+    let record: ReleaseRecord = serde_json::from_str(text).map_err(|e| format!("Invalid release record: {e}"))?;
+    if record.release_format != RELEASE_FORMAT {
+        return Err(format!("Release record format {} is not supported; this Genesis reads format {RELEASE_FORMAT}", record.release_format));
+    }
+    if !is_id(&record.applet_id) || record.bundle.file != format!("applet-{}.bundle.json", record.applet_id) {
+        return Err("The release record names an invalid applet or bundle file".into());
+    }
+    if crate::semver::Version::parse(&record.version).is_none() {
+        return Err(format!("The release record's version {} is not a semantic version", record.version));
+    }
+    Ok(record)
+}
+
+/// The bundle's bytes must be the ones the record describes.
+pub fn check_release(record: &ReleaseRecord, bytes: &[u8]) -> Result<(), String> {
+    if bytes.len() as u64 != record.bundle.size || sha256_hex(bytes) != record.bundle.sha256 {
+        return Err(format!("The bundle does not match the release record of {} {}", record.applet_id, record.version));
+    }
+    Ok(())
 }
 
 fn hex(bytes: &[u8]) -> String {

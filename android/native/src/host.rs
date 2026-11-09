@@ -1,15 +1,15 @@
 //! The host core: turns shell events into shell commands.
 use crate::{
-    applets::{self, Applets},
+    applets::Applets,
     contexts::{BackSlot, ContextView, Contexts, Resume, Session},
     documents::Documents,
-    imports::{self, Verified},
+    flows::{Flow, Updates},
     storage_worker,
 };
 use genesis_contracts::*;
 use serde_json::{Value, json};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashMap},
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -25,6 +25,16 @@ pub struct Host {
     pub documents: Documents,
     pub contexts: Contexts,
     pub out: Vec<ShellCommand>,
+    /// A debuggable APK accepts development builds from `genesis-import/`.
+    pub debuggable: bool,
+    /// The running add, review or update flow.
+    pub flow: Option<Flow>,
+    pub updates: Updates,
+    /// Epoch seconds until which GitHub API calls are refused.
+    pub rate_reset_s: u64,
+    pub next_request: u64,
+    /// Storage jobs erasing an applet's data, by job id, so a failure can be shown.
+    pub deletions: HashMap<u64, String>,
 }
 
 pub fn now_ms() -> u64 {
@@ -35,11 +45,15 @@ impl Host {
     pub fn dispatch(&mut self, event: ShellEvent) -> Result<Vec<ShellCommand>, String> {
         let now = now_ms();
         match event {
-            ShellEvent::Attach { files_dir, debuggable: _ } => {
+            ShellEvent::Attach { files_dir, debuggable } => {
+                // A new Activity has none of the old flow's screens.
+                self.end_flow();
                 self.contexts = Contexts::default();
                 self.documents = Documents::default();
                 self.applets = Applets::load(Path::new(&files_dir));
                 self.files_dir = Some(files_dir.into());
+                self.debuggable = debuggable;
+                self.load_updates();
                 self.show_launcher();
             }
             ShellEvent::Resumed => self.resumed(now),
@@ -64,9 +78,9 @@ impl Host {
             }
             ShellEvent::RendererGone { view } => self.renderer_gone(&view),
             ShellEvent::HistoryUnmoved { view } => self.history_unmoved(&view),
-            // Bundled and development imports install alike until the host records sources.
-            ShellEvent::ImportFound { kind: ImportKind::Bundle | ImportKind::Bundled, path, payload, release: _ } => {
-                self.import_bundle(&path, &payload)
+            ShellEvent::ImportFound { kind: ImportKind::Bundle, path, payload, release: _ } => self.import_dev(&path, &payload),
+            ShellEvent::ImportFound { kind: ImportKind::Bundled, path, payload, release } => {
+                self.import_bundled(&path, &payload, release.as_deref())
             }
             ShellEvent::ServiceResponse { request_id, status, body } => {
                 self.finish_op(request_id, None, Ok(crate::services::result(status, body)));
@@ -76,15 +90,14 @@ impl Host {
             }
             ShellEvent::StorageCompleted { payload } => self.storage_completed(&payload)?,
             ShellEvent::Tick => self.tick(now),
-            // The shell sends these only once the add, review and remove screens exist.
-            ShellEvent::FetchCompleted { .. }
-            | ShellEvent::AddFromRepository { .. }
-            | ShellEvent::ReviewFile { .. }
-            | ShellEvent::ChooseCandidate { .. }
-            | ShellEvent::ReviewDecision { .. }
-            | ShellEvent::CheckUpdates { .. }
-            | ShellEvent::CancelFlow
-            | ShellEvent::RemoveApplet { .. } => {}
+            event @ ShellEvent::FetchCompleted { .. } => self.fetch_completed(event),
+            ShellEvent::AddFromRepository { input } => self.add_from_repository(&input),
+            ShellEvent::ReviewFile { path, release } => self.review_file(&path, release.as_deref()),
+            ShellEvent::ChooseCandidate { applet_id, version } => self.choose_candidate(&applet_id, version.as_deref()),
+            ShellEvent::ReviewDecision { review_id, accept, replace } => self.review_decision(&review_id, accept, replace),
+            ShellEvent::CheckUpdates { applet_id, manual } => self.check_updates(applet_id, manual),
+            ShellEvent::CancelFlow => self.cancel_flow(),
+            ShellEvent::RemoveApplet { applet_id } => self.remove_applet(&applet_id),
         }
         Ok(std::mem::take(&mut self.out))
     }
@@ -157,8 +170,8 @@ impl Host {
     // -----------------------------------------------------------------------------------------
     // Applet lifecycle
 
-    fn show_launcher(&mut self) {
-        self.out.push(ShellCommand::ShowLauncher { applets: self.applets.launcher() });
+    pub fn show_launcher(&mut self) {
+        self.out.push(ShellCommand::ShowLauncher { applets: self.launcher_entries() });
     }
 
     /// Leaves the applet. A pending recreation is forgotten with it.
@@ -502,6 +515,13 @@ impl Host {
             (Some(result), None) => Ok(result),
             (_, error) => Err(error.unwrap_or_else(|| ErrorBody::new(ErrorCode::StorageFailure, "Empty storage result"))),
         };
+        if let Some(applet_id) = self.deletions.remove(&completion.job_id) {
+            if let Err(error) = &outcome {
+                let message = format!("The stored data of {applet_id} was not erased: {}", error.message);
+                self.out.push(ShellCommand::ShowError { message });
+            }
+            return Ok(());
+        }
         let namespace_revision = outcome.as_ref().ok().and_then(|r| r.get("namespaceRevision").cloned());
         self.finish_op(completion.job_id, Some(&completion.applet_id), outcome);
         let active = self.contexts.session.as_ref().is_some_and(|s| s.applet_id == completion.applet_id);
@@ -557,50 +577,25 @@ impl Host {
     // -----------------------------------------------------------------------------------------
     // Imports
 
-    /// Installs a current bundle, or lists an incompatible one, then writes the receipt. An
-    /// active applet is retired before its previous revision's files are deleted.
-    fn import_bundle(&mut self, path: &str, payload: &str) {
-        let outcome = imports::verify(payload).and_then(|verified| match verified {
-            Verified::Current { bundle, files } => {
-                let applet_id = bundle.manifest.id.clone();
-                let (revision, previous) = self.applets.install(&bundle, files).map_err(storage_error)?;
-                Ok((applet_id, previous, json!({ "ok": true, "appletId": bundle.manifest.id, "revision": revision, "status": "current" })))
-            }
-            Verified::Incompatible(bundle) => {
-                let applet_id = bundle.id.clone();
-                let receipt = json!({
-                    "ok": true, "appletId": bundle.id, "status": "incompatible",
-                    "direction": bundle.direction, "mismatches": bundle.mismatches,
-                });
-                let previous = self.applets.record_incompatible(bundle).map_err(storage_error)?;
-                Ok((applet_id, previous, receipt))
-            }
-        });
-        let receipt = match &outcome {
-            Ok((_, _, receipt)) => receipt.clone(),
-            Err(error) => json!({ "ok": false, "code": error.code, "error": error.message }),
-        };
-        let receipt_path = path.strip_suffix(".json").unwrap_or(path).to_owned() + ".receipt.json";
-        let _ = applets::write_atomic(Path::new(&receipt_path), receipt.to_string().as_bytes());
-        let _ = std::fs::remove_file(path);
-        let (applet_id, previous) = match outcome {
-            Ok((applet_id, previous, _)) => (applet_id, previous),
-            Err(error) => return self.out.push(ShellCommand::ShowError { message: error.message }),
-        };
-        let incompatible = self.applets.entry(&applet_id).filter(|e| e.status == AppletStatus::Incompatible);
+    /// After an install: an active applet restarts on the new revision (an incompatible one
+    /// returns to the launcher), the previous revision's files go, and an incompatible import
+    /// explains itself once. `restart` starts the applet even though it was retired first.
+    pub fn after_install(&mut self, applet_id: &str, previous: Option<u64>, restart: bool) {
+        let incompatible = self.applets.entry(applet_id).filter(|e| e.status == AppletStatus::Incompatible);
         let active = self.contexts.session.as_ref().map(|s| s.applet_id.clone());
-        if active.as_deref() == Some(applet_id.as_str()) {
+        let restart = restart || active.as_deref() == Some(applet_id);
+        if restart {
             self.retire_active();
             // An incompatible import cannot start; the notice below explains it, once.
             match incompatible {
                 Some(_) => self.show_launcher(),
-                None => self.activate(&applet_id, None),
+                None => self.activate(applet_id, None),
             }
         } else if active.is_none() {
             self.show_launcher();
         }
         if let Some(previous) = previous {
-            self.applets.remove_revision(&applet_id, previous);
+            self.applets.remove_revision(applet_id, previous);
         }
         if let Some(entry) = incompatible {
             let details = match entry.direction {
@@ -610,10 +605,6 @@ impl Host {
             self.out.push(ShellCommand::ShowStatus { kind: StatusKind::ImportReceived, details: details.into(), applet: Some(entry) });
         }
     }
-}
-
-fn storage_error(message: String) -> ErrorBody {
-    ErrorBody::new(ErrorCode::StorageFailure, message)
 }
 
 /// The status sheet's text for an applet that cannot start: each mismatch, then what to do.

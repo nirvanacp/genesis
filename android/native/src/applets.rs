@@ -6,13 +6,14 @@
 use crate::{
     compat,
     imports::{IncompatibleBundle, VerifiedFiles},
+    source::Source,
 };
 use genesis_contracts::{
     AppletStatus, Bundle, BundleHeader, Compatibility, Direction, FOREGROUND_ORIGIN, LauncherEntry, Manifest, Mismatch,
 };
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fs,
     path::{Path, PathBuf},
 };
@@ -34,7 +35,13 @@ struct IndexEntry {
     direction: Option<Direction>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     mismatches: Vec<Mismatch>,
+    /// Absent on entries written before sources existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    source: Option<Source>,
 }
+
+/// Bundled applets the user removed, so staging does not bring them back.
+const REMOVED_BUNDLED: &str = "removed-bundled.json";
 
 fn current() -> AppletStatus {
     AppletStatus::Current
@@ -59,6 +66,8 @@ pub enum Installed {
 pub struct Applets {
     root: PathBuf,
     installed: BTreeMap<String, Installed>,
+    sources: BTreeMap<String, Source>,
+    removed_bundled: BTreeSet<String>,
 }
 
 impl Applets {
@@ -70,9 +79,13 @@ impl Applets {
             .ok()
             .and_then(|bytes| serde_json::from_slice(&bytes).ok())
             .unwrap_or_default();
+        let mut sources = BTreeMap::new();
         let installed = entries
             .into_iter()
             .filter_map(|entry| {
+                if let Some(source) = entry.source.clone() {
+                    sources.insert(entry.applet_id.clone(), source);
+                }
                 let installed = match entry.revision {
                     Some(revision) => classify(&root.join(&entry.applet_id).join(revision.to_string()), revision)?,
                     None => Installed::Incompatible {
@@ -86,7 +99,63 @@ impl Applets {
                 Some((entry.applet_id, installed))
             })
             .collect();
-        Self { root, installed }
+        let removed_bundled = fs::read(root.join(REMOVED_BUNDLED))
+            .ok()
+            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+            .unwrap_or_default();
+        let mut applets = Self { root, installed, sources, removed_bundled };
+        applets.sources.retain(|id, _| applets.installed.contains_key(id));
+        applets
+    }
+
+    /// None when the applet is not installed, `Some(None)` for an entry without a source.
+    pub fn source(&self, applet_id: &str) -> Option<Option<&Source>> {
+        self.installed.contains_key(applet_id).then(|| self.sources.get(applet_id))
+    }
+
+    /// Every installed applet with its source.
+    pub fn sources(&self) -> impl Iterator<Item = (&String, &Source)> {
+        self.sources.iter()
+    }
+
+    /// Records a new source for an installed applet without writing a revision.
+    pub fn set_source(&mut self, applet_id: &str, source: Source) -> Result<(), String> {
+        let previous = self.sources.insert(applet_id.into(), source);
+        let written = self.write_index();
+        if written.is_err() {
+            match previous {
+                Some(previous) => self.sources.insert(applet_id.into(), previous),
+                None => self.sources.remove(applet_id),
+            };
+        }
+        written
+    }
+
+    pub fn removed_bundled(&self, applet_id: &str) -> bool {
+        self.removed_bundled.contains(applet_id)
+    }
+
+    /// Deletes the applet's entry and files. A bundled applet is remembered as removed.
+    pub fn remove(&mut self, applet_id: &str) -> Result<(), String> {
+        let Some(installed) = self.installed.remove(applet_id) else { return Err(format!("Applet {applet_id} is not installed")) };
+        let source = self.sources.remove(applet_id);
+        if let Err(error) = self.write_index() {
+            self.installed.insert(applet_id.into(), installed);
+            if let Some(source) = source {
+                self.sources.insert(applet_id.into(), source);
+            }
+            return Err(error);
+        }
+        let _ = fs::remove_dir_all(self.root.join(applet_id));
+        if matches!(source, Some(Source::Bundled { .. })) && self.removed_bundled.insert(applet_id.into()) {
+            self.write_removed_bundled()?;
+        }
+        Ok(())
+    }
+
+    fn write_removed_bundled(&self) -> Result<(), String> {
+        let encoded = serde_json::to_vec(&self.removed_bundled).map_err(|e| e.to_string())?;
+        write_atomic(&self.root.join(REMOVED_BUNDLED), &encoded)
     }
 
     /// The applet's revision and manifest, when it is installed and current.
@@ -98,11 +167,16 @@ impl Applets {
     }
 
     pub fn launcher(&self) -> Vec<LauncherEntry> {
-        self.installed.iter().map(|(id, installed)| entry(id, installed)).collect()
+        self.installed.keys().filter_map(|id| self.entry(id)).collect()
     }
 
     pub fn entry(&self, applet_id: &str) -> Option<LauncherEntry> {
-        self.installed.get(applet_id).map(|installed| entry(applet_id, installed))
+        let mut entry = entry(applet_id, self.installed.get(applet_id)?);
+        if let Some(source) = self.sources.get(applet_id) {
+            entry.version = source.version().map(String::from);
+            entry.source = Some(source.label());
+        }
+        Some(entry)
     }
 
     pub fn foreground_url(&self, applet_id: &str, revision: u64) -> String {
@@ -114,10 +188,15 @@ impl Applets {
             .map_err(|e| format!("Cannot read {path}: {e}"))
     }
 
-    /// Writes the next revision and switches the index to it. Returns the new revision and the
-    /// previous one, whose files the caller removes once no view uses them.
-    pub fn install(&mut self, bundle: &Bundle, files: VerifiedFiles) -> Result<(u64, Option<u64>), String> {
+    /// Writes the next revision and switches the index to it, with its source. Returns the new
+    /// revision and the previous one, whose files the caller removes once no view uses them.
+    /// Installing from any source but the APK forgets that a bundled applet was removed.
+    pub fn install(&mut self, bundle: &Bundle, files: VerifiedFiles, source: Source) -> Result<(u64, Option<u64>), String> {
         let id = bundle.manifest.id.clone();
+        if !matches!(source, Source::Bundled { .. }) && self.removed_bundled.remove(&id) {
+            self.write_removed_bundled()?;
+        }
+        let previous_source = self.sources.insert(id.clone(), source);
         let previous = self.installed.get(&id).and_then(revision_of);
         let revision = previous.unwrap_or(0) + 1;
         let directory = self.root.join(&id).join(revision.to_string());
@@ -127,6 +206,10 @@ impl Applets {
         }
         let installed = Installed::Current { revision, manifest: Box::new(bundle.manifest.clone()) };
         if let Err(error) = self.replace(&id, installed) {
+            match previous_source {
+                Some(previous) => self.sources.insert(id.clone(), previous),
+                None => self.sources.remove(&id),
+            };
             let _ = fs::remove_dir_all(&directory);
             return Err(error);
         }
@@ -180,6 +263,7 @@ impl Applets {
                     status: entry.status,
                     direction: entry.direction,
                     mismatches: entry.mismatches,
+                    source: self.sources.get(id).cloned(),
                 }
             })
             .collect();
