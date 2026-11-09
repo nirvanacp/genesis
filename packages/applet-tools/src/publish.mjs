@@ -156,6 +156,8 @@ async function verifyPublished(base, manifest) {
   const { commit } = genesisCommit({ requireClean: false });
   // The home comes from the applet repository's remote, which a CI copy of the applet does not have.
   const rebuilt = await buildRelease(base, { builtAt: record.builtAt, commit, home: record.home });
+  // The Node version that ran publish is informational; the bundle bytes show any effect it had.
+  rebuilt.record.toolchain.node = record.toolchain.node;
   const differences = [];
   if (!rebuilt.bundleBytes.equals(published.bundleBytes)) {
     differences.push(`bundle bytes differ: committed ${sha256(published.bundleBytes)}, rebuilt ${rebuilt.record.bundle.sha256}`);

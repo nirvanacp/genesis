@@ -1,6 +1,6 @@
 import path from 'node:path';
-import { readApplet, requireValue } from './manifest.mjs';
-import { PUBLISHED, readPublished } from './publish.mjs';
+import { readApplet, requireValue, toolError } from './manifest.mjs';
+import { genesisRoot, PUBLISHED, publishApplet, readPublished } from './publish.mjs';
 import { findRepository, git, listApplets, tagFor, tagsFor } from './repo.mjs';
 import { compare } from './semver.mjs';
 
@@ -29,8 +29,8 @@ export async function listRepository(directory) {
 
 /**
  * Creates the annotated tag `v<version>` (single-applet repository) or `<id>/v<version>`
- * (multi-applet repository) at HEAD, after checking that the committed release is current.
- * Never pushes.
+ * (multi-applet repository) at HEAD, after checking that the committed release is current and
+ * equals a rebuild of the committed source. Never pushes.
  */
 export async function releaseApplet(directory, { dryRun = false } = {}) {
   const { root, layout, applet, warnings } = await findRepository(directory);
@@ -51,6 +51,15 @@ export async function releaseApplet(directory, { dryRun = false } = {}) {
   requireValue(!existing.some(entry => entry.tag === tag), `Tag ${tag} already exists; raise the version with npm version <patch|minor|major> --no-git-tag-version`);
   const highest = existing[0];
   requireValue(!highest || compare(applet.version, highest.version) > 0, `Version ${applet.version} is not higher than the released ${highest?.version} (${highest?.tag})`);
+
+  // A rebuild catches source changes committed after publish. It must use the recorded Genesis commit.
+  const recorded = published.record.toolchain.genesisCommit;
+  const genesis = genesisRoot();
+  requireValue(genesis, 'release rebuilds the committed build, so it needs the Genesis checkout these tools belong to');
+  const head = git(genesis, ['rev-parse', 'HEAD']);
+  requireValue(head === recorded, `${relative} was built with Genesis ${recorded.slice(0, 12)}, but this Genesis is at ${head.slice(0, 12)}; run genesis-applet publish and commit published/, or check out Genesis ${recorded.slice(0, 12)}`);
+  try { await publishApplet(applet.directory, { verify: true }); }
+  catch (error) { throw toolError('PUBLISH_MISMATCH', `${error.message}\nRun genesis-applet publish and commit published/ before releasing.`); }
 
   const commit = git(root, ['rev-parse', 'HEAD']);
   if (!dryRun) git(root, ['tag', '-a', tag, '-m', `${manifest.id} ${applet.version}`]);
