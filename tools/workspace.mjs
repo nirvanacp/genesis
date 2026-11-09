@@ -34,8 +34,12 @@ export function readWorkspace() {
   const appletsDirectory = path.resolve(root, directory);
   const relative = path.relative(root, appletsDirectory);
   requireValue(relative !== '', `${CONFIG}: applets.directory must not be the Genesis root`);
-  const inside = !relative.startsWith('..') && !path.isAbsolute(relative);
+  const inside = !leavesRoot(relative);
   return { appletsDirectory, repository, inside, linked: appletsDirectory !== ENTRY };
+}
+
+function leavesRoot(relative) {
+  return relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative);
 }
 
 function realpathOrNull(file) {
@@ -56,8 +60,7 @@ function modulesLink({ appletsDirectory }) {
 function outsideRoot({ appletsDirectory, inside }) {
   const real = realpathOrNull(appletsDirectory);
   if (!real) return !inside;
-  const relative = path.relative(realpathSync(root), real);
-  return relative.startsWith('..') || path.isAbsolute(relative);
+  return leavesRoot(path.relative(realpathSync(root), real));
 }
 
 // Compares the link's target rather than real paths, so it holds before the first npm install.
@@ -66,9 +69,11 @@ function modulesLinked(workspace) {
   return isLink(link) && path.resolve(path.dirname(link), readlinkSync(link)) === path.join(root, 'node_modules');
 }
 
+// git check-ignore exits 1 for a path it does not ignore. Any other failure means the root is
+// not a git checkout (a source archive) or git is missing; there is nothing to protect then.
 function ignoredByRoot(file) {
   const result = spawnSync('git', ['-C', root, 'check-ignore', '-q', '--no-index', path.relative(root, file)], { shell: false });
-  return result.status === 0;
+  return result.status !== 1;
 }
 
 /** Fails with the command that repairs the first difference between the workspace and its config. */
@@ -101,6 +106,7 @@ function sync() {
     symlinkSync(path.join(root, 'node_modules'), modulesLink(workspace), 'dir');
     console.log(`Linked ${modulesLink(workspace)} to the Genesis root node_modules`);
   }
+  checkLayout();
   console.log(`Workspace matches ${CONFIG}.`);
 }
 
