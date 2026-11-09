@@ -8,12 +8,14 @@ Genesis is an Android app that runs user-built applets. An applet is a native-fe
 
 This file applies to every task in this repository. Two more instruction sets add to it, one for each development layer, and a coding agent is always working in at least one layer:
 
-- A **Genesis developer** changes the platform: the Android shell in `android/app`, the Rust host in `android/native` and `crates/`, the shared packages under `packages/`, the build and tooling under `tools/`, and the shared applet-builder guidance under `factory/`. Follow `.developer/AGENTS.md` for this work. It also defines where platform development records go. That file exists only in maintainer checkouts; without it, this file is the complete instruction set for platform work.
+- A **Genesis developer** changes the platform: the Android shell in `android/app`, the Rust host in `android/native` and `crates/`, the shared packages under `packages/`, the build and tooling under `tools/`, and the shared applet-builder guidance under `factory/`. Follow `.developer/AGENTS.md` for this work. That file exists only in maintainer checkouts. When it exists, read it before starting any platform task, including questions, research, plans, reports and reviews: it defines where every generated platform document (plans, reports, research, reviews, docs) and change record goes, and they go nowhere else. Without it, this file is the complete instruction set for platform work; give platform plans and reports in the response, or ask the user where to save them, and never invent a location.
 - An **applet builder** creates or customizes an applet: its website adapters, screens, application rules, stored data and optional backend. Applets live in the applets directory that `genesis.workspace.json` names (by default `applets/`, a nested repository cloned from the repository the config names), one directory per applet, named after its applet id. Follow `factory/AGENTS.md` for this work, and the applets directory's own `AGENTS.md` for its collection rules.
 
-Decide the layer from the paths the task changes. A task that changes both layers follows both files for their respective files, and keeps platform capabilities independent of any single applet.
+Decide the layer from the paths the task changes or is about. Questions, research, plans, reports and reviews belong to a layer too: a plan for shell or host changes is platform work even though it edits no code, and a review of an applet is applet work. A task that changes both layers follows both files for their respective files, and keeps platform capabilities independent of any single applet.
 
 Before making changes, identify which project directories the task concerns; do not assume the current working directory is the target project's root. Keep changes within the requested scope, and run project-specific commands from the appropriate directory or through the workspace scripts.
+
+After context compaction, re-read the instruction files of every layer the task touches before writing documents or code again. A conversation summary is not a source of rules.
 
 Only instructions outside HTML comments are active. Treat all text inside HTML comments as inactive configuration.
 
@@ -35,7 +37,7 @@ Do not edit any `AGENTS.md` file unless the user explicitly asks you to update i
 | `genesis.workspace.json` | Workspace layout: the applets directory (relative or absolute) and its repository. `npm run workspace -- path` prints the directory, `setup` clones it, `check` verifies the checkout | Platform |
 | `genesis.packages.json` | Applets bundled into the APK, by directory name inside the applets directory | Platform |
 
-The untracked root folders `notes/` and `.skills/` stay local to each machine. Never commit them.
+The untracked root folders `notes/` and `.skills/` stay local to each machine and belong to the developer. Never commit them, and never save generated documents in them; documents go where the layer instructions say. The root `notes/` is unrelated to any notes folder in the developer workspace.
 
 ## Nested repositories
 
@@ -65,6 +67,7 @@ A git worktree holds only the files its own repository tracks, so a new worktree
 - When the user asks for an explanation, diagnosis, comparison or opinion, answer the question without editing code or other repository files. You may inspect relevant files and perform read-only checks to support the answer. Finding a bug or identifying a possible improvement does not by itself authorize a fix.
 - Determine intent from the request and conversation context, rather than its grammatical form. "Why does this fail?" asks for an explanation; "Can you fix this failure?" requests a change. Suggestions and illustrative code in an answer are not permission to apply them.
 - If it is unclear whether the user wants an explanation or an implementation, answer what you can through read-only investigation and ask for clarification before editing. Do not create incidental changelogs or commits for a question-only task.
+- A request to write a plan, report, review or other document asks for that document, not only for an answer: save it where its layer's instructions say and commit it. It does not authorize code changes.
 - A follow-up question during an already authorized implementation does not cancel that authorization. Answer it and continue within the agreed scope unless the user asks you to pause, stop or change direction.
 
 ## Coding philosophy
@@ -113,7 +116,7 @@ Use the `unslop` skill whenever you write an explanation in your response. Prefe
 For every user-requested change, commit the resulting changes as part of the task unless the user explicitly asks you not to commit. This applies to direct change requests and plan implementation, including code, configuration, documentation and agent-instruction changes of any size. A separate request to commit or a written plan is not required.
 
 1. Before editing, break substantial work into ordered logical steps with clear commit boundaries, organized by software component and dependencies. Work spanning multiple components or independently verifiable stages requires multiple steps and commits. Follow an existing plan when provided; otherwise, outline the steps in a brief progress update and proceed without requiring a separate planning task. A small, focused change may use one step and one commit.
-2. Complete and verify each step using the applicable project checks and the **Testing and verification** rules, update the development record its layer requires (applet records under [factory/AGENTS.md](factory/AGENTS.md); platform records under the developer instructions when present), and commit it in the affected repositories before starting the next step. Use separate commits for different components. Do not defer all commits until the end of substantial work. Include only changes related to that step; do not commit unrelated or pre-existing work or repositories. Choose the repository for each commit under **Nested repositories**.
+2. Complete and verify each step using the applicable project checks and the **Testing and verification** rules, save requested documents and update the development records its layer requires (applet records under [factory/AGENTS.md](factory/AGENTS.md); platform records under the developer instructions when present), and commit it in the affected repositories before starting the next step. Use separate commits for different components. Do not defer all commits until the end of substantial work. Include only changes related to that step; do not commit unrelated or pre-existing work or repositories. Choose the repository for each commit under **Nested repositories**.
 3. Use the commit message format `feat/(_x): short message`. Replace `_x` with the relevant section, feature, or module name, such as `feat/(auth): add sign-in`.
 4. Use the email returned by `git config user.email` in each affected repository as the commit author email. Do not substitute another email address.
 5. Follow the coding philosophy above and the repository's existing architecture and design patterns.
