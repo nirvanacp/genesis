@@ -1,6 +1,6 @@
 ---
 name: genesis-test-accounts
-description: Sign in to a website's test account on the device while building or verifying an applet, using scripts that read the operator's accounts file so the agent never sees a username or password.
+description: Sign in to a website's test account, or to several accounts on one site, on the device while building or verifying an applet, using scripts that read the operator's accounts file so the agent never sees a username or password.
 ---
 
 # Sign in with test accounts
@@ -36,7 +36,18 @@ X_COM_USERNAME=...
 X_COM_PASSWORD=...
 ```
 
-Field names in common use are `USERNAME`, `EMAIL`, `PASSWORD` and `PHONE`. The operator runs `chmod 600` on the file. The scripts print a warning when the file is readable by other users or sits inside a repository. Pass that warning on to the user.
+Field names in common use are `USERNAME`, `EMAIL`, `PASSWORD` and `PHONE`.
+
+A site with more than one test account numbers them. Every key of one account ends in the same `_<n>`, counting from 0:
+
+```sh
+ACCOUNTS_GOOGLE_COM_USERNAME_0=...
+ACCOUNTS_GOOGLE_COM_PASSWORD_0=...
+ACCOUNTS_GOOGLE_COM_USERNAME_1=...
+ACCOUNTS_GOOGLE_COM_PASSWORD_1=...
+```
+
+The host is the site whose sign-in form takes the value, which can differ from the applet's origin: a Gmail applet signs in on `accounts.google.com`. The operator runs `chmod 600` on the file. The scripts print a warning when the file is readable by other users or sits inside a repository. Pass that warning on to the user.
 
 ## Steps
 
@@ -57,10 +68,18 @@ Run the scripts with Node from the applet directory. The paths below assume the 
    news.ycombinator.com
      NEWS_YCOMBINATOR_COM_USERNAME (set)
      NEWS_YCOMBINATOR_COM_PASSWORD (set)
+
+   accounts.google.com account 0
+     ACCOUNTS_GOOGLE_COM_USERNAME_0 (set)
+     ACCOUNTS_GOOGLE_COM_PASSWORD_0 (set)
+
+   accounts.google.com account 1
+     ACCOUNTS_GOOGLE_COM_USERNAME_1 (set)
+     ACCOUNTS_GOOGLE_COM_PASSWORD_1 (set)
    ```
 
    Pass one or more sites to narrow the list, as URLs, hosts or key prefixes: `list-accounts.mjs https://news.ycombinator.com`.
-3. **Choose the keys.** Match the hosts in `applet.json` `origins`, and the host the adapter's `signInUrl` opens, against the account names. Pick the site's own username and password sign-in. When no key matches or the keys you need are `empty`, the signed-in journeys are blocked: record that and tell the user which key to add.
+3. **Choose the keys.** Match the hosts in `applet.json` `origins`, and the host the adapter's `signInUrl` opens, against the account names. Pick the site's own username and password sign-in. With numbered accounts, use account 0 for single-account journeys and keep the username and password of one number together. When no key matches or the keys you need are `empty`, the signed-in journeys are blocked: record that and tell the user which key to add.
 4. **Open the sign-in form.** Open the page that needs the account. Genesis shows the website's sign-in for an `auth` page. Tap the username field so it has focus.
 5. **Type the username.**
 
@@ -71,6 +90,18 @@ Run the scripts with Node from the applet directory. The paths below assume the 
    It prints `Typed NEWS_YCOMBINATOR_COM_USERNAME into the focused field.` and nothing else of the value.
 6. **Type the password.** Tap the password field, then run the same command with the `_PASSWORD` key.
 7. **Submit and confirm.** Tap the website's own sign-in button yourself; the script never submits. Confirm that the applet screen returns with the account. If the site rejects the sign-in or shows a challenge, follow rule 6.
+
+## Several accounts on one site
+
+Some applets work with more than one account at once: an account switcher, a unified inbox, items saved from one account and opened from another. When the spec has such a journey, or you build or change one, sign in to two numbered accounts and check it with both. Do not assume that a journey that works for account 0 works for account 1.
+
+1. **Sign in to account 0** with the steps above, using the `_0` keys.
+2. **Add the second session the way a person would.** Use the applet's own entry point, such as "Add another account", or the site's own add-account page, in the same context. Signing out of account 0 first does not test anything multi-account. Type the `_1` keys into that site's form, one field at a time, as in steps 4 to 7.
+3. **Confirm which account is open.** After each switch, check the account the site shows, not just that a page loaded. Many sites number their sessions (`/u/0/`, `authuser=1`) and renumber them after a sign-out, so the number can move. When you read the account name or address from the page or a snapshot, mask it in what you print, for example by replacing addresses with `<email>`.
+4. **Walk the journeys for each account:** switching both ways; each account's data showing under the right account; an item saved in one account opening in that account from the other; per-account settings; counts and badges that must not carry over between accounts; and what happens after one account signs out, if the spec covers it.
+5. **Finish on account 0,** so the next check starts from the usual state.
+
+Rule 6 applies to each sign-in. When the second sign-in hits a challenge, the multi-account journeys are blocked: record that, and say whether a second session already on the device let you check part of them.
 
 ### When you drive the device with another tool
 
@@ -86,7 +117,7 @@ Write the command the way you would type ordinary text with that tool, with `{se
 
 | Command | What it does |
 | --- | --- |
-| `list-accounts.mjs [site ...]` | Prints the file path, any warnings, and each account's key names marked `set` or `empty`. Never prints a value. |
+| `list-accounts.mjs [site ...]` | Prints the file path, any warnings, and each account's key names marked `set` or `empty`, with numbered accounts listed one by one. Never prints a value. |
 | `enter-secret.mjs <KEY> [--device <serial>] [--adb <path>]` | Types the value of `<KEY>` into the focused field with `adb shell input text`. Printable ASCII only, and a value containing `%s` is refused, because `input text` reads `%s` as a space. |
 | `enter-secret.mjs <KEY> -- <command ...{secret}...>` | Runs your device tool's command with `{secret}` replaced by the value. Use it for other characters or a different device tool. |
 
