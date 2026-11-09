@@ -212,6 +212,13 @@ function foreground(connection: Connection): Foreground {
     });
   }
 
+  /** Pins `id` to its website. Leaving an overlay screen for it asks first when that screen set a leave guard. */
+  function viewWebsite(id: string) {
+    const go = () => { dispatch({ type: "user.viewWebsite", id }); };
+    if (state.overlay.length > 0 || id !== state.active) guarded(go);
+    else go();
+  }
+
   /** Runs Back. Returns whether it was handled inside the applet. */
   function back(fromHost: boolean): boolean {
     let handled = true;
@@ -386,7 +393,7 @@ function foreground(connection: Connection): Foreground {
   });
 
   connection.on("user.viewWebsite", (data: { id?: string | null } | null) => {
-    dispatch({ type: "user.viewWebsite", id: data?.id ?? state.active });
+    viewWebsite(data?.id ?? state.active);
   });
   connection.on("user.done", (data: { id?: string | null } | null) => {
     dispatch({ type: "user.done", id: data?.id ?? state.active });
@@ -609,7 +616,7 @@ function foreground(connection: Connection): Foreground {
       select,
       back: () => { back(false); },
       reload: id => { dispatchReload(id ?? state.active); },
-      viewWebsite: id => { dispatch({ type: "user.viewWebsite", id: id ?? state.active }); },
+      viewWebsite: id => { viewWebsite(id ?? state.active); },
       done: id => { dispatch({ type: "user.done", id: id ?? state.active }); },
       setLeaveGuard: message => { dispatch({ type: "guard", guard: message === null ? null : { message } }); },
       onConfirmLeave(handler) {
