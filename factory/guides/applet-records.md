@@ -8,7 +8,7 @@ Keep the applet's current intent and development history in two tracked folders 
 .changelog/YYYY-MM-DD-HHMMSS-short-change.md
 ```
 
-Use flat files named with the user's local time; no phase or date folders. Add a descriptive suffix on a name collision and never overwrite an unrelated record. Do not create other record folders such as `.plans`, `.docs` or `.reports`; plans, investigations and verification summaries go in the current spec.
+Use flat files named with the user's local time; no phase or date folders. Add a descriptive suffix on a name collision and never overwrite an unrelated record. Do not create other record folders such as `.plans`, `.docs` or `.reports`; plans, investigations and verification summaries go in the current spec. A review of applet work, such as a code, plan or design review, is a file in `.specs/` named `review-<subject>.md`.
 
 Start from the [current spec](templates/current.md), [decisions](templates/decisions.md) and [change record](templates/change.md) templates. On an existing applet without records, create them the first time you change it, from the actual code and prior decisions. Mark unknowns as unknown, say whether a choice came from the user or from you, and never backdate a record.
 
