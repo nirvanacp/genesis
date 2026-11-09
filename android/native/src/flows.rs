@@ -1,6 +1,7 @@
 //! Adding, reviewing, updating and removing applets. Each flow is a small state machine driven by
-//! fetches the shell runs; only one runs at a time. Every failure ends the flow, deletes what it
-//! downloaded and shows one error. Nothing reaches the applet index before the user accepts.
+//! fetches the shell runs; only one runs at a time. A failure ends the flow, deletes what it
+//! downloaded and shows one error; an update check instead counts the applets it could not check.
+//! Nothing reaches the applet index before the user accepts.
 use crate::{
     compat, documents, fetch,
     github::{self, Cache, Release, Repository, Target},
@@ -49,6 +50,15 @@ pub struct Flow {
     review: Option<PendingReview>,
     /// Update checks: the result per applet, None when it has no update.
     found: BTreeMap<String, Option<AppletUpdate>>,
+    /// Update checks: the applets that could not be checked, with the reason.
+    failed: BTreeMap<String, String>,
+}
+
+/// A storage job erasing an applet's data, and what follows once the data is gone.
+pub enum Deletion {
+    /// The reviewed build waiting in the flow, installed with "replace and erase".
+    Install { applet_id: String },
+    Remove { applet_id: String },
 }
 
 #[derive(Clone, PartialEq)]
@@ -66,6 +76,8 @@ enum Stage {
     Choosing,
     Downloading,
     Reviewing,
+    /// The data of the applet being replaced is being erased; the install follows.
+    Erasing,
     Checking,
 }
 
@@ -79,9 +91,24 @@ enum Step {
     Bundle { candidate: Box<Candidate>, older_allowed: bool },
     CheckRepository { applet_id: String },
     CheckReleases { applet_id: String },
-    CheckRecord { applet_id: String, release: Release, withdrawn: bool },
+    /// `older` holds the next newer releases, newest first, tried when this one does not run here.
+    CheckRecord { applet_id: String, release: Release, older: Vec<Release>, withdrawn: bool },
     CheckCommit { applet_id: String },
     CheckBranchRecord { applet_id: String, commit: String },
+}
+
+impl Step {
+    /// The applet an update check step is for.
+    fn checked_applet(&self) -> Option<&str> {
+        match self {
+            Step::CheckRepository { applet_id }
+            | Step::CheckReleases { applet_id }
+            | Step::CheckRecord { applet_id, .. }
+            | Step::CheckCommit { applet_id }
+            | Step::CheckBranchRecord { applet_id, .. } => Some(applet_id),
+            _ => None,
+        }
+    }
 }
 
 /// A release record that passed every check, with the source it installs as.
@@ -115,6 +142,7 @@ impl Flow {
             candidates: Vec::new(),
             review: None,
             found: BTreeMap::new(),
+            failed: BTreeMap::new(),
         }
     }
 
@@ -341,9 +369,18 @@ impl Host {
             }
             status => Err(format!("GitHub answered {status} for {url}")),
         };
-        match got.and_then(|got| self.advance(step, got)).and_then(|()| self.settle()) {
-            Ok(()) => {}
-            Err(message) => self.fail(message),
+        let checked = step.checked_applet().map(String::from);
+        let Err(message) = got.and_then(|got| self.advance(step, got)).and_then(|()| self.settle()) else { return };
+        // One applet that cannot be checked does not stop the others.
+        let checking = self.flow.as_mut().filter(|f| f.stage == Stage::Checking);
+        match (checking, checked) {
+            (Some(flow), Some(applet_id)) => {
+                flow.failed.insert(applet_id, message);
+                if let Err(message) = self.settle() {
+                    self.fail(message);
+                }
+            }
+            _ => self.fail(message),
         }
     }
 
@@ -354,13 +391,16 @@ impl Host {
             return Ok(());
         }
         match flow.stage {
-            Stage::Releases if flow.candidates.is_empty() => self.start_branch(),
+            Stage::Releases if flow.candidates.is_empty() => match flow.target.tag.clone() {
+                Some(tag) => Err(format!("{} has no applet release {tag}", flow.repository.as_ref().map_or("The repository", |r| &r.full_name))),
+                None => self.start_branch(),
+            },
             Stage::Releases | Stage::Branch => self.show_candidates(),
             Stage::Checking => {
                 self.finish_check();
                 Ok(())
             }
-            Stage::Choosing | Stage::Downloading | Stage::Reviewing => Ok(()),
+            Stage::Choosing | Stage::Downloading | Stage::Reviewing | Stage::Erasing => Ok(()),
         }
     }
 
@@ -371,7 +411,12 @@ impl Host {
                 let repository = github::parse_repository(&parse_json(&got)?)?;
                 let url = github::releases_url(&repository.full_name);
                 self.progress(format!("Reading {}…", repository.full_name));
-                self.flow_mut()?.repository = Some(repository);
+                let flow = self.flow_mut()?;
+                flow.repository = Some(repository);
+                // A `/tree/<branch>` link names the branch channel; releases are not consulted.
+                if flow.target.branch.is_some() {
+                    return self.start_branch();
+                }
                 self.request(url, Step::Releases, API, false)
             }
             Step::Releases => {
@@ -424,14 +469,17 @@ impl Host {
             }
             Step::CheckRepository { applet_id } => self.check_repository(applet_id, &got),
             Step::CheckReleases { applet_id } => self.check_releases(applet_id, &got),
-            Step::CheckRecord { applet_id, release, withdrawn } => self.check_record(applet_id, release, withdrawn, &got),
+            Step::CheckRecord { applet_id, release, older, withdrawn } => self.check_record(applet_id, release, older, withdrawn, &got),
             Step::CheckCommit { applet_id } => self.check_commit(applet_id, &got),
             Step::CheckBranchRecord { applet_id, commit } => self.check_branch_record(applet_id, commit, &got),
         }
     }
 
+    /// An erase already running finishes with its install, as the user confirmed.
     pub fn cancel_flow(&mut self) {
-        self.end_flow();
+        if self.flow.as_ref().is_none_or(|f| f.stage != Stage::Erasing) {
+            self.end_flow();
+        }
     }
 
     // -----------------------------------------------------------------------------------------
@@ -598,19 +646,26 @@ impl Host {
             return self.end_flow();
         }
         match self.install_reviewed(review, replace) {
-            Ok(()) => self.end_flow(),
+            Ok(true) => self.end_flow(),
+            Ok(false) => {} // The install follows the erase.
             Err(message) => self.fail(message),
         }
     }
 
-    /// Checks the file and the installed applet again, since either may have changed during the
-    /// review, then installs with the new source.
-    fn install_reviewed(&mut self, review: PendingReview, replace: Option<ReplaceMode>) -> Result<(), String> {
+    /// The reviewed file, checked against the source it was reviewed with.
+    fn read_reviewed(review: &PendingReview) -> Result<(Box<Bundle>, VerifiedFiles), String> {
         let payload = fs::read_to_string(&review.file).map_err(|e| format!("Cannot read the bundle: {e}"))?;
         if imports::sha256_hex(payload.as_bytes()) != review.source.bundle_sha256() {
             return Err("The bundle changed before it was installed".into());
         }
-        let (bundle, files) = current_bundle(&payload)?;
+        current_bundle(&payload)
+    }
+
+    /// Checks the file and the installed applet again, since either may have changed during the
+    /// review, then installs with the new source. Returns false when the install waits for the
+    /// old applet's data to be erased: a failed erase then leaves the old applet as it was.
+    fn install_reviewed(&mut self, review: PendingReview, replace: Option<ReplaceMode>) -> Result<bool, String> {
+        let (bundle, files) = Self::read_reviewed(&review)?;
         let id = bundle.manifest.id.clone();
         let again = source::review(self.applets.source(&id), &review.source, review.older_allowed);
         if json!(again.outcome) != json!(review.outcome) {
@@ -627,17 +682,28 @@ impl Host {
                 self.applets.set_source(&id, review.source)?;
                 self.clear_update(&id);
                 self.refresh_launcher();
-                return Ok(());
+                return Ok(true);
             }
             _ => false,
         };
-        let (_, previous) = self.applets.install(&bundle, files, review.source)?;
-        self.clear_update(&id);
-        let was_active = self.contexts.session.as_ref().is_some_and(|s| s.applet_id == id);
         if erase {
             self.retire_active_applet(&id);
-            self.erase_data(&id)?;
+            self.erase_data(Deletion::Install { applet_id: id.clone() })?;
+            self.progress(format!("Erasing the data of {}…", bundle.manifest.name));
+            let flow = self.flow_mut()?;
+            flow.stage = Stage::Erasing;
+            flow.review = Some(review);
+            return Ok(false);
         }
+        self.install_bundle(&bundle, files, review.source)?;
+        Ok(true)
+    }
+
+    fn install_bundle(&mut self, bundle: &Bundle, files: VerifiedFiles, source: Source) -> Result<(), String> {
+        let id = bundle.manifest.id.clone();
+        let (_, previous) = self.applets.install(bundle, files, source)?;
+        self.clear_update(&id);
+        let was_active = self.contexts.session.as_ref().is_some_and(|s| s.applet_id == id);
         self.after_install(&id, previous, was_active);
         Ok(())
     }
@@ -658,17 +724,52 @@ impl Host {
         }
     }
 
-    /// Deletes the applet's stored documents and namespace and its service credentials. The
-    /// storage worker runs jobs in order, so the applet's next storage call sees the erased state.
-    fn erase_data(&mut self, applet_id: &str) -> Result<(), String> {
-        self.out.push(ShellCommand::ForgetApplet { applet_id: applet_id.into() });
+    /// Deletes the applet's stored documents and namespace. The install or removal waits for
+    /// `deletion_completed`, so an applet whose data could not be erased stays as it was.
+    fn erase_data(&mut self, deletion: Deletion) -> Result<(), String> {
+        let (Deletion::Install { applet_id } | Deletion::Remove { applet_id }) = &deletion;
         let job_id = documents::next_op_id();
-        let job = StorageJob { job_id, applet_id: applet_id.into(), operation: StorageOperation::DeleteApplet };
+        let job = StorageJob { job_id, applet_id: applet_id.clone(), operation: StorageOperation::DeleteApplet };
         if !storage_worker::submit(job) {
             return Err(format!("Storage is busy; the stored data of {applet_id} was not erased"));
         }
-        self.deletions.insert(job_id, applet_id.into());
+        self.deletions.insert(job_id, deletion);
         Ok(())
+    }
+
+    /// Finishes what waited for the erase. The shell forgets the service credentials only once
+    /// the stored data is gone.
+    pub fn deletion_completed(&mut self, deletion: Deletion, erased: Result<(), String>) {
+        match deletion {
+            Deletion::Install { applet_id } => {
+                let review = self.flow.as_mut().filter(|f| f.stage == Stage::Erasing).and_then(|f| f.review.take());
+                let Some(review) = review else { return };
+                let installed = erased
+                    .map_err(|e| format!("The stored data of {applet_id} was not erased, so the new build was not installed: {e}"))
+                    .and_then(|()| {
+                        self.out.push(ShellCommand::ForgetApplet { applet_id });
+                        let (bundle, files) = Self::read_reviewed(&review)?;
+                        self.install_bundle(&bundle, files, review.source)
+                    });
+                match installed {
+                    Ok(()) => self.end_flow(),
+                    Err(message) => self.fail(message),
+                }
+            }
+            Deletion::Remove { applet_id } => {
+                let removed = erased
+                    .map_err(|e| format!("The stored data of {applet_id} was not erased, so it was not removed: {e}"))
+                    .and_then(|()| {
+                        self.out.push(ShellCommand::ForgetApplet { applet_id: applet_id.clone() });
+                        self.applets.remove(&applet_id)
+                    });
+                match removed {
+                    Ok(()) => self.clear_update(&applet_id),
+                    Err(message) => self.out.push(ShellCommand::ShowError { message }),
+                }
+                self.refresh_launcher();
+            }
+        }
     }
 
     // -----------------------------------------------------------------------------------------
@@ -849,10 +950,11 @@ impl Host {
         if reviewing {
             return self.out.push(ShellCommand::ShowError { message: BUSY.into() });
         }
+        if self.applets.source(applet_id).is_none() {
+            return self.out.push(ShellCommand::ShowError { message: format!("Applet {applet_id} is not installed") });
+        }
         self.retire_active_applet(applet_id);
-        let removed = self.applets.remove(applet_id).and_then(|()| self.erase_data(applet_id));
-        self.clear_update(applet_id);
-        if let Err(message) = removed {
+        if let Err(message) = self.erase_data(Deletion::Remove { applet_id: applet_id.into() }) {
             self.out.push(ShellCommand::ShowError { message });
         }
         self.show_launcher();
@@ -944,28 +1046,38 @@ impl Host {
 
     fn check_releases(&mut self, applet_id: String, got: &str) -> Result<(), String> {
         let Some(Source::Github { tag, version, prerelease: on_prerelease, .. }) = self.github_source(&applet_id) else { return Ok(()) };
-        let releases: Vec<Release> = github::parse_releases(&parse_json(got)?).into_iter().filter(|r| r.applet_id == applet_id).collect();
-        let withdrawn = tag.as_ref().is_some_and(|t| !releases.iter().any(|r| r.tag == *t));
-        let newest = releases
-            .into_iter()
-            .filter(|r| (on_prerelease || !r.prerelease) && newer(&r.version, &version))
-            .max_by(|a, b| semver::compare(&a.version, &b.version).unwrap_or(Ordering::Equal));
-        match newest {
+        let page = parse_json(got)?;
+        // Only the newest page is read: a tag missing from a full page may be on an older one.
+        let full_page = page.as_array().is_some_and(|a| a.len() >= github::RELEASES_PER_PAGE);
+        let releases: Vec<Release> = github::parse_releases(&page).into_iter().filter(|r| r.applet_id == applet_id).collect();
+        let withdrawn = !full_page && tag.as_ref().is_some_and(|t| !releases.iter().any(|r| r.tag == *t));
+        let mut newer: Vec<Release> = releases.into_iter().filter(|r| (on_prerelease || !r.prerelease) && newer(&r.version, &version)).collect();
+        newer.sort_by(|a, b| semver::compare(&a.version, &b.version).unwrap_or(Ordering::Equal));
+        self.check_next_release(applet_id, newer, withdrawn)
+    }
+
+    /// Reads the record of the newest release left; `older` is sorted oldest first.
+    fn check_next_release(&mut self, applet_id: String, mut older: Vec<Release>, withdrawn: bool) -> Result<(), String> {
+        match older.pop() {
             Some(release) => {
                 let url = release.record_url.clone();
-                self.request(url, Step::CheckRecord { applet_id, release, withdrawn }, FETCH_API_MAX_BYTES, false)
+                self.request(url, Step::CheckRecord { applet_id, release, older, withdrawn }, FETCH_API_MAX_BYTES, false)
             }
             None => self.found(applet_id, withdrawn.then_some(AppletUpdate { version: None, prerelease: false, withdrawn })),
         }
     }
 
-    fn check_record(&mut self, applet_id: String, release: Release, withdrawn: bool, got: &str) -> Result<(), String> {
+    /// A newer release that does not run on this Genesis gives way to the next older one.
+    fn check_record(&mut self, applet_id: String, release: Release, older: Vec<Release>, withdrawn: bool, got: &str) -> Result<(), String> {
         let Some(Source::Github { repository_id, full_name, path, .. }) = self.github_source(&applet_id) else { return Ok(()) };
         let candidate = imports::parse_release(got)
             .ok()
             .and_then(|record| release_candidate((repository_id, &full_name), &release, record, Some(&path)))
             .filter(|c| c.compatible);
-        self.offer(applet_id, candidate, withdrawn)
+        match candidate {
+            Some(candidate) => self.offer(applet_id, Some(candidate), withdrawn),
+            None => self.check_next_release(applet_id, older, withdrawn),
+        }
     }
 
     fn check_commit(&mut self, applet_id: String, got: &str) -> Result<(), String> {
@@ -1014,7 +1126,7 @@ impl Host {
 
     fn finish_check(&mut self) {
         let Some(flow) = self.flow.as_ref() else { return };
-        let (kind, found) = (flow.kind.clone(), flow.found.clone());
+        let (kind, found, flow_failed) = (flow.kind.clone(), flow.found.clone(), flow.failed.clone());
         for (id, update) in found.iter().filter(|(id, _)| self.applets.source(id).is_some()) {
             match update {
                 Some(update) => self.updates.applets.insert(id.clone(), update.clone()),
@@ -1030,14 +1142,22 @@ impl Host {
         if manual {
             let count = found.values().filter(|u| u.as_ref().is_some_and(|u| u.version.is_some())).count();
             let withdrawn = found.values().any(|u| u.as_ref().is_some_and(|u| u.withdrawn));
+            let failed = flow_failed;
             let mut message = match (only.as_deref(), count) {
+                (Some(_), _) if !failed.is_empty() => format!("Genesis could not check this applet: {}", failed.values().next().map_or("", String::as_str)),
                 (Some(_), _) => "This applet is up to date.".to_string(),
+                (None, 0) if !failed.is_empty() => "No updates were found.".to_string(),
                 (None, 0) => "All applets are up to date.".to_string(),
                 (None, 1) => "1 update is available.".to_string(),
                 (None, n) => format!("{n} updates are available."),
             };
             if withdrawn {
                 message.push_str(" The publisher withdrew an installed release.");
+            }
+            match (only.is_none(), failed.len()) {
+                (false, _) | (_, 0) => {}
+                (true, 1) => message.push_str(" 1 applet could not be checked."),
+                (true, n) => message.push_str(&format!(" {n} applets could not be checked.")),
             }
             self.out.push(ShellCommand::ShowInfo { title: "Updates".into(), message });
         }

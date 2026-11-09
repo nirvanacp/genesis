@@ -56,8 +56,11 @@ pub fn repository_by_id_url(id: u64) -> String {
     format!("{API}/repositories/{id}")
 }
 
+/// GitHub's largest page. Genesis reads only the newest page of releases.
+pub const RELEASES_PER_PAGE: usize = 100;
+
 pub fn releases_url(full_name: &str) -> String {
-    format!("{API}/repos/{full_name}/releases?per_page=100")
+    format!("{API}/repos/{full_name}/releases?per_page={RELEASES_PER_PAGE}")
 }
 
 pub fn commit_url(full_name: &str, branch: &str) -> String {

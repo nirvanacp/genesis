@@ -175,6 +175,7 @@ impl Applets {
         if let Some(source) = self.sources.get(applet_id) {
             entry.version = source.version().map(String::from);
             entry.source = Some(source.label());
+            entry.source_kind = Some(source.kind());
         }
         Some(entry)
     }
@@ -196,7 +197,6 @@ impl Applets {
         if !matches!(source, Source::Bundled { .. }) && self.removed_bundled.remove(&id) {
             self.write_removed_bundled()?;
         }
-        let previous_source = self.sources.insert(id.clone(), source);
         let previous = self.installed.get(&id).and_then(revision_of);
         let revision = previous.unwrap_or(0) + 1;
         let directory = self.root.join(&id).join(revision.to_string());
@@ -204,6 +204,8 @@ impl Applets {
             let _ = fs::remove_dir_all(&directory);
             return Err(error);
         }
+        // The index written by `replace` carries the source, so it changes only now.
+        let previous_source = self.sources.insert(id.clone(), source);
         let installed = Installed::Current { revision, manifest: Box::new(bundle.manifest.clone()) };
         if let Err(error) = self.replace(&id, installed) {
             match previous_source {
@@ -311,6 +313,7 @@ fn entry(applet_id: &str, installed: &Installed) -> LauncherEntry {
             mismatches: Vec::new(),
             version: None,
             source: None,
+            source_kind: None,
             update: None,
         },
         Installed::Incompatible { name, accent, direction, mismatches, .. } => LauncherEntry {
@@ -322,6 +325,7 @@ fn entry(applet_id: &str, installed: &Installed) -> LauncherEntry {
             mismatches: mismatches.clone(),
             version: None,
             source: None,
+            source_kind: None,
             update: None,
         },
     }

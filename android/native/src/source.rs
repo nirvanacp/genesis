@@ -1,7 +1,7 @@
 //! Where an installed applet came from, and the rules that decide whether a new build of it is
 //! an install, an update, a downgrade, a replacement or refused.
 use crate::semver;
-use genesis_contracts::{Channel, ReleaseHome, ReviewOutcome};
+use genesis_contracts::{Channel, ReleaseHome, ReviewOutcome, SourceKind};
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 
@@ -59,6 +59,15 @@ impl Source {
             | Source::File { bundle_sha256, .. }
             | Source::Bundled { bundle_sha256, .. }
             | Source::Dev { bundle_sha256 } => bundle_sha256,
+        }
+    }
+
+    pub fn kind(&self) -> SourceKind {
+        match self {
+            Source::Github { .. } => SourceKind::Github,
+            Source::File { .. } => SourceKind::File,
+            Source::Bundled { .. } => SourceKind::Bundled,
+            Source::Dev { .. } => SourceKind::Dev,
         }
     }
 

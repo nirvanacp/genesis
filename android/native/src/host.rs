@@ -3,7 +3,7 @@ use crate::{
     applets::Applets,
     contexts::{BackSlot, ContextView, Contexts, Resume, Session},
     documents::Documents,
-    flows::{Flow, Updates},
+    flows::{Deletion, Flow, Updates},
     storage_worker,
 };
 use genesis_contracts::*;
@@ -33,8 +33,8 @@ pub struct Host {
     /// Epoch seconds until which GitHub API calls are refused.
     pub rate_reset_s: u64,
     pub next_request: u64,
-    /// Storage jobs erasing an applet's data, by job id, so a failure can be shown.
-    pub deletions: HashMap<u64, String>,
+    /// Storage jobs erasing an applet's data, by job id, with the install or removal that waits for them.
+    pub deletions: HashMap<u64, Deletion>,
 }
 
 pub fn now_ms() -> u64 {
@@ -515,11 +515,8 @@ impl Host {
             (Some(result), None) => Ok(result),
             (_, error) => Err(error.unwrap_or_else(|| ErrorBody::new(ErrorCode::StorageFailure, "Empty storage result"))),
         };
-        if let Some(applet_id) = self.deletions.remove(&completion.job_id) {
-            if let Err(error) = &outcome {
-                let message = format!("The stored data of {applet_id} was not erased: {}", error.message);
-                self.out.push(ShellCommand::ShowError { message });
-            }
+        if let Some(deletion) = self.deletions.remove(&completion.job_id) {
+            self.deletion_completed(deletion, outcome.map(|_| ()).map_err(|e| e.message));
             return Ok(());
         }
         let namespace_revision = outcome.as_ref().ok().and_then(|r| r.get("namespaceRevision").cloned());
