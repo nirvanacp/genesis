@@ -25,9 +25,9 @@
 
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- Applet bundles opened or shared from other apps. The host reviews every one before installing. -->
+            <!-- Applet bundles shared from other apps, or opened by their .bundle.json name. Genesis does not
+                 offer to open every JSON file. The host reviews every bundle before installing. -->
             <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
                 <action android:name="android.intent.action.SEND" />
 
                 <category android:name="android.intent.category.DEFAULT" />

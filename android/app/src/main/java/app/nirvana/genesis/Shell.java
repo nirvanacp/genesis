@@ -373,7 +373,7 @@ final class Shell implements Views.Listener {
         String id = entry.optString("appletId");
         String name = entry.optString("name", id);
         String source = entry.isNull("source") ? null : entry.optString("source", null);
-        boolean github = source != null && source.startsWith("GitHub");
+        boolean github = "github".equals(entry.optString("sourceKind"));
         MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(activity).setTitle(name);
         if (source != null) builder.setMessage(source);
         if (github) builder.setNeutralButton("Check for update", (d, w) -> checkUpdates(id));
