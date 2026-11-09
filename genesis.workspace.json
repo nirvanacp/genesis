@@ -1,0 +1,6 @@
+{
+  "applets": {
+    "directory": "applets",
+    "repository": "git@github.com:nirvanacp/applets.git"
+  }
+}

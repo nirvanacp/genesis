@@ -10,6 +10,8 @@ cd my-applet
 npm install
 ```
 
+Name the directory after the applet, with a short product name such as `hn-bookmarks` rather than the website's domain: one applet can span several websites. `create` derives the applet id from the directory name unless you pass `--id`, and the id keys the applet's stored data and services, so keep the directory and the id the same and never rename an existing id. In a collection of applets, the directory sits in the collection's root.
+
 The scaffold contains:
 
 | File | Purpose |

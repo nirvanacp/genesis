@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readApplet, requireValue, safePath } from '../packages/applet-tools/src/manifest.mjs';
 import { appletCompat, formatMismatches } from '../packages/applet-tools/src/compat.mjs';
+import { checkLayout, readWorkspace } from './workspace.mjs';
 export const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 const PACKAGES = ['packages/core', 'packages/sdk', 'packages/applet-tools'];
@@ -55,15 +56,24 @@ export async function checkFrameworkVersions(framework) {
   requireValue(problems.length === 0, `Framework package versions differ from FRAMEWORK_VERSION:\n${problems.join('\n')}`);
 }
 
-/** The selected applet directories from `genesis.packages.json`, resolved inside the workspace. */
+/**
+ * The selected applet directories from `genesis.packages.json`, resolved inside the applets
+ * directory that `genesis.workspace.json` names.
+ */
 async function readSelection(packagesIndex) {
   const selection = JSON.parse(await readFile(path.join(root, 'genesis.packages.json'), 'utf8'));
   requireValue(selection.schemaVersion === packagesIndex && Array.isArray(selection.applets) && new Set(selection.applets).size === selection.applets.length, 'Invalid bundle selection');
+  const { appletsDirectory } = readWorkspace();
+  let applets;
+  try { applets = await realpath(appletsDirectory); }
+  catch { throw new Error(`Missing applets directory ${appletsDirectory}. Run npm run workspace -- setup, then npm install.`); }
   const bases = [];
   for (const directory of selection.applets) {
     requireValue(safePath(directory), 'Invalid selected directory');
-    const base = await realpath(path.join(root, directory));
-    requireValue(base.startsWith(root + path.sep), 'Selected applet escapes workspace');
+    let base;
+    try { base = await realpath(path.join(applets, directory)); }
+    catch { throw new Error(`Selected applet ${directory} is missing from ${applets}`); }
+    requireValue(base.startsWith(applets + path.sep), 'Selected applet escapes the applets directory');
     bases.push(base);
   }
   return bases;
@@ -81,17 +91,18 @@ export async function readPackages() {
 }
 
 /**
- * The workspace checks: the compat mirror, the framework versions, and the selected applets.
+ * The workspace checks: the workspace layout, the compat mirror, the framework versions, and the selected applets.
  * A selected applet built for other versions is reported, not failed: `genesis-applet check`
  * and the APK build refuse it.
  */
 async function checkWorkspace() {
+  checkLayout();
   const { table, framework } = await checkCompatMirror();
   await checkFrameworkVersions(framework);
   const passed = [], incompatible = [], ids = new Set();
   for (const base of await readSelection(table.packagesIndex)) {
     const compat = await appletCompat(base);
-    if (compat.mismatches.length > 0) { incompatible.push(`${path.relative(root, base)} (${compat.id}):\n${formatMismatches(compat.mismatches)}`); continue; }
+    if (compat.mismatches.length > 0) { incompatible.push(`${base} (${compat.id}):\n${formatMismatches(compat.mismatches)}`); continue; }
     const { manifest } = await readApplet(base);
     requireValue(!ids.has(manifest.id), 'Duplicate selected applet ID'); ids.add(manifest.id); passed.push(manifest.id);
   }
