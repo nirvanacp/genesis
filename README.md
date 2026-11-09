@@ -46,7 +46,7 @@ node packages/applet-tools/src/cli.mjs build applets/x-bookmarks
 node packages/applet-tools/src/cli.mjs dev install applets/x-bookmarks --device emulator-5554
 ```
 
-`dev install` sends the last build, so run `build` first. Hacker News is bundled into the APK through `genesis.packages.json`; X is installed with `dev install`.
+`dev install` sends the last build, so run `build` first. Hacker News is bundled into the APK through `genesis.packages.json`; X is installed with `dev install`. Release builds refuse `dev install`: they bundle each applet's published release, and users add other applets with **Add applet** in the launcher's Genesis menu, from a public GitHub repository or a downloaded bundle file. Genesis reviews every build before installing it and offers updates from the same source. [Publishing](factory/guides/publishing.md) covers versions, tags and the CI workflows that publish a release.
 
 ## Applets directory
 
