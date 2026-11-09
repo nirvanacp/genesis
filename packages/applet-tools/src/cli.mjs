@@ -5,10 +5,12 @@ import { deviceStatus, installApplet } from './device.mjs';
 import { manageService } from './services.mjs';
 import { createApplet } from './create.mjs';
 import { exportKit } from './kit.mjs';
+import { publishApplet } from './publish.mjs';
+import { listRepository, releaseApplet } from './release.mjs';
 
 class UsageError extends Error { constructor(message) { super(message); this.code = 'USAGE'; } }
 
-const FLAGS = ['json', 'local', 'debug'];
+const FLAGS = ['json', 'local', 'debug', 'verify', 'dry-run'];
 function parse(args, permitted) {
   const positional = [], options = {};
   for (let i = 0; i < args.length; i++) {
@@ -32,12 +34,20 @@ const help = `genesis-applet
   service start|status|stop <directory> --local [--service-file <path>]
   service start|status|stop|provision <directory> --device <serial> [--service-file <path>]
   kit export --out <directory>
+  applets [<repository>]                         applets, versions, published builds and tags
+  publish <directory> [--verify]                 write published/applet-<id>.bundle.json and
+                                                 its .release.json; --verify rebuilds and compares
+  release <directory> [--dry-run]                tag the published version: v<version>, or
+                                                 <id>/v<version> in a multi-applet repository
 check and build first compare the applet with these tools' versions and fail with
 APPLET_INCOMPATIBLE on a difference. They then run the applet's code: TypeScript and
 the adapter are bundled with esbuild and the adapter module is imported in Node, as
 a build does. This is not a sandbox; check only applets you trust.
 build --debug defines __GENESIS_DEBUG__, so the adapter runtime keeps its measurements
 in window.__genesisStats.
+publish needs a committed Genesis checkout, a semver package.json version and exact
+dependency versions. Raise versions with npm version <patch|minor|major> --no-git-tag-version.
+release needs a clean repository and never pushes; push the tag yourself.
 Every command accepts --json. Device commands accept --adb <path> (default
 $ANDROID_HOME/platform-tools/adb, then adb on PATH) and --application <id>.`;
 
@@ -82,6 +92,19 @@ async function main(args) {
       const { positional, options } = parse(args.slice(2), ['json', 'out']);
       if (action !== 'export' || positional.length || !options.out) throw new UsageError('Use kit export --out <directory>');
       return ['kit export', await exportKit(options.out)];
+    }
+    case 'applets': {
+      const { positional } = parse(args.slice(1), ['json']);
+      if (positional.length > 1) throw new UsageError('applets takes at most one repository directory');
+      return ['applets', await listRepository(positional[0] ?? '.')];
+    }
+    case 'publish': {
+      const { positional, options } = parse(args.slice(1), ['json', 'verify']);
+      return [options.verify ? 'publish --verify' : 'publish', await publishApplet(one(positional, 'applet directory'), { verify: !!options.verify })];
+    }
+    case 'release': {
+      const { positional, options } = parse(args.slice(1), ['json', 'dry-run']);
+      return [options['dry-run'] ? 'release --dry-run' : 'release', await releaseApplet(one(positional, 'applet directory'), { dryRun: !!options['dry-run'] })];
     }
     default:
       throw new UsageError(command ? `Unknown command ${command}` : help);
