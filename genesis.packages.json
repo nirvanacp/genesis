@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
   "applets": [
-    "examples/news.ycombinator.com"
+    "hn-bookmarks"
   ]
 }

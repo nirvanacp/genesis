@@ -1,6 +1,0 @@
-# To-do & Reminders Gmail applet
-
-- Goal: Build Gmail Only from the user's feature brief and mockups, with a custom screen for every Gmail page, multi-account support built but switched off, and checks on the one test account.
-- Changes: Manifest with one `mail` route and ten screens; an adapter for Gmail's mobile web (views, lists, threads, conversation, compose, menu and their actions); applet storage for items, accounts and settings; the inbox, open email, drawer, compose, search, To-do, item, add, bulk, snoozed, accounts, account setup and settings screens; light and dark themes. Device fixes: attachment duplicates, recipient text, "Later today" hours, the Mail tab from the drawer, tabs hidden under sheets, the dark Today card and compose Close.
-- Decisions: decision-0002 to decision-0008 in [decisions](../.specs/decisions.md). Phone notifications (decision-0005) are not built and await the user.
-- Verification: typecheck, `genesis-applet check` and build passed. Revision 12 on emulator-5556 with the test account, light and dark: the journeys marked verified in [current](../.specs/current.md). Not run: commands that change the account (archive, delete, snooze, send), swipes, bulk actions and a second account. One test reminder remains in applet storage.

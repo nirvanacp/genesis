@@ -5,6 +5,11 @@ plugins {
 }
 
 val workspaceRoot = rootProject.layout.projectDirectory.dir("..").asFile
+// The applets directory named in genesis.workspace.json, relative to the workspace root or absolute.
+val appletsDirectory = run {
+    val config = groovy.json.JsonSlurper().parse(workspaceRoot.resolve("genesis.workspace.json")) as Map<*, *>
+    workspaceRoot.resolve((config["applets"] as Map<*, *>)["directory"] as String)
+}
 val localSettings = Properties().apply {
     val file = rootProject.file("local.properties")
     if (file.exists()) file.inputStream().use { load(it) }
@@ -81,8 +86,11 @@ androidComponents {
             workspace.set(workspaceRoot)
             inputs.files(fileTree(workspaceRoot) {
                 include("Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "package.json", "package-lock.json",
-                    "tsconfig.base.json", ".nvmrc", "tools/**", "crates/contracts/**", "packages/**", "examples/**", "genesis.packages.json", "android/native/**")
+                    "tsconfig.base.json", ".nvmrc", "tools/**", "crates/contracts/**", "packages/**", "genesis.workspace.json", "genesis.packages.json", "android/native/**")
                 exclude("**/node_modules/**", "**/target/**")
+            })
+            inputs.files(fileTree(appletsDirectory) {
+                exclude("**/node_modules/**", "**/target/**", ".git/**")
             })
             assetsDirectory.set(layout.buildDirectory.dir("generated/genesis/${variant.name}/assets"))
             jniDirectory.set(layout.buildDirectory.dir("generated/genesis/${variant.name}/jniLibs"))

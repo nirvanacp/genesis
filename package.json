@@ -6,9 +6,7 @@
     "packages/core",
     "packages/sdk",
     "packages/applet-tools",
-    "examples/x.com",
-    "examples/news.ycombinator.com",
-    "examples/mail.google.com"
+    "applets/*"
   ],
   "engines": {
     "node": "24.15.0",
@@ -18,6 +16,7 @@
   "scripts": {
     "typecheck": "npm run build -w packages/core && node packages/sdk/build.mjs && npm run typecheck --workspaces",
     "check:packages": "node tools/check-packages.mjs",
+    "workspace": "node tools/workspace.mjs",
     "build": "node tools/build.mjs --stage all --variant debug"
   },
   "devDependencies": {
