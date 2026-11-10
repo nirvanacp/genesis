@@ -3,6 +3,7 @@
 //! downloaded and shows one error; an update check instead counts the applets it could not check.
 //! Nothing reaches the applet index before the user accepts.
 use crate::{
+    applets::capabilities,
     compat, documents, fetch,
     github::{self, Cache, Release, Repository, Target},
     host::{Host, now_ms},
@@ -34,6 +35,9 @@ pub struct Updates {
     checked_at: u64,
     #[serde(default)]
     applets: BTreeMap<String, AppletUpdate>,
+    /// Withdrawn releases the user kept, by applet: the installed tag, no longer flagged.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    kept: BTreeMap<String, String>,
 }
 
 pub struct Flow {
@@ -60,11 +64,13 @@ pub enum Deletion {
     /// The reviewed build, installed with "replace and erase".
     Install { applet_id: String, review: Box<PendingReview> },
     Remove { applet_id: String },
+    /// Clear data: the applet and its service connections stay.
+    Clear { applet_id: String },
 }
 
 impl Deletion {
     fn applet_id(&self) -> &str {
-        let (Deletion::Install { applet_id, .. } | Deletion::Remove { applet_id }) = self;
+        let (Deletion::Install { applet_id, .. } | Deletion::Remove { applet_id } | Deletion::Clear { applet_id }) = self;
         applet_id
     }
 }
@@ -104,7 +110,8 @@ enum Step {
     /// `found` holds this applet's releases from the earlier pages.
     CheckReleases { applet_id: String, page: u32, found: Vec<Release> },
     /// `older` holds the next newer releases, newest first, tried when this one does not run here.
-    CheckRecord { applet_id: String, release: Release, older: Vec<Release>, withdrawn: bool },
+    /// `incompatible` is the newest release already read that does not run here.
+    CheckRecord { applet_id: String, release: Release, older: Vec<Release>, withdrawn: bool, incompatible: Option<String> },
     CheckCommit { applet_id: String },
     CheckBranchRecord { applet_id: String, commit: String },
 }
@@ -131,6 +138,14 @@ struct Candidate {
     bundle_url: String,
     compatible: bool,
     note: Option<String>,
+    release: ReleaseNotes,
+}
+
+/// The date and notes summary of the GitHub release a build comes from; empty for other builds.
+#[derive(Clone, Default)]
+struct ReleaseNotes {
+    published_at: Option<String>,
+    notes: Option<String>,
 }
 
 pub struct PendingReview {
@@ -139,6 +154,8 @@ pub struct PendingReview {
     source: Source,
     older_allowed: bool,
     outcome: ReviewOutcome,
+    /// Shows `ShowInstalled` once installed; development builds install without it.
+    confirm: bool,
 }
 
 impl Flow {
@@ -209,7 +226,8 @@ fn release_candidate(repository: (u64, &str), release: &Release, record: Release
         prerelease: release.prerelease,
     };
     let (compatible, note) = compatibility(&record);
-    Some(Candidate { source, bundle_url: release.bundle_url.clone()?, compatible, note, record })
+    let notes = ReleaseNotes { published_at: release.published_at.clone(), notes: release.body.as_deref().and_then(github::notes_summary) };
+    Some(Candidate { source, bundle_url: release.bundle_url.clone()?, compatible, note, record, release: notes })
 }
 
 /// The `published/` path of an applet's file at `applet_path` (`.` for the repository root).
@@ -235,7 +253,8 @@ fn branch_candidate(repository: (u64, &str), branch: &str, commit: &str, applet_
         prerelease: prerelease(&record.version),
     };
     let (compatible, note) = compatibility(&record);
-    Candidate { source, bundle_url: github::raw_url(repository.1, commit, &bundle), compatible, note, record }
+    let bundle_url = github::raw_url(repository.1, commit, &bundle);
+    Candidate { source, bundle_url, compatible, note, record, release: ReleaseNotes::default() }
 }
 
 /// A bundle that runs on this Genesis; any other is refused before review.
@@ -246,11 +265,21 @@ fn current_bundle(payload: &str) -> Result<(Box<Bundle>, VerifiedFiles), String>
     }
 }
 
-fn capabilities(manifest: &Manifest) -> ReleaseCapabilities {
-    ReleaseCapabilities {
-        storage: manifest.capabilities.storage.unwrap_or(false),
-        services: manifest.capabilities.services.iter().flatten().map(|s| s.id.clone()).collect(),
+/// The GitHub owner of a GitHub source.
+fn publisher(source: &Source) -> Option<String> {
+    match source {
+        Source::Github { full_name, .. } => full_name.split_once('/').map(|(owner, _)| owner.to_string()),
+        _ => None,
     }
+}
+
+/// What an offered release asks for beyond the installed applet: origins, services and storage.
+/// What the installed applet's files do not say counts as new.
+fn gains(installed: Option<&LauncherEntry>, record: &ReleaseRecord) -> (Vec<String>, Vec<String>, bool) {
+    let (origins, services) = installed.map(|e| (e.origins.as_slice(), e.services.as_slice())).unwrap_or_default();
+    let new_origins = record.origins.iter().filter(|o| !origins.contains(o)).cloned().collect();
+    let new_services = record.capabilities.services.iter().filter(|s| !services.contains(s)).cloned().collect();
+    (new_origins, new_services, record.capabilities.storage && !installed.is_some_and(|e| e.storage))
 }
 
 impl Host {
@@ -286,6 +315,18 @@ impl Host {
             entry.update = self.updates.applets.get(&entry.applet_id).cloned();
         }
         entries
+    }
+
+    /// When every applet was last checked for updates; 0 when never.
+    pub fn updates_checked_at(&self) -> u64 {
+        self.updates.checked_at
+    }
+
+    /// One applet's launcher entry with its update badge.
+    fn launcher_entry(&self, applet_id: &str) -> Option<LauncherEntry> {
+        let mut entry = self.applets.entry(applet_id)?;
+        entry.update = self.updates.applets.get(applet_id).cloned();
+        Some(entry)
     }
 
     // -----------------------------------------------------------------------------------------
@@ -494,11 +535,14 @@ impl Host {
                 let file = PathBuf::from(got);
                 let bytes = fs::read(&file).map_err(|e| format!("Cannot read the download: {e}"))?;
                 imports::check_release(&candidate.record, &bytes)?;
-                self.review_bundle(file, candidate.source, Some(&candidate.record), older_allowed, Vec::new())
+                let Candidate { source, record, release, .. } = *candidate;
+                self.review_bundle(file, source, Some(&record), release, older_allowed, Vec::new())
             }
             Step::CheckRepository { applet_id } => self.check_repository(applet_id, &got),
             Step::CheckReleases { applet_id, page, found } => self.check_releases(applet_id, page, found, &got),
-            Step::CheckRecord { applet_id, release, older, withdrawn } => self.check_record(applet_id, release, older, withdrawn, &got),
+            Step::CheckRecord { applet_id, release, older, withdrawn, incompatible } => {
+                self.check_record(applet_id, release, older, withdrawn, incompatible, &got)
+            }
             Step::CheckCommit { applet_id } => self.check_commit(applet_id, &got),
             Step::CheckBranchRecord { applet_id, commit } => self.check_branch_record(applet_id, commit, &got),
         }
@@ -560,6 +604,8 @@ impl Host {
                 prerelease,
                 compatible: candidate.compatible,
                 note: candidate.note.clone(),
+                published_at: candidate.release.published_at.clone(),
+                notes: candidate.release.notes.clone(),
             };
             if let Some(applet) = applets.last_mut().filter(|a| a.applet_id == *id) {
                 if applet.version.is_none() && candidate.compatible && !prerelease {
@@ -633,7 +679,15 @@ impl Host {
     // Reviewing and installing
 
     /// Verifies the bundle file and asks the user. The bundle must run on this Genesis.
-    fn review_bundle(&mut self, file: PathBuf, source: Source, record: Option<&ReleaseRecord>, older_allowed: bool, mut warnings: Vec<String>) -> Result<(), String> {
+    fn review_bundle(
+        &mut self,
+        file: PathBuf,
+        source: Source,
+        record: Option<&ReleaseRecord>,
+        release: ReleaseNotes,
+        older_allowed: bool,
+        mut warnings: Vec<String>,
+    ) -> Result<(), String> {
         let payload = fs::read_to_string(&file).map_err(|e| format!("Cannot read the bundle: {e}"))?;
         let (bundle, _) = current_bundle(&payload)?;
         let manifest = &bundle.manifest;
@@ -655,13 +709,20 @@ impl Host {
             capabilities: capabilities(manifest),
             outcome: review.outcome.clone(),
             warnings,
+            publisher: publisher(&source),
+            bundle_sha256: source.bundle_sha256().into(),
+            bundle_bytes: payload.len() as u64,
+            notes: release.notes,
+            published_at: release.published_at,
+            previous: self.launcher_entry(&manifest.id).map(Box::new),
         });
         let flow = self.flow_mut()?;
         flow.stage = Stage::Reviewing;
         if !flow.files.contains(&file) {
             flow.files.push(file.clone());
         }
-        flow.review = Some(PendingReview { review_id, file, source, older_allowed, outcome: review.outcome });
+        let confirm = flow.kind != Kind::Dev;
+        flow.review = Some(PendingReview { review_id, file, source, older_allowed, outcome: review.outcome, confirm });
         Ok(())
     }
 
@@ -711,9 +772,13 @@ impl Host {
             },
             ReviewOutcome::Reinstall => {
                 // The same build: only the source record changes.
+                let version = review.source.version().map(String::from);
                 self.applets.set_source(&id, review.source)?;
                 self.clear_update(&id);
                 self.refresh_launcher();
+                if review.confirm {
+                    self.show_installed(&bundle.manifest, version, true);
+                }
                 return Ok(true);
             }
             _ => false,
@@ -731,17 +796,33 @@ impl Host {
             self.flow_mut()?.stage = Stage::Erasing;
             return Ok(false);
         }
-        self.install_bundle(&bundle, files, review.source)?;
+        self.install_bundle(&bundle, files, review.source, review.confirm)?;
         Ok(true)
     }
 
-    fn install_bundle(&mut self, bundle: &Bundle, files: VerifiedFiles, source: Source) -> Result<(), String> {
+    /// Installs a reviewed build. With `confirm`, `ShowInstalled` follows the launcher or applet.
+    fn install_bundle(&mut self, bundle: &Bundle, files: VerifiedFiles, source: Source, confirm: bool) -> Result<(), String> {
         let id = bundle.manifest.id.clone();
+        let updated = self.applets.source(&id).is_some();
+        let version = source.version().map(String::from);
         let (_, previous) = self.applets.install(bundle, files, source)?;
         self.clear_update(&id);
         let was_active = self.contexts.session.as_ref().is_some_and(|s| s.applet_id == id);
         self.after_install(&id, previous, was_active);
+        if confirm {
+            self.show_installed(&bundle.manifest, version, updated);
+        }
         Ok(())
+    }
+
+    fn show_installed(&mut self, manifest: &Manifest, version: Option<String>, updated: bool) {
+        self.out.push(ShellCommand::ShowInstalled {
+            applet_id: manifest.id.clone(),
+            name: manifest.name.clone(),
+            version,
+            origins: manifest.origins.clone(),
+            updated,
+        });
     }
 
     /// Shows the launcher again when it is on screen, so entries and badges are current.
@@ -790,7 +871,7 @@ impl Host {
                     .and_then(|()| {
                         self.out.push(ShellCommand::ForgetApplet { applet_id });
                         let (bundle, files) = Self::read_reviewed(&review)?;
-                        self.install_bundle(&bundle, files, review.source)
+                        self.install_bundle(&bundle, files, review.source, review.confirm)
                     });
                 let _ = fs::remove_file(&file);
                 // Another flow may have started after a new Activity ended this one; leave it alone.
@@ -810,8 +891,25 @@ impl Host {
                         self.applets.remove(&applet_id)
                     });
                 match removed {
-                    Ok(()) => self.clear_update(&applet_id),
+                    Ok(()) => {
+                        self.clear_update(&applet_id);
+                        self.forget_kept(&applet_id);
+                    }
                     Err(message) => self.out.push(ShellCommand::ShowError { message }),
+                }
+                self.refresh_launcher();
+            }
+            Deletion::Clear { applet_id } => {
+                match erased {
+                    Ok(()) => {
+                        let name = self.applets.entry(&applet_id).map_or(applet_id.clone(), |e| e.name);
+                        let message = format!("{name}'s saved data was erased.");
+                        self.out.push(ShellCommand::ShowInfo { title: "Data cleared".into(), message });
+                    }
+                    Err(e) => {
+                        let message = format!("The stored data of {applet_id} was not erased: {e}");
+                        self.out.push(ShellCommand::ShowError { message });
+                    }
                 }
                 self.refresh_launcher();
             }
@@ -864,7 +962,7 @@ impl Host {
                 }
                 (record, _) => Source::File { version: record.as_ref().map(|r| r.version.clone()), bundle_sha256 },
             };
-            self.review_bundle(file.clone(), source, record.as_ref(), true, warnings)
+            self.review_bundle(file.clone(), source, record.as_ref(), ReleaseNotes::default(), true, warnings)
         })();
         if let Err(message) = reviewed {
             self.fail(message);
@@ -932,7 +1030,7 @@ impl Host {
             let file = self.files_path(FETCH_DIRECTORY).ok_or("Genesis is not attached")?.join(name);
             self.flow_mut()?.files.push(file.clone());
             crate::applets::write_atomic(&file, payload.as_bytes())?;
-            self.review_bundle(file, source, None, true, Vec::new())
+            self.review_bundle(file, source, None, ReleaseNotes::default(), true, Vec::new())
         })();
         // The caller reports the error with the receipt.
         if started.is_err() {
@@ -995,18 +1093,48 @@ impl Host {
     // Removing
 
     pub fn remove_applet(&mut self, applet_id: &str) {
+        self.erase_applet(Deletion::Remove { applet_id: applet_id.into() });
+    }
+
+    /// Erases the applet's stored data and keeps the applet and its service connections.
+    pub fn clear_data(&mut self, applet_id: &str) {
+        self.erase_applet(Deletion::Clear { applet_id: applet_id.into() });
+    }
+
+    /// Starts a removal or a data clear: refused during a review or another erase of the applet.
+    /// An open applet returns to the launcher first.
+    fn erase_applet(&mut self, deletion: Deletion) {
+        let applet_id = deletion.applet_id().to_string();
         let reviewing = self.flow.as_ref().and_then(|f| f.review.as_ref()).is_some();
-        if reviewing || self.erasing(applet_id) {
+        if reviewing || self.erasing(&applet_id) {
             return self.out.push(ShellCommand::ShowError { message: BUSY.into() });
         }
-        if self.applets.source(applet_id).is_none() {
+        if self.applets.source(&applet_id).is_none() {
             return self.out.push(ShellCommand::ShowError { message: format!("Applet {applet_id} is not installed") });
         }
-        self.retire_active_applet(applet_id);
-        if let Err(message) = self.erase_data(Deletion::Remove { applet_id: applet_id.into() }) {
+        self.retire_active_applet(&applet_id);
+        if let Err(message) = self.erase_data(deletion) {
             self.out.push(ShellCommand::ShowError { message });
         }
         self.show_launcher();
+    }
+
+    /// Keeps an installed release the publisher withdrew: later checks no longer flag its tag.
+    pub fn keep_version(&mut self, applet_id: &str) {
+        let tag = match self.github_source(applet_id) {
+            Some(Source::Github { tag: Some(tag), .. }) => tag,
+            _ => return self.out.push(ShellCommand::ShowError { message: format!("{applet_id} has no GitHub release to keep") }),
+        };
+        self.updates.kept.insert(applet_id.into(), tag);
+        self.updates.applets.remove(applet_id);
+        self.save_updates();
+        self.refresh_launcher();
+    }
+
+    fn forget_kept(&mut self, applet_id: &str) {
+        if self.updates.kept.remove(applet_id).is_some() {
+            self.save_updates();
+        }
     }
 
     // -----------------------------------------------------------------------------------------
@@ -1105,33 +1233,48 @@ impl Host {
             return self.request(github::releases_url(&full_name, page + 1), step, FETCH_API_MAX_BYTES, false);
         }
         // A tag missing from a list cut off after the last page read may still exist.
-        let withdrawn = !more && tag.is_some() && !seen;
+        // A withdrawn release the user kept is not flagged again.
+        let kept = tag.is_some() && self.updates.kept.get(&applet_id) == tag.as_ref();
+        let withdrawn = !more && tag.is_some() && !seen && !kept;
         let mut newer: Vec<Release> = found.into_iter().filter(|r| (on_prerelease || !r.prerelease) && newer(&r.version, &version)).collect();
         newer.sort_by(|a, b| semver::compare(&a.version, &b.version).unwrap_or(Ordering::Equal));
-        self.check_next_release(applet_id, newer, withdrawn)
+        self.check_next_release(applet_id, newer, withdrawn, None)
     }
 
     /// Reads the record of the newest release left; `older` is sorted oldest first.
-    fn check_next_release(&mut self, applet_id: String, mut older: Vec<Release>, withdrawn: bool) -> Result<(), String> {
+    fn check_next_release(&mut self, applet_id: String, mut older: Vec<Release>, withdrawn: bool, incompatible: Option<String>) -> Result<(), String> {
         match older.pop() {
             Some(release) => {
                 let url = release.record_url.clone();
-                self.request(url, Step::CheckRecord { applet_id, release, older, withdrawn }, FETCH_API_MAX_BYTES, false)
+                let step = Step::CheckRecord { applet_id, release, older, withdrawn, incompatible };
+                self.request(url, step, FETCH_API_MAX_BYTES, false)
             }
-            None => self.found(applet_id, withdrawn.then_some(AppletUpdate { version: None, prerelease: false, withdrawn })),
+            None => self.offer(applet_id, None, withdrawn, incompatible),
         }
     }
 
-    /// A newer release that does not run on this Genesis gives way to the next older one.
-    fn check_record(&mut self, applet_id: String, release: Release, older: Vec<Release>, withdrawn: bool, got: &str) -> Result<(), String> {
+    /// A newer release that does not run on this Genesis gives way to the next older one, and the
+    /// newest such release is remembered for "Needs a newer Genesis".
+    fn check_record(
+        &mut self,
+        applet_id: String,
+        release: Release,
+        older: Vec<Release>,
+        withdrawn: bool,
+        incompatible: Option<String>,
+        got: &str,
+    ) -> Result<(), String> {
         let Some(Source::Github { repository_id, full_name, path, .. }) = self.github_source(&applet_id) else { return Ok(()) };
         let candidate = imports::parse_release(got)
             .ok()
-            .and_then(|record| release_candidate((repository_id, &full_name), &release, record, Some(&path)))
-            .filter(|c| c.compatible);
+            .and_then(|record| release_candidate((repository_id, &full_name), &release, record, Some(&path)));
         match candidate {
-            Some(candidate) => self.offer(applet_id, Some(candidate), withdrawn),
-            None => self.check_next_release(applet_id, older, withdrawn),
+            Some(candidate) if candidate.compatible => self.offer(applet_id, Some(candidate), withdrawn, incompatible),
+            Some(candidate) => {
+                let incompatible = incompatible.or(Some(candidate.record.version));
+                self.check_next_release(applet_id, older, withdrawn, incompatible)
+            }
+            None => self.check_next_release(applet_id, older, withdrawn, incompatible),
         }
     }
 
@@ -1164,18 +1307,33 @@ impl Host {
         }
         let branch = branch.clone().unwrap_or_default();
         let candidate = branch_candidate((*repository_id, full_name), &branch, &commit, path, record);
-        self.offer(applet_id, Some(candidate).filter(|c| c.compatible), false)
+        match candidate.compatible {
+            true => self.offer(applet_id, Some(candidate), false, None),
+            false => self.offer(applet_id, None, false, Some(candidate.record.version)),
+        }
     }
 
-    /// Records an update, or for a badge tap downloads it for review.
-    fn offer(&mut self, applet_id: String, candidate: Option<Candidate>, withdrawn: bool) -> Result<(), String> {
+    /// Records an update, or for a badge tap downloads it for review. Without a candidate, a
+    /// withdrawn release or a newer one that needs a newer Genesis is still recorded.
+    fn offer(&mut self, applet_id: String, candidate: Option<Candidate>, withdrawn: bool, incompatible: Option<String>) -> Result<(), String> {
         let Some(candidate) = candidate else {
-            return self.found(applet_id, withdrawn.then_some(AppletUpdate { version: None, prerelease: false, withdrawn }));
+            let update = AppletUpdate { withdrawn, incompatible, ..AppletUpdate::default() };
+            return self.found(applet_id, (update.withdrawn || update.incompatible.is_some()).then_some(update));
         };
         if self.badge_tap(&applet_id) {
             return self.download(candidate, false);
         }
-        let update = AppletUpdate { version: Some(candidate.record.version.clone()), prerelease: prerelease(&candidate.record.version), withdrawn };
+        let record = &candidate.record;
+        let (new_origins, new_services, gains_storage) = gains(self.applets.entry(&applet_id).as_ref(), record);
+        let update = AppletUpdate {
+            version: Some(record.version.clone()),
+            prerelease: prerelease(&record.version),
+            withdrawn,
+            new_origins,
+            new_services,
+            gains_storage,
+            incompatible,
+        };
         self.found(applet_id, Some(update))
     }
 
@@ -1208,6 +1366,9 @@ impl Host {
             };
             if withdrawn {
                 message.push_str(" The publisher withdrew an installed release.");
+            }
+            if found.values().any(|u| u.as_ref().is_some_and(|u| u.version.is_none() && u.incompatible.is_some())) {
+                message.push_str(" A newer version needs a newer Genesis.");
             }
             match (only.is_none(), failed.len()) {
                 (false, _) | (_, 0) => {}

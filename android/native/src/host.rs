@@ -98,6 +98,8 @@ impl Host {
             ShellEvent::CheckUpdates { applet_id, manual } => self.check_updates(applet_id, manual),
             ShellEvent::CancelFlow => self.cancel_flow(),
             ShellEvent::RemoveApplet { applet_id } => self.remove_applet(&applet_id),
+            ShellEvent::ClearData { applet_id } => self.clear_data(&applet_id),
+            ShellEvent::KeepVersion { applet_id } => self.keep_version(&applet_id),
         }
         Ok(std::mem::take(&mut self.out))
     }
@@ -171,7 +173,8 @@ impl Host {
     // Applet lifecycle
 
     pub fn show_launcher(&mut self) {
-        self.out.push(ShellCommand::ShowLauncher { applets: self.launcher_entries() });
+        let updates_checked_at = self.updates_checked_at();
+        self.out.push(ShellCommand::ShowLauncher { applets: self.launcher_entries(), updates_checked_at });
     }
 
     /// Leaves the applet. A pending recreation is forgotten with it.

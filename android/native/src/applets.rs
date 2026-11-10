@@ -10,12 +10,14 @@ use crate::{
 };
 use genesis_contracts::{
     AppletStatus, Bundle, BundleHeader, Compatibility, Direction, FOREGROUND_ORIGIN, LauncherEntry, Manifest, Mismatch,
+    ReleaseCapabilities,
 };
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
     path::{Path, PathBuf},
+    time::UNIX_EPOCH,
 };
 
 /// One line of `index.json`. Entries written before statuses existed have only the id and revision.
@@ -59,6 +61,8 @@ pub enum Installed {
         accent: Option<String>,
         direction: Direction,
         mismatches: Vec<Mismatch>,
+        /// Read from the installed files; empty when there are none.
+        origins: Vec<String>,
     },
 }
 
@@ -94,6 +98,7 @@ impl Applets {
                         accent: entry.accent,
                         direction: entry.direction.unwrap_or(Direction::Outdated),
                         mismatches: entry.mismatches,
+                        origins: Vec::new(),
                     },
                 };
                 Some((entry.applet_id, installed))
@@ -170,14 +175,29 @@ impl Applets {
         self.installed.keys().filter_map(|id| self.entry(id)).collect()
     }
 
+    /// The launcher entry with the source's details and the install time.
     pub fn entry(&self, applet_id: &str) -> Option<LauncherEntry> {
-        let mut entry = entry(applet_id, self.installed.get(applet_id)?);
+        let installed = self.installed.get(applet_id)?;
+        let mut entry = entry(applet_id, installed);
+        entry.installed_at = revision_of(installed).and_then(|revision| self.installed_at(applet_id, revision));
         if let Some(source) = self.sources.get(applet_id) {
             entry.version = source.version().map(String::from);
             entry.source = Some(source.label());
             entry.source_kind = Some(source.kind());
+            entry.bundle_sha256 = Some(source.bundle_sha256().into());
+            if let Source::Github { full_name, path, .. } = source {
+                entry.publisher = full_name.split_once('/').map(|(owner, _)| owner.to_string());
+                entry.repository = Some(full_name.clone());
+                entry.path = Some(path.clone());
+            }
         }
         Some(entry)
+    }
+
+    /// The modified time of the revision directory, written once when the revision was installed.
+    fn installed_at(&self, applet_id: &str, revision: u64) -> Option<u64> {
+        let modified = fs::metadata(self.root.join(applet_id).join(revision.to_string())).ok()?.modified().ok()?;
+        modified.duration_since(UNIX_EPOCH).ok().map(|d| d.as_millis() as u64)
     }
 
     pub fn foreground_url(&self, applet_id: &str, revision: u64) -> String {
@@ -228,6 +248,7 @@ impl Applets {
             accent: None,
             direction: bundle.direction,
             mismatches: bundle.mismatches,
+            origins: Vec::new(),
         };
         self.replace(&bundle.id, installed)?;
         Ok(previous)
@@ -279,12 +300,17 @@ fn classify(directory: &Path, revision: u64) -> Option<Installed> {
     let bytes = fs::read(directory.join("bundle.json")).ok()?;
     let header: BundleHeader = serde_json::from_slice(&bytes).ok()?;
     let accent = || header.manifest.rest.get("shell")?.get("accent")?.as_str().map(String::from);
+    let origins = || -> Vec<String> {
+        let listed = header.manifest.rest.get("origins").and_then(|o| o.as_array());
+        listed.into_iter().flatten().filter_map(|o| o.as_str().map(String::from)).collect()
+    };
     let incompatible = |direction, mismatches| Installed::Incompatible {
         revision: Some(revision),
         name: header.manifest.name.clone(),
         accent: accent(),
         direction,
         mismatches,
+        origins: origins(),
     };
     match compat::evaluate(&header) {
         Compatibility::Incompatible { direction, mismatches } => Some(incompatible(direction, mismatches)),
@@ -302,32 +328,53 @@ fn revision_of(installed: &Installed) -> Option<u64> {
     }
 }
 
+/// The entry the installed revision describes, without source details.
 fn entry(applet_id: &str, installed: &Installed) -> LauncherEntry {
+    let blank = |name: &str, accent: Option<String>, status| LauncherEntry {
+        applet_id: applet_id.into(),
+        name: name.into(),
+        accent,
+        status,
+        direction: None,
+        mismatches: Vec::new(),
+        version: None,
+        source: None,
+        source_kind: None,
+        update: None,
+        origins: Vec::new(),
+        services: Vec::new(),
+        storage: false,
+        publisher: None,
+        repository: None,
+        path: None,
+        installed_at: None,
+        bundle_sha256: None,
+    };
     match installed {
-        Installed::Current { manifest, .. } => LauncherEntry {
-            applet_id: applet_id.into(),
-            name: manifest.name.clone(),
-            accent: manifest.shell.as_ref().and_then(|s| s.accent.clone()),
-            status: AppletStatus::Current,
-            direction: None,
-            mismatches: Vec::new(),
-            version: None,
-            source: None,
-            source_kind: None,
-            update: None,
-        },
-        Installed::Incompatible { name, accent, direction, mismatches, .. } => LauncherEntry {
-            applet_id: applet_id.into(),
-            name: name.clone(),
-            accent: accent.clone(),
-            status: AppletStatus::Incompatible,
+        Installed::Current { manifest, .. } => {
+            let accent = manifest.shell.as_ref().and_then(|s| s.accent.clone());
+            let capabilities = capabilities(manifest);
+            LauncherEntry {
+                origins: manifest.origins.clone(),
+                services: capabilities.services,
+                storage: capabilities.storage,
+                ..blank(&manifest.name, accent, AppletStatus::Current)
+            }
+        }
+        Installed::Incompatible { name, accent, direction, mismatches, origins, .. } => LauncherEntry {
             direction: Some(*direction),
             mismatches: mismatches.clone(),
-            version: None,
-            source: None,
-            source_kind: None,
-            update: None,
+            origins: origins.clone(),
+            ..blank(name, accent.clone(), AppletStatus::Incompatible)
         },
+    }
+}
+
+/// The storage and services a manifest declares, as a release record lists them.
+pub fn capabilities(manifest: &Manifest) -> ReleaseCapabilities {
+    ReleaseCapabilities {
+        storage: manifest.capabilities.storage.unwrap_or(false),
+        services: manifest.capabilities.services.iter().flatten().map(|s| s.id.clone()).collect(),
     }
 }
 

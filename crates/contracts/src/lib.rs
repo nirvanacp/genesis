@@ -180,6 +180,10 @@ pub enum ShellEvent {
     /// Ends the running add, review or update flow, from a dismissed screen.
     CancelFlow,
     RemoveApplet { applet_id: String },
+    /// Erases the applet's stored data; the applet and its service connections stay.
+    ClearData { applet_id: String },
+    /// Keeps the installed release the publisher withdrew; later checks stop flagging that tag.
+    KeepVersion { applet_id: String },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
@@ -223,7 +227,13 @@ pub enum StatusKind {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum ShellCommand {
-    ShowLauncher { applets: Vec<LauncherEntry> },
+    /// `updates_checked_at` is when the last update check of every applet ran, in ms since the
+    /// epoch; 0 when none has.
+    ShowLauncher {
+        applets: Vec<LauncherEntry>,
+        #[serde(default)]
+        updates_checked_at: u64,
+    },
     /// Shows the applet container with the splash until `RevealForeground`.
     ShowApplet { applet_id: String, name: String, accent: Option<String> },
     CreateView { view: ViewRef, url: String, origins: Vec<String>, start_script: Option<String> },
@@ -271,7 +281,9 @@ pub enum ShellCommand {
     ShowProgress { message: Option<String> },
     /// The applets a repository offers.
     ShowRepositoryApplets { repository: String, note: Option<String>, applets: Vec<RepositoryApplet> },
-    /// The review before installing. The buttons follow `outcome`.
+    /// The review before installing. The buttons follow `outcome`. `publisher` is the GitHub owner;
+    /// `notes` and `published_at` come from the GitHub release the build was downloaded from.
+    /// `previous` is the installed applet with the same id, for comparing.
     ShowImportReview {
         review_id: String,
         applet_id: String,
@@ -282,6 +294,26 @@ pub enum ShellCommand {
         capabilities: ReleaseCapabilities,
         outcome: ReviewOutcome,
         warnings: Vec<String>,
+        #[serde(default)]
+        publisher: Option<String>,
+        #[serde(default)]
+        bundle_sha256: String,
+        #[serde(default)]
+        bundle_bytes: u64,
+        #[serde(default)]
+        notes: Option<String>,
+        #[serde(default)]
+        published_at: Option<String>,
+        #[serde(default)]
+        previous: Option<Box<LauncherEntry>>,
+    },
+    /// A reviewed install finished. `updated` is set when an earlier version was installed.
+    ShowInstalled {
+        applet_id: String,
+        name: String,
+        version: Option<String>,
+        origins: Vec<String>,
+        updated: bool,
     },
     /// The shell deletes the applet's stored service credentials.
     ForgetApplet { applet_id: String },
@@ -315,6 +347,26 @@ pub struct LauncherEntry {
     pub source_kind: Option<SourceKind>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub update: Option<AppletUpdate>,
+    /// The installed manifest's origins; empty for an incompatible applet whose files are unknown.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub origins: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub services: Vec<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub storage: bool,
+    /// The GitHub owner of a GitHub source.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub publisher: Option<String>,
+    /// A GitHub source's `owner/name` and the applet's path in it, `.` for the root.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repository: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    /// When the current revision was installed, in ms since the epoch.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub installed_at: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bundle_sha256: Option<String>,
 }
 
 /// The kind of source an applet was installed from, for the shell's choices.
@@ -328,13 +380,23 @@ pub enum SourceKind {
 }
 
 /// An update found for a GitHub-sourced applet. `withdrawn` is set when the installed release no
-/// longer exists; `version` is then the release offered in its place, if any.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+/// longer exists; `version` is then the release offered in its place, if any. `new_origins`,
+/// `new_services` and `gains_storage` are what the offered version asks for beyond the installed
+/// one. `incompatible` is the newest newer version, when it does not run on this Genesis.
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppletUpdate {
     pub version: Option<String>,
     pub prerelease: bool,
     pub withdrawn: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub new_origins: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub new_services: Vec<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub gains_storage: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub incompatible: Option<String>,
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -404,6 +466,11 @@ pub struct CandidateVersion {
     pub prerelease: bool,
     pub compatible: bool,
     pub note: Option<String>,
+    /// The GitHub release's date (ISO 8601) and the first paragraph of its notes.
+    #[serde(default)]
+    pub published_at: Option<String>,
+    #[serde(default)]
+    pub notes: Option<String>,
 }
 
 // ---------------------------------------------------------------------------------------------
