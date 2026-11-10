@@ -395,6 +395,10 @@ function foreground(connection: Connection): Foreground {
   connection.on("user.viewWebsite", (data: { id?: string | null } | null) => {
     viewWebsite(data?.id ?? state.active);
   });
+  // The person opened a link from outside the applet; it already restarted, so no guard asks.
+  connection.on("user.showContext", (data: { id?: string | null } | null) => {
+    dispatch({ type: "user.showContext", id: data?.id ?? state.active });
+  });
   connection.on("user.done", (data: { id?: string | null } | null) => {
     dispatch({ type: "user.done", id: data?.id ?? state.active });
     resume();
