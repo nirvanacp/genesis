@@ -12,7 +12,8 @@ import app.nirvana.genesis.R;
 import com.google.android.material.button.MaterialButton;
 
 /**
- * The dark bar over a revealed website (S19, S22): the page title with a lock and its host, and
+ * The dark bar over a revealed website (S19, S22): the page title with a lock and its host (or
+ * "Not secure" for an http page), and
  * Done, which returns to the applet. Below it a banner says why the website is showing. The end
  * padding leaves room for the Genesis button floating above it.
  */
@@ -78,12 +79,15 @@ public final class WebsiteBar extends LinearLayout {
         name.setSingleLine(true);
         name.setEllipsize(TextUtils.TruncateAt.END);
         text.addView(name);
-        String host = url == null ? null : Uri.parse(url).getHost();
+        Uri page = url == null ? null : Uri.parse(url);
+        String host = page == null ? null : page.getHost();
         if (host != null && !host.isEmpty()) {
+            // A WebView has no address bar, so the "Not secure" a browser shows for http is drawn here.
+            boolean insecure = "http".equalsIgnoreCase(page.getScheme());
             LinearLayout line = new LinearLayout(getContext());
             line.setGravity(Gravity.CENTER_VERTICAL);
-            line.addView(t.icon(R.drawable.ic_lock, t.onChromeVariant), new LayoutParams(t.dp(12), t.dp(12)));
-            TextView site = t.text(host, Tokens.Type.LABEL_MEDIUM, t.onChromeVariant);
+            line.addView(t.icon(insecure ? R.drawable.ic_warning : R.drawable.ic_lock, t.onChromeVariant), new LayoutParams(t.dp(12), t.dp(12)));
+            TextView site = t.text(insecure ? "Not secure · " + host : host, Tokens.Type.LABEL_MEDIUM, t.onChromeVariant);
             site.setSingleLine(true);
             site.setEllipsize(TextUtils.TruncateAt.MIDDLE);
             LayoutParams layout = new LayoutParams(0, -2, 1);
