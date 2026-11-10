@@ -52,7 +52,8 @@ final class Bridge {
     private void execute(JSONObject command) throws JSONException {
         String type = command.getString("type");
         switch (type) {
-            case "showLauncher": shell.showLauncher(command.getJSONArray("applets")); break;
+            case "updateApplets": shell.updateApplets(command.getJSONArray("applets"), command.optLong("updatesCheckedAt")); break;
+            case "showLauncher": shell.showLauncher(command.getJSONArray("applets"), command.optLong("updatesCheckedAt")); break;
             case "showApplet": shell.showApplet(command.getString("appletId"), command.getString("name"), command.optString("accent", null)); break;
             case "createView":
                 shell.createView(command.getJSONObject("view"), command.getString("url"), command.getJSONArray("origins"),
@@ -77,6 +78,7 @@ final class Bridge {
             case "showProgress": shell.showProgress(command.isNull("message") ? null : command.optString("message", null)); break;
             case "showRepositoryApplets": shell.showRepositoryApplets(command); break;
             case "showImportReview": shell.showImportReview(command); break;
+            case "showInstalled": shell.showInstalled(command); break;
             case "forgetApplet": services.forget(command.getString("appletId")); break;
             default: throw new IllegalArgumentException("Unknown command " + type);
         }

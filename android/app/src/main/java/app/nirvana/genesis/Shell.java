@@ -5,6 +5,8 @@ import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.graphics.Color;
+import android.net.ConnectivityManager;
+import android.net.NetworkCapabilities;
 import android.net.Uri;
 import android.os.Build;
 import android.view.Gravity;
@@ -15,22 +17,26 @@ import android.view.accessibility.AccessibilityNodeInfo;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.widget.FrameLayout;
-import android.widget.ImageView;
 import android.widget.LinearLayout;
-import android.widget.ScrollView;
 import android.widget.TextView;
-import app.nirvana.genesis.ui.AddApplet;
+import android.widget.Toast;
+import app.nirvana.genesis.ui.AddFlow;
+import app.nirvana.genesis.ui.Connections;
 import app.nirvana.genesis.ui.GenesisMenu;
-import app.nirvana.genesis.ui.ImportReview;
-import app.nirvana.genesis.ui.Launcher;
+import app.nirvana.genesis.ui.Home;
+import app.nirvana.genesis.ui.Manage;
+import app.nirvana.genesis.ui.Notices;
+import app.nirvana.genesis.ui.Review;
+import app.nirvana.genesis.ui.Settings;
 import app.nirvana.genesis.ui.Splash;
-import app.nirvana.genesis.ui.StatusSheet;
 import app.nirvana.genesis.ui.Tokens;
+import app.nirvana.genesis.ui.Ui;
 import app.nirvana.genesis.ui.WebsiteBar;
-import com.google.android.material.color.DynamicColors;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.json.JSONArray;
@@ -38,20 +44,23 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 /**
- * The view tree: launcher, applet container (hidden contexts, foreground, splash, the revealed
- * context with its website bar, Genesis menu) and dialogs. It executes commands and reports user
- * input; it holds no applet policy.
+ * The view tree: Home, the applet container (hidden contexts, foreground, splash, the revealed
+ * context with its website bar, Genesis button) and the Genesis pages above both. It executes
+ * commands and reports user input; it holds no applet policy.
  */
-final class Shell implements Views.Listener {
+final class Shell implements Views.Listener, Ui.Actions {
     /** The activity services the shell needs. */
     interface Owner {
         void send(JSONObject event);
-        void configureServices(String appletId);
         void launcherShown();
         boolean chooseFiles(WebChromeClient.FileChooserParams params, ValueCallback<Uri[]> callback, java.util.function.BooleanSupplier valid);
         void cancelInvalidFiles();
         /** Opens the system picker for a bundle file, with its release record if the user picks one. */
         void pickAppletFile();
+        Connections.Store connections();
+        /** `all` signs out of every site, which also clears cookies on any path. */
+        void signOut(List<String> origins, boolean all, Runnable done);
+        void storageSize(java.util.function.LongConsumer result);
     }
 
     /** How long history.go() may take to start moving before the native fallback runs. */
@@ -62,44 +71,58 @@ final class Shell implements Views.Listener {
     private final Views views;
     private Tokens tokens;
     private final FrameLayout root;
-    private final ScrollView launcher;
     private final FrameLayout applet, sources, foreground;
     private final Splash splash;
     private final Views.Revealed revealed;
     private final WebsiteBar bar;
     private final View menu, barrier;
-    private ImageView menuFace;
-    private JSONArray launcherApplets;
+    private final Ui ui;
+    private final Home home;
+    private final AddFlow addFlow;
+    private final Review review;
+    private final Manage manage;
+    private final Connections connections;
+    private final Notices notices;
+    private final Settings settings;
     private final Map<String, Views.Page> pages = new HashMap<>();
     private Views.Page revealedPage;
     private String appletId, appletName;
+    /** The user chose View website, so the next revealed context is their choice, not the applet's. */
+    private boolean websiteChosen;
     private View customView;
     private WebChromeClient.CustomViewCallback customCallback;
     private int visualState;
-    /** The host's progress message, and the repository list or review the running flow shows. */
-    private androidx.appcompat.app.AlertDialog progress, flowDialog;
+    /** The host's progress message for flows that have no page of their own. */
+    private androidx.appcompat.app.AlertDialog progress;
     private TextView progressText;
-    private final Launcher.Listener launcherListener = new Launcher.Listener() {
-        @Override public void open(String id) { openApplet(id); }
-        @Override public void update(String id) { checkUpdates(id); }
-        @Override public void options(JSONObject entry) { appletOptions(entry); }
-        @Override public void menu() { GenesisMenu.showLauncher(activity, tokens, Shell.this::menuAction); }
-        @Override public void add() { addApplet(); }
-    };
 
     Shell(Activity activity, Owner owner) {
         this.activity = activity;
         this.owner = owner;
-        DynamicColors.applyToActivityIfAvailable(activity);
         views = new Views(activity, this);
         tokens = new Tokens(activity);
+        ui = new Ui(activity, tokens, this);
+        addFlow = new AddFlow(ui);
+        connections = new Connections(ui);
+        manage = new Manage(ui, addFlow, connections);
+        notices = new Notices(ui, addFlow);
+        settings = new Settings(ui, manage::updates);
+        review = new Review(ui, addFlow::finish);
+        home = new Home(ui, new Home.Navigator() {
+            @Override public void settings() { settings.open(); }
+            @Override public void updates() { manage.updates(); }
+            @Override public void info(String id) { manage.info(id); }
+            @Override public void addFromRepository() { addFlow.open(null, null); }
+            @Override public void control() { ui.pages.push("control", () -> Settings.control(ui), null, false); }
+            @Override public void remove(String id) { manage.remove(id); }
+        });
 
         root = new FrameLayout(activity);
         root.setBackgroundColor(tokens.surface);
         applyInsets(root);
 
-        launcher = new ScrollView(activity);
-        root.addView(launcher, new FrameLayout.LayoutParams(-1, -1));
+        home.root.setVisibility(View.GONE);
+        root.addView(home.root, new FrameLayout.LayoutParams(-1, -1));
 
         applet = new FrameLayout(activity);
         sources = new FrameLayout(activity) {
@@ -116,10 +139,11 @@ final class Shell implements Views.Listener {
         applet.addView(foreground, new FrameLayout.LayoutParams(-1, -1));
         splash = new Splash(activity, tokens);
         applet.addView(splash, new FrameLayout.LayoutParams(-1, -1));
-        // A revealed context sits below the website bar, which grows with the font size; the menu button stays on top of both.
+        // A revealed context sits below the website bar, which grows with the font size; the Genesis button stays on top of both.
         LinearLayout website = new LinearLayout(activity);
         website.setOrientation(LinearLayout.VERTICAL);
         bar = new WebsiteBar(activity, tokens, () -> owner.send(Bridge.event("websiteDone")));
+        bar.setOnUpdate(manage::updates);
         bar.setVisibility(View.GONE);
         website.addView(bar, new LinearLayout.LayoutParams(-1, -2));
         revealed = new Views.Revealed(activity);
@@ -127,47 +151,66 @@ final class Shell implements Views.Listener {
         revealed.setVisibility(View.GONE);
         website.addView(revealed, new LinearLayout.LayoutParams(-1, 0, 1));
         applet.addView(website, new FrameLayout.LayoutParams(-1, -1));
-        menu = menuButton();
+        menu = GenesisMenu.button(tokens, this::openMenu);
         applet.addView(menu, menuLayout());
         applet.setVisibility(View.GONE);
         root.addView(applet, new FrameLayout.LayoutParams(-1, -1));
+        root.addView(ui.root(), new FrameLayout.LayoutParams(-1, -1));
 
         activity.setContentView(root);
         tokens.applySystemBars(activity);
     }
 
-    /** Replaces the content with a full-screen message; used when the WebView lacks required features. */
+    /** Replaces the content with S27; used when the WebView lacks required features. */
     static void unsupported(Activity activity) {
-        DynamicColors.applyToActivityIfAvailable(activity);
         Tokens tokens = new Tokens(activity);
-        TextView message = tokens.text("Genesis needs a newer Android System WebView.\n\nInstalled: " + Views.providerVersion(activity)
-            + "\n\nUpdate Android System WebView from the Play Store, then reopen Genesis.", Tokens.Type.BODY_LARGE, tokens.onSurface);
-        message.setGravity(Gravity.CENTER);
-        message.setPadding(tokens.dp(28), tokens.dp(28), tokens.dp(28), tokens.dp(28));
-        message.setBackgroundColor(tokens.surface);
-        activity.setContentView(message);
+        Ui ui = new Ui(activity, tokens, null);
+        FrameLayout root = new FrameLayout(activity);
+        root.setBackgroundColor(tokens.surface);
+        applyInsets(root);
+        root.addView(Notices.webViewTooOld(ui, Views.providerVersion(activity)), new FrameLayout.LayoutParams(-1, -1));
+        activity.setContentView(root);
         tokens.applySystemBars(activity);
     }
 
     // -----------------------------------------------------------------------------------------
     // Commands
 
-    void showLauncher(JSONArray applets) throws JSONException {
+    void showLauncher(JSONArray applets, long updatesCheckedAt) {
         destroyAll();
-        launcherApplets = applets;
+        ui.applets = applets;
+        ui.updatesCheckedAt = updatesCheckedAt;
         appletId = null;
         applet.setVisibility(View.GONE);
-        launcher.setVisibility(View.VISIBLE);
-        launcher.removeAllViews();
-        launcher.addView(new Launcher(activity, tokens, launcherListener).build(applets), new ScrollView.LayoutParams(-1, -2));
+        home.root.setVisibility(View.VISIBLE);
+        home.render();
+        ui.pages.refresh();
         owner.launcherShown();
+    }
+
+    /** New launcher entries while an applet is open: the menu and open pages read them. */
+    void updateApplets(JSONArray applets, long updatesCheckedAt) {
+        ui.applets = applets;
+        ui.updatesCheckedAt = updatesCheckedAt;
+        ui.pages.refresh();
+    }
+
+    /** Every URL the open applet's pages have visited, for clearing cookies set on deeper paths. */
+    List<String> visitedUrls() {
+        List<String> urls = new ArrayList<>();
+        for (Views.Page page : pages.values()) {
+            android.webkit.WebBackForwardList history = page.web.copyBackForwardList();
+            for (int i = 0; i < history.getSize(); i++) urls.add(history.getItemAtIndex(i).getUrl());
+        }
+        return urls;
     }
 
     void showApplet(String id, String name, String accent) {
         destroyAll();
+        ui.pages.clear();
         appletId = id;
         appletName = name;
-        launcher.setVisibility(View.GONE);
+        home.root.setVisibility(View.GONE);
         applet.setVisibility(View.VISIBLE);
         splash.show(name, accent);
     }
@@ -241,7 +284,11 @@ final class Shell implements Views.Listener {
         revealed.setVisibility(View.VISIBLE);
         bar.setTitle(title);
         bar.setUrl(page.web.getUrl());
+        JSONObject entry = appletId == null ? null : ui.entry(appletId);
+        bar.setReason(appletName, websiteChosen, entry != null && Home.hasUpdate(entry));
+        websiteChosen = false;
         bar.setVisibility(View.VISIBLE);
+        GenesisMenu.tint(menu, tokens, true);
         revealedPage = page;
     }
 
@@ -269,6 +316,7 @@ final class Shell implements Views.Listener {
         revealedPage = null;
         revealed.setVisibility(View.GONE);
         bar.setVisibility(View.GONE);
+        GenesisMenu.tint(menu, tokens, false);
     }
 
     void postMessage(JSONObject ref, String payload) {
@@ -291,8 +339,9 @@ final class Shell implements Views.Listener {
 
     boolean appletShown() { return appletId != null; }
 
-    /** A running applet flow's message; null hides it. Cancel ends the flow in the host. */
+    /** A running flow's message; null ends it. The add flow shows its own pages; others get a dialog. */
     void showProgress(String message) {
+        if (addFlow.progress(message) && message != null) return;
         if (message == null) {
             if (progress != null) progress.dismiss();
             progress = null;
@@ -306,6 +355,7 @@ final class Shell implements Views.Listener {
         com.google.android.material.progressindicator.CircularProgressIndicator spinner =
             new com.google.android.material.progressindicator.CircularProgressIndicator(activity);
         spinner.setIndeterminate(true);
+        spinner.setIndicatorColor(tokens.primary);
         row.addView(spinner, new LinearLayout.LayoutParams(-2, -2));
         progressText = tokens.text(message, Tokens.Type.BODY_LARGE, tokens.onSurface);
         LinearLayout.LayoutParams textLayout = new LinearLayout.LayoutParams(0, -2, 1);
@@ -319,82 +369,40 @@ final class Shell implements Views.Listener {
             }).show();
     }
 
-    void showRepositoryApplets(JSONObject command) throws JSONException {
-        closeFlowDialogs();
-        String note = command.isNull("note") ? null : command.optString("note", null);
-        flowDialog = AddApplet.repository(activity, tokens, command.getString("repository"), note, command.getJSONArray("applets"), addListener);
+    void showRepositoryApplets(JSONObject command) {
+        dismissProgress();
+        addFlow.repositoryApplets(command);
     }
 
     void showImportReview(JSONObject command) {
-        closeFlowDialogs();
-        String reviewId = command.optString("reviewId");
-        flowDialog = ImportReview.show(activity, tokens, command, (accept, replace) -> {
-            flowDialog = null;
-            try {
-                owner.send(Bridge.event("reviewDecision").put("reviewId", reviewId).put("accept", accept)
-                    .put("replace", replace == null ? JSONObject.NULL : replace));
-            } catch (JSONException ignored) { /* Unreachable for these values. */ }
-        });
+        dismissProgress();
+        review.show(command);
     }
 
-    /** Closes the dialogs of a flow the host moved past, without answering for the user. */
-    private void closeFlowDialogs() {
-        showProgress(null);
-        if (flowDialog != null) flowDialog.dismiss();
-        flowDialog = null;
+    void showInstalled(JSONObject command) {
+        dismissProgress();
+        addFlow.finish();
+        review.installed(command);
     }
 
-    private final AddApplet.Listener addListener = new AddApplet.Listener() {
-        @Override public void addFromRepository(String input) {
-            try { owner.send(Bridge.event("addFromRepository").put("input", input)); }
-            catch (JSONException ignored) { /* Unreachable for string values. */ }
-        }
-        @Override public void pickFile() { owner.pickAppletFile(); }
-        @Override public void choose(String id, String version) {
-            flowDialog = null;
-            try { owner.send(Bridge.event("chooseCandidate").put("appletId", id).put("version", version == null ? JSONObject.NULL : version)); }
-            catch (JSONException ignored) { /* Unreachable for string values. */ }
-        }
-        @Override public void cancel() {
-            flowDialog = null;
-            owner.send(Bridge.event("cancelFlow"));
-        }
-    };
-
-    private void addApplet() { AddApplet.show(activity, tokens, addListener); }
-
-    private void checkUpdates(String id) {
-        try { owner.send(Bridge.event("checkUpdates").put("appletId", id == null ? JSONObject.NULL : id).put("manual", true)); }
-        catch (JSONException ignored) { /* Unreachable for these values. */ }
-    }
-
-    /** The launcher's long press: Check for update for a GitHub applet, and Remove behind a confirmation. */
-    private void appletOptions(JSONObject entry) {
-        String id = entry.optString("appletId");
-        String name = entry.optString("name", id);
-        String source = entry.isNull("source") ? null : entry.optString("source", null);
-        boolean github = "github".equals(entry.optString("sourceKind"));
-        MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(activity).setTitle(name);
-        if (source != null) builder.setMessage(source);
-        if (github) builder.setNeutralButton("Check for update", (d, w) -> checkUpdates(id));
-        builder.setPositiveButton("Remove", (d, w) -> confirmRemove(id, name)).setNegativeButton("Cancel", null).show();
-    }
-
-    private void confirmRemove(String id, String name) {
-        new MaterialAlertDialogBuilder(activity).setTitle("Remove " + name + "?")
-            .setMessage(name + "'s stored data and service connections are deleted. Website sign-ins stay with the websites.")
-            .setNegativeButton("Cancel", null)
-            .setPositiveButton("Remove", (d, w) -> {
-                try { owner.send(Bridge.event("removeApplet").put("appletId", id)); }
-                catch (JSONException ignored) { /* Unreachable for string values. */ }
-            }).show();
+    private void dismissProgress() {
+        if (progress != null) progress.dismiss();
+        progress = null;
+        progressText = null;
     }
 
     void showError(String message) {
+        dismissProgress();
+        if (addFlow.error(message)) return;
         new MaterialAlertDialogBuilder(activity).setTitle("Genesis").setMessage(message).setPositiveButton("Close", null).show();
     }
 
+    /** Update checks from the Updates page answer with a short toast; anything else gets a dialog. */
     void showInfo(String title, String message) {
+        if ("updates".equals(ui.pages.top())) {
+            Toast.makeText(activity, message, Toast.LENGTH_SHORT).show();
+            return;
+        }
         new MaterialAlertDialogBuilder(activity).setTitle(title).setMessage(message).setPositiveButton("Close", null).show();
     }
 
@@ -404,16 +412,9 @@ final class Shell implements Views.Listener {
      */
     void showStatus(String kind, JSONObject entry, String details) {
         switch (kind) {
-            case "rendererLost":
-                String name = entry == null ? "Applet" : entry.optString("name", "Applet");
-                StatusSheet.rendererLost(activity, tokens, name, entry == null ? null : () -> openApplet(entry.optString("appletId")));
-                break;
-            case "importReceived":
-                StatusSheet.importNotice(root, activity, tokens, entry, details);
-                break;
-            default:
-                StatusSheet.incompatible(activity, tokens, entry, details);
-                break;
+            case "rendererLost": notices.stopped(entry); break;
+            case "importReceived": notices.imported(entry, details); break;
+            default: notices.cantRun(entry, details); break;
         }
     }
 
@@ -423,6 +424,12 @@ final class Shell implements Views.Listener {
         } catch (ActivityNotFoundException error) {
             showError("No app can open " + url);
         }
+    }
+
+    /** System Back: a fullscreen video, then the top Genesis page. Returns whether the shell used it. */
+    boolean back() {
+        if (closeCustomView()) return true;
+        return ui.pages.back();
     }
 
     /** Closes a fullscreen video. Returns whether one was showing, so Back stays local to the shell. */
@@ -447,6 +454,9 @@ final class Shell implements Views.Listener {
         for (Views.Page page : pages.values()) page.destroy();
         pages.clear();
     }
+
+    // -----------------------------------------------------------------------------------------
+    // View reports
 
     // -----------------------------------------------------------------------------------------
     // View reports
@@ -513,78 +523,118 @@ final class Shell implements Views.Listener {
         if (dark == tokens.dark) return;
         // The theme still holds the old appearance's colors; apply it again so they resolve for the new one.
         activity.getTheme().applyStyle(R.style.Theme_NirvanaGenesis, true);
-        DynamicColors.applyToActivityIfAvailable(activity);
         tokens = new Tokens(activity);
+        ui.tokens = tokens;
         root.setBackgroundColor(tokens.surface);
         barrier.setBackgroundColor(tokens.surface);
         revealed.setBackgroundColor(tokens.surface);
         splash.restyle(tokens);
         bar.restyle(tokens);
-        styleMenuFace();
+        GenesisMenu.tint(menu, tokens, revealedPage != null);
         tokens.applySystemBars(activity);
-        if (launcher.getVisibility() == View.VISIBLE && launcherApplets != null) {
-            launcher.removeAllViews();
-            launcher.addView(new Launcher(activity, tokens, launcherListener).build(launcherApplets), new ScrollView.LayoutParams(-1, -2));
-        }
+        if (home.root.getVisibility() == View.VISIBLE) home.render();
+        ui.pages.rebuildAll();
     }
 
     // -----------------------------------------------------------------------------------------
-    // Pieces
+    // Ui.Actions
 
-    private void openApplet(String id) {
+    /** Opens an applet, or the offline notice when the phone has no connection. */
+    @Override public void openApplet(String id) {
+        if (!online()) { notices.offline(id); return; }
         try { owner.send(Bridge.event("openApplet").put("appletId", id)); }
         catch (JSONException ignored) { /* Unreachable for string values. */ }
     }
 
-    /** The Genesis button: a 44 dp tonal square with 12 dp corners inside a 48 dp touch target. */
-    private View menuButton() {
-        FrameLayout target = new FrameLayout(activity);
-        target.setClickable(true);
-        target.setFocusable(true);
-        target.setContentDescription("Genesis menu");
-        target.setOnClickListener(v -> openMenu());
-        menuFace = tokens.icon(R.drawable.ic_nav_more, tokens.onSecondaryContainer);
-        menuFace.setScaleType(ImageView.ScaleType.CENTER);
-        menuFace.setElevation(tokens.dp(3));
-        menuFace.setDuplicateParentStateEnabled(true);
-        styleMenuFace();
-        target.addView(menuFace, new FrameLayout.LayoutParams(tokens.dp(44), tokens.dp(44), Gravity.CENTER));
-        return target;
+    @Override public void addFromRepository(String input) {
+        try { owner.send(Bridge.event("addFromRepository").put("input", input)); }
+        catch (JSONException ignored) { /* Unreachable for string values. */ }
     }
 
-    private void styleMenuFace() {
-        menuFace.setImageTintList(android.content.res.ColorStateList.valueOf(tokens.onSecondaryContainer));
-        menuFace.setBackground(tokens.pressable(tokens.secondaryContainer, 12, 12));
+    @Override public void pickFile() { owner.pickAppletFile(); }
+
+    @Override public void chooseCandidate(String id, String version) {
+        try { owner.send(Bridge.event("chooseCandidate").put("appletId", id).put("version", version == null ? JSONObject.NULL : version)); }
+        catch (JSONException ignored) { /* Unreachable for string values. */ }
     }
 
-    /** Top end, with the visible button 8 dp from the edges. */
+    @Override public void cancelFlow() { owner.send(Bridge.event("cancelFlow")); }
+
+    @Override public void reviewDecision(String reviewId, boolean accept, String replace) {
+        try {
+            owner.send(Bridge.event("reviewDecision").put("reviewId", reviewId).put("accept", accept)
+                .put("replace", replace == null ? JSONObject.NULL : replace));
+        } catch (JSONException ignored) { /* Unreachable for these values. */ }
+    }
+
+    @Override public void checkUpdates(String id, boolean manual) {
+        try { owner.send(Bridge.event("checkUpdates").put("appletId", id == null ? JSONObject.NULL : id).put("manual", manual)); }
+        catch (JSONException ignored) { /* Unreachable for these values. */ }
+    }
+
+    @Override public void removeApplet(String id) { appletEvent("removeApplet", id); }
+
+    @Override public void clearData(String id) { appletEvent("clearData", id); }
+
+    @Override public void keepVersion(String id) { appletEvent("keepVersion", id); }
+
+    @Override public void menu(String action) {
+        try { owner.send(Bridge.event("menu").put("action", action)); }
+        catch (JSONException ignored) { /* Unreachable for string values. */ }
+    }
+
+    @Override public Connections.Store connections() { return owner.connections(); }
+
+    @Override public void signOut(List<String> origins, boolean all, Runnable done) { owner.signOut(origins, all, done); }
+
+    @Override public void storageSize(java.util.function.LongConsumer result) { owner.storageSize(result); }
+
+    private void appletEvent(String type, String id) {
+        try { owner.send(Bridge.event(type).put("appletId", id)); }
+        catch (JSONException ignored) { /* Unreachable for string values. */ }
+    }
+
+    @SuppressWarnings("deprecation")
+    private boolean online() {
+        ConnectivityManager manager = activity.getSystemService(ConnectivityManager.class);
+        if (manager == null) return true;
+        NetworkCapabilities capabilities = manager.getNetworkCapabilities(manager.getActiveNetwork());
+        return capabilities != null && capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET);
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // The Genesis button and menu
+
+    /** Top end, 6 dp from the edges, inside the website bar's free end while a website shows. */
     private FrameLayout.LayoutParams menuLayout() {
         FrameLayout.LayoutParams layout = new FrameLayout.LayoutParams(tokens.dp(48), tokens.dp(48), Gravity.TOP | Gravity.END);
-        layout.setMargins(tokens.dp(6), tokens.dp(6), tokens.dp(6), tokens.dp(6));
+        layout.setMargins(tokens.dp(6), tokens.dp(8), tokens.dp(6), tokens.dp(6));
         return layout;
     }
 
     private void openMenu() {
         if (appletId == null) return;
-        GenesisMenu.show(activity, tokens, appletName == null ? appletId : appletName, appletId, revealedPage != null, this::menuAction);
+        String url = revealedPage != null ? revealedPage.web.getUrl() : contextUrl();
+        GenesisMenu.show(ui, appletName == null ? appletId : appletName, ui.entry(appletId), url, revealedPage != null, this::menuAction);
     }
 
     private void menuAction(GenesisMenu.Action action) {
-        String event;
         switch (action) {
-            case HOME: event = "home"; break;
-            case RELOAD: event = "reload"; break;
-            case VIEW_WEBSITE: event = "viewWebsite"; break;
-            case INFO: event = "info"; break;
-            case ADD_APPLET: addApplet(); return;
-            case CHECK_UPDATES: checkUpdates(null); return;
-            case SERVICES: if (appletId != null) owner.configureServices(appletId); return;
+            case HOME: menu("home"); return;
+            case RELOAD: menu("reload"); return;
+            case VIEW_WEBSITE: websiteChosen = true; menu("viewWebsite"); return;
+            case INFO: if (appletId != null) manage.info(appletId); return;
+            case SERVICES: if (appletId != null) connections.open(appletId); return;
             case OPEN_IN_BROWSER: { String url = revealedUrl(); if (url != null) openExternal(url); return; }
             case COPY_LINK: { String url = revealedUrl(); if (url != null) tokens.copy("Link", url); return; }
-            default: return;
+            default:
         }
-        try { owner.send(Bridge.event("menu").put("action", event)); }
-        catch (JSONException ignored) { /* Unreachable for string values. */ }
+    }
+
+    /** The URL of the applet's first website context, shown in the menu over the applet's own screens. */
+    private String contextUrl() {
+        for (Views.Page page : pages.values()) if (page.isContext() && page.web.getUrl() != null) return page.web.getUrl();
+        return null;
     }
 
     private String revealedUrl() { return revealedPage == null ? null : revealedPage.web.getUrl(); }

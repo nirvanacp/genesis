@@ -8,7 +8,7 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import com.google.android.material.progressindicator.LinearProgressIndicator;
 
-/** Covers the applet while it starts: its monogram and name, and a progress bar once opening takes a while. */
+/** Covers the applet while it starts: its tile and name, and a progress bar once opening takes a while. */
 public final class Splash extends FrameLayout {
     /** Fast starts never show the progress bar. */
     private static final long PROGRESS_DELAY_MS = 1000;
@@ -30,11 +30,13 @@ public final class Splash extends FrameLayout {
         column.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
         monogram = new FrameLayout(context);
         column.addView(monogram, new LinearLayout.LayoutParams(tokens.dp(72), tokens.dp(72)));
-        name = tokens.text("", Tokens.Type.HEADLINE_SMALL, tokens.onSurface);
+        name = tokens.text("", Tokens.Type.TITLE_LARGE, tokens.onSurface);
         name.setGravity(Gravity.CENTER);
         name.setPadding(tokens.dp(24), tokens.dp(16), tokens.dp(24), tokens.dp(24));
         column.addView(name, new LinearLayout.LayoutParams(-1, -2));
         progress = new LinearProgressIndicator(context);
+        progress.setIndicatorColor(tokens.primary);
+        progress.setTrackColor(tokens.surfaceContainerHigh);
         progress.setIndeterminate(true);
         progress.setVisibility(View.INVISIBLE);
         column.addView(progress, new LinearLayout.LayoutParams(tokens.dp(160), -2));
@@ -44,7 +46,7 @@ public final class Splash extends FrameLayout {
 
     public void show(String appletName, String accent) {
         monogram.removeAllViews();
-        monogram.addView(tokens.monogram(appletName, accent, 72, 28), new FrameLayout.LayoutParams(-1, -1));
+        monogram.addView(tokens.tile(appletName, 72, false, false), new FrameLayout.LayoutParams(-1, -1));
         name.setText(appletName);
         setContentDescription("Opening " + appletName);
         removeCallbacks(showProgress);
@@ -53,7 +55,7 @@ public final class Splash extends FrameLayout {
         postDelayed(showProgress, PROGRESS_DELAY_MS);
     }
 
-    /** Takes the colors of a new appearance; the next `show` uses them for the monogram too. */
+    /** Takes the colors of a new appearance; the next `show` uses them for the tile too. */
     public void restyle(Tokens tokens) {
         this.tokens = tokens;
         setBackgroundColor(tokens.surface);

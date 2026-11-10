@@ -122,6 +122,26 @@ pub struct Release {
     pub prerelease: bool,
     pub record_url: String,
     pub bundle_url: Option<String>,
+    /// GitHub's `published_at` (ISO 8601) and the release notes, as the publisher wrote them.
+    pub published_at: Option<String>,
+    pub body: Option<String>,
+}
+
+/// The longest release notes summary the shell shows.
+const NOTES_MAX_CHARS: usize = 300;
+
+/// The first paragraph of release notes, at most `NOTES_MAX_CHARS` characters; None when empty.
+pub fn notes_summary(body: &str) -> Option<String> {
+    let body = body.replace("\r\n", "\n");
+    let paragraph = body.trim().split("\n\n").next()?.trim();
+    if paragraph.is_empty() {
+        return None;
+    }
+    if paragraph.chars().count() <= NOTES_MAX_CHARS {
+        return Some(paragraph.into());
+    }
+    let cut: String = paragraph.chars().take(NOTES_MAX_CHARS - 1).collect();
+    Some(format!("{}…", cut.trim_end()))
 }
 
 /// The releases whose tag is `v<version>` or `<id>/v<version>` and that carry
@@ -141,6 +161,7 @@ pub fn parse_releases(body: &Value) -> Vec<Release> {
             },
         };
         let Some(parsed) = Version::parse(version) else { continue };
+        let text = |key: &str| release.get(key).and_then(Value::as_str).map(String::from);
         let assets: Vec<(&str, &str)> = release
             .get("assets")
             .and_then(Value::as_array)
@@ -161,6 +182,8 @@ pub fn parse_releases(body: &Value) -> Vec<Release> {
                 prerelease: parsed.is_prerelease(),
                 record_url: record_url.into(),
                 bundle_url: assets.iter().find(|(name, _)| *name == bundle_name).map(|(_, url)| (*url).into()),
+                published_at: text("published_at"),
+                body: text("body"),
             });
         }
     }

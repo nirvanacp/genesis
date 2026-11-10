@@ -115,6 +115,16 @@ final class Files {
         return ids;
     }
 
+    /** Bytes in the files under `file`, following no links. */
+    static long size(File file) {
+        if (java.nio.file.Files.isSymbolicLink(file.toPath())) return 0;
+        if (!file.isDirectory()) return file.length();
+        long total = 0;
+        File[] children = file.listFiles();
+        for (File child : children == null ? new File[0] : children) total += size(child);
+        return total;
+    }
+
     static void writeAtomic(File target, byte[] bytes) throws IOException {
         File directory = target.getParentFile();
         if (directory != null && !directory.isDirectory() && !directory.mkdirs()) throw new IOException("Cannot create " + directory);
