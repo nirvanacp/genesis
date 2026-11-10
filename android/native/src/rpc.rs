@@ -120,11 +120,12 @@ impl Host {
             session: saved,
         };
         self.post(&view, &bound);
-        // A shared link started the applet; the foreground shows its website once bound.
+        // An opened link started the applet; the foreground shows that context once bound, and
+        // its routes decide between the applet's screen and the website.
         if view.role == Role::Foreground
-            && let Some(id) = self.contexts.session.as_mut().and_then(|s| s.open_website.take())
+            && let Some(id) = self.contexts.session.as_mut().and_then(|s| s.open_context.take())
         {
-            self.foreground_event("user.viewWebsite", json!({ "id": id }));
+            self.foreground_event("user.showContext", json!({ "id": id }));
         }
     }
 

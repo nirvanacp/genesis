@@ -50,8 +50,10 @@ pub struct Session {
     pub restored: bool,
     /// The foreground's last `session.save` (`{version, state}`), handed back in `bound` when restored.
     pub saved: Option<Value>,
-    /// The context a shared link opened in; the foreground shows it once it binds.
-    pub open_website: Option<String>,
+    /// The context an opened link loaded in; the foreground shows it once it binds.
+    pub open_context: Option<String>,
+    /// The applet opened a link another app shared; the Back that leaves it returns there.
+    pub return_to_caller: bool,
 }
 
 impl Session {
@@ -68,7 +70,8 @@ impl Session {
             next_action: 0,
             restored,
             saved: None,
-            open_website: None,
+            open_context: None,
+            return_to_caller: false,
         }
     }
 

@@ -71,7 +71,7 @@ impl Host {
                 let resume = self.contexts.resume.take().filter(|r| r.applet_id == applet_id);
                 self.activate(&applet_id, resume, None);
             }
-            ShellEvent::OpenUrl { url, applet_id } => self.open_url(&url, applet_id),
+            ShellEvent::OpenUrl { url, applet_id, external } => self.open_url(&url, applet_id, external),
             ShellEvent::Home => self.home(),
             ShellEvent::Menu { action } => self.menu(action),
             ShellEvent::DocumentStarted { view, url } => self.document_started(view, url, now),
@@ -82,6 +82,7 @@ impl Host {
             }
             ShellEvent::RendererGone { view } => self.renderer_gone(&view),
             ShellEvent::HistoryUnmoved { view } => self.history_unmoved(&view),
+            ShellEvent::WindowRequested { view, url } => self.window_requested(view, &url),
             ShellEvent::ImportFound { kind: ImportKind::Bundle, path, payload, release: _ } => self.import_dev(&path, &payload),
             ShellEvent::ImportFound { kind: ImportKind::Bundled, path, payload, release } => {
                 self.import_bundled(&path, &payload, release.as_deref())
@@ -194,44 +195,96 @@ impl Host {
         self.show_launcher();
     }
 
-    /// Opens a website link in the applet that declares its site. Several applets ask the user to
-    /// pick one; the link opens in the context that starts on its site, or the first context.
-    fn open_url(&mut self, url: &str, chosen: Option<String>) {
+    /// Opens a website link. Without a picked applet the user chooses first: one of the applets
+    /// that declare its site, or a new applet. The picked applet starts again, its other contexts
+    /// at their last URLs, with the link in the context that starts on its site (or the first),
+    /// and its routes decide whether the link shows the applet's screen or the website. A link
+    /// from another app (`external`) returns there on the Back that leaves the applet.
+    fn open_url(&mut self, url: &str, chosen: Option<String>, external: bool) {
         let info = |message: String| ShellCommand::ShowInfo { title: "Genesis".into(), message };
-        let Some(mut parsed) = url::Url::parse(url.trim()).ok().filter(|u| matches!(u.scheme(), "http" | "https")) else {
+        let Some(parsed) = url::Url::parse(url.trim()).ok().filter(|u| matches!(u.scheme(), "http" | "https")) else {
             return self.out.push(info("Genesis opens only website links".into()));
         };
-        if parsed.scheme() == "http" && parsed.set_scheme("https").is_err() {
+        // Applets declare https origins; an http link matches its https site and still loads as
+        // given, so a site that serves only http keeps working and one that upgrades redirects.
+        let mut secure = parsed.clone();
+        if secure.scheme() == "http" && secure.set_scheme("https").is_err() {
             return self.out.push(info("Genesis opens only website links".into()));
         }
-        let origin = parsed.origin().ascii_serialization();
-        let host = parsed.host_str().unwrap_or_default().to_string();
+        let origin = secure.origin().ascii_serialization();
         let url = parsed.to_string();
         let candidates: Vec<String> =
             self.applets.for_origin(&origin).into_iter().filter(|id| !self.erasing(id)).collect();
-        let applet_id = match (chosen, candidates.as_slice()) {
-            (Some(id), _) if candidates.contains(&id) => id,
-            (_, []) => return self.out.push(info(format!("No applet uses {host}"))),
-            (_, [only]) => only.clone(),
-            _ => {
+        let applet_id = match chosen {
+            Some(id) if candidates.contains(&id) => id,
+            Some(_) => return self.out.push(info("That applet no longer uses this website".into())),
+            None => {
                 let applets = candidates.iter().filter_map(|id| self.applets.entry(id)).collect();
-                return self.out.push(ShellCommand::ChooseApplet { url, applets });
+                return self.out.push(ShellCommand::ChooseApplet { url, applets, external });
             }
         };
         let Some((_, manifest)) = self.applets.current(&applet_id) else { return };
         let starts_here = manifest.contexts.iter().find(|c| applets::origin_of(&c.start_url).as_deref() == Some(&origin));
         let Some(context) = starts_here.or(manifest.contexts.first()).map(|c| c.id.clone()) else { return };
-        let active = self.contexts.session.as_ref().is_some_and(|s| s.applet_id == applet_id);
-        if active {
-            let view = ViewRef { applet_id, role: Role::Context(context.clone()) };
-            self.out.push(ShellCommand::LoadUrl { view, url, mode: NavigateMode::Push });
-            return self.foreground_event("user.viewWebsite", json!({ "id": context }));
+        // Starting again gives the link a fresh history, so its first Back leaves the applet, and
+        // the shell's events reach a foreground that binds after the commands below.
+        if self.contexts.session.as_ref().is_some_and(|s| s.applet_id == applet_id) {
+            self.retire_for_resume(false);
+        } else {
+            self.retire_active();
         }
-        self.retire_active();
         let resume = self.contexts.resume.take().filter(|r| r.applet_id == applet_id);
         self.activate(&applet_id, resume, Some((context.clone(), url)));
         if let Some(session) = self.contexts.session.as_mut().filter(|s| s.applet_id == applet_id) {
-            session.open_website = Some(context);
+            session.open_context = Some(context);
+            session.return_to_caller = external;
+        }
+    }
+
+    /// A context's window the shell did not open as a popup. A page on the applet's own sites
+    /// loads in place, where its routes decide what shows; a site another applet uses opens in
+    /// that applet; any other site shows in a website sheet over the applet.
+    fn window_requested(&mut self, view: ViewRef, url: &str) {
+        let Role::Context(_) = &view.role else { return };
+        let Some((_, manifest)) = self.active_manifest().filter(|_| self.context_view_matches(&view)) else { return };
+        let Some(origin) = url::Url::parse(url).ok().filter(|u| matches!(u.scheme(), "http" | "https")).map(|u| {
+            let mut secure = u.clone();
+            let _ = secure.set_scheme("https");
+            secure.origin().ascii_serialization()
+        }) else {
+            return;
+        };
+        if manifest.origins.iter().any(|o| applets::origin_of(o).as_deref() == Some(&origin)) {
+            return self.out.push(ShellCommand::LoadUrl { view, url: url.into(), mode: NavigateMode::Push });
+        }
+        let others: Vec<String> = self
+            .applets
+            .for_origin(&origin)
+            .into_iter()
+            .filter(|id| *id != view.applet_id && !self.erasing(id))
+            .collect();
+        match others.as_slice() {
+            [] => self.out.push(ShellCommand::ShowWindow { view, url: url.into() }),
+            [only] => {
+                let only = only.clone();
+                self.open_url(url, Some(only), false)
+            }
+            _ => self.open_url(url, None, false),
+        }
+    }
+
+    /// Whether `view` belongs to the active applet's session.
+    fn context_view_matches(&self, view: &ViewRef) -> bool {
+        let Role::Context(id) = &view.role else { return false };
+        self.contexts.session.as_ref().is_some_and(|s| s.applet_id == view.applet_id && s.contexts.contains_key(id))
+    }
+
+    /// A Back that leaves the applet: Home, and back to the app that shared the link it opened.
+    fn leave_on_back(&mut self) {
+        let caller = self.contexts.session.as_ref().is_some_and(|s| s.return_to_caller);
+        self.home();
+        if caller {
+            self.out.push(ShellCommand::MoveTaskToBack);
         }
     }
 
@@ -435,7 +488,7 @@ impl Host {
         };
         let target = candidates.into_iter().find(|id| session.contexts.get(id).is_some_and(|c| c.can_go_back));
         let Some((id, view)) = target.and_then(|id| self.context_view(&id).map(|view| (id, view))) else {
-            return self.home();
+            return self.leave_on_back();
         };
         if let Some(session) = self.contexts.session.as_mut() {
             session.back_history = Some(id);
@@ -449,7 +502,7 @@ impl Host {
         let Some(session) = self.contexts.session.as_mut().filter(|s| s.applet_id == view.applet_id) else { return };
         if session.back_history.as_ref() == Some(id) {
             session.back_history = None;
-            self.home();
+            self.leave_on_back();
         }
     }
 
