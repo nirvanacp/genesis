@@ -71,7 +71,6 @@ final class Bridge {
             case "showError": shell.showError(command.getString("message")); break;
             case "showInfo": shell.showInfo(command.getString("title"), command.getString("message")); break;
             case "showStatus": shell.showStatus(command.getString("kind"), command.optJSONObject("applet"), command.getString("details")); break;
-            case "openExternal": shell.openExternal(command.getString("url")); break;
             case "wake": task.wake(command.getLong("delayMs")); break;
             case "moveTaskToBack": task.moveToBack(); break;
             case "fetch": fetcher.fetch(command); break;

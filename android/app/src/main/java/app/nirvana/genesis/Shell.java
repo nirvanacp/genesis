@@ -457,9 +457,6 @@ final class Shell implements Views.Listener, Ui.Actions {
     // -----------------------------------------------------------------------------------------
     // View reports
 
-    // -----------------------------------------------------------------------------------------
-    // View reports
-
     @Override public void documentStarted(Views.Page page, String url) {
         if (pages.get(key(page.ref)) != page) return;
         try { owner.send(Bridge.event("documentStarted").put("view", page.ref).put("url", url)); }
@@ -509,7 +506,7 @@ final class Shell implements Views.Listener, Ui.Actions {
     }
 
     @Override public boolean chooseFiles(Views.Page page, ValueCallback<Uri[]> callback, WebChromeClient.FileChooserParams params) {
-        return owner.chooseFiles(params, callback, () -> pages.get(key(page.ref)) == page && page.isRevealed());
+        return owner.chooseFiles(params, callback, () -> pages.get(key(page.ref)) == page && SitePolicy.mayShowUi(page));
     }
 
     /**

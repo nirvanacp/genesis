@@ -31,7 +31,7 @@ import org.json.JSONObject;
 final class Views {
     static final String FOREGROUND_ORIGIN = "https://appassets.androidplatform.net";
     static final String BRIDGE = "__genesisBridge";
-    /** Schemes a context link may hand to another app. Others (intent:, file:, content:, javascript:, data:) do nothing. */
+    /** Schemes a revealed context may hand to another app on a tap (see SitePolicy). Others (intent:, file:, content:, javascript:, data:) do nothing. */
     private static final java.util.List<String> EXTERNAL_SCHEMES = java.util.Arrays.asList("mailto", "tel", "sms", "smsto", "geo");
 
     /** What a view reports back to the shell. */
@@ -199,7 +199,10 @@ final class Views {
             if (page.isForeground()) return !FOREGROUND_ORIGIN.equals(origin(url));
             // A context browses any website; the bridge exists only on declared origins.
             if (web) return false;
-            if (scheme != null && EXTERNAL_SCHEMES.contains(scheme.toLowerCase(java.util.Locale.ROOT))) listener.openExternal(url);
+            // Only the revealed page may hand a link to another app, and only from a tap. A server
+            // redirect from a tapped link to mailto: arrives without a gesture and is blocked too.
+            boolean external = scheme != null && EXTERNAL_SCHEMES.contains(scheme.toLowerCase(java.util.Locale.ROOT));
+            if (external && SitePolicy.mayHandOff(page, request.hasGesture())) listener.openExternal(url);
             return true;
         }
 
@@ -236,11 +239,11 @@ final class Views {
         @Override public void onPermissionRequest(PermissionRequest request) { request.deny(); }
 
         @Override public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
-            return page.isRevealed() && listener.chooseFiles(page, callback, params);
+            return SitePolicy.mayShowUi(page) && listener.chooseFiles(page, callback, params);
         }
 
         @Override public void onShowCustomView(View view, CustomViewCallback callback) {
-            if (page.isRevealed()) listener.showCustomView(view, callback);
+            if (SitePolicy.mayShowUi(page)) listener.showCustomView(view, callback);
             else callback.onCustomViewHidden();
         }
 
