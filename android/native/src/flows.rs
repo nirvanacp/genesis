@@ -35,7 +35,7 @@ pub struct Updates {
     checked_at: u64,
     #[serde(default)]
     applets: BTreeMap<String, AppletUpdate>,
-    /// Withdrawn releases the user kept, by applet: the installed tag, no longer flagged.
+    /// Withdrawn releases the user kept, by applet: the release's `kept_release` key, no longer flagged.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     kept: BTreeMap<String, String>,
 }
@@ -190,6 +190,20 @@ fn compatibility(record: &ReleaseRecord) -> (bool, Option<String>) {
         Compatibility::Current => (true, None),
         Compatibility::Incompatible { direction: Direction::Newer, .. } => (false, Some("Needs a newer Genesis".into())),
         Compatibility::Incompatible { .. } => (false, Some("Built for an older Genesis".into())),
+    }
+}
+
+/// A release record that needs a newer Genesis, so updating Genesis would let it install.
+fn needs_newer_genesis(record: &ReleaseRecord) -> bool {
+    matches!(compat::evaluate_release(&record.compat), Compatibility::Incompatible { direction: Direction::Newer, .. })
+}
+
+/// A GitHub release by repository, applet path and tag, so a choice about one publisher's
+/// release never matches another's.
+fn kept_release(source: &Source) -> Option<String> {
+    match source {
+        Source::Github { repository_id, path, tag: Some(tag), .. } => Some(format!("{repository_id}:{path}:{tag}")),
+        _ => None,
     }
 }
 
@@ -1121,11 +1135,10 @@ impl Host {
 
     /// Keeps an installed release the publisher withdrew: later checks no longer flag its tag.
     pub fn keep_version(&mut self, applet_id: &str) {
-        let tag = match self.github_source(applet_id) {
-            Some(Source::Github { tag: Some(tag), .. }) => tag,
-            _ => return self.out.push(ShellCommand::ShowError { message: format!("{applet_id} has no GitHub release to keep") }),
+        let Some(release) = self.github_source(applet_id).as_ref().and_then(kept_release) else {
+            return self.out.push(ShellCommand::ShowError { message: format!("{applet_id} has no GitHub release to keep") });
         };
-        self.updates.kept.insert(applet_id.into(), tag);
+        self.updates.kept.insert(applet_id.into(), release);
         self.updates.applets.remove(applet_id);
         self.save_updates();
         self.refresh_launcher();
@@ -1223,7 +1236,9 @@ impl Host {
 
     /// Reads release pages, newest first, until the installed tag appears or the list ends.
     fn check_releases(&mut self, applet_id: String, page: u32, mut found: Vec<Release>, got: &str) -> Result<(), String> {
-        let Some(Source::Github { full_name, tag, version, prerelease: on_prerelease, .. }) = self.github_source(&applet_id) else { return Ok(()) };
+        let Some(installed @ Source::Github { .. }) = self.github_source(&applet_id) else { return Ok(()) };
+        let release = kept_release(&installed);
+        let Source::Github { full_name, tag, version, prerelease: on_prerelease, .. } = installed else { return Ok(()) };
         let body = parse_json(got)?;
         found.extend(github::parse_releases(&body).into_iter().filter(|r| r.applet_id == applet_id));
         let seen = tag.as_ref().is_some_and(|t| found.iter().any(|r| r.tag == *t));
@@ -1234,7 +1249,7 @@ impl Host {
         }
         // A tag missing from a list cut off after the last page read may still exist.
         // A withdrawn release the user kept is not flagged again.
-        let kept = tag.is_some() && self.updates.kept.get(&applet_id) == tag.as_ref();
+        let kept = release.is_some() && self.updates.kept.get(&applet_id) == release.as_ref();
         let withdrawn = !more && tag.is_some() && !seen && !kept;
         let mut newer: Vec<Release> = found.into_iter().filter(|r| (on_prerelease || !r.prerelease) && newer(&r.version, &version)).collect();
         newer.sort_by(|a, b| semver::compare(&a.version, &b.version).unwrap_or(Ordering::Equal));
@@ -1254,7 +1269,8 @@ impl Host {
     }
 
     /// A newer release that does not run on this Genesis gives way to the next older one, and the
-    /// newest such release is remembered for "Needs a newer Genesis".
+    /// newest one that needs a newer Genesis is remembered for "Needs a newer Genesis". One built
+    /// for an older Genesis is only skipped: updating Genesis would not help.
     fn check_record(
         &mut self,
         applet_id: String,
@@ -1271,7 +1287,7 @@ impl Host {
         match candidate {
             Some(candidate) if candidate.compatible => self.offer(applet_id, Some(candidate), withdrawn, incompatible),
             Some(candidate) => {
-                let incompatible = incompatible.or(Some(candidate.record.version));
+                let incompatible = incompatible.or(needs_newer_genesis(&candidate.record).then_some(candidate.record.version));
                 self.check_next_release(applet_id, older, withdrawn, incompatible)
             }
             None => self.check_next_release(applet_id, older, withdrawn, incompatible),
@@ -1309,7 +1325,10 @@ impl Host {
         let candidate = branch_candidate((*repository_id, full_name), &branch, &commit, path, record);
         match candidate.compatible {
             true => self.offer(applet_id, Some(candidate), false, None),
-            false => self.offer(applet_id, None, false, Some(candidate.record.version)),
+            false => {
+                let incompatible = needs_newer_genesis(&candidate.record).then_some(candidate.record.version);
+                self.offer(applet_id, None, false, incompatible)
+            }
         }
     }
 
