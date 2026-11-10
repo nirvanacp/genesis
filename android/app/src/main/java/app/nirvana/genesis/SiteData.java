@@ -1,5 +1,6 @@
 package app.nirvana.genesis;
 
+import android.content.Context;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
@@ -29,14 +30,20 @@ public final class SiteData {
     private final WebStorage storage;
     private final Handler main = new Handler(Looper.getMainLooper());
 
-    private SiteData(CookieManager cookies, WebStorage storage) {
+    private final SiteGrants grants;
+
+    private SiteData(CookieManager cookies, WebStorage storage, SiteGrants grants) {
         this.cookies = cookies;
         this.storage = storage;
+        this.grants = grants;
     }
 
-    static SiteData defaultProfile() {
-        return new SiteData(CookieManager.getInstance(), WebStorage.getInstance());
+    static SiteData defaultProfile(Context context) {
+        return new SiteData(CookieManager.getInstance(), WebStorage.getInstance(), new SiteGrants(context, "default"));
     }
+
+    /** What the user let this profile's websites use. */
+    public SiteGrants grants() { return grants; }
 
     /** Accepts cookies, and third-party cookies only in a website context. */
     void acceptCookies(WebView web, boolean thirdParty) {
@@ -55,7 +62,7 @@ public final class SiteData {
     }
 
     /**
-     * Deletes the cookies and web storage of these origins for every applet that uses them, then
+     * Deletes the cookies, web storage and permission answers of these origins for every applet that uses them, then
      * runs `done` on the main thread. One site's cookies can't be listed with their paths, so each
      * one is expired at the root and at every path in `visitedUrls` on that site.
      */
@@ -87,6 +94,7 @@ public final class SiteData {
                 }
             }
             storage.deleteOrigin(origin);
+            grants.clear(origin);
         }
         cookies.flush();
         main.post(done);
@@ -119,9 +127,10 @@ public final class SiteData {
         return list.length();
     }
 
-    /** Clears every cookie and all site data, on any path, then runs `done` on the main thread. */
+    /** Clears every cookie, all site data and every permission answer, on any path, then runs `done` on the main thread. */
     public void clearAll(Runnable done) {
         storage.deleteAllData();
+        grants.clearAll();
         cookies.removeAllCookies(removed -> {
             cookies.flush();
             main.post(done);

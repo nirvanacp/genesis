@@ -66,7 +66,7 @@ final class Shell implements Views.Listener, Ui.Actions {
 
     private final Activity activity;
     private final Owner owner;
-    private final SiteData sites = SiteData.defaultProfile();
+    private final SiteData sites;
     private final Views views;
     private Tokens tokens;
     private final FrameLayout root;
@@ -102,6 +102,7 @@ final class Shell implements Views.Listener, Ui.Actions {
     Shell(Activity activity, Owner owner) {
         this.activity = activity;
         this.owner = owner;
+        sites = SiteData.defaultProfile(activity);
         views = new Views(activity, this, sites);
         tokens = new Tokens(activity);
         ui = new Ui(activity, tokens, this);

@@ -94,9 +94,11 @@ public final class Settings {
         for (Map.Entry<String, List<String>> site : sites.entrySet()) {
             boolean in = ui.actions.sites().hasCookies(site.getKey());
             if (in) signed.add(site.getKey());
+            String granted = ui.actions.sites().grants().describe(site.getKey());
             TextView chip = in ? t.chip("Signed in", Tokens.Chip.SUCCESS) : t.chip("Signed out", Tokens.Chip.NEUTRAL);
-            content.addView(t.row(R.drawable.ic_website, Ui.host(site.getKey()), "Used by " + Ui.and(site.getValue()), chip, in, t.onSurface,
-                in ? () -> signOut(List.of(site.getKey()), false) : null));
+            String detail = "Used by " + Ui.and(site.getValue()) + (granted == null ? "" : " · " + granted);
+            content.addView(t.row(R.drawable.ic_website, Ui.host(site.getKey()), detail, chip, in || granted != null, t.onSurface,
+                in ? () -> signOut(List.of(site.getKey()), false) : granted != null ? () -> resetPermissions(site.getKey()) : null));
         }
         View footer = null;
         if (!signed.isEmpty()) {
@@ -127,6 +129,29 @@ public final class Settings {
             else ui.actions.sites().signOut(origins, ui.actions.visitedUrls(), done);
         });
         content.addView(out, t.margins(0, 20));
+        if (!all && ui.actions.sites().grants().describe(origins.get(0)) != null) {
+            MaterialButton reset = t.outlinedButton("Reset permissions");
+            reset.setOnClickListener(v -> { dialog[0].dismiss(); ui.actions.sites().grants().clear(origins.get(0)); ui.pages.refresh(); });
+            content.addView(reset, t.margins(0, 12));
+        }
+        MaterialButton cancel = t.outlinedButton("Cancel");
+        cancel.setOnClickListener(v -> dialog[0].dismiss());
+        content.addView(cancel, t.margins(0, 12));
+        dialog[0] = ui.sheet(content);
+    }
+
+    /** A signed-out site that still has permission answers: forgetting them makes it ask again. */
+    private void resetPermissions(String origin) {
+        Tokens t = ui.tokens;
+        LinearLayout content = ui.column();
+        content.setPadding(t.dp(20), 0, t.dp(20), t.dp(20));
+        content.addView(t.heading("Reset permissions for " + Ui.host(origin) + "?", Tokens.Type.TITLE_LARGE));
+        content.addView(t.text(ui.actions.sites().grants().describe(origin) + ". The website will ask again the next time it needs them.",
+            Tokens.Type.BODY_MEDIUM, t.onSurfaceVariant), t.margins(0, 12));
+        BottomSheetDialog[] dialog = new BottomSheetDialog[1];
+        MaterialButton reset = t.button("Reset permissions");
+        reset.setOnClickListener(v -> { dialog[0].dismiss(); ui.actions.sites().grants().clear(origin); ui.pages.refresh(); });
+        content.addView(reset, t.margins(0, 20));
         MaterialButton cancel = t.outlinedButton("Cancel");
         cancel.setOnClickListener(v -> dialog[0].dismiss());
         content.addView(cancel, t.margins(0, 12));
@@ -148,6 +173,7 @@ public final class Settings {
         content.addView(t.row(R.drawable.ic_block, "Reach any other website", "Genesis blocks every site the review didn't show you", null, false, t.onSurface, null));
         content.addView(t.row(R.drawable.ic_lock, "See your passwords or other applets", "Each applet's data is its own", null, false, t.onSurface, null));
         content.addView(t.row(R.drawable.ic_shield, "Change what it reaches without asking", "An update that wants more waits for your review", null, false, t.onSurface, null));
+        content.addView(t.row(R.drawable.ic_lock, "Use your camera, microphone or location", "Websites ask you first, and only while you're looking at them", null, false, t.onSurface, null));
         content.addView(t.section("Blocked builds"));
         content.addView(ui.paragraph("Genesis checks every build before the review. A build that breaks these rules, or whose files don't match its release, is blocked and never installs.",
             Tokens.Type.BODY_MEDIUM, t.onSurface));
