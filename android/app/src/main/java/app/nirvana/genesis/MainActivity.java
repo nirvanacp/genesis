@@ -220,11 +220,30 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
         else shell.showInfo("Genesis", "This doesn't contain a website link");
     }
 
-    /** A link quoted in a sentence ends at its closing punctuation, which is not part of the URL. */
+    /**
+     * A link quoted in a sentence ends at its closing punctuation, which is not part of the URL. A
+     * closing bracket stays when the link opens one to match it, as in `.../Genesis_(app)`.
+     */
     static String trimLink(String link) {
         int end = link.length();
-        while (end > 0 && ".,;:!?)]}>'\"".indexOf(link.charAt(end - 1)) >= 0) end--;
+        while (end > 0) {
+            char last = link.charAt(end - 1);
+            int bracket = ")]}".indexOf(last);
+            if (bracket >= 0) {
+                String head = link.substring(0, end - 1);
+                if (count(head, "([{".charAt(bracket)) > count(head, last)) break;
+            } else if (".,;:!?>'\"".indexOf(last) < 0) {
+                break;
+            }
+            end--;
+        }
         return link.substring(0, end);
+    }
+
+    private static int count(String text, char c) {
+        int n = 0;
+        for (int i = 0; i < text.length(); i++) if (text.charAt(i) == c) n++;
+        return n;
     }
 
     @SuppressWarnings("deprecation")
@@ -307,8 +326,9 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
     @Override public void cancelInvalidFiles() { selection.cancelIfInvalid(); }
 
     /**
-     * One Android request at a time; a newer one answers the older one with what it already holds.
-     * Each request has its own code, so a late result of the older one is ignored.
+     * One Android request at a time; a newer one interrupts the older one. Each request has its
+     * own code, so a late result of the older one is ignored. Android answers an interrupted
+     * request with empty results, which is reported as null rather than as a refusal.
      */
     @Override public void requestPermissions(String[] permissions, java.util.function.Consumer<java.util.Set<String>> granted) {
         if (permissionsWanted != null) finishPermissions(new String[0], new int[0]);
@@ -337,6 +357,7 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
         permissionsWanted = null;
         permissionsHeld = null;
         if (granted == null) return;
+        if (results.length == 0) { granted.accept(null); return; }
         for (int i = 0; i < Math.min(permissions.length, results.length); i++) {
             if (results[i] == android.content.pm.PackageManager.PERMISSION_GRANTED) held.add(permissions[i]);
         }

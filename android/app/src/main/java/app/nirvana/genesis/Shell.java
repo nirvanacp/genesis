@@ -59,7 +59,10 @@ final class Shell implements Views.Listener, Ui.Actions {
         void pickAppletFile();
         Connections.Store connections();
         void storageSize(java.util.function.LongConsumer result);
-        /** Asks Android for these permissions, skipping those already held, and reports the granted ones on the main thread. */
+        /**
+         * Asks Android for these permissions, skipping those already held, and reports the granted
+         * ones on the main thread, or null when the request was interrupted before the user answered.
+         */
         void requestPermissions(String[] permissions, java.util.function.Consumer<Set<String>> granted);
     }
 
@@ -694,34 +697,38 @@ final class Shell implements Views.Listener, Ui.Actions {
     /**
      * Genesis asks once per site and remembers the answer in `SiteGrants`; Android then asks for
      * its own permission if Genesis doesn't hold it yet. A refusal at either step refuses the site.
+     * The Genesis dialog names only the permissions the site has not been answered for, and its
+     * answer leaves the earlier ones as they were.
      */
     @Override public void askSite(Views.Page page, String origin, List<String> permissions, java.util.function.Consumer<Set<String>> allowed) {
         cancelPrompts();
         SiteGrants grants = page.site.grants();
         // A blocked permission stays blocked; the site still gets the others it asked for.
         List<String> open = new ArrayList<>();
-        boolean answered = true;
+        List<String> fresh = new ArrayList<>();
         for (String permission : permissions) {
             Boolean grant = grants.get(origin, permission);
             if (Boolean.FALSE.equals(grant)) continue;
             open.add(permission);
-            if (grant == null) answered = false;
+            if (grant == null) fresh.add(permission);
         }
         if (open.isEmpty()) { allowed.accept(Set.of()); return; }
-        permissions = open;
         Asking ask = new Asking(allowed);
         asking = ask;
-        if (answered) { askAndroid(ask, grants, origin, permissions); return; }
+        if (fresh.isEmpty()) { askAndroid(ask, grants, origin, open); return; }
+        List<String> earlier = new ArrayList<>(open);
+        earlier.removeAll(fresh);
         ask.dialog = new MaterialAlertDialogBuilder(activity)
-            .setTitle(Ui.host(origin) + " wants to use your " + permissionNames(permissions))
+            .setTitle(Ui.host(origin) + " wants to use your " + permissionNames(fresh))
             .setMessage("Only while you're looking at it. You can reset this in Settings, Sites & sign-ins.")
             .setPositiveButton("Allow", (d, w) -> {
-                for (String permission : open) grants.set(origin, permission, true);
+                for (String permission : fresh) grants.set(origin, permission, true);
                 askAndroid(ask, grants, origin, open);
             })
             .setNegativeButton("Don't allow", (d, w) -> {
-                for (String permission : open) grants.set(origin, permission, false);
-                ask.finish(Set.of());
+                for (String permission : fresh) grants.set(origin, permission, false);
+                if (earlier.isEmpty()) ask.finish(Set.of());
+                else askAndroid(ask, grants, origin, earlier);
             })
             .setOnCancelListener(d -> ask.finish(Set.of()))
             .show();
@@ -729,19 +736,46 @@ final class Shell implements Views.Listener, Ui.Actions {
 
     /**
      * Android's own request. A permission Android refuses loses its Genesis grant too, so the
-     * site asks in Genesis again instead of showing an allowed grant that has no effect.
+     * site asks in Genesis again instead of showing an allowed grant that has no effect. When
+     * Android refuses for good, it no longer asks, so Genesis points to Android's settings. An
+     * interrupted request refuses this time and keeps the grants.
      */
     private void askAndroid(Asking ask, SiteGrants grants, String origin, List<String> permissions) {
         List<String> android = new ArrayList<>();
         for (String permission : permissions) for (String name : androidPermissions(permission)) android.add(name);
         owner.requestPermissions(android.toArray(new String[0]), granted -> {
+            if (granted == null) { ask.finish(Set.of()); return; }
             Set<String> allowed = new LinkedHashSet<>();
+            List<String> blocked = new ArrayList<>();
             for (String permission : permissions) {
                 for (String name : androidPermissions(permission)) if (granted.contains(name)) { allowed.add(permission); break; }
-                if (!allowed.contains(permission)) grants.forget(origin, permission);
+                if (allowed.contains(permission)) continue;
+                grants.forget(origin, permission);
+                if (refusedForGood(permission)) blocked.add(permission);
             }
             ask.finish(allowed);
+            if (!blocked.isEmpty()) showAndroidSettings(blocked);
         });
+    }
+
+    /** Android refuses without asking once the user denied a permission twice or chose "Don't ask again". */
+    private boolean refusedForGood(String permission) {
+        for (String name : androidPermissions(permission)) {
+            if (activity.checkSelfPermission(name) == android.content.pm.PackageManager.PERMISSION_GRANTED) return false;
+            if (activity.shouldShowRequestPermissionRationale(name)) return false;
+        }
+        return true;
+    }
+
+    private void showAndroidSettings(List<String> permissions) {
+        new MaterialAlertDialogBuilder(activity)
+            .setTitle("Android blocks Genesis from using your " + permissionNames(permissions))
+            .setMessage("Allow it for Genesis in Android's settings, under Permissions.")
+            .setPositiveButton("Open settings", (d, w) -> activity.startActivity(
+                new android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.fromParts("package", activity.getPackageName(), null))))
+            .setNegativeButton("Not now", null)
+            .show();
     }
 
     /** The Android permissions behind a `SiteGrants` permission; any one of them is enough. */
@@ -865,6 +899,7 @@ final class Shell implements Views.Listener, Ui.Actions {
     /**
      * Every opened link asks first: one "Open in" choice per applet that uses its website, then
      * "Create a new applet". The list has only the second choice when no applet uses the site.
+     * Cancel returns to the app that shared the link.
      */
     void chooseApplet(String url, JSONArray applets, boolean external) {
         int count = applets.length();
@@ -882,8 +917,14 @@ final class Shell implements Views.Listener, Ui.Actions {
                 if (which < count) openUrl(url, ids[which], external);
                 else ui.pages.push(CreateApplet.TAG, () -> CreateApplet.page(ui, url), null, false);
             })
-            .setNegativeButton("Cancel", null)
+            .setNegativeButton("Cancel", (d, which) -> leaveFor(external))
+            .setOnCancelListener(d -> leaveFor(external))
             .show();
+    }
+
+    /** A cancelled chooser for a link another app shared returns to that app, as Back would. */
+    private void leaveFor(boolean external) {
+        if (external) activity.moveTaskToBack(true);
     }
 
     /** The chooser's title: the link's host, or the link itself when it has none. */
