@@ -104,7 +104,7 @@ export type ForegroundEventName =
   | "resumed" | "suspended" | "storage.changed"
   | "page" | "patch" | "action.update"
   | "context.navigated" | "context.started" | "context.gone"
-  | "user.viewWebsite" | "user.done"
+  | "user.viewWebsite" | "user.showContext" | "user.done"
   | "back" | "retired";
 export type ContextEventName = "resync" | "act" | "cancel" | "ping" | "retired";
 export type EventName = ForegroundEventName | ContextEventName;

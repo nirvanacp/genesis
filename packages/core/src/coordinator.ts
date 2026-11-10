@@ -78,6 +78,8 @@ export type CoordinatorEvent =
   /** Ignored unless `token` is the context's current deadline. */
   | { type: "deadline"; id: string; token: number }
   | { type: "user.viewWebsite"; id: string }
+  /** Shows the context the person opened a link in, without pinning its website. */
+  | { type: "user.showContext"; id: string }
   | { type: "user.done"; id: string }
   | { type: "navigate.url"; url: string; context?: string; mode: NavigateMode }
   | { type: "navigate.screen"; screen: Screen; mode: "push" | "replace" | "root" }
@@ -217,6 +219,12 @@ function apply(state: CoordinatorState, event: CoordinatorEvent, manifest: Manif
         ? state
         : { ...state, active: event.id, overlay: [], leaveGuard: null };
       return { state: context.pin === "user" ? shown : withContext(shown, { ...context, pin: "user" }), effects };
+    }
+
+    case "user.showContext": {
+      if (!state.contexts[event.id]) return unchanged;
+      if (state.active === event.id && state.overlay.length === 0) return unchanged;
+      return { state: { ...state, active: event.id, overlay: [], leaveGuard: null }, effects };
     }
 
     case "user.done": {
