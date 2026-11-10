@@ -15,6 +15,16 @@ A control in the foreground performs a real action on the website, in the applet
 
 Applet code never fills credentials, never solves challenges, and never submits anything the user did not explicitly request in that moment. During development checks you sign in to test accounts yourself on the website's own form, as the [test accounts skill](../skills/genesis-test-accounts/SKILL.md) describes; that never becomes applet behavior.
 
+## Website features on the revealed website
+
+Some website features work only while the user is looking at the website, because Android or the user must see them:
+
+- **Downloads** start only from the revealed website, and the second download from one page asks the user first. A download carries the website's sign-in. `blob:` and `data:` downloads are not saved.
+- **Camera, microphone and location** prompts appear only on the revealed website, and only after the user allows them in Genesis and in Android. Covering the website reloads a page that was using the camera or microphone, which stops them.
+- **Windows, file pickers, `mailto:` and app links, server sign-in prompts and client certificates** appear only on the revealed website.
+
+A hidden context gets a refusal for each of these. When a journey needs one, send the user to the website with an explicit control, such as "Download in *website*", that calls `viewWebsite()`.
+
 ## Actions describe the desired state
 
 An action is a function in the adapter. It receives the record's element (the item for a collection, the root for a single region, `null` for a page action) and the caller's args, looks at the page as it is now, and returns either `{ satisfied: true }` when the page already shows the wanted state, or the steps that get there and the evidence that they did:

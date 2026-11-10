@@ -2,6 +2,10 @@
 
 An applet keeps its own data in Genesis document storage, in its own HTTPS service, or both. The website keeps its own data. Decide which store owns each record type and write it in `.specs/current.md`.
 
+## Website sign-in
+
+By default every applet shares one website sign-in with the others: signing in to a site in one applet signs every applet in. The user can turn on a separate sign-in in Applet info; the applet then starts signed out in its own profile, and turning it off deletes that sign-in. Design every journey to work either way: never assume another applet is signed in, and handle `auth` on every page that needs an account.
+
 ## Choosing the store
 
 | Need | Store |
