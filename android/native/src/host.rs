@@ -205,13 +205,11 @@ impl Host {
         let Some(parsed) = url::Url::parse(url.trim()).ok().filter(|u| matches!(u.scheme(), "http" | "https")) else {
             return self.out.push(info("Genesis opens only website links".into()));
         };
-        // Applets declare https origins; an http link matches its https site and still loads as
-        // given, so a site that serves only http keeps working and one that upgrades redirects.
-        let mut secure = parsed.clone();
-        if secure.scheme() == "http" && secure.set_scheme("https").is_err() {
-            return self.out.push(info("Genesis opens only website links".into()));
+        // Genesis blocks cleartext traffic, so an http page could not load.
+        if parsed.scheme() == "http" {
+            return self.out.push(info("Genesis opens only secure https links".into()));
         }
-        let origin = secure.origin().ascii_serialization();
+        let origin = parsed.origin().ascii_serialization();
         let url = parsed.to_string();
         let candidates: Vec<String> =
             self.applets.for_origin(&origin).into_iter().filter(|id| !self.erasing(id)).collect();
@@ -247,11 +245,8 @@ impl Host {
     fn window_requested(&mut self, view: ViewRef, url: &str) {
         let Role::Context(_) = &view.role else { return };
         let Some((_, manifest)) = self.active_manifest().filter(|_| self.context_view_matches(&view)) else { return };
-        let Some(origin) = url::Url::parse(url).ok().filter(|u| matches!(u.scheme(), "http" | "https")).map(|u| {
-            let mut secure = u.clone();
-            let _ = secure.set_scheme("https");
-            secure.origin().ascii_serialization()
-        }) else {
+        // An http window is dropped: Genesis blocks cleartext traffic.
+        let Some(origin) = url::Url::parse(url).ok().filter(|u| u.scheme() == "https").map(|u| u.origin().ascii_serialization()) else {
             return;
         };
         if manifest.origins.iter().any(|o| applets::origin_of(o).as_deref() == Some(&origin)) {
