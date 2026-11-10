@@ -17,6 +17,7 @@ pub mod compat {
     pub const SESSION_STATE: u32 = 1;
     pub const IMPORT_ENVELOPE: u32 = 1;
     pub const CREDENTIAL_ENVELOPE: u32 = 1;
+    pub const COOKIE_ENVELOPE: u32 = 1;
     pub const PACKAGES_INDEX: u32 = 1;
 }
 
@@ -31,6 +32,7 @@ pub struct HostCompat {
     pub session_state: u32,
     pub import_envelope: u32,
     pub credential_envelope: u32,
+    pub cookie_envelope: u32,
     pub packages_index: u32,
 }
 
@@ -44,6 +46,7 @@ impl Default for HostCompat {
             session_state: compat::SESSION_STATE,
             import_envelope: compat::IMPORT_ENVELOPE,
             credential_envelope: compat::CREDENTIAL_ENVELOPE,
+            cookie_envelope: compat::COOKIE_ENVELOPE,
             packages_index: compat::PACKAGES_INDEX,
         }
     }
