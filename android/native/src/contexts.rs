@@ -97,6 +97,8 @@ pub struct Resume {
     /// Recreated on the next resume (background retirement), or only when the user reopens it
     /// (renderer loss).
     pub on_resume: bool,
+    /// The applet opened a link another app shared, so its leaving Back still returns there.
+    pub return_to_caller: bool,
 }
 
 /// Process-level state.

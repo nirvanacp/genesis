@@ -315,9 +315,11 @@ impl Host {
             }
         };
         let mut session = Session::new(applet_id.into(), revision, resume.is_some());
-        let (mut urls, saved) = resume.map(|r| (r.urls, r.saved)).unwrap_or_default();
+        let (mut urls, saved, return_to_caller) =
+            resume.map(|r| (r.urls, r.saved, r.return_to_caller)).unwrap_or_default();
         urls.extend(opening);
         session.saved = saved;
+        session.return_to_caller = return_to_caller;
         self.out.push(ShellCommand::ShowApplet {
             applet_id: applet_id.into(),
             name: manifest.name.clone(),
@@ -370,6 +372,7 @@ impl Host {
             urls: session.contexts.iter().map(|(id, c)| (id.clone(), c.url.clone())).collect::<BTreeMap<_, _>>(),
             saved: session.saved.clone(),
             on_resume,
+            return_to_caller: session.return_to_caller,
         });
         self.retire_active();
     }
