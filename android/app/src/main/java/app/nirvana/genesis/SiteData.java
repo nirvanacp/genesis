@@ -6,16 +6,25 @@ import android.os.Looper;
 import android.webkit.CookieManager;
 import android.webkit.WebStorage;
 import android.webkit.WebView;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
+import java.util.TimeZone;
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
 
 /**
  * The cookies and site storage of one profile. Only the default profile, Android's shared
  * cookie jar and web storage, exists.
  */
 public final class SiteData {
+    /** The `cookieEnvelope` version of the compatibility table. */
+    private static final int COOKIE_ENVELOPE = 1;
     private final CookieManager cookies;
     private final WebStorage storage;
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -81,6 +90,33 @@ public final class SiteData {
         }
         cookies.flush();
         main.post(done);
+    }
+
+    /**
+     * Sets the cookies of a `genesis-applet dev cookies` import and returns how many it set. A
+     * cookie whose domain has no leading dot stays host-only, so it gets no Domain attribute.
+     */
+    int importCookies(JSONObject payload) throws JSONException {
+        if (payload.optInt("version") != COOKIE_ENVELOPE) throw new JSONException("Unsupported cookie import version " + payload.opt("version"));
+        JSONArray list = payload.getJSONArray("cookies");
+        SimpleDateFormat date = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss 'GMT'", Locale.US);
+        date.setTimeZone(TimeZone.getTimeZone("GMT"));
+        for (int i = 0; i < list.length(); i++) {
+            JSONObject cookie = list.getJSONObject(i);
+            String domain = cookie.getString("domain");
+            StringBuilder header = new StringBuilder(cookie.getString("name")).append('=').append(cookie.getString("value"));
+            if (domain.startsWith(".")) header.append("; Domain=").append(domain);
+            header.append("; Path=").append(cookie.optString("path", "/"));
+            long expires = cookie.optLong("expires", -1);
+            if (expires > 0) header.append("; Expires=").append(date.format(new Date(expires * 1000)));
+            if (cookie.optBoolean("secure")) header.append("; Secure");
+            if (cookie.optBoolean("httpOnly")) header.append("; HttpOnly");
+            String sameSite = cookie.optString("sameSite");
+            if (!sameSite.isEmpty()) header.append("; SameSite=").append(sameSite);
+            cookies.setCookie(cookie.getString("url"), header.toString());
+        }
+        cookies.flush();
+        return list.length();
     }
 
     /** Clears every cookie and all site data, on any path, then runs `done` on the main thread. */

@@ -30,6 +30,7 @@ import org.json.JSONObject;
 public final class MainActivity extends Activity implements NativeBridge.StorageResults, Shell.Owner, Bridge.Task {
     private static final long TICK_MS = 1000;
     private static final long BUNDLE_MAX_BYTES = 64L * 1024 * 1024;
+    private static final long COOKIE_MAX_BYTES = 4L * 1024 * 1024;
     private static final long RELEASE_MAX_BYTES = 1024 * 1024;
     private static final int PICK_APPLET_FILE = 46000;
 
@@ -123,8 +124,28 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
     private void scanImports() {
         if (!attached) return;
         for (File file : files.serviceImports()) services.importCredential(file);
+        for (File file : files.cookieImports()) importCookies(file);
         for (File file : files.bundledImports()) importBundle(file, "bundled");
         for (File file : files.bundleImports()) importBundle(file, "bundle");
+    }
+
+    /** Development cookies from a laptop browser, which only a debug build takes. The file is always deleted. */
+    private void importCookies(File file) {
+        JSONObject receipt;
+        try {
+            if ((getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) == 0) {
+                receipt = new JSONObject().put("ok", false).put("error", "Cookie imports need a debug build");
+            } else {
+                int count = shell.sites().importCookies(new JSONObject(files.read(file, COOKIE_MAX_BYTES)));
+                receipt = new JSONObject().put("ok", true).put("count", count);
+            }
+        } catch (java.io.IOException | JSONException | RuntimeException error) {
+            receipt = null;
+            try { receipt = new JSONObject().put("ok", false).put("error", String.valueOf(error.getMessage())); }
+            catch (JSONException ignored) { /* The CLI times out instead. */ }
+        }
+        if (receipt != null) files.receipt(file, receipt);
+        if (file.exists() && !file.delete()) file.deleteOnExit();
     }
 
     /** `bundled` is an APK applet with its optional release record; `bundle` is a development import. */
