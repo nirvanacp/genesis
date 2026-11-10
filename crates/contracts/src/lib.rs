@@ -120,8 +120,14 @@ pub enum ShellEvent {
     WebsiteDone,
     OpenApplet { applet_id: String },
     /// A website link shared to Genesis or typed in "Open a link". `applet_id` is set when the
-    /// user picked an applet from `ChooseApplet`.
-    OpenUrl { url: String, applet_id: Option<String> },
+    /// user picked an applet from `ChooseApplet`. `external` is true for a link another app
+    /// shared, so a Back that leaves the applet returns to that app.
+    OpenUrl {
+        url: String,
+        applet_id: Option<String>,
+        #[serde(default)]
+        external: bool,
+    },
     Home,
     Menu { action: MenuAction },
     /// `onPageStarted`: a new document committed in a view, with its post-redirect URL.
@@ -145,6 +151,11 @@ pub enum ShellEvent {
     /// A `HistoryGo` that moved nothing: `history.go` did not start a navigation and the
     /// WebView's own list had no entry at that offset.
     HistoryUnmoved { view: ViewRef },
+    /// A context asked for a new window that the shell does not open as the revealed context's
+    /// popup: a tapped `target=_blank` link, or any window from a hidden page or without a tap.
+    /// `url` is the window's first address. The host answers with `LoadUrl`, another applet or
+    /// `ShowWindow`.
+    WindowRequested { view: ViewRef, url: String },
     /// An import file. `release` is the text of a bundled applet's release record, when the APK has one.
     ImportFound {
         kind: ImportKind,
@@ -273,9 +284,18 @@ pub enum ShellCommand {
     },
     ShowError { message: String },
     ShowInfo { title: String, message: String },
-    /// More than one applet uses the link's website; the user picks one and the shell answers
-    /// with `OpenUrl` carrying its id.
-    ChooseApplet { url: String, applets: Vec<LauncherEntry> },
+    /// What to do with an opened link: open it in one of `applets` (the applets that use its
+    /// website, possibly none) or create a new applet. The shell answers a pick with `OpenUrl`
+    /// carrying its id and `external` unchanged.
+    ChooseApplet {
+        url: String,
+        applets: Vec<LauncherEntry>,
+        #[serde(default)]
+        external: bool,
+    },
+    /// Shows `url` in a website sheet over the applet, signed in like `view`, with the website
+    /// bar's Done to close it. It answers a `WindowRequested` for a site no applet uses.
+    ShowWindow { view: ViewRef, url: String },
     /// The status sheet: an incompatible applet, a lost renderer or a received import.
     ShowStatus { kind: StatusKind, applet: Option<LauncherEntry>, details: String },
     /// Asks the shell to send `Tick` after `delay_ms`, for deadlines shorter than the periodic tick.
