@@ -738,12 +738,14 @@ final class Shell implements Views.Listener, Ui.Actions {
      * Android's own request. A permission Android refuses loses its Genesis grant too, so the
      * site asks in Genesis again instead of showing an allowed grant that has no effect. When
      * Android refuses for good, it no longer asks, so Genesis points to Android's settings. An
-     * interrupted request refuses this time and keeps the grants.
+     * interrupted request refuses this time and keeps the grants. A question already cancelled,
+     * because the user left the website, ignores Android's late answer.
      */
     private void askAndroid(Asking ask, SiteGrants grants, String origin, List<String> permissions) {
         List<String> android = new ArrayList<>();
         for (String permission : permissions) for (String name : androidPermissions(permission)) android.add(name);
         owner.requestPermissions(android.toArray(new String[0]), granted -> {
+            if (ask.done) return;
             if (granted == null) { ask.finish(Set.of()); return; }
             Set<String> allowed = new LinkedHashSet<>();
             List<String> blocked = new ArrayList<>();
