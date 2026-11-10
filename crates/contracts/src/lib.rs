@@ -269,7 +269,6 @@ pub enum ShellCommand {
     ShowInfo { title: String, message: String },
     /// The status sheet: an incompatible applet, a lost renderer or a received import.
     ShowStatus { kind: StatusKind, applet: Option<LauncherEntry>, details: String },
-    OpenExternal { url: String },
     /// Asks the shell to send `Tick` after `delay_ms`, for deadlines shorter than the periodic tick.
     Wake { delay_ms: u64 },
     MoveTaskToBack,
