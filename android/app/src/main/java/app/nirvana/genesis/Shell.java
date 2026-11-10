@@ -435,10 +435,16 @@ final class Shell implements Views.Listener, Ui.Actions {
     }
 
     @Override public void openExternal(String url) {
+        Intent intent = Handoff.intent(url);
+        if (intent == null || !handOff(intent)) showError("No app can open " + url);
+    }
+
+    @Override public boolean handOff(Intent intent) {
         try {
-            activity.startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)).addCategory(Intent.CATEGORY_BROWSABLE));
+            activity.startActivity(intent);
+            return true;
         } catch (ActivityNotFoundException error) {
-            showError("No app can open " + url);
+            return false;
         }
     }
 

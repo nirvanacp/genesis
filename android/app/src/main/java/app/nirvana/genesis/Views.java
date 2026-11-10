@@ -39,15 +39,14 @@ import org.json.JSONObject;
 final class Views {
     static final String FOREGROUND_ORIGIN = "https://appassets.androidplatform.net";
     static final String BRIDGE = "__genesisBridge";
-    /** Schemes a revealed context may hand to another app on a tap (see SitePolicy). Others (intent:, file:, content:, javascript:, data:) do nothing. */
-    private static final java.util.List<String> EXTERNAL_SCHEMES = java.util.Arrays.asList("mailto", "tel", "sms", "smsto", "geo");
 
     /** What a view reports back to the shell. */
     interface Listener {
         void documentStarted(Page page, String url);
         void documentMessage(Page page, String payload);
         void contextNavigated(Page page, Committed committed);
-        void openExternal(String url);
+        /** Starts another app for a tapped link. Returns false when no app can handle it. */
+        boolean handOff(android.content.Intent intent);
         void rendererGone(Page page);
         void showCustomView(View view, WebChromeClient.CustomViewCallback callback);
         void hideCustomView();
@@ -247,8 +246,13 @@ final class Views {
             if (web) return false;
             // Only the revealed page may hand a link to another app, and only from a tap. A server
             // redirect from a tapped link to mailto: arrives without a gesture and is blocked too.
-            boolean external = scheme != null && EXTERNAL_SCHEMES.contains(scheme.toLowerCase(java.util.Locale.ROOT));
-            if (external && SitePolicy.mayHandOff(page, request.hasGesture())) listener.openExternal(url);
+            if (!SitePolicy.mayHandOff(page, request.hasGesture())) return true;
+            android.content.Intent intent = Handoff.intent(url);
+            if (intent == null) return true;
+            if (listener.handOff(intent)) return true;
+            String fallback = Handoff.fallback(url);
+            if (fallback != null) view.loadUrl(fallback);
+            else android.widget.Toast.makeText(activity, "No app can open this link", android.widget.Toast.LENGTH_SHORT).show();
             return true;
         }
 
