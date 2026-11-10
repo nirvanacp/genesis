@@ -16,6 +16,9 @@ use std::{
 
 /// An applet in the background longer than this is retired and recreated on resume.
 const SUSPEND_RETIRE_MS: u64 = 30_000;
+/// The limit while a context is revealed: while the user is on a website, for sign-in codes,
+/// file pickers and other apps they return from.
+const REVEALED_RETIRE_MS: u64 = 600_000;
 
 #[derive(Default)]
 pub struct Host {
@@ -287,7 +290,10 @@ impl Host {
     }
 
     fn retire_if_long_suspended(&mut self, now: u64) {
-        let long = self.contexts.suspended_at_ms.is_some_and(|at| now.saturating_sub(at) >= SUSPEND_RETIRE_MS);
+        // `revealed` does not change while suspended, so this is the state the user left in.
+        let revealed = self.contexts.session.as_ref().is_some_and(|s| s.revealed.is_some());
+        let limit = if revealed { REVEALED_RETIRE_MS } else { SUSPEND_RETIRE_MS };
+        let long = self.contexts.suspended_at_ms.is_some_and(|at| now.saturating_sub(at) >= limit);
         if long && self.contexts.session.is_some() {
             self.retire_for_resume(true);
         }
