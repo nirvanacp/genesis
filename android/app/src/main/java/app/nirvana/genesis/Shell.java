@@ -510,10 +510,13 @@ final class Shell implements Views.Listener, Ui.Actions {
     }
 
     /**
-     * The system switched between light and dark. The activity keeps running (the manifest handles
-     * `uiMode`), so the applet and its pages survive; only the native views take the new colors.
+     * The system switched between light and dark, or changed the font size. The activity keeps
+     * running (the manifest handles `uiMode` and `fontScale`), so the applet and its pages survive;
+     * website pages take the new text zoom and the native views the new colors.
      */
     void appearanceChanged() {
+        // The font size can change without the appearance; website pages rescale either way.
+        for (Views.Page page : pages.values()) WebsiteSettings.configurationChanged(page.web, page.isContext());
         boolean dark = (activity.getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK)
             == android.content.res.Configuration.UI_MODE_NIGHT_YES;
         if (dark == tokens.dark) return;
