@@ -5,6 +5,7 @@ import android.graphics.Color;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import androidx.webkit.WebSettingsCompat;
+import androidx.webkit.WebViewCompat;
 import androidx.webkit.WebViewFeature;
 
 /**
@@ -17,6 +18,8 @@ final class WebsiteSettings {
     /** `context` is true for a website context and false for the applet's foreground. */
     @SuppressLint({"SetJavaScriptEnabled", "RequiresFeature"}) // Each compat call is behind WebFeatures.has.
     static void apply(WebView web, boolean context, SiteData site) {
+        // The profile must be set before anything else touches the new WebView.
+        if (!site.isDefault()) WebViewCompat.setProfile(web, site.profile);
         WebSettings settings = web.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);

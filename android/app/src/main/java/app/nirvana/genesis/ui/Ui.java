@@ -48,8 +48,14 @@ public final class Ui {
         void menu(String action);
         void openExternal(String url);
         Connections.Store connections();
-        /** The cookies and site storage of the websites applets use. */
+        /** The shared cookies and site storage of the websites applets use. */
         SiteData sites();
+        /** The applet's own profile when it keeps a separate sign-in, otherwise `sites()`. */
+        SiteData sitesFor(String appletId);
+        /** Whether this phone's WebView can keep a separate sign-in per applet. */
+        boolean separateSignInAvailable();
+        boolean separateSignIn(String appletId);
+        void setSeparateSignIn(String appletId, boolean on);
         /** Every URL the open applet's pages have visited, for signing out of cookies on deeper paths. */
         List<String> visitedUrls();
         /** Total bytes Genesis stores for applets on this phone, computed off the UI thread. */

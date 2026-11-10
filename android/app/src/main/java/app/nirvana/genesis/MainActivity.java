@@ -140,7 +140,8 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
             if ((getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) == 0) {
                 receipt = new JSONObject().put("ok", false).put("error", "Cookie imports need a debug build");
             } else {
-                int count = shell.sites().importCookies(new JSONObject(files.read(file, COOKIE_MAX_BYTES)));
+                JSONObject payload = new JSONObject(files.read(file, COOKIE_MAX_BYTES));
+                int count = shell.sitesFor(payload.optString("appletId", null)).importCookies(payload);
                 receipt = new JSONObject().put("ok", true).put("count", count);
             }
         } catch (java.io.IOException | JSONException | RuntimeException error) {

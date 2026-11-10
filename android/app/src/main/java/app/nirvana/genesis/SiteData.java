@@ -1,5 +1,6 @@
 package app.nirvana.genesis;
 
+import android.annotation.SuppressLint;
 import android.content.Context;
 import android.net.Uri;
 import android.os.Handler;
@@ -7,6 +8,9 @@ import android.os.Looper;
 import android.webkit.CookieManager;
 import android.webkit.WebStorage;
 import android.webkit.WebView;
+import androidx.webkit.Profile;
+import androidx.webkit.ProfileStore;
+import androidx.webkit.WebViewFeature;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -20,27 +24,56 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 /**
- * The cookies and site storage of one profile. Only the default profile, Android's shared
- * cookie jar and web storage, exists.
+ * The cookies, site storage and permission answers of one profile: the default profile, which is
+ * Android's shared cookie jar and web storage, or a WebView profile an applet keeps for itself.
  */
 public final class SiteData {
     /** The `cookieEnvelope` version of the compatibility table. */
     private static final int COOKIE_ENVELOPE = 1;
+    /** The WebView profile name; `Profile.DEFAULT_PROFILE_NAME` for the shared one. */
+    final String profile;
     private final CookieManager cookies;
     private final WebStorage storage;
     private final Handler main = new Handler(Looper.getMainLooper());
 
     private final SiteGrants grants;
 
-    private SiteData(CookieManager cookies, WebStorage storage, SiteGrants grants) {
+    private SiteData(String profile, CookieManager cookies, WebStorage storage, SiteGrants grants) {
+        this.profile = profile;
         this.cookies = cookies;
         this.storage = storage;
         this.grants = grants;
     }
 
+    /** Grants recorded before profiles existed are keyed "default", so they stay with the shared profile. */
     static SiteData defaultProfile(Context context) {
-        return new SiteData(CookieManager.getInstance(), WebStorage.getInstance(), new SiteGrants(context, "default"));
+        return new SiteData(Profile.DEFAULT_PROFILE_NAME, CookieManager.getInstance(), WebStorage.getInstance(), new SiteGrants(context, "default"));
     }
+
+    /** Whether this WebView can keep separate profiles. */
+    static boolean profilesSupported() { return WebFeatures.has(WebViewFeature.MULTI_PROFILE); }
+
+    /** A named profile, created on first use. Only call it when `profilesSupported()`. */
+    @SuppressLint("RequiresFeature")
+    static SiteData profile(Context context, String name) {
+        Profile profile = ProfileStore.getInstance().getOrCreateProfile(name);
+        return new SiteData(name, profile.getCookieManager(), profile.getWebStorage(), new SiteGrants(context, name));
+    }
+
+    /**
+     * Deletes a named profile with its cookies, storage and permission answers. Returns false
+     * while a WebView still uses it, so the caller can try again later.
+     */
+    @SuppressLint("RequiresFeature")
+    static boolean delete(Context context, String name) {
+        if (!profilesSupported()) return true;
+        try { ProfileStore.getInstance().deleteProfile(name); }
+        catch (IllegalStateException inUse) { return false; }
+        new SiteGrants(context, name).clearAll();
+        return true;
+    }
+
+    boolean isDefault() { return Profile.DEFAULT_PROFILE_NAME.equals(profile); }
 
     /** What the user let this profile's websites use. */
     public SiteGrants grants() { return grants; }

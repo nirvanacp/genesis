@@ -79,7 +79,10 @@ final class Bridge {
             case "showRepositoryApplets": shell.showRepositoryApplets(command); break;
             case "showImportReview": shell.showImportReview(command); break;
             case "showInstalled": shell.showInstalled(command); break;
-            case "forgetApplet": services.forget(command.getString("appletId")); break;
+            case "forgetApplet":
+                services.forget(command.getString("appletId"));
+                shell.forgetProfile(command.getString("appletId"));
+                break;
             default: throw new IllegalArgumentException("Unknown command " + type);
         }
     }

@@ -68,7 +68,10 @@ final class Shell implements Views.Listener, Ui.Actions {
 
     private final Activity activity;
     private final Owner owner;
+    /** The shared sign-in, and the profiles of applets that keep their own, by applet id. */
     private final SiteData sites;
+    private final Map<String, SiteData> profiles = new HashMap<>();
+    private final android.content.SharedPreferences state;
     private final Views views;
     private Tokens tokens;
     private final FrameLayout root;
@@ -109,7 +112,8 @@ final class Shell implements Views.Listener, Ui.Actions {
         this.activity = activity;
         this.owner = owner;
         sites = SiteData.defaultProfile(activity);
-        views = new Views(activity, this, sites);
+        state = activity.getSharedPreferences("genesis-shell", Activity.MODE_PRIVATE);
+        views = new Views(activity, this);
         tokens = new Tokens(activity);
         ui = new Ui(activity, tokens, this);
         addFlow = new AddFlow(ui);
@@ -192,6 +196,7 @@ final class Shell implements Views.Listener, Ui.Actions {
 
     void showLauncher(JSONArray applets, long updatesCheckedAt) {
         destroyAll();
+        deleteProfiles();
         ui.applets = applets;
         ui.updatesCheckedAt = updatesCheckedAt;
         appletId = null;
@@ -231,7 +236,7 @@ final class Shell implements Views.Listener, Ui.Actions {
 
     void createView(JSONObject ref, String url, JSONArray origins, String startScript) throws JSONException {
         destroyView(ref);
-        Views.Page page = views.document(ref, set(origins), startScript);
+        Views.Page page = views.document(ref, set(origins), startScript, sitesFor(ref.optString("appletId")));
         pages.put(key(ref), page);
         if (page.isForeground()) {
             page.web.setVisibility(View.INVISIBLE);
@@ -457,7 +462,7 @@ final class Shell implements Views.Listener, Ui.Actions {
             .setMimeType(mimeType)
             .setTitle(name)
             .setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
-        String cookie = sites.cookies(url);
+        String cookie = page.site.cookies(url);
         if (cookie != null) request.addRequestHeader("Cookie", cookie);
         if (userAgent != null) request.addRequestHeader("User-Agent", userAgent);
         if (Build.VERSION.SDK_INT >= 29) request.setDestinationInExternalPublicDir(android.os.Environment.DIRECTORY_DOWNLOADS, name);
@@ -635,7 +640,7 @@ final class Shell implements Views.Listener, Ui.Actions {
      */
     @Override public void askSite(Views.Page page, String origin, List<String> permissions, java.util.function.Consumer<Set<String>> allowed) {
         cancelPrompts();
-        SiteGrants grants = sites.grants();
+        SiteGrants grants = page.site.grants();
         boolean answered = true;
         for (String permission : permissions) {
             Boolean grant = grants.get(origin, permission);
@@ -870,6 +875,66 @@ final class Shell implements Views.Listener, Ui.Actions {
     @Override public Connections.Store connections() { return owner.connections(); }
 
     @Override public SiteData sites() { return sites; }
+
+    // -----------------------------------------------------------------------------------------
+    // Separate sign-ins
+
+    private static final String DELETE_PROFILES = "deleteProfiles";
+
+    private static String profileKey(String appletId) { return "profile:" + appletId; }
+
+    private static String profileName(String appletId) { return "applet-" + appletId; }
+
+    /** The applet's own profile when it keeps a separate sign-in, otherwise the shared one. */
+    @Override public SiteData sitesFor(String appletId) {
+        if (appletId == null || !separateSignIn(appletId)) return sites;
+        return profiles.computeIfAbsent(appletId, id -> SiteData.profile(activity, profileName(id)));
+    }
+
+    @Override public boolean separateSignInAvailable() { return SiteData.profilesSupported(); }
+
+    @Override public boolean separateSignIn(String appletId) {
+        return SiteData.profilesSupported() && state.getBoolean(profileKey(appletId), false);
+    }
+
+    /**
+     * Turning it on starts the applet signed out in a new profile; turning it off returns it to the
+     * shared sign-in and deletes its profile once no WebView uses it. An open applet reopens.
+     */
+    @Override public void setSeparateSignIn(String appletId, boolean on) {
+        if (on == separateSignIn(appletId)) return;
+        Set<String> pending = new LinkedHashSet<>(state.getStringSet(DELETE_PROFILES, Set.of()));
+        String name = profileName(appletId);
+        if (on) {
+            // A profile turned off moments ago may still exist; start the new one empty.
+            pending.remove(name);
+            SiteData.delete(activity, name);
+            state.edit().putBoolean(profileKey(appletId), true).putStringSet(DELETE_PROFILES, pending).apply();
+        } else {
+            pending.add(name);
+            state.edit().remove(profileKey(appletId)).putStringSet(DELETE_PROFILES, pending).apply();
+        }
+        profiles.remove(appletId);
+        if (appletId.equals(this.appletId)) openApplet(appletId);
+        ui.pages.refresh();
+    }
+
+    /** A removed or erased applet's separate sign-in goes with it. */
+    void forgetProfile(String appletId) {
+        if (!state.getBoolean(profileKey(appletId), false)) return;
+        Set<String> pending = new LinkedHashSet<>(state.getStringSet(DELETE_PROFILES, Set.of()));
+        pending.add(profileName(appletId));
+        state.edit().remove(profileKey(appletId)).putStringSet(DELETE_PROFILES, pending).apply();
+        profiles.remove(appletId);
+    }
+
+    /** Deletes the profiles waiting for deletion; one a WebView still holds waits for the next launcher. */
+    private void deleteProfiles() {
+        Set<String> pending = new LinkedHashSet<>(state.getStringSet(DELETE_PROFILES, Set.of()));
+        if (pending.isEmpty()) return;
+        pending.removeIf(name -> SiteData.delete(activity, name));
+        state.edit().putStringSet(DELETE_PROFILES, pending).apply();
+    }
 
     @Override public void storageSize(java.util.function.LongConsumer result) { owner.storageSize(result); }
 

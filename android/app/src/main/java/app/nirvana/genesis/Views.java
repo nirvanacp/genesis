@@ -109,13 +109,17 @@ final class Views {
         /** The revealed context that opened this popup; null for the applet's own documents. */
         final Page opener;
 
-        Page(JSONObject ref, WebView web) { this(ref, ref.optString("role"), web, null); }
+        /** The profile the page's cookies and permission answers belong to. */
+        final SiteData site;
 
-        private Page(JSONObject ref, String role, WebView web, Page opener) {
+        Page(JSONObject ref, WebView web, SiteData site) { this(ref, ref.optString("role"), web, null, site); }
+
+        private Page(JSONObject ref, String role, WebView web, Page opener, SiteData site) {
             this.ref = ref;
             this.role = role;
             this.web = web;
             this.opener = opener;
+            this.site = site;
         }
 
         boolean isForeground() { return "foreground".equals(role); }
@@ -141,12 +145,10 @@ final class Views {
     private final Activity activity;
     private final Listener listener;
     private final WebViewAssetLoader assets;
-    private final SiteData site;
 
-    Views(Activity activity, Listener listener, SiteData site) {
+    Views(Activity activity, Listener listener) {
         this.activity = activity;
         this.listener = listener;
-        this.site = site;
         File applets = new File(activity.getFilesDir(), "applets");
         assets = new WebViewAssetLoader.Builder()
             .addPathHandler("/genesis/", new WebViewAssetLoader.InternalStoragePathHandler(activity, applets))
@@ -163,10 +165,10 @@ final class Views {
 
     /** A foreground or context view. The bridge listener and start script apply on the view's origins only. */
     @SuppressLint("RequiresFeature") // WebFeatures.supported() and the NAVIGATION_LISTENER check gate every feature call.
-    Page document(JSONObject ref, Set<String> origins, String startScript) {
+    Page document(JSONObject ref, Set<String> origins, String startScript, SiteData site) {
         WebView web = new WebView(activity);
         WebsiteSettings.apply(web, !"foreground".equals(ref.optString("role")), site);
-        Page page = new Page(ref, web);
+        Page page = new Page(ref, web, site);
         page.origins.addAll(origins);
         WebViewCompat.addWebMessageListener(page.web, BRIDGE, page.origins, (view, message, sourceOrigin, isMainFrame, reply) -> {
             String data = message.getData();
@@ -200,9 +202,9 @@ final class Views {
      */
     Page popup(Page opener) {
         WebView web = new WebView(activity);
-        WebsiteSettings.apply(web, true, site);
+        WebsiteSettings.apply(web, true, opener.site);
         web.getSettings().setSupportMultipleWindows(false);
-        Page page = new Page(opener.ref, "popup", web, opener);
+        Page page = new Page(opener.ref, "popup", web, opener, opener.site);
         web.setWebViewClient(new Client(page));
         web.setWebChromeClient(new Chrome(page));
         web.setDownloadListener((url, userAgent, disposition, mimeType, length) -> listener.download(page, url, userAgent, disposition, mimeType));
