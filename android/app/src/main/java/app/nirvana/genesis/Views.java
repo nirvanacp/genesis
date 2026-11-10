@@ -62,6 +62,8 @@ final class Views {
         void askSite(Page page, String origin, List<String> permissions, Consumer<Set<String>> allowed);
         /** The website withdrew its question. */
         void cancelAsk();
+        /** A page started a download; Android reports no gesture for it. */
+        void download(Page page, String url, String userAgent, String disposition, String mimeType);
         /** The shown website's server asks for a username and password. */
         void httpAuth(Page page, HttpAuthHandler handler, String host, String realm);
     }
@@ -175,6 +177,7 @@ final class Views {
         if (startScript != null) page.script = WebViewCompat.addDocumentStartJavaScript(page.web, startScript, page.origins);
         page.web.setWebViewClient(new Client(page));
         page.web.setWebChromeClient(new Chrome(page));
+        page.web.setDownloadListener((url, userAgent, disposition, mimeType, length) -> listener.download(page, url, userAgent, disposition, mimeType));
         if (page.isContext()) {
             page.web.setFocusable(false);
             page.web.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
@@ -202,6 +205,7 @@ final class Views {
         Page page = new Page(opener.ref, "popup", web, opener);
         web.setWebViewClient(new Client(page));
         web.setWebChromeClient(new Chrome(page));
+        web.setDownloadListener((url, userAgent, disposition, mimeType, length) -> listener.download(page, url, userAgent, disposition, mimeType));
         return page;
     }
 

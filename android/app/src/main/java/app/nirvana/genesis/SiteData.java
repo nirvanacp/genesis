@@ -51,6 +51,11 @@ public final class SiteData {
         cookies.setAcceptThirdPartyCookies(web, thirdParty);
     }
 
+    /** The Cookie header for a request to `url`, or null; a download carries the page's sign-in with it. */
+    String cookies(String url) {
+        try { return cookies.getCookie(url); } catch (RuntimeException error) { return null; }
+    }
+
     /** Whether the origin has any cookie at its root, which Settings shows as signed in. */
     public boolean hasCookies(String origin) {
         try {

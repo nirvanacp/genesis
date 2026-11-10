@@ -439,6 +439,37 @@ final class Shell implements Views.Listener, Ui.Actions {
         if (intent == null || !handOff(intent)) showError("No app can open " + url);
     }
 
+    /**
+     * Only the shown website downloads, since Android reports no tap for a download. The request
+     * carries the site's cookies, so a signed-in file arrives instead of a sign-in page. API 26 to
+     * 28 would need a storage permission for the public Downloads folder, so there the file goes
+     * to Genesis's own Downloads folder.
+     */
+    @Override public void download(Views.Page page, String url, String userAgent, String disposition, String mimeType) {
+        if (!SitePolicy.mayShowUi(page)) return;
+        String scheme = Uri.parse(url).getScheme();
+        if (!"https".equalsIgnoreCase(scheme) && !"http".equalsIgnoreCase(scheme)) {
+            Toast.makeText(activity, "This download isn't supported in Genesis", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String name = android.webkit.URLUtil.guessFileName(url, disposition, mimeType);
+        android.app.DownloadManager.Request request = new android.app.DownloadManager.Request(Uri.parse(url))
+            .setMimeType(mimeType)
+            .setTitle(name)
+            .setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+        String cookie = sites.cookies(url);
+        if (cookie != null) request.addRequestHeader("Cookie", cookie);
+        if (userAgent != null) request.addRequestHeader("User-Agent", userAgent);
+        if (Build.VERSION.SDK_INT >= 29) request.setDestinationInExternalPublicDir(android.os.Environment.DIRECTORY_DOWNLOADS, name);
+        else request.setDestinationInExternalFilesDir(activity, android.os.Environment.DIRECTORY_DOWNLOADS, name);
+        try {
+            ((android.app.DownloadManager) activity.getSystemService(android.content.Context.DOWNLOAD_SERVICE)).enqueue(request);
+            Toast.makeText(activity, "Downloading " + name, Toast.LENGTH_SHORT).show();
+        } catch (RuntimeException error) {
+            showError("The download couldn't start: " + error.getMessage());
+        }
+    }
+
     @Override public boolean handOff(Intent intent) {
         try {
             activity.startActivity(intent);
