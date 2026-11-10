@@ -5,7 +5,10 @@ import android.app.Activity;
 import android.graphics.Bitmap;
 import android.net.Uri;
 import android.view.View;
+import android.security.KeyChain;
+import android.webkit.ClientCertRequest;
 import android.webkit.GeolocationPermissions;
+import android.webkit.HttpAuthHandler;
 import android.webkit.PermissionRequest;
 import android.webkit.RenderProcessGoneDetail;
 import android.webkit.ValueCallback;
@@ -60,6 +63,8 @@ final class Views {
         void askSite(Page page, String origin, List<String> permissions, Consumer<Set<String>> allowed);
         /** The website withdrew its question. */
         void cancelAsk();
+        /** The shown website's server asks for a username and password. */
+        void httpAuth(Page page, HttpAuthHandler handler, String host, String realm);
     }
 
     /** The container a revealed context is reparented into, above the foreground. */
@@ -265,6 +270,33 @@ final class Views {
             if (!page.isContext()) return;
             page.moves++;
             listener.contextNavigated(page, committed(page));
+        }
+
+        /** A hidden page can't ask; its server's error page shows, and Reload asks once it is shown. */
+        @Override public void onReceivedHttpAuthRequest(WebView view, HttpAuthHandler handler, String host, String realm) {
+            if (SitePolicy.mayShowUi(page)) listener.httpAuth(page, handler, host, realm);
+            else handler.cancel();
+        }
+
+        /**
+         * A hidden page's request is ignored rather than cancelled: WebView remembers a cancel for
+         * the session, and ignoring lets the site ask again once it is shown.
+         */
+        @Override public void onReceivedClientCertRequest(WebView view, ClientCertRequest request) {
+            if (!SitePolicy.mayShowUi(page)) { request.ignore(); return; }
+            KeyChain.choosePrivateKeyAlias(activity, alias -> {
+                if (alias == null) { request.cancel(); return; }
+                new Thread(() -> {
+                    try {
+                        java.security.PrivateKey key = KeyChain.getPrivateKey(activity, alias);
+                        java.security.cert.X509Certificate[] chain = KeyChain.getCertificateChain(activity, alias);
+                        if (key == null || chain == null) request.cancel();
+                        else request.proceed(key, chain);
+                    } catch (android.security.KeyChainException | InterruptedException error) {
+                        request.cancel();
+                    }
+                }, "genesis-client-cert").start();
+            }, request.getKeyTypes(), request.getPrincipals(), request.getHost(), request.getPort(), null);
         }
 
         @Override public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail detail) {

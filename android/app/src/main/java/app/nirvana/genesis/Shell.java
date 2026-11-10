@@ -93,6 +93,8 @@ final class Shell implements Views.Listener, Ui.Actions {
     private Views.Page popup;
     /** The website question being asked, or null. */
     private Asking asking;
+    /** Dismisses the open website sign-in prompt and cancels it, or null. */
+    private Runnable cancelAuth;
     private String appletId, appletName;
     /** The user chose View website, so the next revealed context is their choice, not the applet's. */
     private boolean websiteChosen;
@@ -313,7 +315,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         Views.Page page = revealedPage;
         if (page == null) return;
         closeCustomView();
-        cancelAsk();
+        cancelPrompts();
         dropRevealed();
         page.web.clearFocus();
         page.web.setFocusable(false);
@@ -460,7 +462,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         if (page == null) return false;
         popup = null;
         closeCustomView();
-        cancelAsk();
+        cancelPrompts();
         popupSheet.removeView(page.web);
         popupSheet.setVisibility(View.GONE);
         page.destroy();
@@ -489,7 +491,7 @@ final class Shell implements Views.Listener, Ui.Actions {
 
     private void destroyAll() {
         closeCustomView();
-        cancelAsk();
+        cancelPrompts();
         dropRevealed();
         owner.cancelInvalidFiles();
         for (Views.Page page : pages.values()) page.destroy();
@@ -595,7 +597,7 @@ final class Shell implements Views.Listener, Ui.Actions {
      * its own permission if Genesis doesn't hold it yet. A refusal at either step refuses the site.
      */
     @Override public void askSite(Views.Page page, String origin, List<String> permissions, java.util.function.Consumer<Set<String>> allowed) {
-        cancelAsk();
+        cancelPrompts();
         SiteGrants grants = sites.grants();
         boolean answered = true;
         for (String permission : permissions) {
@@ -650,6 +652,56 @@ final class Shell implements Views.Listener, Ui.Actions {
 
     @Override public void cancelAsk() {
         if (asking != null) asking.finish(Set.of());
+    }
+
+    /** Website prompts belong to the shown website; covering or closing it answers them with a refusal. */
+    private void cancelPrompts() {
+        cancelAsk();
+        Runnable cancel = cancelAuth;
+        cancelAuth = null;
+        if (cancel != null) cancel.run();
+    }
+
+    /** A server's own sign-in prompt. Genesis passes the answer on and saves nothing. */
+    @Override public void httpAuth(Views.Page page, android.webkit.HttpAuthHandler handler, String host, String realm) {
+        cancelPrompts();
+        LinearLayout form = new LinearLayout(activity);
+        form.setOrientation(LinearLayout.VERTICAL);
+        form.setPadding(tokens.dp(24), tokens.dp(8), tokens.dp(24), 0);
+        android.widget.EditText user = authField("Username", android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_NORMAL);
+        android.widget.EditText password = authField("Password", android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        form.addView(user, new LinearLayout.LayoutParams(-1, -2));
+        LinearLayout.LayoutParams below = new LinearLayout.LayoutParams(-1, -2);
+        below.topMargin = tokens.dp(12);
+        form.addView(password, below);
+        boolean[] answered = { false };
+        Runnable cancel = () -> { if (!answered[0]) { answered[0] = true; handler.cancel(); } };
+        android.app.Dialog dialog = new MaterialAlertDialogBuilder(activity)
+            .setTitle("Sign in to " + host)
+            .setMessage(realm == null || realm.isEmpty() ? "The website asks for a username and password." : "The website says: " + realm)
+            .setView(form)
+            .setPositiveButton("Sign in", (d, w) -> {
+                cancelAuth = null;
+                if (answered[0]) return;
+                answered[0] = true;
+                handler.proceed(user.getText().toString(), password.getText().toString());
+            })
+            .setNegativeButton("Cancel", (d, w) -> { cancelAuth = null; cancel.run(); })
+            .setOnCancelListener(d -> { cancelAuth = null; cancel.run(); })
+            .show();
+        cancelAuth = () -> { dialog.dismiss(); cancel.run(); };
+    }
+
+    private android.widget.EditText authField(String hint, int inputType) {
+        android.widget.EditText field = new android.widget.EditText(activity);
+        field.setHint(hint);
+        field.setSingleLine(true);
+        field.setInputType(inputType);
+        tokens.style(field, Tokens.Type.BODY_LARGE, tokens.onSurface);
+        field.setHintTextColor(tokens.onSurfaceVariant);
+        field.setPadding(tokens.dp(14), tokens.dp(12), tokens.dp(14), tokens.dp(12));
+        field.setBackground(tokens.outlined(tokens.surface, tokens.outline, 12, false));
+        return field;
     }
 
     /**
