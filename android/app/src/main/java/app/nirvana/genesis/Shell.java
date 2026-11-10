@@ -236,7 +236,9 @@ final class Shell implements Views.Listener, Ui.Actions {
 
     void createView(JSONObject ref, String url, JSONArray origins, String startScript) throws JSONException {
         destroyView(ref);
-        Views.Page page = views.document(ref, set(origins), startScript, sitesFor(ref.optString("appletId")));
+        // The foreground is Genesis's own page and keeps the shared profile; only websites change sign-in.
+        SiteData site = "foreground".equals(ref.optString("role")) ? sites : sitesFor(ref.optString("appletId"));
+        Views.Page page = views.document(ref, set(origins), startScript, site);
         pages.put(key(ref), page);
         if (page.isForeground()) {
             page.web.setVisibility(View.INVISIBLE);
@@ -806,6 +808,7 @@ final class Shell implements Views.Listener, Ui.Actions {
     void appearanceChanged() {
         // The font size can change without the appearance; website pages rescale either way.
         for (Views.Page page : pages.values()) WebsiteSettings.configurationChanged(page.web, page.isContext());
+        if (popup != null) WebsiteSettings.configurationChanged(popup.web, true);
         boolean dark = (activity.getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK)
             == android.content.res.Configuration.UI_MODE_NIGHT_YES;
         if (dark == tokens.dark) return;
@@ -954,7 +957,10 @@ final class Shell implements Views.Listener, Ui.Actions {
 
     private static String profileKey(String appletId) { return "profile:" + appletId; }
 
-    private static String profileName(String appletId) { return "applet-" + appletId; }
+    private static String profileNameKey(String appletId) { return "profileName:" + appletId; }
+
+    /** Each time the switch turns on the applet gets a new profile, so an old one that is still being deleted is never reused. */
+    private String profileName(String appletId) { return state.getString(profileNameKey(appletId), "applet-" + appletId); }
 
     /** The applet's own profile when it keeps a separate sign-in, otherwise the shared one. */
     @Override public SiteData sitesFor(String appletId) {
@@ -975,15 +981,12 @@ final class Shell implements Views.Listener, Ui.Actions {
     @Override public void setSeparateSignIn(String appletId, boolean on) {
         if (on == separateSignIn(appletId)) return;
         Set<String> pending = new LinkedHashSet<>(state.getStringSet(DELETE_PROFILES, Set.of()));
-        String name = profileName(appletId);
         if (on) {
-            // A profile turned off moments ago may still exist; start the new one empty.
-            pending.remove(name);
-            SiteData.delete(activity, name);
-            state.edit().putBoolean(profileKey(appletId), true).putStringSet(DELETE_PROFILES, pending).apply();
+            String name = "applet-" + appletId + "-" + Long.toString(System.currentTimeMillis(), 36);
+            state.edit().putBoolean(profileKey(appletId), true).putString(profileNameKey(appletId), name).apply();
         } else {
-            pending.add(name);
-            state.edit().remove(profileKey(appletId)).putStringSet(DELETE_PROFILES, pending).apply();
+            pending.add(profileName(appletId));
+            state.edit().remove(profileKey(appletId)).remove(profileNameKey(appletId)).putStringSet(DELETE_PROFILES, pending).apply();
         }
         profiles.remove(appletId);
         if (appletId.equals(this.appletId)) openApplet(appletId);
@@ -995,7 +998,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         if (!state.getBoolean(profileKey(appletId), false)) return;
         Set<String> pending = new LinkedHashSet<>(state.getStringSet(DELETE_PROFILES, Set.of()));
         pending.add(profileName(appletId));
-        state.edit().remove(profileKey(appletId)).putStringSet(DELETE_PROFILES, pending).apply();
+        state.edit().remove(profileKey(appletId)).remove(profileNameKey(appletId)).putStringSet(DELETE_PROFILES, pending).apply();
         profiles.remove(appletId);
     }
 

@@ -153,8 +153,11 @@ public final class Settings {
         out.setOnClickListener(v -> {
             dialog[0].dismiss();
             Runnable done = () -> ui.pages.refresh();
-            if (all) for (Group group : groups) group.site.clearAll(done);
-            else site.signOut(origins, ui.actions.visitedUrls(), done);
+            if (all) {
+                // Every group clears on its own; the page refreshes once the last one is done.
+                int[] left = { groups.size() };
+                for (Group group : groups) group.site.clearAll(() -> { if (--left[0] == 0) done.run(); });
+            } else site.signOut(origins, ui.actions.visitedUrls(), done);
         });
         content.addView(out, t.margins(0, 20));
         if (!all && site.grants().describe(origins.get(0)) != null) {
