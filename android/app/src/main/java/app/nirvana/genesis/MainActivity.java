@@ -19,13 +19,9 @@ import android.window.OnBackInvokedCallback;
 import android.window.OnBackInvokedDispatcher;
 import java.io.File;
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.function.BooleanSupplier;
 import java.util.function.LongConsumer;
-import android.webkit.CookieManager;
-import android.webkit.WebStorage;
 import app.nirvana.genesis.ui.Connections;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -245,55 +241,6 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
     }
 
     @Override public Connections.Store connections() { return services; }
-
-    /** Deletes the cookies and web storage of these origins for every applet that uses them. */
-    /**
-     * Signing out of every site the applets use clears all cookies and site data. One site's
-     * cookies can't be listed with their paths, so each one is expired at the root and at every
-     * path the open applet visited on that site.
-     */
-    @Override public void signOut(List<String> origins, boolean all, Runnable done) {
-        CookieManager cookies = CookieManager.getInstance();
-        if (all) {
-            WebStorage.getInstance().deleteAllData();
-            cookies.removeAllCookies(removed -> {
-                cookies.flush();
-                main.post(done);
-            });
-            return;
-        }
-        List<String> visited = shell.visitedUrls();
-        for (String origin : origins) {
-            String host = Uri.parse(origin).getHost();
-            if (host == null) continue;
-            Set<String> paths = new LinkedHashSet<>();
-            paths.add("/");
-            for (String url : visited) {
-                Uri uri = url == null ? null : Uri.parse(url);
-                if (uri == null || !host.equals(uri.getHost())) continue;
-                String prefix = "";
-                for (String segment : uri.getPathSegments()) {
-                    prefix += "/" + segment;
-                    paths.add(prefix);
-                }
-            }
-            List<String> domains = new ArrayList<>(List.of(host));
-            if (host.indexOf('.') != host.lastIndexOf('.')) domains.add(host.substring(host.indexOf('.')));
-            for (String path : paths) {
-                String cookie = cookies.getCookie(origin + (path.equals("/") ? "" : path));
-                if (cookie == null) continue;
-                for (String pair : cookie.split(";")) {
-                    String name = pair.split("=", 2)[0].trim();
-                    if (name.isEmpty()) continue;
-                    cookies.setCookie(origin, name + "=; Max-Age=0; Path=" + path);
-                    for (String domain : domains) cookies.setCookie(origin, name + "=; Max-Age=0; Path=" + path + "; Domain=" + domain);
-                }
-            }
-            WebStorage.getInstance().deleteOrigin(origin);
-        }
-        cookies.flush();
-        main.post(done);
-    }
 
     /** The bytes under the files folder, which holds every applet's bundles and data. */
     @Override public void storageSize(LongConsumer result) {

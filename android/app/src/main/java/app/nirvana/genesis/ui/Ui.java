@@ -8,6 +8,7 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import app.nirvana.genesis.SiteData;
 import com.google.android.material.bottomsheet.BottomSheetBehavior;
 import com.google.android.material.bottomsheet.BottomSheetDialog;
 import com.google.android.material.bottomsheet.BottomSheetDragHandleView;
@@ -45,8 +46,10 @@ public final class Ui {
         void menu(String action);
         void openExternal(String url);
         Connections.Store connections();
-        /** Deletes cookies and site storage of these origins, then runs `done` on the UI thread. */
-        void signOut(List<String> origins, boolean all, Runnable done);
+        /** The cookies and site storage of the websites applets use. */
+        SiteData sites();
+        /** Every URL the open applet's pages have visited, for signing out of cookies on deeper paths. */
+        List<String> visitedUrls();
         /** Total bytes Genesis stores for applets on this phone, computed off the UI thread. */
         void storageSize(java.util.function.LongConsumer result);
     }

@@ -4,7 +4,6 @@ import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.view.Gravity;
 import android.view.View;
-import android.webkit.CookieManager;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import app.nirvana.genesis.R;
@@ -82,15 +81,6 @@ public final class Settings {
         return result;
     }
 
-    private static boolean signedIn(String origin) {
-        try {
-            String cookies = CookieManager.getInstance().getCookie(origin);
-            return cookies != null && !cookies.trim().isEmpty();
-        } catch (RuntimeException error) {
-            return false;
-        }
-    }
-
     private View sitesPage() {
         Tokens t = ui.tokens;
         Map<String, List<String>> sites = sites();
@@ -102,7 +92,7 @@ public final class Settings {
         else content.addView(t.section("Websites"));
         List<String> signed = new ArrayList<>();
         for (Map.Entry<String, List<String>> site : sites.entrySet()) {
-            boolean in = signedIn(site.getKey());
+            boolean in = ui.actions.sites().hasCookies(site.getKey());
             if (in) signed.add(site.getKey());
             TextView chip = in ? t.chip("Signed in", Tokens.Chip.SUCCESS) : t.chip("Signed out", Tokens.Chip.NEUTRAL);
             content.addView(t.row(R.drawable.ic_website, Ui.host(site.getKey()), "Used by " + Ui.and(site.getValue()), chip, in, t.onSurface,
@@ -132,7 +122,9 @@ public final class Settings {
         MaterialButton out = t.dangerButton("Sign out");
         out.setOnClickListener(v -> {
             dialog[0].dismiss();
-            ui.actions.signOut(origins, all, () -> ui.pages.refresh());
+            Runnable done = () -> ui.pages.refresh();
+            if (all) ui.actions.sites().clearAll(done);
+            else ui.actions.sites().signOut(origins, ui.actions.visitedUrls(), done);
         });
         content.addView(out, t.margins(0, 20));
         MaterialButton cancel = t.outlinedButton("Cancel");

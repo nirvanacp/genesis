@@ -58,8 +58,6 @@ final class Shell implements Views.Listener, Ui.Actions {
         /** Opens the system picker for a bundle file, with its release record if the user picks one. */
         void pickAppletFile();
         Connections.Store connections();
-        /** `all` signs out of every site, which also clears cookies on any path. */
-        void signOut(List<String> origins, boolean all, Runnable done);
         void storageSize(java.util.function.LongConsumer result);
     }
 
@@ -68,6 +66,7 @@ final class Shell implements Views.Listener, Ui.Actions {
 
     private final Activity activity;
     private final Owner owner;
+    private final SiteData sites = SiteData.defaultProfile();
     private final Views views;
     private Tokens tokens;
     private final FrameLayout root;
@@ -99,7 +98,7 @@ final class Shell implements Views.Listener, Ui.Actions {
     Shell(Activity activity, Owner owner) {
         this.activity = activity;
         this.owner = owner;
-        views = new Views(activity, this, SiteData.defaultProfile());
+        views = new Views(activity, this, sites);
         tokens = new Tokens(activity);
         ui = new Ui(activity, tokens, this);
         addFlow = new AddFlow(ui);
@@ -196,7 +195,7 @@ final class Shell implements Views.Listener, Ui.Actions {
     }
 
     /** Every URL the open applet's pages have visited, for clearing cookies set on deeper paths. */
-    List<String> visitedUrls() {
+    @Override public List<String> visitedUrls() {
         List<String> urls = new ArrayList<>();
         for (Views.Page page : pages.values()) {
             android.webkit.WebBackForwardList history = page.web.copyBackForwardList();
@@ -585,7 +584,7 @@ final class Shell implements Views.Listener, Ui.Actions {
 
     @Override public Connections.Store connections() { return owner.connections(); }
 
-    @Override public void signOut(List<String> origins, boolean all, Runnable done) { owner.signOut(origins, all, done); }
+    @Override public SiteData sites() { return sites; }
 
     @Override public void storageSize(java.util.function.LongConsumer result) { owner.storageSize(result); }
 
