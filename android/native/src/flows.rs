@@ -841,8 +841,9 @@ impl Host {
 
     /// Shows the launcher again when it is on screen, so entries and badges are current.
     fn refresh_launcher(&mut self) {
-        if self.contexts.session.is_none() {
-            self.show_launcher();
+        match self.contexts.session {
+            None => self.show_launcher(),
+            Some(_) => self.update_applets(),
         }
     }
 

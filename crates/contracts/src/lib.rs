@@ -234,6 +234,13 @@ pub enum ShellCommand {
         #[serde(default)]
         updates_checked_at: u64,
     },
+    /// The launcher entries changed while an applet is open, such as after an update of the
+    /// open applet. The shell keeps them for its menu and pages and stays on the applet.
+    UpdateApplets {
+        applets: Vec<LauncherEntry>,
+        #[serde(default)]
+        updates_checked_at: u64,
+    },
     /// Shows the applet container with the splash until `RevealForeground`.
     ShowApplet { applet_id: String, name: String, accent: Option<String> },
     CreateView { view: ViewRef, url: String, origins: Vec<String>, start_script: Option<String> },

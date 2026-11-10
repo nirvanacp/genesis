@@ -177,6 +177,12 @@ impl Host {
         self.out.push(ShellCommand::ShowLauncher { applets: self.launcher_entries(), updates_checked_at });
     }
 
+    /// Sends the launcher entries without leaving the open applet.
+    pub fn update_applets(&mut self) {
+        let updates_checked_at = self.updates_checked_at();
+        self.out.push(ShellCommand::UpdateApplets { applets: self.launcher_entries(), updates_checked_at });
+    }
+
     /// Leaves the applet. A pending recreation is forgotten with it.
     pub fn home(&mut self) {
         self.contexts.resume = None;
@@ -593,7 +599,10 @@ impl Host {
             // An incompatible import cannot start; the notice below explains it, once.
             match incompatible {
                 Some(_) => self.show_launcher(),
-                None => self.activate(applet_id, None),
+                None => {
+                    self.update_applets();
+                    self.activate(applet_id, None);
+                }
             }
         } else if active.is_none() {
             self.show_launcher();
