@@ -1,8 +1,6 @@
 package app.nirvana.genesis;
 
 import android.app.Activity;
-import androidx.appcompat.app.AlertDialog;
-import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
@@ -10,11 +8,8 @@ import android.os.Handler;
 import android.os.Looper;
 import android.security.keystore.KeyGenParameterSpec;
 import android.security.keystore.KeyProperties;
-import android.text.InputType;
 import android.util.Base64;
-import android.widget.EditText;
-import android.widget.LinearLayout;
-import android.widget.TextView;
+import app.nirvana.genesis.ui.Connections;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.InputStream;
@@ -22,7 +17,6 @@ import java.net.HttpURLConnection;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyStore;
-import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -37,7 +31,7 @@ import org.json.JSONObject;
  * Applet-scoped HTTPS connections. Credentials stay in this Keystore-sealed store; the host only
  * names the applet and service. No website cookies, redirects, or applet-selected credentials.
  */
-final class ServiceClient {
+final class ServiceClient implements Connections.Store {
     private static final int BODY_MAX_BYTES = 262144;
 
     /** A finished request: an HTTP status and JSON body, or an error code the host understands. */
@@ -64,6 +58,8 @@ final class ServiceClient {
     private final Handler main = new Handler(Looper.getMainLooper());
     private final ThreadPoolExecutor worker = new ThreadPoolExecutor(2, 2, 30, TimeUnit.SECONDS, new ArrayBlockingQueue<>(32));
     private boolean closed;
+    /** The last failed request's label per "applet/service", for this session. */
+    private final java.util.Map<String, String> failures = new java.util.HashMap<>();
 
     ServiceClient(Activity activity, Files files, Consumer<JSONObject> events) {
         this.activity = activity;
@@ -88,15 +84,18 @@ final class ServiceClient {
         try {
             worker.execute(() -> {
                 Outcome outcome = execute(origin, sealed, certificate, path, method, body);
-                main.post(() -> deliver(requestId, outcome));
+                main.post(() -> deliver(requestId, id, outcome));
             });
         } catch (java.util.concurrent.RejectedExecutionException error) {
-            deliver(requestId, Outcome.failed("QUOTA_EXCEEDED", "Service queue is full. Reread before retrying."));
+            deliver(requestId, id, Outcome.failed("QUOTA_EXCEEDED", "Service queue is full. Reread before retrying."));
         }
     }
 
-    private void deliver(long requestId, Outcome outcome) {
+    private void deliver(long requestId, String id, Outcome outcome) {
         if (closed) return;
+        String failure = outcome.code == null ? null : failureLabel(outcome.code);
+        if (failure != null) failures.put(id, failure);
+        else if (outcome.code == null) failures.remove(id);
         try {
             JSONObject event = outcome.code == null
                 ? Bridge.event("serviceResponse").put("requestId", requestId).put("status", outcome.status)
@@ -151,57 +150,56 @@ final class ServiceClient {
         } catch (org.json.JSONException ignored) { /* The CLI times out instead. */ }
     }
 
-    /** The connection dialog for an applet's declared services. */
-    void configure(String applet, List<String> services) {
-        if (services.isEmpty()) {
-            new MaterialAlertDialogBuilder(activity).setMessage("This applet declares no service connections.").setPositiveButton("Close", null).show();
-            return;
-        }
-        String[] ids = services.toArray(new String[0]);
-        new MaterialAlertDialogBuilder(activity).setTitle("Service connections").setItems(ids, (dialog, index) -> edit(applet, ids[index])).show();
+    @Override
+    public Connections.Status status(String applet, String service) {
+        String id = setting(applet, service);
+        String origin = settings.getString(id + "/url", "");
+        boolean connected = !origin.isEmpty() && !settings.getString(id + "/token", "").isEmpty();
+        return new Connections.Status(connected, origin, connected ? failures.get(id) : null);
     }
 
-    private void edit(String applet, String service) {
+    @Override
+    public String save(String applet, String service, String address, String token) {
         String id = setting(applet, service);
-        LinearLayout form = new LinearLayout(activity);
-        form.setOrientation(LinearLayout.VERTICAL);
-        form.setPadding(48, 16, 48, 16);
-        TextView description = new TextView(activity);
-        description.setText("Allow this applet to send data to this server. Enter its HTTPS origin and backend token. A blank token keeps the current token only when the origin is unchanged.");
-        form.addView(description);
-        EditText url = new EditText(activity);
-        url.setHint("https://your-server.example");
-        url.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
-        url.setText(settings.getString(id + "/url", ""));
-        form.addView(url);
-        EditText token = new EditText(activity);
-        token.setHint("Backend token");
-        token.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        form.addView(token);
-        AlertDialog dialog = new MaterialAlertDialogBuilder(activity).setTitle(service).setView(form).setNegativeButton("Cancel", null)
-            .setNeutralButton("Disconnect", (d, w) -> settings.edit().remove(id + "/url").remove(id + "/token").remove(id + "/certificate").apply())
-            .setPositiveButton("Save", null).create();
-        dialog.setOnShowListener(d -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(view -> {
-            try {
-                String origin = endpoint(url.getText().toString().trim()).resolve("/").toString();
-                String raw = token.getText().toString();
-                boolean sameOrigin = origin.equals(settings.getString(id + "/url", ""));
-                if (raw.isEmpty() && !sameOrigin) throw new IllegalArgumentException("Enter a token for the new server.");
-                if (!raw.isEmpty() && (raw.length() > 4096 || !raw.matches("[\\x21-\\x7e]+"))) throw new IllegalArgumentException("Token must contain printable ASCII characters.");
-                String sealed = raw.isEmpty() ? settings.getString(id + "/token", "") : encrypt(raw);
-                if (!settings.edit().putString(id + "/url", origin).putString(id + "/token", sealed).remove(id + "/certificate").commit()) {
-                    throw new IllegalStateException("Could not save the connection");
-                }
-                dialog.dismiss();
-            } catch (Exception error) { url.setError(error.getMessage()); }
-        }));
-        dialog.show();
+        try {
+            String origin = endpoint(address).resolve("/").toString();
+            boolean sameOrigin = origin.equals(settings.getString(id + "/url", ""));
+            if (token.isEmpty() && !sameOrigin) return "Enter a token for the new address.";
+            if (!token.isEmpty() && (token.length() > 4096 || !token.matches("[\\x21-\\x7e]+"))) return "A token has only printable ASCII characters.";
+            String sealed = token.isEmpty() ? settings.getString(id + "/token", "") : encrypt(token);
+            if (!settings.edit().putString(id + "/url", origin).putString(id + "/token", sealed).remove(id + "/certificate").commit()) {
+                return "Genesis couldn't save the connection.";
+            }
+            failures.remove(id);
+            return null;
+        } catch (Exception error) {
+            return String.valueOf(error.getMessage());
+        }
+    }
+
+    @Override
+    public void disconnect(String applet, String service) {
+        String id = setting(applet, service);
+        settings.edit().remove(id + "/url").remove(id + "/token").remove(id + "/certificate").apply();
+        failures.remove(id);
+    }
+
+    /** The connection page's words for a failed request. */
+    private static String failureLabel(String code) {
+        switch (code) {
+            case "AUTHENTICATION_FAILED": return "Token rejected. Ask the developer for a new token.";
+            case "DEADLINE": return "Timed out. The server didn't answer in time.";
+            case "CERTIFICATE_FAILED": return "Certificate not accepted.";
+            case "SERVICE_FAILURE": return "Unusable answer. The server replied with something Genesis can't use.";
+            case "SERVICE_UNREACHABLE": return "Unreachable. Check the address and that the server is running.";
+            default: return null;
+        }
     }
 
     /** Runs on the worker thread. */
     private Outcome execute(String origin, String sealed, String certificate, String path, String method, Object body) {
         if (origin.isEmpty() || sealed.isEmpty()) {
-            return Outcome.failed("CONFIGURATION_REQUIRED", "This service is not connected. Set it up in the Genesis menu.");
+            return Outcome.failed("CONFIGURATION_REQUIRED", "This service is not connected. Set it up in Service connections from the Genesis menu.");
         }
         HttpURLConnection connection = null;
         try {
@@ -304,6 +302,7 @@ final class ServiceClient {
         SharedPreferences.Editor editor = settings.edit();
         for (String key : settings.getAll().keySet()) if (key.startsWith(applet + "/")) editor.remove(key);
         editor.apply();
+        failures.keySet().removeIf(key -> key.startsWith(applet + "/"));
     }
 
     void close() {

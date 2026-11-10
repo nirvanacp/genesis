@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Material 3, following the system appearance. DynamicColors replaces these roles on Android 12 and later. -->
+    <!-- Material 3, following the system appearance, in the fixed Genesis scheme. -->
     <style name="Theme.NirvanaGenesis" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="colorPrimary">@color/genesis_primary</item>
         <item name="colorOnPrimary">@color/genesis_on_primary</item>
@@ -32,5 +32,7 @@
         <item name="colorPrimaryInverse">@color/genesis_inverse_primary</item>
         <item name="android:colorBackground">@color/genesis_surface</item>
         <item name="android:windowBackground">@color/genesis_surface</item>
+        <item name="android:statusBarColor">@color/genesis_surface</item>
+        <item name="android:navigationBarColor">@color/genesis_surface</item>
     </style>
 </resources>
