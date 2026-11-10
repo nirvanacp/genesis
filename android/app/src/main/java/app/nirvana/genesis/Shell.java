@@ -73,6 +73,8 @@ final class Shell implements Views.Listener, Ui.Actions {
     private final FrameLayout applet, sources, foreground;
     private final Splash splash;
     private final Views.Revealed revealed;
+    /** Shows the revealed context's popup in place of the context, which keeps running behind it. */
+    private final Views.PopupSheet popupSheet;
     private final WebsiteBar bar;
     private final View menu, barrier;
     private final Ui ui;
@@ -85,6 +87,8 @@ final class Shell implements Views.Listener, Ui.Actions {
     private final Settings settings;
     private final Map<String, Views.Page> pages = new HashMap<>();
     private Views.Page revealedPage;
+    /** The one window the revealed context opened, or null. */
+    private Views.Page popup;
     private String appletId, appletName;
     /** The user chose View website, so the next revealed context is their choice, not the applet's. */
     private boolean websiteChosen;
@@ -141,7 +145,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         // A revealed context sits below the website bar, which grows with the font size; the Genesis button stays on top of both.
         LinearLayout website = new LinearLayout(activity);
         website.setOrientation(LinearLayout.VERTICAL);
-        bar = new WebsiteBar(activity, tokens, () -> owner.send(Bridge.event("websiteDone")));
+        bar = new WebsiteBar(activity, tokens, () -> { if (!closePopup()) owner.send(Bridge.event("websiteDone")); });
         bar.setOnUpdate(manage::updates);
         bar.setVisibility(View.GONE);
         website.addView(bar, new LinearLayout.LayoutParams(-1, -2));
@@ -149,6 +153,10 @@ final class Shell implements Views.Listener, Ui.Actions {
         revealed.setBackgroundColor(tokens.surface);
         revealed.setVisibility(View.GONE);
         website.addView(revealed, new LinearLayout.LayoutParams(-1, 0, 1));
+        popupSheet = new Views.PopupSheet(activity);
+        popupSheet.setBackgroundColor(tokens.surface);
+        popupSheet.setVisibility(View.GONE);
+        website.addView(popupSheet, new LinearLayout.LayoutParams(-1, 0, 1));
         applet.addView(website, new FrameLayout.LayoutParams(-1, -1));
         menu = GenesisMenu.button(tokens, this::openMenu);
         applet.addView(menu, menuLayout());
@@ -311,6 +319,7 @@ final class Shell implements Views.Listener, Ui.Actions {
 
     /** Hides the revealed container and forgets its page, leaving the WebView detached. */
     private void dropRevealed() {
+        closePopup();
         if (revealedPage != null) revealed.removeView(revealedPage.web);
         revealedPage = null;
         revealed.setVisibility(View.GONE);
@@ -425,10 +434,35 @@ final class Shell implements Views.Listener, Ui.Actions {
         }
     }
 
-    /** System Back: a fullscreen video, then the top Genesis page. Returns whether the shell used it. */
+    /**
+     * System Back: a fullscreen video, then the top Genesis page, then the popup's own history and
+     * the popup itself. Returns whether the shell used it. The host does not track popup history,
+     * so the popup's native goBack is enough.
+     */
     boolean back() {
         if (closeCustomView()) return true;
-        return ui.pages.back();
+        if (ui.pages.back()) return true;
+        if (popup == null) return false;
+        if (popup.web.canGoBack()) popup.web.goBack();
+        else closePopup();
+        return true;
+    }
+
+    /** Removes the popup and shows its opener again. Returns whether one was open. */
+    private boolean closePopup() {
+        Views.Page page = popup;
+        if (page == null) return false;
+        popup = null;
+        closeCustomView();
+        popupSheet.removeView(page.web);
+        popupSheet.setVisibility(View.GONE);
+        page.destroy();
+        owner.cancelInvalidFiles();
+        if (revealedPage != null) {
+            revealed.setVisibility(View.VISIBLE);
+            bar.setUrl(revealedPage.web.getUrl());
+        }
+        return true;
     }
 
     /** Closes a fullscreen video. Returns whether one was showing, so Back stays local to the shell. */
@@ -480,8 +514,9 @@ final class Shell implements Views.Listener, Ui.Actions {
         } catch (JSONException ignored) { /* Unreachable for these values. */ }
     }
 
-    /** The dead WebView goes now; the host decides what the applet shows. */
+    /** The dead WebView goes now; the host decides what the applet shows. A popup only closes. */
     @Override public void rendererGone(Views.Page page) {
+        if (page == popup) { closePopup(); return; }
         if (pages.get(key(page.ref)) != page) return;
         pages.remove(key(page.ref));
         if (page == revealedPage) dropRevealed();
@@ -506,7 +541,28 @@ final class Shell implements Views.Listener, Ui.Actions {
     }
 
     @Override public boolean chooseFiles(Views.Page page, ValueCallback<Uri[]> callback, WebChromeClient.FileChooserParams params) {
-        return owner.chooseFiles(params, callback, () -> pages.get(key(page.ref)) == page && SitePolicy.mayShowUi(page));
+        return owner.chooseFiles(params, callback, () -> (page == popup || pages.get(key(page.ref)) == page) && SitePolicy.mayShowUi(page));
+    }
+
+    /** The opener keeps running behind the sheet, so `window.opener.postMessage` still reaches it. */
+    @Override public Views.Page openWindow(Views.Page opener) {
+        if (opener != revealedPage) return null;
+        closePopup();
+        popup = views.popup(opener);
+        popupSheet.addView(popup.web, new FrameLayout.LayoutParams(-1, -1));
+        popupSheet.setVisibility(View.VISIBLE);
+        revealed.setVisibility(View.GONE);
+        bar.setUrl(popup.web.getUrl());
+        return popup;
+    }
+
+    /** `window.close()` arrives inside the popup's own callback, so the view goes after it returns. */
+    @Override public void closeWindow(Views.Page page) {
+        bar.post(() -> { if (page == popup) closePopup(); });
+    }
+
+    @Override public void popupNavigated(Views.Page page, String url) {
+        if (page == popup) bar.setUrl(url);
     }
 
     /**
@@ -527,6 +583,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         root.setBackgroundColor(tokens.surface);
         barrier.setBackgroundColor(tokens.surface);
         revealed.setBackgroundColor(tokens.surface);
+        popupSheet.setBackgroundColor(tokens.surface);
         splash.restyle(tokens);
         bar.restyle(tokens);
         GenesisMenu.tint(menu, tokens, revealedPage != null);
@@ -613,7 +670,7 @@ final class Shell implements Views.Listener, Ui.Actions {
 
     private void openMenu() {
         if (appletId == null) return;
-        String url = revealedPage != null ? revealedPage.web.getUrl() : contextUrl();
+        String url = revealedPage != null ? revealedUrl() : contextUrl();
         GenesisMenu.show(ui, appletName == null ? appletId : appletName, ui.entry(appletId), url, revealedPage != null, this::menuAction);
     }
 
@@ -636,7 +693,11 @@ final class Shell implements Views.Listener, Ui.Actions {
         return null;
     }
 
-    private String revealedUrl() { return revealedPage == null ? null : revealedPage.web.getUrl(); }
+    /** What the user sees: the popup while one is open, otherwise the revealed context. */
+    private String revealedUrl() {
+        if (popup != null) return popup.web.getUrl();
+        return revealedPage == null ? null : revealedPage.web.getUrl();
+    }
 
     private Views.Page foregroundPage() {
         for (Views.Page page : pages.values()) if (page.isForeground()) return page;

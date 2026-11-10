@@ -23,7 +23,7 @@ final class WebsiteSettings {
         settings.setAllowFileAccess(false);
         settings.setAllowContentAccess(false);
         settings.setMediaPlaybackRequiresUserGesture(true);
-        settings.setSupportMultipleWindows(false);
+        settings.setSupportMultipleWindows(context); // A website's window opens as a popup sheet (see Views.Chrome).
         web.setBackgroundColor(Color.WHITE);
         // Websites follow the system: their own dark theme when they have one, darkened otherwise,
         // and the system font size. The foreground is the applet's own UI and follows its own CSS.

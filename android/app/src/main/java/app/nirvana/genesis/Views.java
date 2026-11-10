@@ -44,11 +44,20 @@ final class Views {
         void showCustomView(View view, WebChromeClient.CustomViewCallback callback);
         void hideCustomView();
         boolean chooseFiles(Page page, ValueCallback<Uri[]> callback, WebChromeClient.FileChooserParams params);
+        /** The revealed context opened a window from a tap. Returns the popup to load it into, or null to refuse. */
+        Page openWindow(Page opener);
+        void closeWindow(Page popup);
+        void popupNavigated(Page popup, String url);
     }
 
     /** The container a revealed context is reparented into, above the foreground. */
     static final class Revealed extends android.widget.FrameLayout {
         Revealed(android.content.Context context) { super(context); }
+    }
+
+    /** The container a revealed context's popup shows in, in place of the revealed context. */
+    static final class PopupSheet extends android.widget.FrameLayout {
+        PopupSheet(android.content.Context context) { super(context); }
     }
 
     /** A committed navigation of a context, as `ContextNavigated` reports it. */
@@ -79,16 +88,22 @@ final class Views {
         /** Counts navigation starts and commits, so a history.go() fallback can see whether anything moved. */
         int moves;
 
-        Page(JSONObject ref, WebView web) {
+        /** The revealed context that opened this popup; null for the applet's own documents. */
+        final Page opener;
+
+        Page(JSONObject ref, WebView web) { this(ref, ref.optString("role"), web, null); }
+
+        private Page(JSONObject ref, String role, WebView web, Page opener) {
             this.ref = ref;
-            this.role = ref.optString("role");
+            this.role = role;
             this.web = web;
+            this.opener = opener;
         }
 
         boolean isForeground() { return "foreground".equals(role); }
         boolean isContext() { return role.startsWith("context:"); }
-        /** True exactly while the shell shows this context above the foreground. */
-        boolean isRevealed() { return web.getParent() instanceof Revealed; }
+        /** True exactly while the shell shows this context above the foreground, or this popup over it. */
+        boolean isRevealed() { return web.getParent() instanceof Revealed || web.getParent() instanceof PopupSheet; }
 
         @SuppressLint("RequiresFeature") // MainActivity checks WEB_MESSAGE_LISTENER before creating any view.
         void post(String payload) {
@@ -161,6 +176,20 @@ final class Views {
     }
 
     /**
+     * A window the revealed context opened. It shares the opener's site data and has no bridge or
+     * start script. Its own windows load in place, so there is never more than one popup.
+     */
+    Page popup(Page opener) {
+        WebView web = new WebView(activity);
+        WebsiteSettings.apply(web, true, site);
+        web.getSettings().setSupportMultipleWindows(false);
+        Page page = new Page(opener.ref, "popup", web, opener);
+        web.setWebViewClient(new Client(page));
+        web.setWebChromeClient(new Chrome(page));
+        return page;
+    }
+
+    /**
      * Reads the history list and the flags of the navigation that just committed. The listener's
      * navigation describes this commit only when it ended on the same URL; otherwise the flags
      * come from the start and history bookkeeping.
@@ -220,6 +249,7 @@ final class Views {
 
         // The callback's isReload is wrong for reloads; committed() takes the flags from the listener.
         @Override public void doUpdateVisitedHistory(WebView view, String url, boolean isReload) {
+            if (page.opener != null) { listener.popupNavigated(page, url); return; }
             if (!page.isContext()) return;
             page.moves++;
             listener.contextNavigated(page, committed(page));
@@ -248,5 +278,17 @@ final class Views {
         }
 
         @Override public void onHideCustomView() { listener.hideCustomView(); }
+
+        /** Only the revealed context opens a window, and only from a tap; a popup's own windows load in place. */
+        @Override public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture, android.os.Message resultMsg) {
+            if (page.opener != null || !isUserGesture || !SitePolicy.mayShowUi(page)) return false;
+            Page popup = listener.openWindow(page);
+            if (popup == null) return false;
+            ((WebView.WebViewTransport) resultMsg.obj).setWebView(popup.web);
+            resultMsg.sendToTarget();
+            return true;
+        }
+
+        @Override public void onCloseWindow(WebView window) { if (page.opener != null) listener.closeWindow(page); }
     }
 }
