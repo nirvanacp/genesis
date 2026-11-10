@@ -2,7 +2,6 @@ package app.nirvana.genesis;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
-import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.graphics.Color;
 import android.net.ConnectivityManager;
@@ -323,6 +322,11 @@ final class Shell implements Views.Listener, Ui.Actions {
         closeCustomView();
         cancelPrompts();
         dropRevealed();
+        // A covered page may not keep the camera or microphone the user allowed while looking at it.
+        if (page.capturing) {
+            page.capturing = false;
+            page.web.reload();
+        }
         page.web.clearFocus();
         page.web.setFocusable(false);
         page.web.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
@@ -453,12 +457,30 @@ final class Shell implements Views.Listener, Ui.Actions {
      */
     @Override public void download(Views.Page page, String url, String userAgent, String disposition, String mimeType) {
         if (!SitePolicy.mayShowUi(page)) return;
+        // A window that only started a download has nothing to show.
+        if (page == popup && page.web.copyBackForwardList().getSize() == 0) bar.post(() -> { if (page == popup) closePopup(); });
         String scheme = Uri.parse(url).getScheme();
         if (!"https".equalsIgnoreCase(scheme) && !"http".equalsIgnoreCase(scheme)) {
             Toast.makeText(activity, "This download isn't supported in Genesis", Toast.LENGTH_SHORT).show();
             return;
         }
         String name = android.webkit.URLUtil.guessFileName(url, disposition, mimeType);
+        // A popup counts against the page that opened it, since each download can open a new one.
+        Views.Page counted = page.opener != null ? page.opener : page;
+        if (counted.downloads++ == 0) { startDownload(page, url, userAgent, mimeType, name); return; }
+        new MaterialAlertDialogBuilder(activity)
+            .setTitle("Download another file?")
+            .setMessage(linkTitle(url) + " wants to download " + name + ".")
+            .setPositiveButton("Download", (d, w) -> startDownload(page, url, userAgent, mimeType, name))
+            .setNegativeButton("Cancel", null)
+            .show();
+    }
+
+    /**
+     * DownloadManager sends the Cookie header to every host a redirect reaches. Fetching the file in
+     * the shell would scope cookies per host; until then this is a known limit.
+     */
+    private void startDownload(Views.Page page, String url, String userAgent, String mimeType, String name) {
         android.app.DownloadManager.Request request = new android.app.DownloadManager.Request(Uri.parse(url))
             .setMimeType(mimeType)
             .setTitle(name)
@@ -480,7 +502,8 @@ final class Shell implements Views.Listener, Ui.Actions {
         try {
             activity.startActivity(intent);
             return true;
-        } catch (ActivityNotFoundException error) {
+        } catch (RuntimeException error) {
+            // A page names the target: no app, or an activity that is not exported or needs a permission.
             return false;
         }
     }

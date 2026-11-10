@@ -9,10 +9,12 @@ import java.util.Locale;
 
 /**
  * Turns a tapped website link into an Intent another app may handle. An `intent:` link can only
- * reach an app's browsable activities: Genesis drops its component, selector and URI grants.
+ * reach an app's browsable activities: Genesis drops its component, selector and URI grants, and
+ * refuses one whose data is a local file or content address.
  */
 final class Handoff {
     private static final List<String> SCHEMES = Arrays.asList("mailto", "tel", "sms", "smsto", "geo");
+    private static final List<String> LOCAL = Arrays.asList("content", "file", "android.resource");
     private static final int GRANTS = Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
         | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION | Intent.FLAG_GRANT_PREFIX_URI_PERMISSION;
 
@@ -29,6 +31,9 @@ final class Handoff {
         if (!"intent".equals(scheme)) return null;
         try {
             Intent intent = Intent.parseUri(url, Intent.URI_INTENT_SCHEME);
+            // A page may not point another app at this app's files or providers.
+            String data = intent.getScheme();
+            if (data != null && LOCAL.contains(data.toLowerCase(Locale.ROOT))) return null;
             intent.setComponent(null);
             intent.setSelector(null);
             intent.addCategory(Intent.CATEGORY_BROWSABLE);

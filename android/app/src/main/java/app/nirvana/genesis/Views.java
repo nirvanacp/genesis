@@ -111,6 +111,11 @@ final class Views {
         /** The revealed context that opened this popup; null for the applet's own documents. */
         final Page opener;
 
+        /** The user let this document use the camera or microphone; covering the page reloads it to stop them. */
+        boolean capturing;
+        /** Downloads this document started; a second one asks first. */
+        int downloads;
+
         /** The profile the page's cookies and permission answers belong to. */
         final SiteData site;
 
@@ -270,6 +275,8 @@ final class Views {
 
         // onPageStarted fires at commit, once per cross-document navigation, with the final URL.
         @Override public void onPageStarted(WebView view, String url, Bitmap favicon) {
+            page.capturing = false;
+            page.downloads = 0;
             if (!page.isContext()) return;
             page.startedSinceCommit = true;
             page.moves++;
@@ -341,8 +348,9 @@ final class Views {
                 asking = null;
                 List<String> grant = new java.util.ArrayList<>();
                 for (Map.Entry<String, String> entry : wanted.entrySet()) if (allowed.contains(entry.getKey())) grant.add(entry.getValue());
-                if (grant.isEmpty()) request.deny();
-                else request.grant(grant.toArray(new String[0]));
+                if (grant.isEmpty()) { request.deny(); return; }
+                page.capturing = true;
+                request.grant(grant.toArray(new String[0]));
             });
         }
 
