@@ -119,6 +119,9 @@ pub enum ShellEvent {
     /// The website bar's Done button over a revealed context.
     WebsiteDone,
     OpenApplet { applet_id: String },
+    /// A website link shared to Genesis or typed in "Open a link". `applet_id` is set when the
+    /// user picked an applet from `ChooseApplet`.
+    OpenUrl { url: String, applet_id: Option<String> },
     Home,
     Menu { action: MenuAction },
     /// `onPageStarted`: a new document committed in a view, with its post-redirect URL.
@@ -270,6 +273,9 @@ pub enum ShellCommand {
     },
     ShowError { message: String },
     ShowInfo { title: String, message: String },
+    /// More than one applet uses the link's website; the user picks one and the shell answers
+    /// with `OpenUrl` carrying its id.
+    ChooseApplet { url: String, applets: Vec<LauncherEntry> },
     /// The status sheet: an incompatible applet, a lost renderer or a received import.
     ShowStatus { kind: StatusKind, applet: Option<LauncherEntry>, details: String },
     /// Asks the shell to send `Tick` after `delay_ms`, for deadlines shorter than the periodic tick.
