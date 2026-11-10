@@ -80,7 +80,10 @@ export async function importCookies(directory, options = {}) {
   const receipt = await device.submit(name, JSON.stringify({ version: 1, appletId: manifest.id, cookies }));
   if (!receipt.ok) throw toolError('COOKIES_REJECTED', `Genesis rejected the cookies: ${receipt.error ?? 'no reason given'}`);
   const domains = {};
-  for (const cookie of cookies) domains[cookie.host] = (domains[cookie.host] ?? 0) + 1;
+  for (const { domain } of cookies) {
+    const host = String(domain ?? '').replace(/^\./, '');
+    domains[host] = (domains[host] ?? 0) + 1;
+  }
   return {
     appletId: manifest.id,
     imported: receipt.count ?? cookies.length,
