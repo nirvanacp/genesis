@@ -329,8 +329,14 @@ final class Views {
 
         /** The media request being asked about; null once answered or withdrawn. */
         private PermissionRequest asking;
-        /** The origin whose location question is open, or null. */
+        /** The origin whose location question is open, or null, and its callback. */
         private String locating;
+        private GeolocationPermissions.Callback located;
+        /**
+         * The question the website is withdrawing while its dialog closes. Every other answer
+         * reaches its own request, including one a newer question replaced, which is refused.
+         */
+        private Object withdrawn;
 
         Chrome(Page page) { this.page = page; }
 
@@ -344,8 +350,8 @@ final class Views {
             if (wanted.isEmpty() || !SitePolicy.mayShowUi(page)) { request.deny(); return; }
             asking = request;
             listener.askSite(page, origin(request.getOrigin().toString()), new java.util.ArrayList<>(wanted.keySet()), allowed -> {
-                if (asking != request) return;
-                asking = null;
+                if (withdrawn == request) return;
+                if (asking == request) asking = null;
                 List<String> grant = new java.util.ArrayList<>();
                 for (Map.Entry<String, String> entry : wanted.entrySet()) if (allowed.contains(entry.getKey())) grant.add(entry.getValue());
                 if (grant.isEmpty()) { request.deny(); return; }
@@ -358,9 +364,10 @@ final class Views {
         @Override public void onGeolocationPermissionsShowPrompt(String origin, GeolocationPermissions.Callback callback) {
             if (!SitePolicy.mayShowUi(page)) { callback.invoke(origin, false, false); return; }
             locating = origin;
+            located = callback;
             listener.askSite(page, origin(origin), List.of(SiteGrants.LOCATION), allowed -> {
-                if (!origin.equals(locating)) return;
-                locating = null;
+                if (withdrawn == callback) return;
+                if (origin.equals(locating)) locating = null;
                 callback.invoke(origin, allowed.contains(SiteGrants.LOCATION), false);
             });
         }
@@ -368,13 +375,18 @@ final class Views {
         @Override public void onGeolocationPermissionsHidePrompt() {
             if (locating == null) return;
             locating = null;
-            listener.cancelAsk();
+            withdraw(located);
         }
 
         @Override public void onPermissionRequestCanceled(PermissionRequest request) {
             if (asking != request) return;
             asking = null;
-            listener.cancelAsk();
+            withdraw(request);
+        }
+
+        private void withdraw(Object question) {
+            withdrawn = question;
+            try { listener.cancelAsk(); } finally { withdrawn = null; }
         }
 
         @Override public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {

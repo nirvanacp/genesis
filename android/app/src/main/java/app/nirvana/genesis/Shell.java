@@ -683,37 +683,47 @@ final class Shell implements Views.Listener, Ui.Actions {
     @Override public void askSite(Views.Page page, String origin, List<String> permissions, java.util.function.Consumer<Set<String>> allowed) {
         cancelPrompts();
         SiteGrants grants = page.site.grants();
+        // A blocked permission stays blocked; the site still gets the others it asked for.
+        List<String> open = new ArrayList<>();
         boolean answered = true;
         for (String permission : permissions) {
             Boolean grant = grants.get(origin, permission);
-            if (Boolean.FALSE.equals(grant)) { allowed.accept(Set.of()); return; }
+            if (Boolean.FALSE.equals(grant)) continue;
+            open.add(permission);
             if (grant == null) answered = false;
         }
+        if (open.isEmpty()) { allowed.accept(Set.of()); return; }
+        permissions = open;
         Asking ask = new Asking(allowed);
         asking = ask;
-        if (answered) { askAndroid(ask, permissions); return; }
+        if (answered) { askAndroid(ask, grants, origin, permissions); return; }
         ask.dialog = new MaterialAlertDialogBuilder(activity)
             .setTitle(Ui.host(origin) + " wants to use your " + permissionNames(permissions))
             .setMessage("Only while you're looking at it. You can reset this in Settings, Sites & sign-ins.")
             .setPositiveButton("Allow", (d, w) -> {
-                for (String permission : permissions) grants.set(origin, permission, true);
-                askAndroid(ask, permissions);
+                for (String permission : open) grants.set(origin, permission, true);
+                askAndroid(ask, grants, origin, open);
             })
             .setNegativeButton("Don't allow", (d, w) -> {
-                for (String permission : permissions) grants.set(origin, permission, false);
+                for (String permission : open) grants.set(origin, permission, false);
                 ask.finish(Set.of());
             })
             .setOnCancelListener(d -> ask.finish(Set.of()))
             .show();
     }
 
-    private void askAndroid(Asking ask, List<String> permissions) {
+    /**
+     * Android's own request. A permission Android refuses loses its Genesis grant too, so the
+     * site asks in Genesis again instead of showing an allowed grant that has no effect.
+     */
+    private void askAndroid(Asking ask, SiteGrants grants, String origin, List<String> permissions) {
         List<String> android = new ArrayList<>();
         for (String permission : permissions) for (String name : androidPermissions(permission)) android.add(name);
         owner.requestPermissions(android.toArray(new String[0]), granted -> {
             Set<String> allowed = new LinkedHashSet<>();
             for (String permission : permissions) {
                 for (String name : androidPermissions(permission)) if (granted.contains(name)) { allowed.add(permission); break; }
+                if (!allowed.contains(permission)) grants.forget(origin, permission);
             }
             ask.finish(allowed);
         });

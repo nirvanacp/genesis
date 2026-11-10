@@ -38,6 +38,11 @@ public final class SiteGrants {
         prefs.edit().putString(key(origin, permission), allowed ? ALLOW : DENY).apply();
     }
 
+    /** Forgets one answer, so the site asks for that permission again. */
+    void forget(String origin, String permission) {
+        prefs.edit().remove(key(origin, permission)).apply();
+    }
+
     /** The answers recorded for one origin, as Settings shows them: "Camera allowed, location blocked". Null when none. */
     public String describe(String origin) {
         List<String> parts = new ArrayList<>();

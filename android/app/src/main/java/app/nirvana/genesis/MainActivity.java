@@ -32,6 +32,8 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
     private static final long BUNDLE_MAX_BYTES = 64L * 1024 * 1024;
     private static final long COOKIE_MAX_BYTES = 4L * 1024 * 1024;
     private static final int REQUEST_PERMISSIONS = 46100;
+    /** Request codes 46100 to 46199 tell one permission request from the one before it. */
+    private static final int PERMISSION_REQUESTS = 100;
     private static final long RELEASE_MAX_BYTES = 1024 * 1024;
     private static final int PICK_APPLET_FILE = 46000;
 
@@ -48,6 +50,7 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
     private boolean attached, resumed;
     /** The pending Android permission request: its callback and the permissions already held. */
     private java.util.function.Consumer<java.util.Set<String>> permissionsWanted;
+    private int permissionsRequest;
     private java.util.Set<String> permissionsHeld;
 
     @Override public void onCreate(Bundle savedInstanceState) {
@@ -303,7 +306,10 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
 
     @Override public void cancelInvalidFiles() { selection.cancelIfInvalid(); }
 
-    /** One Android request at a time; a newer one answers the older one with what it already holds. */
+    /**
+     * One Android request at a time; a newer one answers the older one with what it already holds.
+     * Each request has its own code, so a late result of the older one is ignored.
+     */
     @Override public void requestPermissions(String[] permissions, java.util.function.Consumer<java.util.Set<String>> granted) {
         if (permissionsWanted != null) finishPermissions(new String[0], new int[0]);
         java.util.Set<String> held = new java.util.LinkedHashSet<>();
@@ -315,12 +321,14 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
         if (needed.isEmpty()) { granted.accept(held); return; }
         permissionsHeld = held;
         permissionsWanted = granted;
-        requestPermissions(needed.toArray(new String[0]), REQUEST_PERMISSIONS);
+        permissionsRequest = (permissionsRequest + 1) % PERMISSION_REQUESTS;
+        requestPermissions(needed.toArray(new String[0]), REQUEST_PERMISSIONS + permissionsRequest);
     }
 
     @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] results) {
-        if (requestCode == REQUEST_PERMISSIONS) finishPermissions(permissions, results);
-        else super.onRequestPermissionsResult(requestCode, permissions, results);
+        int request = requestCode - REQUEST_PERMISSIONS;
+        if (request < 0 || request >= PERMISSION_REQUESTS) super.onRequestPermissionsResult(requestCode, permissions, results);
+        else if (request == permissionsRequest) finishPermissions(permissions, results);
     }
 
     private void finishPermissions(String[] permissions, int[] results) {
