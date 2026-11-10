@@ -56,9 +56,14 @@ export async function importCookies(directory, options = {}) {
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw toolError('INVALID_ARGUMENT', 'Pass --port <1-65535>');
   const device = new Device(options);
   const now = Date.now() / 1000;
-  const cookies = (await readCookies(await browserSocket(port)))
+  const declared = (await readCookies(await browserSocket(port)))
     .map(cookie => ({ ...cookie, host: String(cookie.domain ?? '').replace(/^\./, '') }))
-    .filter(cookie => matches(hosts, cookie.host) && !(cookie.expires > 0 && cookie.expires < now))
+    .filter(cookie => matches(hosts, cookie.host) && !(cookie.expires > 0 && cookie.expires < now));
+  // A partitioned cookie belongs to one top-level site. WebView's cookie API can't keep the
+  // partition, so importing it would hand it to every site; it stays behind.
+  const partitioned = declared.filter(cookie => cookie.partitionKey).length;
+  const cookies = declared
+    .filter(cookie => !cookie.partitionKey)
     .map(cookie => ({
       url: `https://${cookie.host}${cookie.path || '/'}`,
       name: cookie.name,
@@ -81,6 +86,6 @@ export async function importCookies(directory, options = {}) {
     imported: receipt.count ?? cookies.length,
     domains,
     next: 'Websites already open in the applet need Reload from the Genesis menu.',
-    warnings: WARNINGS,
+    warnings: partitioned ? [...WARNINGS, `${partitioned} partitioned cookies were not imported: Genesis can't keep their partition.`] : WARNINGS,
   };
 }
