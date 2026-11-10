@@ -48,8 +48,9 @@ in window.__genesisStats.
 publish needs a committed Genesis checkout, a semver package.json version and exact
 dependency versions. Raise versions with npm version <patch|minor|major> --no-git-tag-version.
 release needs a clean repository and never pushes; push the tag yourself.
-Every command accepts --json. Device commands accept --adb <path> (default
-$ANDROID_HOME/platform-tools/adb, then adb on PATH) and --application <id>.`;
+Every command accepts --json. Device commands accept --adb <path> (default: adb in
+$ANDROID_HOME, $ANDROID_SDK_ROOT, ~/Library/Android/sdk or ~/Android/Sdk, then adb on
+PATH) and --application <id>.`;
 
 const DEVICE = ['device', 'adb', 'application'];
 

@@ -42,7 +42,7 @@ Content tabs, filters and sort controls belong inside the screen. When they corr
 
 ## Pins: View website and Done
 
-The user can look at the website for any page: the Genesis menu's View website item, or a screen control that calls `viewWebsite()`. Genesis pins the context to the website and shows it under the website bar. Done on the bar (or `done()`) unpins it and shows the applet screen again. When the website page has no route, Done goes back one entry, or to the context's start page when there is none.
+The user can look at the website for any page: the Genesis menu's View website item, or a screen control that calls `viewWebsite()`. Genesis pins the context to the website and shows it under the website bar. Viewing the website closes any overlay screens above that context; a screen with a leave guard asks first, and Done returns to the context's route screen, not the overlay. Done on the bar (or `done()`) unpins it and shows the applet screen again. When the website page has no route, Done goes back one entry, or to the context's start page when there is none.
 
 Genesis also pins a context when a page is `auth` and opens the adapter's `signInUrl` there. The pin clears when a ready page with an account arrives. If the user leaves that sign-in with Done or Back, Genesis goes back past the page that needed the account; when that page was the start page, it selects the primary context instead.
 

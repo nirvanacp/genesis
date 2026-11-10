@@ -45,7 +45,9 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
 
     @Override public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        android.webkit.WebView.setWebContentsDebuggingEnabled(false);
+        boolean debuggable = (getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0;
+        // DevTools for debug builds on any device; release builds stay closed.
+        android.webkit.WebView.setWebContentsDebuggingEnabled(debuggable);
         if (!Views.supported()) {
             Shell.unsupported(this);
             return;
@@ -78,7 +80,6 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
         for (File file : stale == null ? new File[0] : stale) if (!file.delete()) file.deleteOnExit();
         try {
             attached = true;
-            boolean debuggable = (getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0;
             send(Bridge.event("attach").put("filesDir", getFilesDir().getAbsolutePath()).put("debuggable", debuggable));
         } catch (JSONException error) {
             throw new IllegalStateException(error);
