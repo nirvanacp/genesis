@@ -3,6 +3,7 @@ export { checkApplet } from './check.mjs';
 export { appletCompat, bundleCompat, requireCompatible, TOOLS_TABLE, TOOLS_VERSION } from './compat.mjs';
 export { buildApplet, readBuild } from './build.mjs';
 export { Device, deviceStatus, installApplet } from './device.mjs';
+export { importCookies } from './cookies.mjs';
 export { manageService } from './services.mjs';
 export { createApplet } from './create.mjs';
 export { exportKit, VERSIONS } from './kit.mjs';

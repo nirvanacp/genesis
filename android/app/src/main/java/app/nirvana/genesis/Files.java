@@ -55,6 +55,11 @@ final class Files {
         return list(imports, name -> name.startsWith("service-") && name.endsWith(".json") && !name.endsWith(".receipt.json"));
     }
 
+    /** `genesis-applet dev cookies` imports, which debug builds take. */
+    List<File> cookieImports() {
+        return list(imports, name -> name.startsWith("cookies-") && name.endsWith(".json") && !name.endsWith(".receipt.json"));
+    }
+
     private static List<File> list(File directory, java.util.function.Predicate<String> accept) {
         File[] found = directory.listFiles(file -> file.isFile() && accept.test(file.getName()));
         if (found == null) return new ArrayList<>();

@@ -19,13 +19,9 @@ import android.window.OnBackInvokedCallback;
 import android.window.OnBackInvokedDispatcher;
 import java.io.File;
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.function.BooleanSupplier;
 import java.util.function.LongConsumer;
-import android.webkit.CookieManager;
-import android.webkit.WebStorage;
 import app.nirvana.genesis.ui.Connections;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -34,6 +30,10 @@ import org.json.JSONObject;
 public final class MainActivity extends Activity implements NativeBridge.StorageResults, Shell.Owner, Bridge.Task {
     private static final long TICK_MS = 1000;
     private static final long BUNDLE_MAX_BYTES = 64L * 1024 * 1024;
+    private static final long COOKIE_MAX_BYTES = 4L * 1024 * 1024;
+    private static final int REQUEST_PERMISSIONS = 46100;
+    /** Request codes 46100 to 46199 tell one permission request from the one before it. */
+    private static final int PERMISSION_REQUESTS = 100;
     private static final long RELEASE_MAX_BYTES = 1024 * 1024;
     private static final int PICK_APPLET_FILE = 46000;
 
@@ -48,13 +48,17 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
     private Bridge bridge;
     private OnBackInvokedCallback backCallback;
     private boolean attached, resumed;
+    /** The pending Android permission request: its callback and the permissions already held. */
+    private java.util.function.Consumer<java.util.Set<String>> permissionsWanted;
+    private int permissionsRequest;
+    private java.util.Set<String> permissionsHeld;
 
     @Override public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         boolean debuggable = (getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0;
         // DevTools for debug builds on any device; release builds stay closed.
         android.webkit.WebView.setWebContentsDebuggingEnabled(debuggable);
-        if (!Views.supported()) {
+        if (!WebFeatures.supported()) {
             Shell.unsupported(this);
             return;
         }
@@ -127,8 +131,29 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
     private void scanImports() {
         if (!attached) return;
         for (File file : files.serviceImports()) services.importCredential(file);
+        for (File file : files.cookieImports()) importCookies(file);
         for (File file : files.bundledImports()) importBundle(file, "bundled");
         for (File file : files.bundleImports()) importBundle(file, "bundle");
+    }
+
+    /** Development cookies from a laptop browser, which only a debug build takes. The file is always deleted. */
+    private void importCookies(File file) {
+        JSONObject receipt;
+        try {
+            if ((getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) == 0) {
+                receipt = new JSONObject().put("ok", false).put("error", "Cookie imports need a debug build");
+            } else {
+                JSONObject payload = new JSONObject(files.read(file, COOKIE_MAX_BYTES));
+                int count = shell.sitesFor(payload.optString("appletId", null)).importCookies(payload);
+                receipt = new JSONObject().put("ok", true).put("count", count);
+            }
+        } catch (java.io.IOException | JSONException | RuntimeException error) {
+            receipt = null;
+            try { receipt = new JSONObject().put("ok", false).put("error", String.valueOf(error.getMessage())); }
+            catch (JSONException ignored) { /* The CLI times out instead. */ }
+        }
+        if (receipt != null) files.receipt(file, receipt);
+        if (file.exists() && !file.delete()) file.deleteOnExit();
     }
 
     /** `bundled` is an APK applet with its optional release record; `bundle` is a development import. */
@@ -176,10 +201,49 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
         if (Intent.ACTION_SEND.equals(intent.getAction())) {
             Uri stream = Build.VERSION.SDK_INT >= 33 ? intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri.class) : streamExtra(intent);
             if (stream != null) uris.add(stream);
+            else if (intent.hasExtra(Intent.EXTRA_TEXT)) {
+                setIntent(new Intent(this, MainActivity.class));
+                sharedText(intent.getCharSequenceExtra(Intent.EXTRA_TEXT));
+                return;
+            }
         }
         if (uris.isEmpty()) return;
         setIntent(new Intent(this, MainActivity.class));
         reviewFiles(uris);
+    }
+
+    /** Text shared with Genesis: its first website link opens in the applet that uses that site. */
+    private void sharedText(CharSequence text) {
+        java.util.regex.Matcher link = java.util.regex.Pattern.compile("https?://\\S+", java.util.regex.Pattern.CASE_INSENSITIVE)
+            .matcher(text == null ? "" : text);
+        if (link.find()) shell.openUrl(trimLink(link.group()), null, true);
+        else shell.showInfo("Genesis", "This doesn't contain a website link");
+    }
+
+    /**
+     * A link quoted in a sentence ends at its closing punctuation, which is not part of the URL. A
+     * closing bracket stays when the link opens one to match it, as in `.../Genesis_(app)`.
+     */
+    static String trimLink(String link) {
+        int end = link.length();
+        while (end > 0) {
+            char last = link.charAt(end - 1);
+            int bracket = ")]}".indexOf(last);
+            if (bracket >= 0) {
+                String head = link.substring(0, end - 1);
+                if (count(head, "([{".charAt(bracket)) > count(head, last)) break;
+            } else if (".,;:!?>'\"".indexOf(last) < 0) {
+                break;
+            }
+            end--;
+        }
+        return link.substring(0, end);
+    }
+
+    private static int count(String text, char c) {
+        int n = 0;
+        for (int i = 0; i < text.length(); i++) if (text.charAt(i) == c) n++;
+        return n;
     }
 
     @SuppressWarnings("deprecation")
@@ -246,55 +310,6 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
 
     @Override public Connections.Store connections() { return services; }
 
-    /** Deletes the cookies and web storage of these origins for every applet that uses them. */
-    /**
-     * Signing out of every site the applets use clears all cookies and site data. One site's
-     * cookies can't be listed with their paths, so each one is expired at the root and at every
-     * path the open applet visited on that site.
-     */
-    @Override public void signOut(List<String> origins, boolean all, Runnable done) {
-        CookieManager cookies = CookieManager.getInstance();
-        if (all) {
-            WebStorage.getInstance().deleteAllData();
-            cookies.removeAllCookies(removed -> {
-                cookies.flush();
-                main.post(done);
-            });
-            return;
-        }
-        List<String> visited = shell.visitedUrls();
-        for (String origin : origins) {
-            String host = Uri.parse(origin).getHost();
-            if (host == null) continue;
-            Set<String> paths = new LinkedHashSet<>();
-            paths.add("/");
-            for (String url : visited) {
-                Uri uri = url == null ? null : Uri.parse(url);
-                if (uri == null || !host.equals(uri.getHost())) continue;
-                String prefix = "";
-                for (String segment : uri.getPathSegments()) {
-                    prefix += "/" + segment;
-                    paths.add(prefix);
-                }
-            }
-            List<String> domains = new ArrayList<>(List.of(host));
-            if (host.indexOf('.') != host.lastIndexOf('.')) domains.add(host.substring(host.indexOf('.')));
-            for (String path : paths) {
-                String cookie = cookies.getCookie(origin + (path.equals("/") ? "" : path));
-                if (cookie == null) continue;
-                for (String pair : cookie.split(";")) {
-                    String name = pair.split("=", 2)[0].trim();
-                    if (name.isEmpty()) continue;
-                    cookies.setCookie(origin, name + "=; Max-Age=0; Path=" + path);
-                    for (String domain : domains) cookies.setCookie(origin, name + "=; Max-Age=0; Path=" + path + "; Domain=" + domain);
-                }
-            }
-            WebStorage.getInstance().deleteOrigin(origin);
-        }
-        cookies.flush();
-        main.post(done);
-    }
-
     /** The bytes under the files folder, which holds every applet's bundles and data. */
     @Override public void storageSize(LongConsumer result) {
         fetcher.background(() -> {
@@ -309,6 +324,45 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
     }
 
     @Override public void cancelInvalidFiles() { selection.cancelIfInvalid(); }
+
+    /**
+     * One Android request at a time; a newer one interrupts the older one. Each request has its
+     * own code, so a late result of the older one is ignored. Android answers an interrupted
+     * request with empty results, which is reported as null rather than as a refusal.
+     */
+    @Override public void requestPermissions(String[] permissions, java.util.function.Consumer<java.util.Set<String>> granted) {
+        if (permissionsWanted != null) finishPermissions(new String[0], new int[0]);
+        java.util.Set<String> held = new java.util.LinkedHashSet<>();
+        List<String> needed = new ArrayList<>();
+        for (String permission : permissions) {
+            if (checkSelfPermission(permission) == android.content.pm.PackageManager.PERMISSION_GRANTED) held.add(permission);
+            else needed.add(permission);
+        }
+        if (needed.isEmpty()) { granted.accept(held); return; }
+        permissionsHeld = held;
+        permissionsWanted = granted;
+        permissionsRequest = (permissionsRequest + 1) % PERMISSION_REQUESTS;
+        requestPermissions(needed.toArray(new String[0]), REQUEST_PERMISSIONS + permissionsRequest);
+    }
+
+    @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] results) {
+        int request = requestCode - REQUEST_PERMISSIONS;
+        if (request < 0 || request >= PERMISSION_REQUESTS) super.onRequestPermissionsResult(requestCode, permissions, results);
+        else if (request == permissionsRequest) finishPermissions(permissions, results);
+    }
+
+    private void finishPermissions(String[] permissions, int[] results) {
+        java.util.function.Consumer<java.util.Set<String>> granted = permissionsWanted;
+        java.util.Set<String> held = permissionsHeld;
+        permissionsWanted = null;
+        permissionsHeld = null;
+        if (granted == null) return;
+        if (results.length == 0) { granted.accept(null); return; }
+        for (int i = 0; i < Math.min(permissions.length, results.length); i++) {
+            if (results[i] == android.content.pm.PackageManager.PERMISSION_GRANTED) held.add(permissions[i]);
+        }
+        granted.accept(held);
+    }
 
     @SuppressWarnings("deprecation")
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {

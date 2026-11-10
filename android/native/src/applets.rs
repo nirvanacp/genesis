@@ -171,6 +171,16 @@ impl Applets {
         }
     }
 
+    /// The current applets that declare the website `origin`, in id order.
+    pub fn for_origin(&self, origin: &str) -> Vec<String> {
+        let declares = |manifest: &Manifest| manifest.origins.iter().any(|o| origin_of(o).as_deref() == Some(origin));
+        self.installed
+            .iter()
+            .filter(|(_, installed)| matches!(installed, Installed::Current { manifest, .. } if declares(manifest)))
+            .map(|(id, _)| id.clone())
+            .collect()
+    }
+
     pub fn launcher(&self) -> Vec<LauncherEntry> {
         self.installed.keys().filter_map(|id| self.entry(id)).collect()
     }
@@ -398,4 +408,9 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
     let temporary = path.with_extension("tmp");
     fs::write(&temporary, bytes).map_err(|e| e.to_string())?;
     fs::rename(&temporary, path).map_err(|e| e.to_string())
+}
+
+/// The ASCII origin of a URL, such as `https://news.ycombinator.com`.
+pub fn origin_of(url: &str) -> Option<String> {
+    url::Url::parse(url).ok().map(|u| u.origin().ascii_serialization())
 }

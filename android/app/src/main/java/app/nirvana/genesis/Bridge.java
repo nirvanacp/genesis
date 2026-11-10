@@ -69,9 +69,10 @@ final class Bridge {
             case "postMessage": shell.postMessage(command.getJSONObject("view"), command.getString("payload")); break;
             case "serviceRequest": services.request(command); break;
             case "showError": shell.showError(command.getString("message")); break;
+            case "chooseApplet": shell.chooseApplet(command.getString("url"), command.getJSONArray("applets"), command.optBoolean("external")); break;
+            case "showWindow": shell.showWindow(command.getJSONObject("view"), command.getString("url")); break;
             case "showInfo": shell.showInfo(command.getString("title"), command.getString("message")); break;
             case "showStatus": shell.showStatus(command.getString("kind"), command.optJSONObject("applet"), command.getString("details")); break;
-            case "openExternal": shell.openExternal(command.getString("url")); break;
             case "wake": task.wake(command.getLong("delayMs")); break;
             case "moveTaskToBack": task.moveToBack(); break;
             case "fetch": fetcher.fetch(command); break;
@@ -79,7 +80,10 @@ final class Bridge {
             case "showRepositoryApplets": shell.showRepositoryApplets(command); break;
             case "showImportReview": shell.showImportReview(command); break;
             case "showInstalled": shell.showInstalled(command); break;
-            case "forgetApplet": services.forget(command.getString("appletId")); break;
+            case "forgetApplet":
+                services.forget(command.getString("appletId"));
+                shell.forgetProfile(command.getString("appletId"));
+                break;
             default: throw new IllegalArgumentException("Unknown command " + type);
         }
     }

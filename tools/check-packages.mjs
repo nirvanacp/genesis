@@ -39,7 +39,7 @@ export async function checkCompatMirror() {
   const differences = names.filter(name => table[name] !== rust[name])
     .map(name => `  ${name}: compat.ts ${table[name] ?? 'missing'}, contracts ${rust[name] ?? 'missing'}`);
   requireValue(differences.length === 0, `The compat tables differ:\n${differences.join('\n')}`);
-  requireValue(names.length === 8, `Expected 8 compat versions, found ${names.length}: ${names.join(', ')}`);
+  requireValue(names.length === 9, `Expected 9 compat versions, found ${names.length}: ${names.join(', ')}`);
   return { table, framework };
 }
 

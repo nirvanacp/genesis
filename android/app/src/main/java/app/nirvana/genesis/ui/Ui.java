@@ -8,6 +8,7 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import app.nirvana.genesis.SiteData;
 import com.google.android.material.bottomsheet.BottomSheetBehavior;
 import com.google.android.material.bottomsheet.BottomSheetDialog;
 import com.google.android.material.bottomsheet.BottomSheetDragHandleView;
@@ -31,6 +32,8 @@ public final class Ui {
     public interface Actions {
         void openApplet(String appletId);
         void addFromRepository(String input);
+        /** Asks for a website link and opens it in the applet that uses that site. */
+        void openLink();
         void pickFile();
         /** `version` null is the newest compatible stable version. */
         void chooseCandidate(String appletId, String version);
@@ -45,8 +48,16 @@ public final class Ui {
         void menu(String action);
         void openExternal(String url);
         Connections.Store connections();
-        /** Deletes cookies and site storage of these origins, then runs `done` on the UI thread. */
-        void signOut(List<String> origins, boolean all, Runnable done);
+        /** The shared cookies and site storage of the websites applets use. */
+        SiteData sites();
+        /** The applet's own profile when it keeps a separate sign-in, otherwise `sites()`. */
+        SiteData sitesFor(String appletId);
+        /** Whether this phone's WebView can keep a separate sign-in per applet. */
+        boolean separateSignInAvailable();
+        boolean separateSignIn(String appletId);
+        void setSeparateSignIn(String appletId, boolean on);
+        /** Every URL the open applet's pages have visited, for signing out of cookies on deeper paths. */
+        List<String> visitedUrls();
         /** Total bytes Genesis stores for applets on this phone, computed off the UI thread. */
         void storageSize(java.util.function.LongConsumer result);
     }

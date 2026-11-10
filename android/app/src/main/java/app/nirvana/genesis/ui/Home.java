@@ -112,6 +112,9 @@ public final class Home {
         LinearLayout.LayoutParams layout = new LinearLayout.LayoutParams(0, -2, 1);
         layout.setMarginStart(t.dp(12));
         row.addView(title, layout);
+        View link = t.iconButton(R.drawable.ic_link, t.onSurface, "Open a link");
+        link.setOnClickListener(v -> ui.actions.openLink());
+        row.addView(link, new LinearLayout.LayoutParams(t.dp(48), t.dp(48)));
         View settings = t.iconButton(R.drawable.ic_tune, t.onSurface, "Settings");
         settings.setOnClickListener(v -> navigator.settings());
         row.addView(settings, new LinearLayout.LayoutParams(t.dp(48), t.dp(48)));

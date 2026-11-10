@@ -4,6 +4,12 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Websites may ask for these only while shown, after the user allows them (Shell.askSite). -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <application
         android:allowBackup="false"
@@ -16,7 +22,7 @@
         android:theme="@style/Theme.NirvanaGenesis">
         <activity
             android:name=".MainActivity"
-            android:configChanges="orientation|screenSize|uiMode"
+            android:configChanges="orientation|screenSize|uiMode|fontScale"
             android:launchMode="singleTask"
             android:exported="true"
             android:theme="@style/Theme.NirvanaGenesis"
@@ -34,6 +40,15 @@
                 <category android:name="android.intent.category.DEFAULT" />
 
                 <data android:mimeType="application/json" />
+            </intent-filter>
+            <!-- Website links shared from other apps open in the applet that declares the site. Genesis
+                 does not register as a browser for VIEW http(s) links. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+
+                <data android:mimeType="text/plain" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />

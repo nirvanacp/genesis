@@ -10,6 +10,7 @@ export const COMPAT = {
   sessionState: 1,       // session.save payload
   importEnvelope: 1,     // the import file around a bundle
   credentialEnvelope: 1, // service credential import file
+  cookieEnvelope: 1,     // development cookie import file (debug builds)
   packagesIndex: 1,      // genesis.packages.json
 } as const;
 

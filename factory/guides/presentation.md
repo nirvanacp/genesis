@@ -15,7 +15,7 @@ At any moment each context shows either the applet's screen for its page or the 
 | A URL with no route, or on another origin | The website |
 | The user chose View website | The website, until Done |
 
-The website appears under a website bar with Done, below the floating menu button. Overlay screens always render over the active context, whatever it shows. Screens never decide this themselves; `useNavigation().presentation` reports it for the active context.
+The website appears under a website bar with Done, below the floating menu button. A window the website opens for another site appears as a sheet over the revealed website, only from a tap; hidden contexts never open windows. Overlay screens always render over the active context, whatever it shows. Screens never decide this themselves; `useNavigation().presentation` reports it for the active context.
 
 ## Loaders and skeletons
 
@@ -51,6 +51,7 @@ When a context starts showing the website, the shell reveals that context's page
 
 - A signed-out user who opens a page that needs an account sees the site's sign-in. Done or Back leaves it and returns past the page that needed the account. After signing in, the applet screen returns on its own.
 - A link to a page the applet does not customize opens the website in the same session, with the same history. Back goes to the previous entry, which shows the applet screen again if it has a route.
+- A link shared from another app shows the applet screen when it matches a route, like any other navigation, and the website otherwise (see [navigation](navigation.md#links-from-other-apps)).
 - A page that never becomes ready shows the website after 15 seconds. Fix the adapter's readiness rather than hiding this.
 
 ## Motion

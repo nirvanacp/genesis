@@ -4,10 +4,10 @@ import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.view.Gravity;
 import android.view.View;
-import android.webkit.CookieManager;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import app.nirvana.genesis.R;
+import app.nirvana.genesis.SiteData;
 import com.google.android.material.bottomsheet.BottomSheetDialog;
 import com.google.android.material.button.MaterialButton;
 import java.util.ArrayList;
@@ -57,7 +57,8 @@ public final class Settings {
         content.addView(t.row(R.drawable.ic_reload, "Check applets for updates", ui.updatesCheckedAt > 0 ? "Checked " + Ui.ago(ui.updatesCheckedAt) : "Not checked yet",
             null, true, t.onSurface, updates));
         content.addView(t.section("Privacy"));
-        int sites = sites().size();
+        int sites = 0;
+        for (Group group : groups()) sites += group.origins.size();
         content.addView(t.row(R.drawable.ic_lock, "Sites & sign-ins", sites == 1 ? "1 website" : sites + " websites", null, true, t.onSurface,
             () -> ui.pages.push(SITES, this::sitesPage, null, true)));
         int count = ui.applets.length();
@@ -71,57 +72,76 @@ public final class Settings {
         return ui.page(t.header("Settings", false, () -> ui.pages.remove(SETTINGS)), content, null);
     }
 
-    /** Hosts the installed applets use, each with the names of the applets that use it. */
-    private Map<String, List<String>> sites() {
-        Map<String, List<String>> result = new LinkedHashMap<>();
-        for (JSONObject entry : ui.entries()) {
-            for (String origin : Ui.strings(entry.optJSONArray("origins"))) {
-                result.computeIfAbsent(origin, key -> new ArrayList<>()).add(entry.optString("name"));
-            }
-        }
-        return result;
+    /** One profile and the hosts its applets use, each with the names of the applets that use it. */
+    private static final class Group {
+        /** Null for the shared sign-in. */
+        final String title;
+        final SiteData site;
+        final Map<String, List<String>> origins = new LinkedHashMap<>();
+
+        Group(String title, SiteData site) { this.title = title; this.site = site; }
     }
 
-    private static boolean signedIn(String origin) {
-        try {
-            String cookies = CookieManager.getInstance().getCookie(origin);
-            return cookies != null && !cookies.trim().isEmpty();
-        } catch (RuntimeException error) {
-            return false;
+    /** The shared sign-in first, then each applet that keeps a separate one. */
+    private List<Group> groups() {
+        Group shared = new Group(null, ui.actions.sites());
+        List<Group> result = new ArrayList<>(List.of(shared));
+        for (JSONObject entry : ui.entries()) {
+            String appletId = entry.optString("appletId"), name = entry.optString("name");
+            Group group = shared;
+            if (ui.actions.separateSignIn(appletId)) {
+                group = new Group(name + "'s separate sign-in", ui.actions.sitesFor(appletId));
+                result.add(group);
+            }
+            for (String origin : Ui.strings(entry.optJSONArray("origins"))) group.origins.computeIfAbsent(origin, key -> new ArrayList<>()).add(name);
         }
+        if (shared.origins.isEmpty() && result.size() > 1) result.remove(shared);
+        return result;
     }
 
     private View sitesPage() {
         Tokens t = ui.tokens;
-        Map<String, List<String>> sites = sites();
+        List<Group> groups = groups();
         LinearLayout content = ui.column();
         content.setPadding(0, t.dp(8), 0, t.dp(32));
         content.addView(ui.paragraph("Applets use your own sign-in on these websites. Signing out here clears what the site stored on this phone, for every applet that uses it.",
             Tokens.Type.BODY_LARGE, t.onSurfaceVariant));
-        if (sites.isEmpty()) content.addView(ui.paragraph("No applet uses a website yet.", Tokens.Type.BODY_MEDIUM, t.onSurfaceVariant));
-        else content.addView(t.section("Websites"));
-        List<String> signed = new ArrayList<>();
-        for (Map.Entry<String, List<String>> site : sites.entrySet()) {
-            boolean in = signedIn(site.getKey());
-            if (in) signed.add(site.getKey());
-            TextView chip = in ? t.chip("Signed in", Tokens.Chip.SUCCESS) : t.chip("Signed out", Tokens.Chip.NEUTRAL);
-            content.addView(t.row(R.drawable.ic_website, Ui.host(site.getKey()), "Used by " + Ui.and(site.getValue()), chip, in, t.onSurface,
-                in ? () -> signOut(List.of(site.getKey()), false) : null));
+        if (groups.get(0).origins.isEmpty()) content.addView(ui.paragraph("No applet uses a website yet.", Tokens.Type.BODY_MEDIUM, t.onSurfaceVariant));
+        List<Group> signed = new ArrayList<>();
+        for (Group group : groups) {
+            if (group.origins.isEmpty()) continue;
+            content.addView(t.section(group.title != null ? group.title : groups.size() > 1 ? "Shared sign-in" : "Websites"));
+            List<String> in = new ArrayList<>();
+            for (Map.Entry<String, List<String>> site : group.origins.entrySet()) {
+                boolean signedIn = group.site.hasCookies(site.getKey());
+                if (signedIn) in.add(site.getKey());
+                String granted = group.site.grants().describe(site.getKey());
+                TextView chip = signedIn ? t.chip("Signed in", Tokens.Chip.SUCCESS) : t.chip("Signed out", Tokens.Chip.NEUTRAL);
+                String detail = "Used by " + Ui.and(site.getValue()) + (granted == null ? "" : " · " + granted);
+                content.addView(t.row(R.drawable.ic_website, Ui.host(site.getKey()), detail, chip, signedIn || granted != null, t.onSurface,
+                    signedIn ? () -> signOut(List.of(group), List.of(site.getKey()), false) : granted != null ? () -> resetPermissions(group.site, site.getKey()) : null));
+            }
+            if (!in.isEmpty()) signed.add(group);
         }
         View footer = null;
         if (!signed.isEmpty()) {
+            List<String> origins = new ArrayList<>();
+            for (Group group : signed) for (String origin : group.origins.keySet()) if (!origins.contains(origin)) origins.add(origin);
             MaterialButton all = t.dangerOutlinedButton("Sign out of all sites");
-            all.setOnClickListener(v -> signOut(signed, true));
+            all.setOnClickListener(v -> signOut(signed, origins, true));
             footer = ui.footer(all);
         }
         return ui.page(t.header("Sites & sign-ins", false, () -> ui.pages.remove(SITES)), content, footer);
     }
 
-    private void signOut(List<String> origins, boolean all) {
+    /** Signs out of `origins` in one group, or clears every site of each group when `all`. */
+    private void signOut(List<Group> groups, List<String> origins, boolean all) {
         Tokens t = ui.tokens;
-        Map<String, List<String>> sites = sites();
         List<String> users = new ArrayList<>();
-        for (String origin : origins) for (String name : sites.getOrDefault(origin, List.of())) if (!users.contains(name)) users.add(name);
+        for (Group group : groups) {
+            for (String origin : origins) for (String name : group.origins.getOrDefault(origin, List.of())) if (!users.contains(name)) users.add(name);
+        }
+        SiteData site = groups.get(0).site;
         LinearLayout content = ui.column();
         content.setPadding(t.dp(20), 0, t.dp(20), t.dp(20));
         String title = origins.size() == 1 ? "Sign out of " + Ui.host(origins.get(0)) + "?" : "Sign out of " + origins.size() + " sites?";
@@ -132,9 +152,37 @@ public final class Settings {
         MaterialButton out = t.dangerButton("Sign out");
         out.setOnClickListener(v -> {
             dialog[0].dismiss();
-            ui.actions.signOut(origins, all, () -> ui.pages.refresh());
+            Runnable done = () -> ui.pages.refresh();
+            if (all) {
+                // Every group clears on its own; the page refreshes once the last one is done.
+                int[] left = { groups.size() };
+                for (Group group : groups) group.site.clearAll(() -> { if (--left[0] == 0) done.run(); });
+            } else site.signOut(origins, ui.actions.visitedUrls(), done);
         });
         content.addView(out, t.margins(0, 20));
+        if (!all && site.grants().describe(origins.get(0)) != null) {
+            MaterialButton reset = t.outlinedButton("Reset permissions");
+            reset.setOnClickListener(v -> { dialog[0].dismiss(); site.grants().clear(origins.get(0)); ui.pages.refresh(); });
+            content.addView(reset, t.margins(0, 12));
+        }
+        MaterialButton cancel = t.outlinedButton("Cancel");
+        cancel.setOnClickListener(v -> dialog[0].dismiss());
+        content.addView(cancel, t.margins(0, 12));
+        dialog[0] = ui.sheet(content);
+    }
+
+    /** A signed-out site that still has permission answers: forgetting them makes it ask again. */
+    private void resetPermissions(SiteData site, String origin) {
+        Tokens t = ui.tokens;
+        LinearLayout content = ui.column();
+        content.setPadding(t.dp(20), 0, t.dp(20), t.dp(20));
+        content.addView(t.heading("Reset permissions for " + Ui.host(origin) + "?", Tokens.Type.TITLE_LARGE));
+        content.addView(t.text(site.grants().describe(origin) + ". The website will ask again the next time it needs them.",
+            Tokens.Type.BODY_MEDIUM, t.onSurfaceVariant), t.margins(0, 12));
+        BottomSheetDialog[] dialog = new BottomSheetDialog[1];
+        MaterialButton reset = t.button("Reset permissions");
+        reset.setOnClickListener(v -> { dialog[0].dismiss(); site.grants().clear(origin); ui.pages.refresh(); });
+        content.addView(reset, t.margins(0, 20));
         MaterialButton cancel = t.outlinedButton("Cancel");
         cancel.setOnClickListener(v -> dialog[0].dismiss());
         content.addView(cancel, t.margins(0, 12));
@@ -156,6 +204,7 @@ public final class Settings {
         content.addView(t.row(R.drawable.ic_block, "Reach any other website", "Genesis blocks every site the review didn't show you", null, false, t.onSurface, null));
         content.addView(t.row(R.drawable.ic_lock, "See your passwords or other applets", "Each applet's data is its own", null, false, t.onSurface, null));
         content.addView(t.row(R.drawable.ic_shield, "Change what it reaches without asking", "An update that wants more waits for your review", null, false, t.onSurface, null));
+        content.addView(t.row(R.drawable.ic_lock, "Use your camera, microphone or location", "Websites ask you first, and only while you're looking at them", null, false, t.onSurface, null));
         content.addView(t.section("Blocked builds"));
         content.addView(ui.paragraph("Genesis checks every build before the review. A build that breaks these rules, or whose files don't match its release, is blocked and never installs.",
             Tokens.Type.BODY_MEDIUM, t.onSurface));

@@ -120,6 +120,13 @@ impl Host {
             session: saved,
         };
         self.post(&view, &bound);
+        // An opened link started the applet; the foreground shows that context once bound, and
+        // its routes decide between the applet's screen and the website.
+        if view.role == Role::Foreground
+            && let Some(id) = self.contexts.session.as_mut().and_then(|s| s.open_context.take())
+        {
+            self.foreground_event("user.showContext", json!({ "id": id }));
+        }
     }
 
     fn call(&mut self, view: &ViewRef, document_id: &str, request_id: u64, method: &str, params: Value, now: u64) -> Outcome {

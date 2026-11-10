@@ -17,6 +17,7 @@ pub mod compat {
     pub const SESSION_STATE: u32 = 1;
     pub const IMPORT_ENVELOPE: u32 = 1;
     pub const CREDENTIAL_ENVELOPE: u32 = 1;
+    pub const COOKIE_ENVELOPE: u32 = 1;
     pub const PACKAGES_INDEX: u32 = 1;
 }
 
@@ -31,6 +32,7 @@ pub struct HostCompat {
     pub session_state: u32,
     pub import_envelope: u32,
     pub credential_envelope: u32,
+    pub cookie_envelope: u32,
     pub packages_index: u32,
 }
 
@@ -44,6 +46,7 @@ impl Default for HostCompat {
             session_state: compat::SESSION_STATE,
             import_envelope: compat::IMPORT_ENVELOPE,
             credential_envelope: compat::CREDENTIAL_ENVELOPE,
+            cookie_envelope: compat::COOKIE_ENVELOPE,
             packages_index: compat::PACKAGES_INDEX,
         }
     }
@@ -116,6 +119,15 @@ pub enum ShellEvent {
     /// The website bar's Done button over a revealed context.
     WebsiteDone,
     OpenApplet { applet_id: String },
+    /// A website link shared to Genesis or typed in "Open a link". `applet_id` is set when the
+    /// user picked an applet from `ChooseApplet`. `external` is true for a link another app
+    /// shared, so a Back that leaves the applet returns to that app.
+    OpenUrl {
+        url: String,
+        applet_id: Option<String>,
+        #[serde(default)]
+        external: bool,
+    },
     Home,
     Menu { action: MenuAction },
     /// `onPageStarted`: a new document committed in a view, with its post-redirect URL.
@@ -139,6 +151,11 @@ pub enum ShellEvent {
     /// A `HistoryGo` that moved nothing: `history.go` did not start a navigation and the
     /// WebView's own list had no entry at that offset.
     HistoryUnmoved { view: ViewRef },
+    /// The revealed context's user tapped a link that opens a new window, such as a
+    /// `target=_blank` link. A script's window opens as a popup in the shell, and a hidden page or
+    /// a window without a tap opens nothing, so neither reaches the host. `url` is the link. The host answers with `LoadUrl`, another applet or
+    /// `ShowWindow`.
+    WindowRequested { view: ViewRef, url: String },
     /// An import file. `release` is the text of a bundled applet's release record, when the APK has one.
     ImportFound {
         kind: ImportKind,
@@ -267,9 +284,20 @@ pub enum ShellCommand {
     },
     ShowError { message: String },
     ShowInfo { title: String, message: String },
+    /// What to do with an opened link: open it in one of `applets` (the applets that use its
+    /// website, possibly none) or create a new applet. The shell answers a pick with `OpenUrl`
+    /// carrying its id and `external` unchanged.
+    ChooseApplet {
+        url: String,
+        applets: Vec<LauncherEntry>,
+        #[serde(default)]
+        external: bool,
+    },
+    /// Shows `url` in a website sheet over the applet, signed in like `view`, with the website
+    /// bar's Done to close it. It answers a `WindowRequested` for a site no applet uses.
+    ShowWindow { view: ViewRef, url: String },
     /// The status sheet: an incompatible applet, a lost renderer or a received import.
     ShowStatus { kind: StatusKind, applet: Option<LauncherEntry>, details: String },
-    OpenExternal { url: String },
     /// Asks the shell to send `Tick` after `delay_ms`, for deadlines shorter than the periodic tick.
     Wake { delay_ms: u64 },
     MoveTaskToBack,

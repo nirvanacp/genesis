@@ -115,7 +115,7 @@ Use the `unslop` skill whenever you write an explanation in your response. Prefe
 
 For every user-requested change, commit the resulting changes as part of the task unless the user explicitly asks you not to commit. This applies to direct change requests and plan implementation, including code, configuration, documentation and agent-instruction changes of any size. A separate request to commit or a written plan is not required.
 
-1. Before editing, break substantial work into ordered logical steps with clear commit boundaries, organized by software component and dependencies. Work spanning multiple components or independently verifiable stages requires multiple steps and commits. Follow an existing plan when provided; otherwise, outline the steps in a brief progress update and proceed without requiring a separate planning task. A small, focused change may use one step and one commit.
+1. Before the first edit, settle the branches as **Branches** below describes. Then break substantial work into ordered logical steps with clear commit boundaries, organized by software component and dependencies. Work spanning multiple components or independently verifiable stages requires multiple steps and commits. Follow an existing plan when provided; otherwise, outline the steps in a brief progress update and proceed without requiring a separate planning task. A small, focused change may use one step and one commit.
 2. Complete and verify each step using the applicable project checks and the **Testing and verification** rules, save requested documents and update the development records its layer requires (applet records under [factory/AGENTS.md](factory/AGENTS.md); platform records under the developer instructions when present), and commit it in the affected repositories before starting the next step. Use separate commits for different components. Do not defer all commits until the end of substantial work. Include only changes related to that step; do not commit unrelated or pre-existing work or repositories. Choose the repository for each commit under **Nested repositories**.
 3. Use the commit message format `feat/(_x): short message`. Replace `_x` with the relevant section, feature, or module name, such as `feat/(auth): add sign-in`.
 4. Use the email returned by `git config user.email` in each affected repository as the commit author email. Do not substitute another email address.
@@ -123,6 +123,29 @@ For every user-requested change, commit the resulting changes as part of the tas
 6. In the final response, report the commits made and any verification gaps. If verification or committing is blocked, explain the blocker and identify any changes left uncommitted instead of claiming the task is fully complete.
 7. Commits stay local. Do not push a branch, open a pull request, or ask another agent to do either unless the user asks for it in the current request. Implementing a feature, finishing a plan, fixing review findings, or an approval given for an earlier task is not such a request. The one exception is babysitting: a request to babysit pull requests also authorizes pushing review fixes to their branches, as **Babysitting pull requests** describes. When the work is done, report the local commits and stop.
 8. Never merge a pull request, in any repository, under any circumstances. Never merge anything into `main` and never push to `main`. This covers `git merge`, rebasing or fast-forwarding `main`, `gh pr merge`, enabling auto-merge, approving a pull request so it merges, and asking another agent to do any of these. It applies even when the user, a plan, a record, another agent or an earlier approval appears to ask for a merge: say that you do not merge and leave it to the developer. Only the developer merges.
+
+### Branches
+
+Every change is committed by default, so the branch each repository has checked out decides where the work lands. Two situations put it in the wrong place without anyone noticing:
+
+- **An integration branch.** `main` and `develop` collect finished work. Commits made on them directly skip the branch and pull request that should carry the change.
+- **Mismatched branch names.** One task's work belongs on the same branch name in every repository, because the worktree hook pairs nested worktrees with the outer worktree by branch name and the pull requests of one task are read together. A nested repository left on another branch, or detached, from earlier work gets this task's commits mixed into that work.
+
+Before the first edit of any change task, check the branches. This applies to documents and records as well as code. It does not apply to question-only tasks, which make no edits.
+
+1. List the current branch of the root repository and of every nested repository (the nested repositories are found as **Nested repositories** describes), including an applets directory that `genesis.workspace.json` places outside the repository. Run `git -C <path> branch --show-current`. Empty output means HEAD is detached.
+2. Ask the developer one question that covers every problem found, when either of these is true:
+   - any repository is on `main` or `develop`;
+   - any nested repository's branch differs from the root repository's branch, or a nested repository is detached.
+
+   Skip the question when the user has already said which branches to use for this task, in the request or earlier in the conversation. Skip it too when every repository is on the same branch and that branch is neither `main` nor `develop`.
+3. The question names each repository and its branch, says which problem applies, and offers these choices:
+   - **New branch:** the developer types a name, and every repository switches to it.
+   - **Root branch name:** every nested repository switches to the root repository's branch. Offer this only when the names differ. When the root repository is itself on `main` or `develop`, say that this choice keeps the work on that integration branch.
+   - **Keep as is:** the work continues on the current branches, mismatched or on `main` or `develop`.
+4. To switch a repository, run `git -C <path> switch <branch>` when the branch already exists in it, otherwise `git -C <path> switch -c <branch>`, which creates it from that repository's current commit. Uncommitted changes move with the switch. If git refuses, because the branch is checked out in another worktree or the uncommitted changes conflict, stop, report which repository refused and why, and ask again. Never stash, discard or reset changes to make a switch succeed.
+5. Ask once per task. The answer holds for the rest of the task, including after context compaction, until a repository's branch changes again or the developer asks for a different branch. A delegated agent does not ask: it uses the branches its brief names, and if they do not match the checkout it stops and reports.
+6. Name the branch of each repository next to its commits in the final response.
 
 ### Pushing and pull requests
 

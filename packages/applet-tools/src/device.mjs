@@ -7,7 +7,7 @@ import { readBuild } from './build.mjs';
 import { toolError } from './manifest.mjs';
 
 const IMPORTS = 'files/genesis-import';
-const IMPORT_NAME = /^(applet-[a-z0-9-]+\.bundle|service-[a-z0-9-]+)\.json$/;
+const IMPORT_NAME = /^(applet-[a-z0-9-]+\.bundle|service-[a-z0-9-]+|cookies-[a-z0-9-]+)\.json$/;
 const RECEIPT_MS = 15000;
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 

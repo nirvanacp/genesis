@@ -8,6 +8,7 @@ import app.nirvana.genesis.R;
 import com.google.android.material.bottomsheet.BottomSheetDialog;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import com.google.android.material.materialswitch.MaterialSwitch;
 import java.util.ArrayList;
 import java.util.List;
 import org.json.JSONObject;
@@ -192,7 +193,10 @@ public final class Manage {
         List<String> origins = Ui.strings(entry.optJSONArray("origins"));
         if (!origins.isEmpty()) {
             content.addView(t.section("Websites"));
-            for (String origin : origins) content.addView(t.row(R.drawable.ic_website, Ui.host(origin), "Uses your sign-in on this site", null, false, t.onSurface, null));
+            boolean separate = ui.actions.separateSignIn(appletId);
+            String use = separate ? "Uses its own sign-in on this site" : "Uses your sign-in on this site";
+            for (String origin : origins) content.addView(t.row(R.drawable.ic_website, Ui.host(origin), use, null, false, t.onSurface, null));
+            if (ui.actions.separateSignInAvailable()) content.addView(separateSignIn(entry, separate));
         }
         List<String> services = Ui.strings(entry.optJSONArray("services"));
         if (!services.isEmpty()) {
@@ -228,6 +232,27 @@ public final class Manage {
         }
         content.addView(t.row(R.drawable.ic_delete, "Remove applet…", null, null, false, t.danger, () -> remove(appletId)));
         return ui.page(t.header("Applet info", false, () -> ui.pages.remove(INFO + appletId)), content, null);
+    }
+
+    /** "Use a separate sign-in". Turning it off asks first, because it signs the applet out. */
+    private View separateSignIn(JSONObject entry, boolean on) {
+        Tokens t = ui.tokens;
+        String appletId = entry.optString("appletId"), name = entry.optString("name");
+        MaterialSwitch toggle = new MaterialSwitch(ui.activity);
+        toggle.setChecked(on);
+        toggle.setContentDescription("Use a separate sign-in");
+        toggle.setOnCheckedChangeListener((button, checked) -> {
+            if (checked) { ui.actions.setSeparateSignIn(appletId, true); return; }
+            new MaterialAlertDialogBuilder(ui.activity)
+                .setTitle("Sign " + name + " out of its separate sign-in?")
+                .setMessage(name + " goes back to the sign-in your other applets use. What it signed in to on its own is deleted.")
+                .setNegativeButton("Cancel", (dialog, which) -> toggle.setChecked(true))
+                .setOnCancelListener(dialog -> toggle.setChecked(true))
+                .setPositiveButton("Sign out", (dialog, which) -> ui.actions.setSeparateSignIn(appletId, false))
+                .show();
+        });
+        return t.row(R.drawable.ic_lock, "Use a separate sign-in", "This applet signs in to its websites on its own. Other applets stay as they are.",
+            toggle, false, t.onSurface, null);
     }
 
     private void confirmClear(JSONObject entry) {
@@ -271,7 +296,9 @@ public final class Manage {
         content.addView(card, t.margins(0, 16));
         List<String> hosts = Ui.hosts(Ui.strings(entry.optJSONArray("origins")));
         String sites = hosts.isEmpty() ? "the websites it used" : Ui.and(hosts);
-        content.addView(t.text("You stay signed in to " + sites + ". Sign out in Settings › Sites & sign-ins.", Tokens.Type.BODY_MEDIUM, t.onSurfaceVariant), t.margins(0, 14));
+        String signIn = ui.actions.separateSignIn(appletId) ? "Its separate sign-in to " + sites + " is deleted with it."
+            : "You stay signed in to " + sites + ". Sign out in Settings › Sites & sign-ins.";
+        content.addView(t.text(signIn, Tokens.Type.BODY_MEDIUM, t.onSurfaceVariant), t.margins(0, 14));
 
         BottomSheetDialog[] dialog = new BottomSheetDialog[1];
         MaterialButton remove = t.dangerButton("Remove and erase");

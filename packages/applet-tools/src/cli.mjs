@@ -2,6 +2,7 @@
 import { checkApplet } from './check.mjs';
 import { buildApplet } from './build.mjs';
 import { deviceStatus, installApplet } from './device.mjs';
+import { importCookies } from './cookies.mjs';
 import { manageService } from './services.mjs';
 import { createApplet } from './create.mjs';
 import { exportKit } from './kit.mjs';
@@ -31,6 +32,9 @@ const help = `genesis-applet
                                                  default <directory>/dist
   dev install <directory> --device <serial>      applet directory or build output
   dev status [<applet-id>] --device <serial>     status and mismatches of installed applets
+  dev cookies <directory> --device <serial> [--port 9222]
+                                                 copy the applet's website cookies from a
+                                                 desktop Chrome to a debug Genesis build
   service start|status|stop <directory> --local [--service-file <path>]
   service start|status|stop|provision <directory> --device <serial> [--service-file <path>]
   kit export --out <directory>
@@ -75,13 +79,14 @@ async function main(args) {
       return ['build', await buildApplet(one(positional, 'applet directory'), options.out, { debug: !!options.debug })];
     }
     case 'dev': {
-      const { positional, options } = parse(args.slice(2), ['json', ...DEVICE]);
+      const { positional, options } = parse(args.slice(2), ['json', ...DEVICE, ...(action === 'cookies' ? ['port'] : [])]);
       if (action === 'install') return ['dev install', await installApplet(one(positional, 'directory'), options)];
       if (action === 'status') {
         if (positional.length > 1) throw new UsageError('dev status takes at most one applet id');
         return ['dev status', deviceStatus(positional[0], options)];
       }
-      throw new UsageError('Use dev install|status');
+      if (action === 'cookies') return ['dev cookies', await importCookies(one(positional, 'applet directory'), options)];
+      throw new UsageError('Use dev install|status|cookies');
     }
     case 'service': {
       const { positional, options } = parse(args.slice(2), ['json', 'local', 'service-file', ...DEVICE]);

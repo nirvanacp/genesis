@@ -39,10 +39,12 @@ Before tagging a release, run `npx genesis-applet publish . --verify` and `npx g
 2. Open the applet from the Genesis launcher.
 3. For each affected journey: open the screen, watch its loading state, wait for content, perform the action, see the outcome, press Back, and confirm the previous entry returns at once with its scroll position.
 4. Exercise loading, empty, sign-in and failure on purpose where you can: a slow network, a signed-out session, airplane mode, a page with no results. When a journey needs an account and the device is signed out, sign in with the operator's test accounts through the [test accounts skill](../skills/genesis-test-accounts/SKILL.md) instead of waiting for the user. When the applet works with several accounts on one site, sign in to two numbered accounts and walk the journeys with both, as that skill describes. Never read the accounts file yourself.
+   A debug Genesis can also take a laptop browser's sign-in with `dev cookies` (see [getting started](getting-started.md#check-build-install)); it carries the warnings listed there.
 5. Walk the presentation scenarios below on the changed routes.
-6. Leave the app and return; reload it from the Genesis menu.
-7. Check light and dark, large text and a narrow width on the changed screens.
-8. For stored data: write it, leave, reopen, and confirm it reads back. For services: confirm the record on the server through the app, not by editing the database.
+6. For links: share a link from another app and confirm the chooser, the screen it opens and that Back returns to that app. Tap a `target="_blank"` link on the revealed website for each row of [links that open a new window](navigation.md#links-that-open-a-new-window) the applet can reach.
+7. Leave the app and return; reload it from the Genesis menu.
+8. Check light and dark, large text and a narrow width on the changed screens.
+9. For stored data: write it, leave, reopen, and confirm it reads back. For services: confirm the record on the server through the app, not by editing the database.
 
 Do not post, comment, message, follow, vote, purchase or change account settings during checks unless the user asked for that action. Opening a form proves the form opens. Use disposable records only where the user allows, and remove only those.
 
