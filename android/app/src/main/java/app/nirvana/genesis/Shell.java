@@ -778,6 +778,58 @@ final class Shell implements Views.Listener, Ui.Actions {
         catch (JSONException ignored) { /* Unreachable for string values. */ }
     }
 
+    /** Opens a website link in the applet that declares its site; `appletId` is the user's pick. */
+    void openUrl(String url, String appletId) {
+        try { owner.send(Bridge.event("openUrl").put("url", url).put("appletId", appletId == null ? JSONObject.NULL : appletId)); }
+        catch (JSONException ignored) { /* Unreachable for string values. */ }
+    }
+
+    /** Several applets use the link's website; the user picks the one that opens it. */
+    void chooseApplet(String url, JSONArray applets) {
+        String[] names = new String[applets.length()];
+        String[] ids = new String[applets.length()];
+        for (int i = 0; i < applets.length(); i++) {
+            JSONObject entry = applets.optJSONObject(i);
+            ids[i] = entry == null ? "" : entry.optString("appletId");
+            names[i] = entry == null ? ids[i] : entry.optString("name", ids[i]);
+        }
+        new MaterialAlertDialogBuilder(activity)
+            .setTitle("Open with")
+            .setItems(names, (d, which) -> openUrl(url, ids[which]))
+            .setNegativeButton("Cancel", null)
+            .show();
+    }
+
+    /** "Open a link": a URL field, prefilled when the clipboard holds a website link. */
+    @Override public void openLink() {
+        LinearLayout form = new LinearLayout(activity);
+        form.setOrientation(LinearLayout.VERTICAL);
+        form.setPadding(tokens.dp(24), tokens.dp(8), tokens.dp(24), 0);
+        android.widget.EditText field = authField("https://…", android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_URI);
+        String copied = clipboardLink();
+        if (copied != null) field.setText(copied);
+        form.addView(field, new LinearLayout.LayoutParams(-1, -2));
+        new MaterialAlertDialogBuilder(activity)
+            .setTitle("Open a link")
+            .setMessage("The link opens in the applet that uses its website.")
+            .setView(form)
+            .setPositiveButton("Open", (d, w) -> {
+                String url = field.getText().toString().trim();
+                if (!url.isEmpty()) openUrl(url, null);
+            })
+            .setNegativeButton("Cancel", null)
+            .show();
+    }
+
+    private String clipboardLink() {
+        android.content.ClipboardManager clipboard = activity.getSystemService(android.content.ClipboardManager.class);
+        android.content.ClipData clip = clipboard == null ? null : clipboard.getPrimaryClip();
+        if (clip == null || clip.getItemCount() == 0) return null;
+        CharSequence text = clip.getItemAt(0).getText();
+        String value = text == null ? "" : text.toString().trim();
+        return value.matches("(?i)https?://\\S+") ? value : null;
+    }
+
     @Override public void addFromRepository(String input) {
         try { owner.send(Bridge.event("addFromRepository").put("input", input)); }
         catch (JSONException ignored) { /* Unreachable for string values. */ }

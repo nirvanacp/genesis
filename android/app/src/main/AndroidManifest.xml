@@ -41,6 +41,15 @@
 
                 <data android:mimeType="application/json" />
             </intent-filter>
+            <!-- Website links shared from other apps open in the applet that declares the site. Genesis
+                 does not register as a browser for VIEW http(s) links. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+
+                <data android:mimeType="text/plain" />
+            </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
 

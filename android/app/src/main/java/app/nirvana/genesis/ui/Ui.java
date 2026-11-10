@@ -32,6 +32,8 @@ public final class Ui {
     public interface Actions {
         void openApplet(String appletId);
         void addFromRepository(String input);
+        /** Asks for a website link and opens it in the applet that uses that site. */
+        void openLink();
         void pickFile();
         /** `version` null is the newest compatible stable version. */
         void chooseCandidate(String appletId, String version);

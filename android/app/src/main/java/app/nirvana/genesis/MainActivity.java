@@ -197,10 +197,23 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
         if (Intent.ACTION_SEND.equals(intent.getAction())) {
             Uri stream = Build.VERSION.SDK_INT >= 33 ? intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri.class) : streamExtra(intent);
             if (stream != null) uris.add(stream);
+            else if (intent.hasExtra(Intent.EXTRA_TEXT)) {
+                setIntent(new Intent(this, MainActivity.class));
+                sharedText(intent.getCharSequenceExtra(Intent.EXTRA_TEXT));
+                return;
+            }
         }
         if (uris.isEmpty()) return;
         setIntent(new Intent(this, MainActivity.class));
         reviewFiles(uris);
+    }
+
+    /** Text shared with Genesis: its first website link opens in the applet that uses that site. */
+    private void sharedText(CharSequence text) {
+        java.util.regex.Matcher link = java.util.regex.Pattern.compile("https?://\\S+", java.util.regex.Pattern.CASE_INSENSITIVE)
+            .matcher(text == null ? "" : text);
+        if (link.find()) shell.openUrl(link.group(), null);
+        else shell.showInfo("Genesis", "This doesn't contain a website link");
     }
 
     @SuppressWarnings("deprecation")
