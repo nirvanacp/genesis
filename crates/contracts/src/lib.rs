@@ -151,9 +151,9 @@ pub enum ShellEvent {
     /// A `HistoryGo` that moved nothing: `history.go` did not start a navigation and the
     /// WebView's own list had no entry at that offset.
     HistoryUnmoved { view: ViewRef },
-    /// A context asked for a new window that the shell does not open as the revealed context's
-    /// popup: a tapped `target=_blank` link, or any window from a hidden page or without a tap.
-    /// `url` is the window's first address. The host answers with `LoadUrl`, another applet or
+    /// The revealed context's user tapped a link that opens a new window, such as a
+    /// `target=_blank` link. A script's window opens as a popup in the shell, and a hidden page or
+    /// a window without a tap opens nothing, so neither reaches the host. `url` is the link. The host answers with `LoadUrl`, another applet or
     /// `ShowWindow`.
     WindowRequested { view: ViewRef, url: String },
     /// An import file. `release` is the text of a bundled applet's release record, when the APK has one.
