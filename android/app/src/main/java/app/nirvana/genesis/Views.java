@@ -5,6 +5,7 @@ import android.app.Activity;
 import android.graphics.Bitmap;
 import android.net.Uri;
 import android.view.View;
+import android.webkit.GeolocationPermissions;
 import android.webkit.PermissionRequest;
 import android.webkit.RenderProcessGoneDetail;
 import android.webkit.ValueCallback;
@@ -277,6 +278,8 @@ final class Views {
 
         /** The media request being asked about; null once answered or withdrawn. */
         private PermissionRequest asking;
+        /** The origin whose location question is open, or null. */
+        private String locating;
 
         Chrome(Page page) { this.page = page; }
 
@@ -297,6 +300,23 @@ final class Views {
                 if (grant.isEmpty()) request.deny();
                 else request.grant(grant.toArray(new String[0]));
             });
+        }
+
+        /** WebView keeps nothing (`retain` false); `SiteGrants` remembers the answer instead. */
+        @Override public void onGeolocationPermissionsShowPrompt(String origin, GeolocationPermissions.Callback callback) {
+            if (!SitePolicy.mayShowUi(page)) { callback.invoke(origin, false, false); return; }
+            locating = origin;
+            listener.askSite(page, origin(origin), List.of(SiteGrants.LOCATION), allowed -> {
+                if (!origin.equals(locating)) return;
+                locating = null;
+                callback.invoke(origin, allowed.contains(SiteGrants.LOCATION), false);
+            });
+        }
+
+        @Override public void onGeolocationPermissionsHidePrompt() {
+            if (locating == null) return;
+            locating = null;
+            listener.cancelAsk();
         }
 
         @Override public void onPermissionRequestCanceled(PermissionRequest request) {

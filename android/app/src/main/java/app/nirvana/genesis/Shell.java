@@ -638,6 +638,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         switch (permission) {
             case SiteGrants.CAMERA: return new String[] { android.Manifest.permission.CAMERA };
             case SiteGrants.MICROPHONE: return new String[] { android.Manifest.permission.RECORD_AUDIO };
+            case SiteGrants.LOCATION: return new String[] { android.Manifest.permission.ACCESS_FINE_LOCATION, android.Manifest.permission.ACCESS_COARSE_LOCATION };
             default: return new String[0];
         }
     }

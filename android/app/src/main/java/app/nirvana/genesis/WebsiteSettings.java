@@ -31,6 +31,7 @@ final class WebsiteSettings {
             if (WebFeatures.has(WebViewFeature.ALGORITHMIC_DARKENING)) WebSettingsCompat.setAlgorithmicDarkeningAllowed(settings, true);
             textZoom(web);
         }
+        settings.setGeolocationEnabled(context); // Asked through Views.Chrome, only while shown.
         // No X-Requested-With setting: current WebView no longer sends the header, and the
         // allow-list API is deprecated and restricted in androidx.webkit.
         site.acceptCookies(web, context);
