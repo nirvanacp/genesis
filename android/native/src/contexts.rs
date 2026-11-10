@@ -50,6 +50,8 @@ pub struct Session {
     pub restored: bool,
     /// The foreground's last `session.save` (`{version, state}`), handed back in `bound` when restored.
     pub saved: Option<Value>,
+    /// The context a shared link opened in; the foreground shows it once it binds.
+    pub open_website: Option<String>,
 }
 
 impl Session {
@@ -66,6 +68,7 @@ impl Session {
             next_action: 0,
             restored,
             saved: None,
+            open_website: None,
         }
     }
 

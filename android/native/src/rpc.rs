@@ -120,6 +120,12 @@ impl Host {
             session: saved,
         };
         self.post(&view, &bound);
+        // A shared link started the applet; the foreground shows its website once bound.
+        if view.role == Role::Foreground
+            && let Some(id) = self.contexts.session.as_mut().and_then(|s| s.open_website.take())
+        {
+            self.foreground_event("user.viewWebsite", json!({ "id": id }));
+        }
     }
 
     fn call(&mut self, view: &ViewRef, document_id: &str, request_id: u64, method: &str, params: Value, now: u64) -> Outcome {

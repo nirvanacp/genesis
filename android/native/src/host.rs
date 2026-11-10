@@ -1,6 +1,6 @@
 //! The host core: turns shell events into shell commands.
 use crate::{
-    applets::Applets,
+    applets::{self, Applets},
     contexts::{BackSlot, ContextView, Contexts, Resume, Session},
     documents::Documents,
     flows::{Deletion, Flow, Updates, erasing_message},
@@ -69,8 +69,9 @@ impl Host {
             ShellEvent::OpenApplet { applet_id } => {
                 self.retire_active();
                 let resume = self.contexts.resume.take().filter(|r| r.applet_id == applet_id);
-                self.activate(&applet_id, resume);
+                self.activate(&applet_id, resume, None);
             }
+            ShellEvent::OpenUrl { url, applet_id } => self.open_url(&url, applet_id),
             ShellEvent::Home => self.home(),
             ShellEvent::Menu { action } => self.menu(action),
             ShellEvent::DocumentStarted { view, url } => self.document_started(view, url, now),
@@ -193,9 +194,51 @@ impl Host {
         self.show_launcher();
     }
 
+    /// Opens a website link in the applet that declares its site. Several applets ask the user to
+    /// pick one; the link opens in the context that starts on its site, or the first context.
+    fn open_url(&mut self, url: &str, chosen: Option<String>) {
+        let info = |message: String| ShellCommand::ShowInfo { title: "Genesis".into(), message };
+        let Some(mut parsed) = url::Url::parse(url.trim()).ok().filter(|u| matches!(u.scheme(), "http" | "https")) else {
+            return self.out.push(info("Genesis opens only website links".into()));
+        };
+        if parsed.scheme() == "http" && parsed.set_scheme("https").is_err() {
+            return self.out.push(info("Genesis opens only website links".into()));
+        }
+        let origin = parsed.origin().ascii_serialization();
+        let host = parsed.host_str().unwrap_or_default().to_string();
+        let url = parsed.to_string();
+        let candidates: Vec<String> =
+            self.applets.for_origin(&origin).into_iter().filter(|id| !self.erasing(id)).collect();
+        let applet_id = match (chosen, candidates.as_slice()) {
+            (Some(id), _) if candidates.contains(&id) => id,
+            (_, []) => return self.out.push(info(format!("No applet uses {host}"))),
+            (_, [only]) => only.clone(),
+            _ => {
+                let applets = candidates.iter().filter_map(|id| self.applets.entry(id)).collect();
+                return self.out.push(ShellCommand::ChooseApplet { url, applets });
+            }
+        };
+        let Some((_, manifest)) = self.applets.current(&applet_id) else { return };
+        let starts_here = manifest.contexts.iter().find(|c| applets::origin_of(&c.start_url).as_deref() == Some(&origin));
+        let Some(context) = starts_here.or(manifest.contexts.first()).map(|c| c.id.clone()) else { return };
+        let active = self.contexts.session.as_ref().is_some_and(|s| s.applet_id == applet_id);
+        if active {
+            let view = ViewRef { applet_id, role: Role::Context(context.clone()) };
+            self.out.push(ShellCommand::LoadUrl { view, url, mode: NavigateMode::Push });
+            return self.foreground_event("user.viewWebsite", json!({ "id": context }));
+        }
+        self.retire_active();
+        let resume = self.contexts.resume.take().filter(|r| r.applet_id == applet_id);
+        self.activate(&applet_id, resume, Some((context.clone(), url)));
+        if let Some(session) = self.contexts.session.as_mut().filter(|s| s.applet_id == applet_id) {
+            session.open_website = Some(context);
+        }
+    }
+
     /// Starts an applet, or recreates it from `resume` at its contexts' last committed URLs.
-    /// An incompatible applet answers the status sheet and does not start.
-    pub fn activate(&mut self, applet_id: &str, resume: Option<Resume>) {
+    /// `opening` loads one context at a shared link instead. An incompatible applet answers the
+    /// status sheet and does not start.
+    pub fn activate(&mut self, applet_id: &str, resume: Option<Resume>, opening: Option<(String, String)>) {
         if self.erasing(applet_id) {
             self.out.push(ShellCommand::ShowError { message: erasing_message(applet_id) });
             return self.show_launcher();
@@ -219,7 +262,8 @@ impl Host {
             }
         };
         let mut session = Session::new(applet_id.into(), revision, resume.is_some());
-        let (urls, saved) = resume.map(|r| (r.urls, r.saved)).unwrap_or_default();
+        let (mut urls, saved) = resume.map(|r| (r.urls, r.saved)).unwrap_or_default();
+        urls.extend(opening);
         session.saved = saved;
         self.out.push(ShellCommand::ShowApplet {
             applet_id: applet_id.into(),
@@ -283,7 +327,7 @@ impl Host {
         if self.contexts.resume.as_ref().is_some_and(|r| r.on_resume) {
             let resume = self.contexts.resume.take().expect("checked above");
             let applet_id = resume.applet_id.clone();
-            self.activate(&applet_id, Some(resume));
+            self.activate(&applet_id, Some(resume), None);
         } else if self.contexts.session.is_some() {
             self.broadcast("resumed", json!({}));
         }
@@ -306,7 +350,7 @@ impl Host {
             MenuAction::Home => self.home(),
             MenuAction::Reload => {
                 self.retire_active();
-                self.activate(&applet_id, None);
+                self.activate(&applet_id, None, None);
             }
             // The foreground pins its active context when `id` is null.
             MenuAction::ViewWebsite => self.foreground_event("user.viewWebsite", json!({ "id": revealed })),
@@ -607,7 +651,7 @@ impl Host {
                 Some(_) => self.show_launcher(),
                 None => {
                     self.update_applets();
-                    self.activate(applet_id, None);
+                    self.activate(applet_id, None, None);
                 }
             }
         } else if active.is_none() {
