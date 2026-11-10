@@ -23,8 +23,12 @@ import androidx.webkit.WebViewAssetLoader;
 import androidx.webkit.WebViewCompat;
 import androidx.webkit.WebViewFeature;
 import java.io.File;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.function.Consumer;
 import org.json.JSONObject;
 
 /** Creates the applet's WebViews and enforces each view's origin policy. */
@@ -48,6 +52,13 @@ final class Views {
         Page openWindow(Page opener);
         void closeWindow(Page popup);
         void popupNavigated(Page popup, String url);
+        /**
+         * The shown website asks to use these `SiteGrants` permissions. `allowed` runs once, on the
+         * main thread, with those the user and Android both allowed; empty when refused or cancelled.
+         */
+        void askSite(Page page, String origin, List<String> permissions, Consumer<Set<String>> allowed);
+        /** The website withdrew its question. */
+        void cancelAsk();
     }
 
     /** The container a revealed context is reparented into, above the foreground. */
@@ -264,9 +275,35 @@ final class Views {
     private final class Chrome extends WebChromeClient {
         private final Page page;
 
+        /** The media request being asked about; null once answered or withdrawn. */
+        private PermissionRequest asking;
+
         Chrome(Page page) { this.page = page; }
 
-        @Override public void onPermissionRequest(PermissionRequest request) { request.deny(); }
+        /** Camera and microphone, only for the shown website; protected media and MIDI are always refused. */
+        @Override public void onPermissionRequest(PermissionRequest request) {
+            Map<String, String> wanted = new LinkedHashMap<>();
+            for (String resource : request.getResources()) {
+                if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource)) wanted.put(SiteGrants.CAMERA, resource);
+                else if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)) wanted.put(SiteGrants.MICROPHONE, resource);
+            }
+            if (wanted.isEmpty() || !SitePolicy.mayShowUi(page)) { request.deny(); return; }
+            asking = request;
+            listener.askSite(page, origin(request.getOrigin().toString()), new java.util.ArrayList<>(wanted.keySet()), allowed -> {
+                if (asking != request) return;
+                asking = null;
+                List<String> grant = new java.util.ArrayList<>();
+                for (Map.Entry<String, String> entry : wanted.entrySet()) if (allowed.contains(entry.getKey())) grant.add(entry.getValue());
+                if (grant.isEmpty()) request.deny();
+                else request.grant(grant.toArray(new String[0]));
+            });
+        }
+
+        @Override public void onPermissionRequestCanceled(PermissionRequest request) {
+            if (asking != request) return;
+            asking = null;
+            listener.cancelAsk();
+        }
 
         @Override public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
             return SitePolicy.mayShowUi(page) && listener.chooseFiles(page, callback, params);

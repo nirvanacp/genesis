@@ -59,6 +59,8 @@ final class Shell implements Views.Listener, Ui.Actions {
         void pickAppletFile();
         Connections.Store connections();
         void storageSize(java.util.function.LongConsumer result);
+        /** Asks Android for these permissions, skipping those already held, and reports the granted ones on the main thread. */
+        void requestPermissions(String[] permissions, java.util.function.Consumer<Set<String>> granted);
     }
 
     /** How long history.go() may take to start moving before the native fallback runs. */
@@ -89,6 +91,8 @@ final class Shell implements Views.Listener, Ui.Actions {
     private Views.Page revealedPage;
     /** The one window the revealed context opened, or null. */
     private Views.Page popup;
+    /** The website question being asked, or null. */
+    private Asking asking;
     private String appletId, appletName;
     /** The user chose View website, so the next revealed context is their choice, not the applet's. */
     private boolean websiteChosen;
@@ -309,6 +313,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         Views.Page page = revealedPage;
         if (page == null) return;
         closeCustomView();
+        cancelAsk();
         dropRevealed();
         page.web.clearFocus();
         page.web.setFocusable(false);
@@ -455,6 +460,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         if (page == null) return false;
         popup = null;
         closeCustomView();
+        cancelAsk();
         popupSheet.removeView(page.web);
         popupSheet.setVisibility(View.GONE);
         page.destroy();
@@ -483,6 +489,7 @@ final class Shell implements Views.Listener, Ui.Actions {
 
     private void destroyAll() {
         closeCustomView();
+        cancelAsk();
         dropRevealed();
         owner.cancelInvalidFiles();
         for (Views.Page page : pages.values()) page.destroy();
@@ -564,6 +571,84 @@ final class Shell implements Views.Listener, Ui.Actions {
 
     @Override public void popupNavigated(Views.Page page, String url) {
         if (page == popup) bar.setUrl(url);
+    }
+
+    /** One website question: the dialog, then Android's own request. Answers once. */
+    private final class Asking {
+        final java.util.function.Consumer<Set<String>> result;
+        android.app.Dialog dialog;
+        boolean done;
+
+        Asking(java.util.function.Consumer<Set<String>> result) { this.result = result; }
+
+        void finish(Set<String> allowed) {
+            if (done) return;
+            done = true;
+            if (asking == this) asking = null;
+            if (dialog != null) dialog.dismiss();
+            result.accept(allowed);
+        }
+    }
+
+    /**
+     * Genesis asks once per site and remembers the answer in `SiteGrants`; Android then asks for
+     * its own permission if Genesis doesn't hold it yet. A refusal at either step refuses the site.
+     */
+    @Override public void askSite(Views.Page page, String origin, List<String> permissions, java.util.function.Consumer<Set<String>> allowed) {
+        cancelAsk();
+        SiteGrants grants = sites.grants();
+        boolean answered = true;
+        for (String permission : permissions) {
+            Boolean grant = grants.get(origin, permission);
+            if (Boolean.FALSE.equals(grant)) { allowed.accept(Set.of()); return; }
+            if (grant == null) answered = false;
+        }
+        Asking ask = new Asking(allowed);
+        asking = ask;
+        if (answered) { askAndroid(ask, permissions); return; }
+        ask.dialog = new MaterialAlertDialogBuilder(activity)
+            .setTitle(Ui.host(origin) + " wants to use your " + permissionNames(permissions))
+            .setMessage("Only while you're looking at it. You can reset this in Settings, Sites & sign-ins.")
+            .setPositiveButton("Allow", (d, w) -> {
+                for (String permission : permissions) grants.set(origin, permission, true);
+                askAndroid(ask, permissions);
+            })
+            .setNegativeButton("Don't allow", (d, w) -> {
+                for (String permission : permissions) grants.set(origin, permission, false);
+                ask.finish(Set.of());
+            })
+            .setOnCancelListener(d -> ask.finish(Set.of()))
+            .show();
+    }
+
+    private void askAndroid(Asking ask, List<String> permissions) {
+        List<String> android = new ArrayList<>();
+        for (String permission : permissions) for (String name : androidPermissions(permission)) android.add(name);
+        owner.requestPermissions(android.toArray(new String[0]), granted -> {
+            Set<String> allowed = new LinkedHashSet<>();
+            for (String permission : permissions) {
+                for (String name : androidPermissions(permission)) if (granted.contains(name)) { allowed.add(permission); break; }
+            }
+            ask.finish(allowed);
+        });
+    }
+
+    /** The Android permissions behind a `SiteGrants` permission; any one of them is enough. */
+    private static String[] androidPermissions(String permission) {
+        switch (permission) {
+            case SiteGrants.CAMERA: return new String[] { android.Manifest.permission.CAMERA };
+            case SiteGrants.MICROPHONE: return new String[] { android.Manifest.permission.RECORD_AUDIO };
+            default: return new String[0];
+        }
+    }
+
+    private static String permissionNames(List<String> permissions) {
+        if (permissions.contains(SiteGrants.CAMERA) && permissions.contains(SiteGrants.MICROPHONE)) return "camera and microphone";
+        return permissions.isEmpty() ? "" : permissions.get(0);
+    }
+
+    @Override public void cancelAsk() {
+        if (asking != null) asking.finish(Set.of());
     }
 
     /**

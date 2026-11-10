@@ -31,6 +31,7 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
     private static final long TICK_MS = 1000;
     private static final long BUNDLE_MAX_BYTES = 64L * 1024 * 1024;
     private static final long COOKIE_MAX_BYTES = 4L * 1024 * 1024;
+    private static final int REQUEST_PERMISSIONS = 46100;
     private static final long RELEASE_MAX_BYTES = 1024 * 1024;
     private static final int PICK_APPLET_FILE = 46000;
 
@@ -45,6 +46,9 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
     private Bridge bridge;
     private OnBackInvokedCallback backCallback;
     private boolean attached, resumed;
+    /** The pending Android permission request: its callback and the permissions already held. */
+    private java.util.function.Consumer<java.util.Set<String>> permissionsWanted;
+    private java.util.Set<String> permissionsHeld;
 
     @Override public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -277,6 +281,38 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
     }
 
     @Override public void cancelInvalidFiles() { selection.cancelIfInvalid(); }
+
+    /** One Android request at a time; a newer one answers the older one with what it already holds. */
+    @Override public void requestPermissions(String[] permissions, java.util.function.Consumer<java.util.Set<String>> granted) {
+        if (permissionsWanted != null) finishPermissions(new String[0], new int[0]);
+        java.util.Set<String> held = new java.util.LinkedHashSet<>();
+        List<String> needed = new ArrayList<>();
+        for (String permission : permissions) {
+            if (checkSelfPermission(permission) == android.content.pm.PackageManager.PERMISSION_GRANTED) held.add(permission);
+            else needed.add(permission);
+        }
+        if (needed.isEmpty()) { granted.accept(held); return; }
+        permissionsHeld = held;
+        permissionsWanted = granted;
+        requestPermissions(needed.toArray(new String[0]), REQUEST_PERMISSIONS);
+    }
+
+    @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] results) {
+        if (requestCode == REQUEST_PERMISSIONS) finishPermissions(permissions, results);
+        else super.onRequestPermissionsResult(requestCode, permissions, results);
+    }
+
+    private void finishPermissions(String[] permissions, int[] results) {
+        java.util.function.Consumer<java.util.Set<String>> granted = permissionsWanted;
+        java.util.Set<String> held = permissionsHeld;
+        permissionsWanted = null;
+        permissionsHeld = null;
+        if (granted == null) return;
+        for (int i = 0; i < Math.min(permissions.length, results.length); i++) {
+            if (results[i] == android.content.pm.PackageManager.PERMISSION_GRANTED) held.add(permissions[i]);
+        }
+        granted.accept(held);
+    }
 
     @SuppressWarnings("deprecation")
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
