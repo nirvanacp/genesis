@@ -131,8 +131,14 @@ final class Views {
 
         boolean isForeground() { return "foreground".equals(role); }
         boolean isContext() { return role.startsWith("context:"); }
-        /** True exactly while the shell shows this context above the foreground, or this popup over it. */
-        boolean isRevealed() { return web.getParent() instanceof Revealed || web.getParent() instanceof PopupSheet; }
+        /**
+         * True exactly while the shell shows this context above the foreground, or this popup over it.
+         * A context whose popup covers it stays in the hidden `Revealed` container and is not shown.
+         */
+        boolean isRevealed() {
+            android.view.ViewParent parent = web.getParent();
+            return parent instanceof PopupSheet || (parent instanceof Revealed && ((View) parent).getVisibility() == View.VISIBLE);
+        }
 
         @SuppressLint("RequiresFeature") // MainActivity checks WEB_MESSAGE_LISTENER before creating any view.
         void post(String payload) {

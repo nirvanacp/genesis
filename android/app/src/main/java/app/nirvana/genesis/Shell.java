@@ -324,17 +324,23 @@ final class Shell implements Views.Listener, Ui.Actions {
         closeCustomView();
         cancelPrompts();
         dropRevealed();
-        // A covered page may not keep the camera or microphone the user allowed while looking at it.
-        if (page.capturing) {
-            page.capturing = false;
-            page.web.reload();
-        }
+        stopCapture(page);
         page.web.clearFocus();
         page.web.setFocusable(false);
         page.web.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
         sources.addView(page.web, new FrameLayout.LayoutParams(-1, -1));
         owner.cancelInvalidFiles();
         menu.performAccessibilityAction(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS, null);
+    }
+
+    /**
+     * A page the user stops seeing may not keep the camera or microphone they allowed while looking
+     * at it. WebView has no call that ends a page's capture, so the page reloads.
+     */
+    private static void stopCapture(Views.Page page) {
+        if (!page.capturing) return;
+        page.capturing = false;
+        page.web.reload();
     }
 
     /** Hides the revealed container and forgets its page, leaving the WebView detached. */
@@ -622,14 +628,21 @@ final class Shell implements Views.Listener, Ui.Actions {
         return owner.chooseFiles(params, callback, () -> (page == popup || pages.get(key(page.ref)) == page) && SitePolicy.mayShowUi(page));
     }
 
-    /** The opener keeps running behind the sheet, so `window.opener.postMessage` still reaches it. */
+    /**
+     * The opener keeps running behind the sheet, so `window.opener.postMessage` still reaches it,
+     * but it is no longer shown: its prompts and fullscreen video close and its capture stops.
+     */
     @Override public Views.Page openWindow(Views.Page opener) {
         if (opener != revealedPage) return null;
         closePopup();
+        closeCustomView();
+        cancelPrompts();
+        stopCapture(opener);
         popup = views.popup(opener);
         popupSheet.addView(popup.web, new FrameLayout.LayoutParams(-1, -1));
         popupSheet.setVisibility(View.VISIBLE);
         revealed.setVisibility(View.GONE);
+        owner.cancelInvalidFiles();
         bar.setUrl(popup.web.getUrl());
         return popup;
     }
