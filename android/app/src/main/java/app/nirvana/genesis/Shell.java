@@ -22,6 +22,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 import app.nirvana.genesis.ui.AddFlow;
 import app.nirvana.genesis.ui.Connections;
+import app.nirvana.genesis.ui.CreateApplet;
 import app.nirvana.genesis.ui.GenesisMenu;
 import app.nirvana.genesis.ui.Home;
 import app.nirvana.genesis.ui.Manage;
@@ -608,6 +609,24 @@ final class Shell implements Views.Listener, Ui.Actions {
         return popup;
     }
 
+    /** A tapped link asks for a new window; the host decides where it goes. */
+    @Override public void windowRequested(Views.Page page, String url) {
+        if (page != revealedPage) return;
+        try { owner.send(Bridge.event("windowRequested").put("view", page.ref).put("url", url)); }
+        catch (JSONException ignored) { /* Unreachable for these values. */ }
+    }
+
+    /**
+     * No applet uses the link's website: it opens in a popup sheet over the context that asked,
+     * in the same sign-in. A context the user has since left gets no sheet.
+     */
+    void showWindow(JSONObject ref, String url) {
+        Views.Page page = pages.get(key(ref));
+        if (page == null || page != revealedPage) return;
+        Views.Page window = openWindow(page);
+        if (window != null) window.web.loadUrl(url);
+    }
+
     /** `window.close()` arrives inside the popup's own callback, so the view goes after it returns. */
     @Override public void closeWindow(Views.Page page) {
         bar.post(() -> { if (page == popup) closePopup(); });
@@ -783,26 +802,45 @@ final class Shell implements Views.Listener, Ui.Actions {
         catch (JSONException ignored) { /* Unreachable for string values. */ }
     }
 
-    /** Opens a website link in the applet that declares its site; `appletId` is the user's pick. */
-    void openUrl(String url, String appletId) {
-        try { owner.send(Bridge.event("openUrl").put("url", url).put("appletId", appletId == null ? JSONObject.NULL : appletId)); }
-        catch (JSONException ignored) { /* Unreachable for string values. */ }
+    /**
+     * Opens a website link in the applet the user picked, or asks the host which applets use its
+     * site when `appletId` is null. `external` marks a link another app shared, so a Back that
+     * leaves the applet returns to that app.
+     */
+    void openUrl(String url, String appletId, boolean external) {
+        try {
+            owner.send(Bridge.event("openUrl").put("url", url).put("appletId", appletId == null ? JSONObject.NULL : appletId).put("external", external));
+        } catch (JSONException ignored) { /* Unreachable for these values. */ }
     }
 
-    /** Several applets use the link's website; the user picks the one that opens it. */
-    void chooseApplet(String url, JSONArray applets) {
-        String[] names = new String[applets.length()];
-        String[] ids = new String[applets.length()];
-        for (int i = 0; i < applets.length(); i++) {
+    /**
+     * Every opened link asks first: one "Open in" choice per applet that uses its website, then
+     * "Create a new applet". The list has only the second choice when no applet uses the site.
+     */
+    void chooseApplet(String url, JSONArray applets, boolean external) {
+        int count = applets.length();
+        String[] choices = new String[count + 1];
+        String[] ids = new String[count];
+        for (int i = 0; i < count; i++) {
             JSONObject entry = applets.optJSONObject(i);
             ids[i] = entry == null ? "" : entry.optString("appletId");
-            names[i] = entry == null ? ids[i] : entry.optString("name", ids[i]);
+            choices[i] = "Open in " + (entry == null ? ids[i] : entry.optString("name", ids[i]));
         }
+        choices[count] = "Create a new applet";
         new MaterialAlertDialogBuilder(activity)
-            .setTitle("Open with")
-            .setItems(names, (d, which) -> openUrl(url, ids[which]))
+            .setTitle(linkTitle(url))
+            .setItems(choices, (d, which) -> {
+                if (which < count) openUrl(url, ids[which], external);
+                else ui.pages.push(CreateApplet.TAG, () -> CreateApplet.page(ui, url), null, false);
+            })
             .setNegativeButton("Cancel", null)
             .show();
+    }
+
+    /** The chooser's title: the link's host, or the link itself when it has none. */
+    private static String linkTitle(String url) {
+        String host = Uri.parse(url).getHost();
+        return host == null || host.isEmpty() ? url : host;
     }
 
     /** "Open a link": a URL field, prefilled when the clipboard holds a website link. */
@@ -816,11 +854,11 @@ final class Shell implements Views.Listener, Ui.Actions {
         form.addView(field, new LinearLayout.LayoutParams(-1, -2));
         new MaterialAlertDialogBuilder(activity)
             .setTitle("Open a link")
-            .setMessage("The link opens in the applet that uses its website.")
+            .setMessage("Choose the applet that opens it, or create a new one.")
             .setView(form)
             .setPositiveButton("Open", (d, w) -> {
                 String url = field.getText().toString().trim();
-                if (!url.isEmpty()) openUrl(url, null);
+                if (!url.isEmpty()) openUrl(url, null, false);
             })
             .setNegativeButton("Cancel", null)
             .show();

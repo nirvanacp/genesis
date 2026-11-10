@@ -54,6 +54,8 @@ final class Views {
         /** The revealed context opened a window from a tap. Returns the popup to load it into, or null to refuse. */
         Page openWindow(Page opener);
         void closeWindow(Page popup);
+        /** The revealed context's tapped link asks for a new window at `url`. */
+        void windowRequested(Page page, String url);
         void popupNavigated(Page popup, String url);
         /**
          * The shown website asks to use these `SiteGrants` permissions. `allowed` runs once, on the
@@ -378,9 +380,20 @@ final class Views {
 
         @Override public void onHideCustomView() { listener.hideCustomView(); }
 
-        /** Only the revealed context opens a window, and only from a tap; a popup's own windows load in place. */
+        /**
+         * Only the revealed context opens a window, and only from a tap; a popup's own windows load
+         * in place. A tapped link goes to the host, which opens it in this context, in another
+         * applet or in a popup. A script's window, such as a sign-in, opens as a popup at once so
+         * it keeps `window.opener`.
+         */
         @Override public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture, android.os.Message resultMsg) {
             if (page.opener != null || !isUserGesture || !SitePolicy.mayShowUi(page)) return false;
+            WebView.HitTestResult hit = view.getHitTestResult();
+            String link = hit == null || hit.getType() != WebView.HitTestResult.SRC_ANCHOR_TYPE ? null : hit.getExtra();
+            if (link != null && (link.startsWith("https:") || link.startsWith("http:"))) {
+                listener.windowRequested(page, link);
+                return false;
+            }
             Page popup = listener.openWindow(page);
             if (popup == null) return false;
             ((WebView.WebViewTransport) resultMsg.obj).setWebView(popup.web);

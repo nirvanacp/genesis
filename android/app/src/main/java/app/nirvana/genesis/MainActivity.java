@@ -213,8 +213,15 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
     private void sharedText(CharSequence text) {
         java.util.regex.Matcher link = java.util.regex.Pattern.compile("https?://\\S+", java.util.regex.Pattern.CASE_INSENSITIVE)
             .matcher(text == null ? "" : text);
-        if (link.find()) shell.openUrl(link.group(), null);
+        if (link.find()) shell.openUrl(trimLink(link.group()), null, true);
         else shell.showInfo("Genesis", "This doesn't contain a website link");
+    }
+
+    /** A link quoted in a sentence ends at its closing punctuation, which is not part of the URL. */
+    static String trimLink(String link) {
+        int end = link.length();
+        while (end > 0 && ".,;:!?)]}>'\"".indexOf(link.charAt(end - 1)) >= 0) end--;
+        return link.substring(0, end);
     }
 
     @SuppressWarnings("deprecation")

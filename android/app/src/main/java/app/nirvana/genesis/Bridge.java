@@ -69,7 +69,8 @@ final class Bridge {
             case "postMessage": shell.postMessage(command.getJSONObject("view"), command.getString("payload")); break;
             case "serviceRequest": services.request(command); break;
             case "showError": shell.showError(command.getString("message")); break;
-            case "chooseApplet": shell.chooseApplet(command.getString("url"), command.getJSONArray("applets")); break;
+            case "chooseApplet": shell.chooseApplet(command.getString("url"), command.getJSONArray("applets"), command.optBoolean("external")); break;
+            case "showWindow": shell.showWindow(command.getJSONObject("view"), command.getString("url")); break;
             case "showInfo": shell.showInfo(command.getString("title"), command.getString("message")); break;
             case "showStatus": shell.showStatus(command.getString("kind"), command.optJSONObject("applet"), command.getString("details")); break;
             case "wake": task.wake(command.getLong("delayMs")); break;
