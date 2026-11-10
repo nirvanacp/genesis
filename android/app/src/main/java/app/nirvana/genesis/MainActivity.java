@@ -54,7 +54,7 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
         boolean debuggable = (getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0;
         // DevTools for debug builds on any device; release builds stay closed.
         android.webkit.WebView.setWebContentsDebuggingEnabled(debuggable);
-        if (!Views.supported()) {
+        if (!WebFeatures.supported()) {
             Shell.unsupported(this);
             return;
         }

@@ -99,7 +99,7 @@ final class Shell implements Views.Listener, Ui.Actions {
     Shell(Activity activity, Owner owner) {
         this.activity = activity;
         this.owner = owner;
-        views = new Views(activity, this);
+        views = new Views(activity, this, SiteData.defaultProfile());
         tokens = new Tokens(activity);
         ui = new Ui(activity, tokens, this);
         addFlow = new AddFlow(ui);
@@ -168,7 +168,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         FrameLayout root = new FrameLayout(activity);
         root.setBackgroundColor(tokens.surface);
         applyInsets(root);
-        root.addView(Notices.webViewTooOld(ui, Views.providerVersion(activity)), new FrameLayout.LayoutParams(-1, -1));
+        root.addView(Notices.webViewTooOld(ui, WebFeatures.providerVersion(activity)), new FrameLayout.LayoutParams(-1, -1));
         activity.setContentView(root);
         tokens.applySystemBars(activity);
     }

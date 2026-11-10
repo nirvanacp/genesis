@@ -2,19 +2,15 @@ package app.nirvana.genesis;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
-import android.content.pm.PackageInfo;
 import android.graphics.Bitmap;
-import android.graphics.Color;
 import android.net.Uri;
 import android.view.View;
-import android.webkit.CookieManager;
 import android.webkit.PermissionRequest;
 import android.webkit.RenderProcessGoneDetail;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
-import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.webkit.WebBackForwardList;
@@ -112,25 +108,16 @@ final class Views {
     private final Activity activity;
     private final Listener listener;
     private final WebViewAssetLoader assets;
+    private final SiteData site;
 
-    Views(Activity activity, Listener listener) {
+    Views(Activity activity, Listener listener, SiteData site) {
         this.activity = activity;
         this.listener = listener;
+        this.site = site;
         File applets = new File(activity.getFilesDir(), "applets");
         assets = new WebViewAssetLoader.Builder()
             .addPathHandler("/genesis/", new WebViewAssetLoader.InternalStoragePathHandler(activity, applets))
             .build();
-    }
-
-    /** The WebView features the document protocol depends on. */
-    static boolean supported() {
-        return WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)
-            && WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT);
-    }
-
-    static String providerVersion(Activity activity) {
-        PackageInfo info = WebViewCompat.getCurrentWebViewPackage(activity);
-        return info == null ? "unknown" : info.packageName + " " + info.versionName;
     }
 
     static String origin(String url) {
@@ -142,9 +129,11 @@ final class Views {
     }
 
     /** A foreground or context view. The bridge listener and start script apply on the view's origins only. */
-    @SuppressLint("RequiresFeature") // supported() and the NAVIGATION_LISTENER check gate every feature call.
+    @SuppressLint("RequiresFeature") // WebFeatures.supported() and the NAVIGATION_LISTENER check gate every feature call.
     Page document(JSONObject ref, Set<String> origins, String startScript) {
-        Page page = new Page(ref, base(!"foreground".equals(ref.optString("role"))));
+        WebView web = new WebView(activity);
+        WebsiteSettings.apply(web, !"foreground".equals(ref.optString("role")), site);
+        Page page = new Page(ref, web);
         page.origins.addAll(origins);
         WebViewCompat.addWebMessageListener(page.web, BRIDGE, page.origins, (view, message, sourceOrigin, isMainFrame, reply) -> {
             String data = message.getData();
@@ -158,7 +147,7 @@ final class Views {
         if (page.isContext()) {
             page.web.setFocusable(false);
             page.web.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
-            if (WebViewFeature.isFeatureSupported(WebViewFeature.NAVIGATION_LISTENER)) {
+            if (WebFeatures.has(WebViewFeature.NAVIGATION_LISTENER)) {
                 WebViewCompat.addNavigationListener(page.web, new NavigationListener() {
                     @Override public void onNavigationStarted(Navigation navigation) { page.moves++; }
 
@@ -195,22 +184,6 @@ final class Views {
         page.lastIndex = result.index;
         page.lastUrl = result.url;
         return result;
-    }
-
-    @SuppressLint("SetJavaScriptEnabled")
-    private WebView base(boolean thirdPartyCookies) {
-        WebView web = new WebView(activity);
-        WebSettings settings = web.getSettings();
-        settings.setJavaScriptEnabled(true);
-        settings.setDomStorageEnabled(true);
-        settings.setAllowFileAccess(false);
-        settings.setAllowContentAccess(false);
-        settings.setMediaPlaybackRequiresUserGesture(true);
-        settings.setSupportMultipleWindows(false);
-        web.setBackgroundColor(Color.WHITE);
-        CookieManager.getInstance().setAcceptCookie(true);
-        CookieManager.getInstance().setAcceptThirdPartyCookies(web, thirdPartyCookies);
-        return web;
     }
 
     private final class Client extends WebViewClient {
