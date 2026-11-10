@@ -173,7 +173,12 @@ public final class Notices {
             try {
                 ui.activity.startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=com.google.android.webview")));
             } catch (ActivityNotFoundException error) {
-                ui.actions.openExternal("https://play.google.com/store/apps/details?id=com.google.android.webview");
+                // `unsupported` builds this page without shell actions, so open the link directly.
+                try {
+                    ui.activity.startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=com.google.android.webview")));
+                } catch (ActivityNotFoundException ignored) {
+                    // No browser either: nothing can open the page.
+                }
             }
         });
         return ui.page(t.chromeHeader("Genesis", null, null), content, ui.footer(update));

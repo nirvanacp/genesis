@@ -33,6 +33,7 @@ import app.nirvana.genesis.ui.Tokens;
 import app.nirvana.genesis.ui.Ui;
 import app.nirvana.genesis.ui.WebsiteBar;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -57,7 +58,8 @@ final class Shell implements Views.Listener, Ui.Actions {
         /** Opens the system picker for a bundle file, with its release record if the user picks one. */
         void pickAppletFile();
         Connections.Store connections();
-        void signOut(List<String> origins, Runnable done);
+        /** `all` signs out of every site, which also clears cookies on any path. */
+        void signOut(List<String> origins, boolean all, Runnable done);
         void storageSize(java.util.function.LongConsumer result);
     }
 
@@ -184,6 +186,23 @@ final class Shell implements Views.Listener, Ui.Actions {
         home.render();
         ui.pages.refresh();
         owner.launcherShown();
+    }
+
+    /** New launcher entries while an applet is open: the menu and open pages read them. */
+    void updateApplets(JSONArray applets, long updatesCheckedAt) {
+        ui.applets = applets;
+        ui.updatesCheckedAt = updatesCheckedAt;
+        ui.pages.refresh();
+    }
+
+    /** Every URL the open applet's pages have visited, for clearing cookies set on deeper paths. */
+    List<String> visitedUrls() {
+        List<String> urls = new ArrayList<>();
+        for (Views.Page page : pages.values()) {
+            android.webkit.WebBackForwardList history = page.web.copyBackForwardList();
+            for (int i = 0; i < history.getSize(); i++) urls.add(history.getItemAtIndex(i).getUrl());
+        }
+        return urls;
     }
 
     void showApplet(String id, String name, String accent) {
@@ -566,7 +585,7 @@ final class Shell implements Views.Listener, Ui.Actions {
 
     @Override public Connections.Store connections() { return owner.connections(); }
 
-    @Override public void signOut(List<String> origins, Runnable done) { owner.signOut(origins, done); }
+    @Override public void signOut(List<String> origins, boolean all, Runnable done) { owner.signOut(origins, all, done); }
 
     @Override public void storageSize(java.util.function.LongConsumer result) { owner.storageSize(result); }
 

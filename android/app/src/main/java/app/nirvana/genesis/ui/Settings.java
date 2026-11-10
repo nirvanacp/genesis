@@ -106,18 +106,18 @@ public final class Settings {
             if (in) signed.add(site.getKey());
             TextView chip = in ? t.chip("Signed in", Tokens.Chip.SUCCESS) : t.chip("Signed out", Tokens.Chip.NEUTRAL);
             content.addView(t.row(R.drawable.ic_website, Ui.host(site.getKey()), "Used by " + Ui.and(site.getValue()), chip, in, t.onSurface,
-                in ? () -> signOut(List.of(site.getKey())) : null));
+                in ? () -> signOut(List.of(site.getKey()), false) : null));
         }
         View footer = null;
         if (!signed.isEmpty()) {
             MaterialButton all = t.dangerOutlinedButton("Sign out of all sites");
-            all.setOnClickListener(v -> signOut(signed));
+            all.setOnClickListener(v -> signOut(signed, true));
             footer = ui.footer(all);
         }
         return ui.page(t.header("Sites & sign-ins", false, () -> ui.pages.remove(SITES)), content, footer);
     }
 
-    private void signOut(List<String> origins) {
+    private void signOut(List<String> origins, boolean all) {
         Tokens t = ui.tokens;
         Map<String, List<String>> sites = sites();
         List<String> users = new ArrayList<>();
@@ -132,7 +132,7 @@ public final class Settings {
         MaterialButton out = t.dangerButton("Sign out");
         out.setOnClickListener(v -> {
             dialog[0].dismiss();
-            ui.actions.signOut(origins, () -> ui.pages.refresh());
+            ui.actions.signOut(origins, all, () -> ui.pages.refresh());
         });
         content.addView(out, t.margins(0, 20));
         MaterialButton cancel = t.outlinedButton("Cancel");

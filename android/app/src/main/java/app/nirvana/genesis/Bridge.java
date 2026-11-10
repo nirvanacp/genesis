@@ -52,6 +52,7 @@ final class Bridge {
     private void execute(JSONObject command) throws JSONException {
         String type = command.getString("type");
         switch (type) {
+            case "updateApplets": shell.updateApplets(command.getJSONArray("applets"), command.optLong("updatesCheckedAt")); break;
             case "showLauncher": shell.showLauncher(command.getJSONArray("applets"), command.optLong("updatesCheckedAt")); break;
             case "showApplet": shell.showApplet(command.getString("appletId"), command.getString("name"), command.optString("accent", null)); break;
             case "createView":

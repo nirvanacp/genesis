@@ -129,12 +129,12 @@ public final class AddFlow {
     }
 
     private void cancel() {
-        ui.actions.cancelFlow();
-        String top = ui.pages.top();
-        if (VERSION.equals(top) && fromPick) {
+        // Back from the versions to the applet picker keeps the host's flow and its candidates.
+        if (VERSION.equals(ui.pages.top()) && fromPick) {
             ui.pages.pop();
             return;
         }
+        ui.actions.cancelFlow();
         ui.pages.remove(CHECKING);
         ui.pages.remove(VERSION);
         ui.pages.remove(PICK);

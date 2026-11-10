@@ -46,7 +46,7 @@ public final class Ui {
         void openExternal(String url);
         Connections.Store connections();
         /** Deletes cookies and site storage of these origins, then runs `done` on the UI thread. */
-        void signOut(List<String> origins, Runnable done);
+        void signOut(List<String> origins, boolean all, Runnable done);
         /** Total bytes Genesis stores for applets on this phone, computed off the UI thread. */
         void storageSize(java.util.function.LongConsumer result);
     }

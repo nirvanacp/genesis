@@ -25,6 +25,8 @@ import android.widget.TextView;
 import android.widget.Toast;
 import app.nirvana.genesis.R;
 import com.google.android.material.button.MaterialButton;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * The management UI's design tokens and shared pieces: the fixed Genesis palette in light and
@@ -196,12 +198,14 @@ public final class Tokens {
     /** Up to two letters for an applet: the first letters of its first two words, or its first two letters. */
     public static String initials(String name) {
         if (name == null || name.trim().isEmpty()) return "?";
-        String[] words = name.trim().split("[\\s_-]+");
+        List<String> words = new ArrayList<>();
+        for (String word : name.trim().split("[\\s_-]+")) if (!word.isEmpty()) words.add(word);
+        if (words.isEmpty()) return "?";
         StringBuilder result = new StringBuilder();
-        if (words.length >= 2) {
-            result.appendCodePoint(words[0].codePointAt(0)).appendCodePoint(words[1].codePointAt(0));
+        if (words.size() >= 2) {
+            result.appendCodePoint(words.get(0).codePointAt(0)).appendCodePoint(words.get(1).codePointAt(0));
         } else {
-            String word = words[0];
+            String word = words.get(0);
             result.append(word, 0, Math.min(word.length(), word.offsetByCodePoints(0, Math.min(2, word.codePointCount(0, word.length())))));
         }
         return result.toString().toUpperCase();
