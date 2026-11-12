@@ -54,7 +54,7 @@ final class Bridge {
         switch (type) {
             case "updateApplets": shell.updateApplets(command.getJSONArray("applets"), command.optLong("updatesCheckedAt")); break;
             case "showLauncher": shell.showLauncher(command.getJSONArray("applets"), command.optLong("updatesCheckedAt")); break;
-            case "showApplet": shell.showApplet(command.getString("appletId"), command.getString("name"), command.optString("accent", null)); break;
+            case "showApplet": shell.showApplet(command.getString("appletId"), command.getString("name"), command.optString("accent", null), command.optString("icon", null)); break;
             case "createView":
                 shell.createView(command.getJSONObject("view"), command.getString("url"), command.getJSONArray("origins"),
                     command.isNull("startScript") ? null : command.getString("startScript"));

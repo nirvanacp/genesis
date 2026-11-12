@@ -33,7 +33,7 @@ public final class GenesisMenu {
         header.setGravity(Gravity.CENTER_VERTICAL);
         header.setBackgroundColor(t.chrome);
         header.setPadding(t.dp(20), t.dp(20), t.dp(20), t.dp(18));
-        header.addView(t.tile(name, 44, false, false), new LinearLayout.LayoutParams(t.dp(44), t.dp(44)));
+        header.addView(t.appletTile(name, entry == null ? null : Ui.str(entry, "icon"), 44, false, false), new LinearLayout.LayoutParams(t.dp(44), t.dp(44)));
         LinearLayout text = ui.column();
         String version = entry == null ? null : Ui.str(entry, "version");
         TextView title = t.text(name + (version != null ? "  " + version : ""), Tokens.Type.TITLE_MEDIUM, t.onChrome);

@@ -24,7 +24,7 @@ Define a small set of tokens in `src/theme.css` and use them everywhere, includi
 - Controls: icon family and weight, button shapes, inputs, tab indicators, menus, sheets, pressed, focus and disabled states.
 - Motion: easing curves, three durations and the pressed state layer. See [motion](motion.md#tokens).
 
-Set `shell.accent` in the manifest to the brand color; the shell uses it for the applet name on the launch splash.
+Set `shell.accent` in the manifest to the brand color, and give the applet a `shell.icon` (a square PNG under `assets/`, see the [SDK reference](sdk-reference.md#manifest-appletjson)). The shell shows the icon in the launcher, on the launch splash, on home-screen shortcuts and in Recents, on the accent color. Without an icon it draws the first letter of the applet's name on the accent color.
 
 ## Building screens
 

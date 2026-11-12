@@ -30,7 +30,7 @@ Nothing else is public. The build rejects an adapter that imports `@genesis/sdk/
     { "id": "account", "pattern": "/account", "page": "account", "screen": "account", "context": "me" }
   ],
   "capabilities": { "storage": true, "services": [{ "id": "bookmarks", "config": "backend/service.json" }] },
-  "shell": { "accent": "#ff6600" }
+  "shell": { "accent": "#ff6600", "icon": "assets/icon.png" }
 }
 ```
 
@@ -49,7 +49,8 @@ Nothing else is public. The build rejects an adapter that imports `@genesis/sdk/
 | `routes[].context` | Optional. The context a link to this route opens in from a tab root or an overlay screen (see [navigation](navigation.md#which-context-a-url-opens-in)). |
 | `capabilities.storage` | Enables document storage for this applet. |
 | `capabilities.services` | HTTPS backends. `config` points at the service file that the tools use (see [services and data](services-and-data.md)). |
-| `shell.accent` | `#rrggbb` color for the applet name on the launch splash. |
+| `shell.accent` | `#rrggbb` brand color. The shell fills the applet's home-screen shortcut and Recents icon with it, and draws the first letter of `name` on it when there is no `shell.icon`. |
+| `shell.icon` | Optional. A PNG under `assets/` (`assets/icon.png`), square, 192 to 1024 px on a side and at most 256 KiB. Use original artwork the applet may use, not the website's logo copied from its pages. The launcher, launch splash, home-screen shortcut and Recents card show it; the shell places it inside the adaptive icon's safe zone on the accent color, so keep the art's own background transparent or matching. `check` fails at `/shell/icon` when the file is missing, not a PNG, not square or out of range. |
 
 A URL on a declared origin that no route matches, and any URL on another origin, shows as the website itself in its context. Unknown fields are errors ("is not a schema 6 field"). `genesis-applet check` reports each error with a JSON pointer such as `/routes/3/screen`, and warns about routes that an earlier route always matches first.
 

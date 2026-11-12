@@ -102,6 +102,7 @@ androidComponents {
 }
 
 dependencies {
+    implementation(libs.androidx.core)
     implementation(libs.androidx.webkit)
     implementation(libs.material)
     testImplementation(libs.junit)

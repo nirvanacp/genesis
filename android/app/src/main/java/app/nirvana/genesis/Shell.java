@@ -227,14 +227,14 @@ final class Shell implements Views.Listener, Ui.Actions {
         return urls;
     }
 
-    void showApplet(String id, String name, String accent) {
+    void showApplet(String id, String name, String accent, String icon) {
         destroyAll();
         ui.pages.clear();
         appletId = id;
         appletName = name;
         home.root.setVisibility(View.GONE);
         applet.setVisibility(View.VISIBLE);
-        splash.show(name, accent);
+        splash.show(name, icon);
     }
 
     void createView(JSONObject ref, String url, JSONArray origins, String startScript) throws JSONException {

@@ -319,6 +319,7 @@ impl Host {
             applet_id: applet_id.into(),
             name: manifest.name.clone(),
             accent: manifest.shell.as_ref().and_then(|s| s.accent.clone()),
+            icon: self.applets.icon(applet_id),
         });
         self.out.push(ShellCommand::CreateView {
             view: ViewRef { applet_id: applet_id.into(), role: Role::Foreground },

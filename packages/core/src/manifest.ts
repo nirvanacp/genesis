@@ -19,7 +19,7 @@ export interface Manifest {
   /** The first matching route wins. */
   routes: Route[];
   capabilities: Capabilities;
-  shell?: { accent?: string };
+  shell?: { accent?: string; icon?: string };
 }
 
 export interface Context {
@@ -57,6 +57,7 @@ export type ParseResult = { manifest: Manifest } | { errors: ManifestError[] };
 const ID = /^[a-z0-9-]+$/;
 const ORIGIN = /^https:\/\/[a-z0-9.-]+(:[0-9]+)?$/;
 const ACCENT = /^#[0-9a-fA-F]{6}$/;
+const ICON = /^assets\/[A-Za-z0-9._\/-]+\.png$/;
 
 type Json = Record<string, unknown>;
 
@@ -157,9 +158,13 @@ export function parseManifest(json: unknown, exists: (relativePath: string) => b
   if (json.shell !== undefined) {
     if (!isObject(json.shell)) fail("/shell", "must be an object");
     else {
-      allowKeys(json.shell, "/shell", ["accent"], fail);
+      allowKeys(json.shell, "/shell", ["accent", "icon"], fail);
       if (json.shell.accent !== undefined && (typeof json.shell.accent !== "string" || !ACCENT.test(json.shell.accent))) {
         fail("/shell/accent", "must be a #rrggbb color");
+      }
+      const icon = json.shell.icon;
+      if (icon !== undefined && (typeof icon !== "string" || !ICON.test(icon) || icon.split("/").includes(".."))) {
+        fail("/shell/icon", "must be a PNG path under assets/");
       }
     }
   }

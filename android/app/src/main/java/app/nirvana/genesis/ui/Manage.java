@@ -124,7 +124,7 @@ public final class Manage {
         LinearLayout row = new LinearLayout(ui.activity);
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setPadding(t.dp(20), t.dp(10), t.dp(20), t.dp(10));
-        row.addView(t.tile(entry.optString("name"), 48, false, false), new LinearLayout.LayoutParams(t.dp(48), t.dp(48)));
+        row.addView(t.appletTile(entry.optString("name"), Ui.str(entry, "icon"), 48, false, false), new LinearLayout.LayoutParams(t.dp(48), t.dp(48)));
         LinearLayout text = ui.column();
         text.addView(t.text(entry.optString("name"), Tokens.Type.TITLE_MEDIUM, t.onSurface));
         text.addView(t.text(detail, Tokens.Type.BODY_MEDIUM, t.onSurfaceVariant));
@@ -158,7 +158,7 @@ public final class Manage {
         LinearLayout top = new LinearLayout(ui.activity);
         top.setGravity(Gravity.CENTER_VERTICAL);
         top.setPadding(t.dp(20), 0, t.dp(20), 0);
-        top.addView(t.tile(name, 64, dev, incompatible), new LinearLayout.LayoutParams(t.dp(64), t.dp(64)));
+        top.addView(t.appletTile(name, Ui.str(entry, "icon"), 64, dev, incompatible), new LinearLayout.LayoutParams(t.dp(64), t.dp(64)));
         LinearLayout text = ui.column();
         text.addView(t.heading(name, Tokens.Type.TITLE_LARGE));
         text.addView(t.text(Home.versionLine(entry), Tokens.Type.BODY_MEDIUM, t.onSurfaceVariant));

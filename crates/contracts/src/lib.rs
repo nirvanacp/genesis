@@ -259,7 +259,7 @@ pub enum ShellCommand {
         updates_checked_at: u64,
     },
     /// Shows the applet container with the splash until `RevealForeground`.
-    ShowApplet { applet_id: String, name: String, accent: Option<String> },
+    ShowApplet { applet_id: String, name: String, accent: Option<String>, icon: Option<String> },
     CreateView { view: ViewRef, url: String, origins: Vec<String>, start_script: Option<String> },
     DestroyView { view: ViewRef },
     /// `push` is `loadUrl`; `replace` is `location.replace(url)`, with `loadUrl` when the page cannot run script.
@@ -367,6 +367,9 @@ pub struct LauncherEntry {
     pub applet_id: String,
     pub name: String,
     pub accent: Option<String>,
+    /// The absolute path of the installed revision's icon file, when the manifest names one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
     pub status: AppletStatus,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub direction: Option<Direction>,
@@ -603,6 +606,9 @@ pub struct ServiceDeclaration {
 pub struct Shell {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub accent: Option<String>,
+    /// A square PNG under `assets/` that the launcher, shortcuts and Recents show.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
 }
 
 /// The versions a bundle was built against, written by the builder.
