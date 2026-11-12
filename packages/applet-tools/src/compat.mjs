@@ -24,7 +24,7 @@ async function readJson(file, { optional = false } = {}) {
 /** The version of the `@genesis/sdk` package the applet resolves, or null when it is not installed. */
 export async function installedSdk(base) {
   let file;
-  try { file = createRequire(path.join(base, 'package.json')).resolve(`${SDK}/adapter`); }
+  try { file = createRequire(path.join(base, 'package.json')).resolve(SDK); }
   catch { return null; }
   for (let directory = path.dirname(file); directory !== path.dirname(directory); directory = path.dirname(directory)) {
     const json = await readJson(path.join(directory, 'package.json'), { optional: true });

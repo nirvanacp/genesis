@@ -2,10 +2,10 @@ import { build } from 'esbuild';
 import { lstat, mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { BUNDLE_FORMAT, COMPAT } from '@genesis/core';
-import { ADAPTER_ENTRY, adapterEntry, checkApplet, noReactInAdapters } from './check.mjs';
+import { BUNDLE_FORMAT, COMPAT, isBundlePath, REQUIRED_BUNDLE_FILES } from '@genesis/core';
+import { checkApplet, noReactInPage, PAGE_ENTRY, pageEntry, runCommand } from './check.mjs';
 import { bundleCompat, installedSdk } from './compat.mjs';
-import { requireValue, safePath, sha256 } from './manifest.mjs';
+import { containedFile, requireValue, sha256 } from './manifest.mjs';
 
 const MARKER = '.genesis-applet-output';
 const MARKER_TEXT = `genesis-applet:${BUNDLE_FORMAT}\n`;
@@ -13,8 +13,8 @@ const MARKER_TEXT = `genesis-applet:${BUNDLE_FORMAT}\n`;
 const REVISION = 'revision';
 /** Text files travel as UTF-8 in the import file; everything else as base64. */
 const TEXT = new Set(['.html', '.js', '.css', '.json', '.svg', '.txt', '.map']);
-/** Segments the host accepts in a bundle path. */
-const SEGMENT = /^[A-Za-z0-9._@-]+$/;
+/** An HTML `src` or `href` that starts with `/`: the UI is served under a revision path, so it would miss. */
+const ROOT_URL = /\b(?:src|href)\s*=\s*["']?\//gi;
 
 const esbuildOptions = (base, debug) => ({
   absWorkingDir: base, bundle: true, write: false, metafile: true, format: 'iife', platform: 'browser', target: 'es2022',
@@ -53,6 +53,7 @@ function escapeHtml(value) {
   return value.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 }
 
+/** The UI document of the zero-configuration build: the bundled entry, its CSS and the accent. */
 function indexHtml(manifest, hasCss) {
   const accent = manifest.shell?.accent;
   return '<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'
@@ -61,6 +62,48 @@ function indexHtml(manifest, hasCss) {
     + (accent ? `<style>:root{--genesis-accent:${accent}}</style>\n` : '')
     + (hasCss ? '<link rel="stylesheet" href="foreground.css">\n' : '')
     + '</head>\n<body>\n<div id="root"></div>\n<script src="foreground.js"></script>\n</body>\n</html>\n';
+}
+
+/**
+ * Builds the UI and returns its files by path in the bundle. `{ entry }` bundles that source
+ * file with esbuild, copies the applet's `assets/` and writes the HTML document at
+ * `manifest.foreground.entry`. `{ command, dir }` runs the project's own build and takes every
+ * file of `dir`.
+ */
+async function buildForeground(base, foreground, manifest, { outdir, debug }) {
+  if ('entry' in foreground) {
+    const files = await bundle(base, 'foreground', path.join(base, foreground.entry), foreground.entry, { outdir, debug });
+    const assets = path.join(base, 'assets');
+    if (await stat(assets).then(info => info.isDirectory(), () => false)) {
+      for (const name of await listFiles(assets)) {
+        requireValue(!files.has(`assets/${name}`), `Two bundle files share the path assets/${name}`);
+        files.set(`assets/${name}`, await readFile(path.join(assets, name)));
+      }
+    }
+    requireValue(!files.has(manifest.foreground.entry), `The UI build already writes ${manifest.foreground.entry}`);
+    files.set(manifest.foreground.entry, Buffer.from(indexHtml(manifest, files.has('foreground.css'))));
+    return files;
+  }
+  runCommand(base, foreground.command, 'build.foreground.command');
+  const dir = path.join(base, foreground.dir);
+  const real = await realpath(dir).catch(() => null);
+  requireValue(real && (await stat(real)).isDirectory(), `build.foreground.dir ${foreground.dir} does not exist after the build command`);
+  requireValue(real.startsWith(base + path.sep), `build.foreground.dir ${foreground.dir} leaves the applet`);
+  requireValue(!(real + path.sep).startsWith(path.join(base, 'backend') + path.sep), `build.foreground.dir ${foreground.dir} is inside backend/`);
+  const files = new Map();
+  for (const name of await listFiles(real)) files.set(name, await readFile(await containedFile(real, name)));
+  return files;
+}
+
+/** Fails when an HTML file references a path that starts with `/`, naming the setting to change. */
+function refuseRootUrls(files) {
+  const problems = [];
+  for (const [name, bytes] of files) {
+    if (!name.endsWith('.html')) continue;
+    for (const match of bytes.toString('utf8').matchAll(ROOT_URL)) problems.push(`  ${name}: ${match[0]}`);
+  }
+  requireValue(problems.length === 0, 'The UI references paths that start with /. The UI is served from a revision directory, '
+    + 'so every URL must be relative; a Vite project sets base: "./" in its config.\n' + problems.join('\n'));
 }
 
 /** Refuses to replace a directory this tool did not create. */
@@ -80,10 +123,10 @@ async function prepareOutput(base, output) {
 }
 
 /**
- * Builds `dist/`: `revision/` is the revision directory (`bundle.json`, `index.html`,
- * `foreground.js`, `foreground.css`, `adapter.js`, `assets/**`) and `applet-<id>.bundle.json`
- * is the import file that `dev install` and the APK carry. `debug` defines `__GENESIS_DEBUG__`,
- * which turns on the adapter runtime's measurements. `builtAt` (an ISO time) fixes
+ * Builds `dist/`: `revision/` is the revision directory (`bundle.json`, `index.html`, `page.js`
+ * and the built UI's other files) and `applet-<id>.bundle.json` is the import file that
+ * `dev install` and the APK carry. The `build` section of `applet.json` is not part of the
+ * bundled manifest. `debug` defines `__GENESIS_DEBUG__` in the esbuild outputs. `builtAt` (an ISO time) fixes
  * `compat.builtAt`, so two builds of the same sources are byte-identical; without it the build
  * records the current time.
  */
@@ -91,29 +134,25 @@ export async function buildApplet(directory, output, { debug = false, builtAt } 
   const time = builtAt === undefined ? new Date() : new Date(builtAt);
   requireValue(builtAt === undefined || (typeof builtAt === 'string' && !Number.isNaN(time.getTime())
     && [time.toISOString(), time.toISOString().replace(/\.\d{3}Z$/, 'Z')].includes(builtAt)), `builtAt must be an ISO time such as 2026-11-09T16:00:00Z, not ${builtAt}`);
-  const { base, manifest } = await checkApplet(directory);
+  const { base, manifest, build: config } = await checkApplet(directory);
   const destination = await prepareOutput(base, output ?? path.join(base, 'dist'));
   const outdir = path.join(destination, REVISION);
   const files = new Map();
   const add = (name, bytes) => {
-    requireValue(safePath(name) && name !== 'bundle.json' && name.split('/').every(segment => SEGMENT.test(segment)), `Unsupported bundle path ${name}`);
+    requireValue(isBundlePath(name), `Unsupported bundle path ${name}: segments use only A-Z a-z 0-9 . _ - and do not start with a dot`);
     requireValue(!files.has(name), `Two bundle files share the path ${name}`);
     files.set(name, bytes);
   };
 
-  const foreground = await bundle(base, 'foreground', path.join(base, manifest.foreground.entry), manifest.foreground.entry, { outdir, debug });
-  for (const [name, bytes] of foreground) add(name, bytes);
-  const adapter = await bundle(base, 'adapter', ADAPTER_ENTRY, manifest.adapter,
-    { outdir, debug, plugins: [adapterEntry(base, manifest.adapter), noReactInAdapters] });
-  for (const [name, bytes] of adapter) {
-    requireValue(!name.endsWith('.css'), `Adapter ${manifest.adapter} must not import CSS`);
+  for (const [name, bytes] of await buildForeground(base, config.foreground, manifest, { outdir, debug })) add(name, bytes);
+  const page = await bundle(base, 'page', PAGE_ENTRY, config.page ?? 'the page agent',
+    { outdir, debug, plugins: [pageEntry(base, config.page), noReactInPage] });
+  for (const [name, bytes] of page) {
+    requireValue(!name.endsWith('.css'), `The page script must not import CSS`);
     if (!files.has(name) || !name.startsWith('assets/')) add(name, bytes);
   }
-  const assets = path.join(base, 'assets');
-  if (await stat(assets).then(info => info.isDirectory(), () => false)) {
-    for (const name of await listFiles(assets)) add(`assets/${name}`, await readFile(path.join(assets, name)));
-  }
-  add('index.html', Buffer.from(indexHtml(manifest, files.has('foreground.css'))));
+  for (const name of [...REQUIRED_BUNDLE_FILES, manifest.foreground.entry]) requireValue(files.has(name), `The built UI has no ${name}`);
+  refuseRootUrls(files);
 
   const names = [...files.keys()].sort();
   const sdk = await installedSdk(base);

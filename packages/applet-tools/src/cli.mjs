@@ -44,11 +44,12 @@ const help = `genesis-applet
   release <directory> [--dry-run]                tag the published version: v<version>, or
                                                  <id>/v<version> in a multi-applet repository
 check and build first compare the applet with these tools' versions and fail with
-APPLET_INCOMPATIBLE on a difference. They then run the applet's code: TypeScript and
-the adapter are bundled with esbuild and the adapter module is imported in Node, as
-a build does. This is not a sandbox; check only applets you trust.
-build --debug defines __GENESIS_DEBUG__, so the adapter runtime keeps its measurements
-in window.__genesisStats.
+APPLET_INCOMPATIBLE on a difference. They then run the applet's code: the type check
+(build.check, or tsc when tsconfig.json exists), the page module named by build.page,
+which is bundled with esbuild and imported in Node, and for build the UI build
+(build.foreground.command, or esbuild from build.foreground.entry). This is not a
+sandbox; check only applets you trust.
+build --debug defines __GENESIS_DEBUG__ in the esbuild outputs.
 publish needs a committed Genesis checkout, a semver package.json version and exact
 dependency versions. Raise versions with npm version <patch|minor|major> --no-git-tag-version.
 release needs a clean repository and never pushes; push the tag yourself.
@@ -71,8 +72,8 @@ async function main(args) {
     }
     case 'check': {
       const { positional } = parse(args.slice(1), ['json']);
-      const { manifest, pages, module, warnings, compat } = await checkApplet(one(positional, 'applet directory'));
-      return ['check', { appletId: manifest.id, compat, ...(module ? { module } : { pages }), warnings }];
+      const { manifest, module, warnings, compat } = await checkApplet(one(positional, 'applet directory'));
+      return ['check', { appletId: manifest.id, compat, module, warnings }];
     }
     case 'build': {
       const { positional, options } = parse(args.slice(1), ['json', 'out', 'debug']);
