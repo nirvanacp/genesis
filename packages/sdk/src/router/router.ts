@@ -49,7 +49,12 @@ export interface RouterOptions {
   /** Overlay screens: applet screens with no website page. */
   screens?: string[];
   account?: {
-    /** Read on every page; truthy while the person is signed in. */
+    /**
+     * Read on every page: truthy while the person is signed in, `false` (or another falsy value)
+     * while signed out, and `null` on a page that shows no evidence either way, such as a page
+     * on another origin. A `one` read without a match and an empty list read are `null` too, so
+     * an account read that can see a signed-out page should return `false` there.
+     */
     signedIn: ReadSpec;
     /** The sign-in page for a URL that needs the account, relative to that URL. */
     signInUrl?: (url: string) => string | null;
@@ -437,7 +442,8 @@ export function createRouter(genesis: Genesis, options: RouterOptions): Router {
 
   function accountOf(entry: Tracked): boolean | undefined {
     const value = entry.account?.get();
-    return value && value.status === "ready" && !value.stale && !value.idle ? truthy(value) : undefined;
+    if (!value || value.status !== "ready" || value.stale || value.idle) return undefined;
+    return value.value === null && value.order.length === 0 ? undefined : truthy(value);
   }
 
   /**
