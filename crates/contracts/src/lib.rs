@@ -579,9 +579,7 @@ pub struct Manifest {
     pub name: String,
     pub origins: Vec<String>,
     pub foreground: Foreground,
-    pub adapter: String,
     pub contexts: Vec<Context>,
-    pub routes: Vec<Route>,
     pub capabilities: Capabilities,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub shell: Option<Shell>,
@@ -590,8 +588,16 @@ pub struct Manifest {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Foreground {
+    pub kind: ForegroundKind,
+    /// The UI's HTML file inside the bundle.
     pub entry: String,
-    pub screens: Vec<String>,
+}
+
+/// How the host creates the applet's UI. A web UI is an HTML document in the foreground WebView.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ForegroundKind {
+    Web,
 }
 
 /// One WebView with its own history. The first context is active at launch.
@@ -600,19 +606,6 @@ pub struct Foreground {
 pub struct Context {
     pub id: String,
     pub start_url: String,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct Route {
-    pub id: String,
-    pub pattern: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub query: Option<Vec<String>>,
-    pub page: String,
-    pub screen: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub context: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -934,16 +927,6 @@ pub enum DocumentMessage {
     },
 }
 
-/// `state` of an action the context reports with `context.actionResult`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub enum ActionState {
-    Dispatched,
-    Observed,
-    Failed,
-    Cancelled,
-}
-
 /// `state` of a page call the context reports with `page.progress`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -1009,15 +992,6 @@ pub enum Call {
     ContextReveal { id: String },
     #[serde(rename = "context.cover")]
     ContextCover {},
-    #[serde(rename = "context.resync")]
-    ContextResync { id: String },
-    /// `action` is `{region, key, name, args}`; the host adds `actionId`.
-    #[serde(rename = "context.act")]
-    ContextAct { id: String, generation: u64, action: Map<String, Value> },
-    #[serde(rename = "context.cancel")]
-    ContextCancel { action_id: u64 },
-    #[serde(rename = "context.ping")]
-    ContextPing { id: String },
     /// The foreground's coordinator state, handed back in `bound.session` after background retirement.
     #[serde(rename = "session.save")]
     SessionSave { version: u32, state: Value },
@@ -1026,26 +1000,6 @@ pub enum Call {
     /// Leaves the applet after a Back the foreground handled by asking first, once the user confirms.
     #[serde(rename = "back.leave")]
     BackLeave {},
-    /// Exactly one of `page` and `patch`.
-    #[serde(rename = "context.publish")]
-    ContextPublish {
-        #[serde(default)]
-        page: Option<Value>,
-        #[serde(default)]
-        patch: Option<Value>,
-    },
-    #[serde(rename = "context.actionResult")]
-    ContextActionResult {
-        action_id: u64,
-        state: ActionState,
-        #[serde(default)]
-        navigating: Option<bool>,
-        /// On a navigating `dispatched`: the destination pages the foreground judges by, passed through.
-        #[serde(default)]
-        expect: Option<Value>,
-        #[serde(default)]
-        result: Option<Value>,
-    },
     /// Asks the bound document of `context` to run one page operation. The host never reads `op` or `args`.
     #[serde(rename = "page.call")]
     PageCall {
