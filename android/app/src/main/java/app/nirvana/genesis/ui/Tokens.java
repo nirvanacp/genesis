@@ -227,11 +227,11 @@ public final class Tokens {
     }
 
     /** The applet's `shell.icon` with rounded corners, or its letter tile when it has none. */
-    public View appletTile(String name, String iconPath, int sizeDp, boolean dashed, boolean faded) {
-        android.graphics.Bitmap icon = app.nirvana.genesis.AppletIcons.decode(iconPath);
-        if (icon == null) return tile(name, sizeDp, dashed, faded);
+    /** The applet's icon on its accent, as the launcher shows it, or the letter tile when it has no icon. */
+    public View appletTile(String name, String accent, String iconPath, int sizeDp, boolean dashed, boolean faded) {
+        if (app.nirvana.genesis.AppletIcons.decode(iconPath) == null) return tile(name, sizeDp, dashed, faded);
         ImageView view = new ImageView(context);
-        view.setImageBitmap(icon);
+        view.setImageBitmap(app.nirvana.genesis.AppletIcons.visible(name, accent, iconPath));
         view.setScaleType(ImageView.ScaleType.CENTER_CROP);
         float radius = dp(Math.round(sizeDp * 0.24f));
         view.setOutlineProvider(new android.view.ViewOutlineProvider() {

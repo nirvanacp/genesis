@@ -247,7 +247,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         appletName = name;
         home.root.setVisibility(View.GONE);
         applet.setVisibility(View.VISIBLE);
-        splash.show(name, icon);
+        splash.show(name, accent, icon);
         if (activity instanceof AppletActivity) ((AppletActivity) activity).describeTask(name, accent, icon);
     }
 

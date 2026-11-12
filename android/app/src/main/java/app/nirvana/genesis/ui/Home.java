@@ -216,7 +216,7 @@ public final class Home {
         cell.setGravity(Gravity.CENTER_HORIZONTAL);
         cell.setPadding(t.dp(4), t.dp(10), t.dp(4), t.dp(10));
         cell.setBackground(t.pressable(Color.TRANSPARENT, 16, 16));
-        cell.addView(t.appletTile(name, Ui.str(entry, "icon"), 72, dev, incompatible), new LinearLayout.LayoutParams(t.dp(72), t.dp(72)));
+        cell.addView(t.appletTile(name, Ui.str(entry, "accent"), Ui.str(entry, "icon"), 72, dev, incompatible), new LinearLayout.LayoutParams(t.dp(72), t.dp(72)));
         TextView label = t.text(name, Tokens.Type.LABEL_LARGE, t.onSurface);
         label.setGravity(Gravity.CENTER);
         label.setMaxLines(2);
@@ -338,7 +338,7 @@ public final class Home {
         LinearLayout header = new LinearLayout(ui.activity);
         header.setGravity(Gravity.CENTER_VERTICAL);
         header.setPadding(t.dp(20), 0, t.dp(20), t.dp(12));
-        header.addView(t.appletTile(name, Ui.str(entry, "icon"), 48, "dev".equals(entry.optString("sourceKind")), "incompatible".equals(entry.optString("status"))),
+        header.addView(t.appletTile(name, Ui.str(entry, "accent"), Ui.str(entry, "icon"), 48, "dev".equals(entry.optString("sourceKind")), "incompatible".equals(entry.optString("status"))),
             new LinearLayout.LayoutParams(t.dp(48), t.dp(48)));
         LinearLayout text = ui.column();
         text.addView(t.heading(name, Tokens.Type.TITLE));

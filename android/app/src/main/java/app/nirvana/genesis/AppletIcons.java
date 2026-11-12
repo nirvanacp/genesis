@@ -70,12 +70,17 @@ public final class AppletIcons {
         return IconCompat.createWithAdaptiveBitmap(adaptive(name, accent, iconPath));
     }
 
-    /** The visible part of the adaptive art, masked to a circle, for the Recents card. */
-    public static Bitmap taskIcon(String name, String accent, String iconPath) {
+    /** The square part of the adaptive art a launcher shows, for tiles inside Genesis. */
+    public static Bitmap visible(String name, String accent, String iconPath) {
         Bitmap art = adaptive(name, accent, iconPath);
         int inset = Math.round(ADAPTIVE_PX * (1 - SAFE_ZONE) / 2);
-        Bitmap visible = Bitmap.createScaledBitmap(
+        return Bitmap.createScaledBitmap(
             Bitmap.createBitmap(art, inset, inset, ADAPTIVE_PX - 2 * inset, ADAPTIVE_PX - 2 * inset), TASK_PX, TASK_PX, true);
+    }
+
+    /** The visible part of the adaptive art, masked to a circle, for the Recents card. */
+    public static Bitmap taskIcon(String name, String accent, String iconPath) {
+        Bitmap visible = visible(name, accent, iconPath);
         Bitmap result = Bitmap.createBitmap(TASK_PX, TASK_PX, Bitmap.Config.ARGB_8888);
         Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         paint.setShader(new BitmapShader(visible, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP));
