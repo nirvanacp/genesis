@@ -129,7 +129,10 @@ const PAGE_MODULE_RULES = [
   { pattern: /\b(localStorage|sessionStorage|indexedDB)\b/, reason: name => `uses ${name}; page modules keep no storage` },
 ];
 
-/** Checks the applet's own page module files line by line; comment lines are skipped. */
+/**
+ * Checks the applet's own page module files line by line; comment lines are skipped. A text lint,
+ * not a sandbox: files outside the applet directory and indirect uses are not seen.
+ */
 async function checkPageModuleFiles(base, files) {
   const problems = [];
   for (const file of files) {
@@ -143,7 +146,7 @@ async function checkPageModuleFiles(base, files) {
       }
     });
   }
-  if (problems.length > 0) throw toolError('PAGE_MODULE_INVALID', `The page module breaks the page module rules:\n${problems.join('\n')}`);
+  if (problems.length > 0) throw toolError('PAGE_MODULE_INVALID', `The page module breaks the page module rules (checked in the applet's own files only):\n${problems.join('\n')}`);
 }
 
 /**

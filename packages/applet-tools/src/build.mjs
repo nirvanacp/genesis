@@ -13,8 +13,21 @@ const MARKER_TEXT = `genesis-applet:${BUNDLE_FORMAT}\n`;
 const REVISION = 'revision';
 /** Text files travel as UTF-8 in the import file; everything else as base64. */
 const TEXT = new Set(['.html', '.js', '.css', '.json', '.svg', '.txt', '.map']);
-/** An HTML `src` or `href` that starts with `/`: the UI is served under a revision path, so it would miss. */
-const ROOT_URL = /\b(?:src|href)\s*=\s*["']?\//gi;
+/**
+ * References that start with `/`, by file type: the UI is served under a revision path, so they
+ * would miss. HTML `src` and `href` attributes (whole attribute names, so `data-src` is not one),
+ * `srcset` entries, CSS `url(/…)` and JS import specifiers.
+ */
+const ROOT_ATTRIBUTE = /(?<![\w-])(?:src|href)\s*=\s*["']?\//gi;
+const SRCSET = /(?<![\w-])srcset\s*=\s*(?:"([^"]*)"|'([^']*)')/gi;
+const CSS_URL = /\burl\(\s*["']?\//gi;
+const JS_IMPORT = /(?:\bfrom\s*|\bimport\s*\(?\s*)["'`]\//g;
+const ROOT_URL_RULES = {
+  '.html': [ROOT_ATTRIBUTE, CSS_URL, JS_IMPORT],
+  '.css': [CSS_URL],
+  '.js': [JS_IMPORT],
+  '.mjs': [JS_IMPORT],
+};
 
 const esbuildOptions = (base, debug) => ({
   absWorkingDir: base, bundle: true, write: false, metafile: true, format: 'iife', platform: 'browser', target: 'es2022',
@@ -95,12 +108,25 @@ async function buildForeground(base, foreground, manifest, { outdir, debug }) {
   return files;
 }
 
-/** Fails when an HTML file references a path that starts with `/`, naming the setting to change. */
+/**
+ * Fails when an HTML, CSS or JS file references a path that starts with `/`, naming the setting
+ * to change. A text lint: it reads the built files, not the parsed document.
+ */
 function refuseRootUrls(files) {
   const problems = [];
   for (const [name, bytes] of files) {
-    if (!name.endsWith('.html')) continue;
-    for (const match of bytes.toString('utf8').matchAll(ROOT_URL)) problems.push(`  ${name}: ${match[0]}`);
+    const rules = ROOT_URL_RULES[path.extname(name)];
+    if (!rules) continue;
+    const text = bytes.toString('utf8');
+    for (const rule of rules) {
+      for (const match of text.matchAll(rule)) problems.push(`  ${name}: ${match[0]}`);
+    }
+    if (name.endsWith('.html')) {
+      for (const match of text.matchAll(SRCSET)) {
+        const entries = (match[1] ?? match[2]).split(',').map(entry => entry.trim());
+        if (entries.some(entry => entry.startsWith('/'))) problems.push(`  ${name}: ${match[0]}`);
+      }
+    }
   }
   requireValue(problems.length === 0, 'The UI references paths that start with /. The UI is served from a revision directory, '
     + 'so every URL must be relative; a Vite project sets base: "./" in its config.\n' + problems.join('\n'));
