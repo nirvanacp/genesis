@@ -298,6 +298,11 @@ export function useService(serviceId: string) {
     foreground.services.request<T>(serviceId, path, options), [foreground, serviceId]);
 }
 
+/** `post(input)` notifies the user; see `Foreground["notifications"]`. */
+export function useNotifications() {
+  return useForeground().notifications;
+}
+
 /** Restoring stops after this long, or as soon as the person scrolls. */
 const RESTORE_MS = 1500;
 

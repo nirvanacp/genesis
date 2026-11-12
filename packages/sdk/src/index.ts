@@ -33,6 +33,8 @@ export type {
   ErrorCode,
   Manifest,
   NavigateMode,
+  NotificationInput,
+  NotificationResult,
   PageRecord,
   PageStatus,
   Presentation,

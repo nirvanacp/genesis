@@ -18,6 +18,8 @@ import {
   type Limits,
   type Manifest,
   type NavigateMode,
+  type NotificationInput,
+  type NotificationResult,
   type Page,
   type Patch,
   type Presentation,
@@ -105,6 +107,11 @@ export interface Foreground {
   services: {
     request<T = unknown>(serviceId: string, path: string, options?: { method?: string; body?: unknown }): Promise<ServiceResponse<T>>;
   };
+  /**
+   * Notifies the user, when the manifest declares `capabilities.notifications`. `posted` means
+   * Genesis accepted it; it shows only if the user turned the applet's notifications on.
+   */
+  notifications: { post(input: NotificationInput): Promise<NotificationResult> };
   /** Scroll positions by screen key, kept while the foreground lives. */
   scroll: { get(key: string): number | undefined; set(key: string, top: number): void };
   /** Runs on `resumed` and when the person leaves the website with Done. */
@@ -582,6 +589,10 @@ function foreground(connection: Connection): Foreground {
     },
   };
 
+  const notifications: Foreground["notifications"] = {
+    post: (input) => connection.request<NotificationResult>("notifications.post", { ...input }),
+  };
+
   // Lifecycle.
   const resumeListeners = new Set<() => void>();
   function resume() { for (const listener of [...resumeListeners]) listener(); }
@@ -646,6 +657,7 @@ function foreground(connection: Connection): Foreground {
     },
     storage,
     services,
+    notifications,
     scroll: {
       get: key => scrollMemory.get(key),
       set(key, top) {
