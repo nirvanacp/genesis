@@ -29,6 +29,11 @@ export const ERROR_CODES = [
   "ASYNC_READ",
   "AUTH_REQUIRED",
   "REJECTED",
+  "NOT_ACTIONABLE",
+  "AMBIGUOUS_TARGET",
+  "PROTECTED_FIELD",
+  "INPUT_UNAVAILABLE",
+  "UNKNOWN_OPERATION",
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

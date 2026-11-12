@@ -1,5 +1,5 @@
 import { COMPAT } from "./compat.js";
-import type { Manifest } from "./manifest.js";
+import type { Context, Route } from "./manifest.js";
 import type { NavigateMode, PageStatus, SavedSession, ViewId } from "./protocol.js";
 import { entryKey, matchRoute } from "./routes.js";
 
@@ -20,6 +20,22 @@ export interface Screen {
 }
 
 export type Presentation = "custom" | "website";
+
+/** A route as the coordinator reads it. A manifest route fits; the two optional fields come from the router helper. */
+export interface TableRoute extends Route {
+  /** The website is shown for this route, whatever the page reports. */
+  website?: boolean;
+  /** The applet screen stays for an `error` status and for a `loading` status past its deadline. */
+  onError?: "applet";
+}
+
+/** The fields the coordinator reads. A manifest satisfies it. */
+export interface RouteTable {
+  origins: string[];
+  routes: TableRoute[];
+  contexts: Context[];
+  foreground: { screens: string[] };
+}
 
 export interface ContextPage {
   status: PageStatus;
@@ -104,7 +120,7 @@ type Result = { state: CoordinatorState; effects: CoordinatorEffect[] };
 
 const LOADING: ContextPage = { status: "loading", pageId: null, routeId: null, view: null, stale: false, expired: false };
 
-export function initialState(manifest: Pick<Manifest, "contexts">): CoordinatorState {
+export function initialState(manifest: Pick<RouteTable, "contexts">): CoordinatorState {
   const contexts: Record<string, ContextState> = {};
   for (const context of manifest.contexts) contexts[context.id] = freshContext(context.id, context.startUrl);
   return { active: manifest.contexts[0].id, overlay: [], contexts, leaveGuard: null };
@@ -118,28 +134,34 @@ function freshContext(id: string, url: string | null): ContextState {
 }
 
 /**
- * Presentation of one context. A pin always shows the website. Otherwise a URL with a route
- * shows the applet screen while its page is ready, while it loads within the deadline, and on
- * error while a stale page exists within the deadline; everything else shows the website.
+ * Presentation of one context. A pin always shows the website, and so does a route marked
+ * `website`. Otherwise a URL with a route shows the applet screen while its page is ready, while
+ * it loads within the deadline, and on error while a stale page exists within the deadline;
+ * everything else shows the website. A route with `onError: "applet"` keeps the applet screen
+ * on error and past the deadline, so the applet shows its own error state.
  */
-export function presentation(context: ContextState, manifest: Pick<Manifest, "origins" | "routes">): Presentation {
+export function presentation(context: ContextState, manifest: Pick<RouteTable, "origins" | "routes">): Presentation {
   if (context.pin !== "none") return "website";
   if (context.url === null) return "custom";
-  if (matchRoute(manifest, context.url).kind !== "route") return "website";
+  const match = matchRoute(manifest, context.url);
+  if (match.kind !== "route") return "website";
+  const route = manifest.routes.find(r => r.id === match.routeId);
+  if (route?.website) return "website";
+  const keep = route?.onError === "applet";
   const { status, stale, expired } = context.page;
   if (status === "ready") return "custom";
-  if (status === "loading") return expired ? "website" : "custom";
-  if (status === "error") return stale && !expired ? "custom" : "website";
+  if (status === "loading") return expired && !keep ? "website" : "custom";
+  if (status === "error") return keep || (stale && !expired) ? "custom" : "website";
   return "website";
 }
 
 /** The context whose WebView is revealed: the active one, when no overlay covers it and it presents as website. */
-export function revealed(state: CoordinatorState, manifest: Pick<Manifest, "origins" | "routes">): string | null {
+export function revealed(state: CoordinatorState, manifest: Pick<RouteTable, "origins" | "routes">): string | null {
   const active = state.contexts[state.active];
   return state.overlay.length === 0 && active && presentation(active, manifest) === "website" ? state.active : null;
 }
 
-export function reduce(state: CoordinatorState, event: CoordinatorEvent, manifest: Manifest): Result {
+export function reduce(state: CoordinatorState, event: CoordinatorEvent, manifest: RouteTable): Result {
   const result = apply(state, event, manifest);
   const before = revealed(state, manifest);
   const after = revealed(result.state, manifest);
@@ -147,7 +169,7 @@ export function reduce(state: CoordinatorState, event: CoordinatorEvent, manifes
   return result;
 }
 
-function apply(state: CoordinatorState, event: CoordinatorEvent, manifest: Manifest): Result {
+function apply(state: CoordinatorState, event: CoordinatorEvent, manifest: RouteTable): Result {
   const effects: CoordinatorEffect[] = [];
   const unchanged = { state, effects };
   switch (event.type) {
@@ -298,7 +320,7 @@ function apply(state: CoordinatorState, event: CoordinatorEvent, manifest: Manif
  * When that page is the context's start page, or nothing comes before it, the primary context is
  * selected instead. Returns null when the context is the primary one and has nowhere to go.
  */
-function declineSignIn(state: CoordinatorState, context: ContextState, manifest: Manifest): Result | null {
+function declineSignIn(state: CoordinatorState, context: ContextState, manifest: RouteTable): Result | null {
   const { index, start } = context.signIn!;
   const primary = manifest.contexts[0].id;
   const next = withContext(state, { ...context, pin: "none", signIn: null });
@@ -356,7 +378,7 @@ export function serialize(state: CoordinatorState): SavedSession {
  * the documents report again; leaving the applet clears the pins. Anything that does not fit
  * the manifest, or a session of another version, falls back to `initialState`.
  */
-export function restore(saved: SavedSession | null, manifest: Pick<Manifest, "contexts" | "foreground">): CoordinatorState {
+export function restore(saved: SavedSession | null, manifest: Pick<RouteTable, "contexts" | "foreground">): CoordinatorState {
   const initial = initialState(manifest);
   if (!saved || saved.version !== COMPAT.sessionState || !isObject(saved.state)) return initial;
   const { active, overlay, contexts } = saved.state;
