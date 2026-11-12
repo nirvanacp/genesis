@@ -4,7 +4,7 @@ This kit matches `@genesis/sdk` `0.0.0`, `@genesis/applet-tools` `0.0.0`, manife
 
 | Import | Use it in | Exports |
 | --- | --- | --- |
-| `@genesis/sdk/react` | The foreground | `mountForeground`, `GenesisProvider`, `useForeground`, `usePage`, `useRegion`, `useRecord`, `useAction`, `usePending`, `useNavigation`, `useRecords`, `useService`, `useScrollMemory`, `ScrollMemory`, `useAppResume` and the types `PageView`, `RegionView`, `Navigation`, `NavigateTarget`, `CurrentScreen`, `PendingAction` |
+| `@genesis/sdk/react` | The foreground | `mountForeground`, `GenesisProvider`, `useForeground`, `usePage`, `useRegion`, `useRecord`, `useAction`, `usePending`, `useNavigation`, `useRecords`, `useService`, `useNotifications`, `useScrollMemory`, `ScrollMemory`, `useAppResume` and the types `PageView`, `RegionView`, `Navigation`, `NavigateTarget`, `CurrentScreen`, `PendingAction` |
 | `@genesis/sdk/adapter` | The adapter | `defineAdapter`, `collection`, `single` and the types `Page`, `Region`, `CollectionOptions`, `SingleOptions`, `Action`, `ActionSpec`, `Step`, `Steps`, `AdapterDefinition` |
 | `@genesis/sdk` | Either | The adapter exports, `GenesisError`, `ServiceError`, `serviceMessage` and the shared types (`ActionResult`, `ActionOutcome`, `PageState`, `PageStatus`, `Record`, `ErrorInfo`, `ErrorCode`, `Presentation`, `ContextState`, `Screen`, `Storage`, `StoredDocument`, `Manifest`, `Limits`) |
 
@@ -49,6 +49,7 @@ Nothing else is public. The build rejects an adapter that imports `@genesis/sdk/
 | `routes[].context` | Optional. The context a link to this route opens in from a tab root or an overlay screen (see [navigation](navigation.md#which-context-a-url-opens-in)). |
 | `capabilities.storage` | Enables document storage for this applet. |
 | `capabilities.services` | HTTPS backends. `config` points at the service file that the tools use (see [services and data](services-and-data.md)). |
+| `capabilities.notifications` | Optional. `{}` lets the foreground notify the user with `useNotifications()`. Adding `service` (a declared service id) and `path` (starting with one `/`) also has the shell ask that service for news in the background, about every `intervalMinutes` (an integer from 15 to 1440, default 60). `service` and `path` go together. See [notifications](services-and-data.md#notifications). |
 | `shell.accent` | `#rrggbb` brand color. The shell fills the applet's home-screen shortcut and Recents icon with it, and draws the first letter of `name` on it when there is no `shell.icon`. |
 | `shell.icon` | Optional. A PNG under `assets/` (`assets/icon.png`), square, 192 to 1024 px on a side and at most 256 KiB. Use original artwork the applet may use, not the website's logo copied from its pages. The launcher, launch splash, home-screen shortcut and Recents card show it; the shell places it inside the adaptive icon's safe zone on the accent color, so keep the art's own background transparent or matching. `check` fails at `/shell/icon` when the file is missing, not a PNG, not square or out of range. |
 
@@ -233,6 +234,15 @@ if (response.status !== 200) throw new Error("The bookmarks service refused the 
 
 Sends an HTTPS request to the declared service through the shell, which adds the credential. HTTP error statuses arrive as responses. A request the shell could not complete throws `ServiceError` with `CONFIGURATION_REQUIRED`, `AUTHENTICATION_FAILED`, `CERTIFICATE_FAILED`, `SERVICE_UNREACHABLE`, `DEADLINE` or `SERVICE_FAILURE`. `serviceMessage(error)` turns those into a sentence for people.
 
+### `useNotifications()`
+
+```tsx
+const notifications = useNotifications();
+await notifications.post({ id: `reply-${reply.id}`, title: "New reply", body: reply.text, url: `https://example.com/item?id=${reply.id}` });
+```
+
+Notifies the user under the applet's name, when the manifest declares `capabilities.notifications`; otherwise it throws `CONFIGURATION_REQUIRED`. `id` is 1 to 64 letters, digits, `.`, `_` or `-`, and a later notification with the same id replaces the earlier one. `title` is 1 to 120 characters and `body` at most 500. `url` is optional, `https` on one of the applet's origins, and opens in the applet when the user taps the notification; without it the tap opens the applet where it was. Anything else throws `INVALID_ARGUMENT`. The result `{ posted: true }` means Genesis accepted the request: it shows only if the user turned the applet's notifications on in Applet info, which is off by default.
+
 ### `useScrollMemory()` and `ScrollMemory`
 
 ```tsx
@@ -265,6 +275,8 @@ The underlying runtime: `manifest`, `appletId`, `restored` (the host recreated t
 | Stored document | 32 KiB of JSON |
 | Message between page and host | 256 KiB |
 | Service request or response body | 256 KiB; 3 s to connect, 4 s to read |
+| Notification | `id` 64 characters, `title` 120, `body` 500; at most 5 per background check |
+| Background news check | Every 15 to 1440 minutes, only with a network and only after the user turns notifications on |
 | Page ready deadline | 15 s; after it a loading page shows the website |
 | Action | 15 s on the page by default (`deadlineMs` overrides it), 17 s in the foreground |
 | Request deadline | 15 s |
