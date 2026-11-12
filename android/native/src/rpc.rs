@@ -383,12 +383,17 @@ impl Host {
     }
 
     /// Sends `reset` to every bound context document of the session.
+    /// Also tells the new foreground which context documents already accept calls, since it
+    /// missed their `context.bound`.
     fn reset_contexts(&mut self) {
         let Some(session) = self.contexts.session.as_ref() else { return };
         let ids: Vec<String> = session.contexts.keys().cloned().collect();
         for id in ids {
-            if let Some(view) = self.context_view(&id) {
-                self.event(&view, "reset", json!({}));
+            let Some(view) = self.context_view(&id) else { continue };
+            self.event(&view, "reset", json!({}));
+            if let Some(document) = self.documents.current(&view) {
+                let data = json!({ "id": id, "generation": document.generation, "url": document.url });
+                self.foreground_event("context.bound", data);
             }
         }
     }
