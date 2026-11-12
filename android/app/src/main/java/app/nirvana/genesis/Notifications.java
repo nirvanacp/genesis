@@ -25,6 +25,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -44,6 +45,11 @@ final class Notifications {
     static final int CURSOR_MAX = 256;
     private static final int INTERVAL_DEFAULT = 60;
     private static final Pattern ID = Pattern.compile("[A-Za-z0-9._-]{1,64}");
+    /**
+     * Request codes for tap targets, shared by the runtime and the worker. Starting from the clock
+     * keeps them away from the codes that notifications posted by an earlier process still hold.
+     */
+    private static final AtomicInteger nextRequest = new AtomicInteger((int) System.currentTimeMillis());
 
     private final Context app;
     private final SharedPreferences settings;
@@ -54,6 +60,8 @@ final class Notifications {
     }
 
     private static String group(String appletId) { return "applet:" + appletId; }
+    /** A notification's tag holds its full id, since different ids can share a hash. */
+    private static String tag(String appletId, String id) { return group(appletId) + "/" + id; }
     private static String channel(String appletId) { return group(appletId) + ":updates"; }
     private static String work(String appletId) { return "notifications:" + appletId; }
 
@@ -221,7 +229,8 @@ final class Notifications {
         createChannels(appletId, name);
         Intent open = Router.appletIntent(app, appletId);
         if (url != null) open.putExtra(AppletActivity.EXTRA_URL, url);
-        int code = (appletId + "/" + id).hashCode();
+        // Each notification gets its own request code, so one tap target never replaces another's URL.
+        int code = nextRequest.getAndIncrement();
         PendingIntent content = PendingIntent.getActivity(app, code, open, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         NotificationCompat.Builder notification = new NotificationCompat.Builder(app, channel(appletId))
             .setSmallIcon(R.drawable.ic_stat_genesis)
@@ -233,7 +242,7 @@ final class Notifications {
             .setAutoCancel(true);
         if (body != null) notification.setContentText(body).setStyle(new NotificationCompat.BigTextStyle().bigText(body));
         try {
-            manager.notify(group(appletId), id.hashCode(), notification.build());
+            manager.notify(tag(appletId, id), 0, notification.build());
             return true;
         } catch (SecurityException refused) {
             return false;
@@ -244,7 +253,8 @@ final class Notifications {
         NotificationManager manager = app.getSystemService(NotificationManager.class);
         if (manager == null) return;
         for (android.service.notification.StatusBarNotification shown : manager.getActiveNotifications()) {
-            if (group(appletId).equals(shown.getTag())) manager.cancel(shown.getTag(), shown.getId());
+            String tag = shown.getTag();
+            if (tag != null && tag.startsWith(group(appletId) + "/")) manager.cancel(tag, shown.getId());
         }
     }
 }

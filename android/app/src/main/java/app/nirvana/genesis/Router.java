@@ -123,10 +123,12 @@ final class Router {
                 if (shell != null) shell.chooseApplet(command.getString("url"), command.getJSONArray("applets"), command.optBoolean("external"));
                 break;
             }
-            case "showProgress": { Shell shell = manager(type); if (shell != null) shell.showProgress(command.isNull("message") ? null : command.optString("message", null)); break; }
-            case "showRepositoryApplets": { Shell shell = manager(type); if (shell != null) shell.showRepositoryApplets(command); break; }
-            case "showImportReview": { Shell shell = manager(type); if (shell != null) shell.showImportReview(command); break; }
-            case "showInstalled": { Shell shell = manager(type); if (shell != null) shell.showInstalled(command); break; }
+            // Update review, version change and import pages belong to the window the user started
+            // them from: an applet's own Applet info page, or the manager.
+            case "showProgress": { Shell shell = messageWindow(null); if (shell != null) shell.showProgress(command.isNull("message") ? null : command.optString("message", null)); break; }
+            case "showRepositoryApplets": { Shell shell = messageWindow(null); if (shell != null) shell.showRepositoryApplets(command); break; }
+            case "showImportReview": { Shell shell = messageWindow(null); if (shell != null) shell.showImportReview(command); break; }
+            case "showInstalled": { Shell shell = messageWindow(null); if (shell != null) shell.showInstalled(command); break; }
             case "serviceRequest": runtime.services.request(command); break;
             case "fetch": runtime.fetcher.fetch(command); break;
             case "wake": runtime.wake(command.getLong("delayMs")); break;

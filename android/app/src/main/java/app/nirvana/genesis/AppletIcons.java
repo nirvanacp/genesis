@@ -31,12 +31,22 @@ public final class AppletIcons {
 
     private AppletIcons() {}
 
-    /** The decoded icon file, or null when there is none or it does not decode. */
+    /**
+     * The decoded icon file, or null when there is none or it does not decode. An imported
+     * bundle's PNG can claim any size, so it decodes at most twice the adaptive icon's size.
+     */
     public static Bitmap decode(String iconPath) {
         if (iconPath == null || iconPath.isEmpty()) return null;
         Bitmap cached = DECODED.get(iconPath);
         if (cached != null) return cached;
-        Bitmap bitmap = BitmapFactory.decodeFile(iconPath);
+        BitmapFactory.Options bounds = new BitmapFactory.Options();
+        bounds.inJustDecodeBounds = true;
+        BitmapFactory.decodeFile(iconPath, bounds);
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null;
+        BitmapFactory.Options options = new BitmapFactory.Options();
+        options.inSampleSize = 1;
+        while (Math.max(bounds.outWidth, bounds.outHeight) / options.inSampleSize > 2 * ADAPTIVE_PX) options.inSampleSize *= 2;
+        Bitmap bitmap = BitmapFactory.decodeFile(iconPath, options);
         if (bitmap != null) DECODED.put(iconPath, bitmap);
         return bitmap;
     }
