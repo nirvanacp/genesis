@@ -61,6 +61,8 @@ public final class Ui {
         /** Whether the applet's Recents card hides its screen. */
         boolean hiddenInRecents(String appletId);
         void setHiddenInRecents(String appletId, boolean on);
+        /** Asks the launcher to add the applet to the home screen. */
+        void addToHomeScreen(String appletId);
         /** Every URL the open applet's pages have visited, for signing out of cookies on deeper paths. */
         List<String> visitedUrls();
         /** Total bytes Genesis stores for applets on this phone, computed off the UI thread. */

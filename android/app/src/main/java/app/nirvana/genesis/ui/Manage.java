@@ -224,6 +224,10 @@ public final class Manage {
         content.addView(t.pair("Applet id", appletId));
 
         content.addView(t.section("Manage"));
+        if (!"incompatible".equals(entry.optString("status"))) {
+            content.addView(t.row(R.drawable.ic_add_box, "Add to home screen", "An icon that opens " + name + " in its own window", null, false, t.onSurface,
+                () -> ui.actions.addToHomeScreen(appletId)));
+        }
         if ("github".equals(entry.optString("sourceKind"))) {
             content.addView(t.row(R.drawable.ic_branch, "Change version", "Install an earlier or newer release", null, true, t.onSurface, () -> add.changeVersion(entry)));
         }

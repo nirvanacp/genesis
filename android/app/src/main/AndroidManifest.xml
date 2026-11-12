@@ -62,6 +62,10 @@
                 <data android:pathPattern=".*\\.bundle\\.json" />
                 <data android:pathPattern=".*\\..*\\.bundle\\.json" />
             </intent-filter>
+            <!-- Recent applets as direct-share targets for website links. -->
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
         </activity>
         <!-- One window per applet, each in its own document task, so every applet has its own Recents
              card. Its intent's data names the applet (genesis-applet:<id>); intoExisting reuses that task. -->

@@ -24,6 +24,7 @@ final class GenesisRuntime implements NativeBridge.StorageResults {
     final ServiceClient services;
     final Fetcher fetcher;
     final Router router;
+    final Shortcuts shortcuts;
     private final Bridge bridge;
     private final Runnable tick = this::tick;
     private final Runnable scan = this::scanImports;
@@ -39,6 +40,7 @@ final class GenesisRuntime implements NativeBridge.StorageResults {
         files = new Files(app);
         services = new ServiceClient(app, files, this::send);
         fetcher = new Fetcher(app, this::send);
+        shortcuts = new Shortcuts(app);
         router = new Router(this);
         bridge = new Bridge(router);
     }

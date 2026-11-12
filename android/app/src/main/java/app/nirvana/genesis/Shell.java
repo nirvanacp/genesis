@@ -1063,6 +1063,11 @@ final class Shell implements Views.Listener, Ui.Actions {
         return SiteData.profile(context, profileName(state, appletId));
     }
 
+    @Override public void addToHomeScreen(String appletId) {
+        GenesisApp.runtime(activity).shortcuts.pin(activity, ui.entry(appletId),
+            () -> showInfo("Add to home screen", "Your launcher can't add icons. Open the applet from Genesis."));
+    }
+
     @Override public boolean separateSignInAvailable() { return SiteData.profilesSupported(); }
 
     @Override public boolean separateSignIn(String appletId) {

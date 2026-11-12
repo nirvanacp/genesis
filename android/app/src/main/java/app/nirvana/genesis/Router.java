@@ -86,7 +86,10 @@ final class Router {
             case "showLauncher": updateApplets(command.getJSONArray("applets"), command.optLong("updatesCheckedAt"), true); break;
             case "showApplet": {
                 Shell shell = applet(command.getString("appletId"), type);
-                if (shell != null) shell.showApplet(command.getString("appletId"), command.getString("name"), command.optString("accent", null), command.optString("icon", null));
+                String id = command.getString("appletId"), name = command.getString("name");
+                String accent = command.optString("accent", null), icon = command.optString("icon", null);
+                if (shell != null) shell.showApplet(id, name, accent, icon);
+                runtime.shortcuts.opened(id, name, accent, icon);
                 break;
             }
             case "createView": {
@@ -128,6 +131,7 @@ final class Router {
             case "forgetApplet": {
                 String id = command.getString("appletId");
                 runtime.services.forget(id);
+                runtime.shortcuts.forget(id);
                 for (Shell shell : windows()) shell.forgetProfile(id);
                 Shell.forgetApplet(runtime.app, id);
                 break;
@@ -143,6 +147,7 @@ final class Router {
     private void updateApplets(JSONArray applets, long checkedAt, boolean showLauncher) {
         entries = applets;
         updatesCheckedAt = checkedAt;
+        runtime.shortcuts.update(applets);
         for (Shell shell : applets().values()) shell.updateApplets(applets, checkedAt);
         if (manager == null) return;
         if (showLauncher) manager.showLauncher(applets, checkedAt);

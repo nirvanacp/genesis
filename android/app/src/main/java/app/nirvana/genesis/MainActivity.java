@@ -49,7 +49,9 @@ public final class MainActivity extends WindowActivity {
             if (stream != null) uris.add(stream);
             else if (intent.hasExtra(Intent.EXTRA_TEXT)) {
                 setIntent(new Intent(this, MainActivity.class));
-                sharedText(intent.getCharSequenceExtra(Intent.EXTRA_TEXT));
+                // A direct-share target names the applet; the host still checks that it declares the site.
+                sharedText(intent.getCharSequenceExtra(Intent.EXTRA_TEXT),
+                    Shortcuts.appletId(intent.getStringExtra(androidx.core.content.pm.ShortcutManagerCompat.EXTRA_SHORTCUT_ID)));
                 return;
             }
         }
@@ -59,10 +61,10 @@ public final class MainActivity extends WindowActivity {
     }
 
     /** Text shared with Genesis: its first website link opens in the applet that uses that site. */
-    private void sharedText(CharSequence text) {
+    private void sharedText(CharSequence text, String appletId) {
         java.util.regex.Matcher link = java.util.regex.Pattern.compile("https?://\\S+", java.util.regex.Pattern.CASE_INSENSITIVE)
             .matcher(text == null ? "" : text);
-        if (link.find()) shell.openUrl(trimLink(link.group()), null, true);
+        if (link.find()) shell.openUrl(trimLink(link.group()), appletId, true);
         else shell.showInfo("Genesis", "This doesn't contain a website link");
     }
 

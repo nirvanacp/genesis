@@ -357,6 +357,12 @@ public final class Home {
             dialog[0].dismiss();
             navigator.info(appletId);
         }));
+        if (!"incompatible".equals(entry.optString("status"))) {
+            content.addView(t.row(R.drawable.ic_add_box, "Add to home screen", null, null, false, t.onSurface, () -> {
+                dialog[0].dismiss();
+                ui.actions.addToHomeScreen(appletId);
+            }));
+        }
         JSONObject update = entry.optJSONObject("update");
         if (update != null && Ui.str(update, "version") != null) {
             content.addView(t.row(R.drawable.ic_reload, "Review update", null, t.chip(update.optString("version") + " ready", Tokens.Chip.INFO), false, t.onSurface, () -> {
