@@ -299,6 +299,8 @@ export interface ActionResult {
   message?: string;
   completedSteps?: number;
   partial?: boolean;
+  /** Why a target could not take input, such as `hidden`, `covered` or `editor-needs-trusted-input`. */
+  reason?: string;
   /** The desired state already held. */
   noop?: boolean;
   /** A load-more action found the end of the collection. */
@@ -492,6 +494,8 @@ export interface WatchSnapshot {
   records?: Record<string, unknown>;
   error?: ErrorBody;
   truncated?: boolean;
+  /** A list whose reader names a "more" link: false while the page offers more items. */
+  complete?: boolean;
 }
 
 /** Data of a list watch `patch`. */
@@ -499,6 +503,7 @@ export interface WatchPatch {
   upsert?: Record<string, unknown>;
   remove?: string[];
   order?: string[];
+  complete?: boolean;
 }
 
 /** Data of a watch `status`. */

@@ -26,6 +26,10 @@
     "./legacy/react": {
       "types": "./dist/types/legacy/react.d.ts",
       "default": "./dist/legacy/react.js"
+    },
+    "./page": {
+      "types": "./dist/types/page/index.d.ts",
+      "default": "./dist/page.js"
     }
   },
   "scripts": {

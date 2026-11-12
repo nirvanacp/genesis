@@ -233,11 +233,7 @@ function prepare(step: Step): () => void {
     return () => fill(target, step.value);
   }
   if ("submit" in step) {
-    const target = element(step.submit);
-    const form = target instanceof HTMLFormElement ? target : target.closest("form");
-    if (!form) throw new GenesisError("NOT_FOUND", `${step.submit} is not in a form`);
-    const submitter = target instanceof HTMLButtonElement || target instanceof HTMLInputElement ? target : undefined;
-    return () => form.requestSubmit(submitter);
+    return submitEffect(element(step.submit), step.submit);
   }
   if ("navigate" in step) {
     const url = step.navigate;
@@ -251,8 +247,16 @@ function prepare(step: Step): () => void {
   throw new GenesisError("INVALID_STEPS", "A wait step does not run on its own");
 }
 
+/** The effect of submitting the form `target` is or belongs to; `target` is the submitter when it is a button. */
+export function submitEffect(target: Element, what: string): () => void {
+  const form = target instanceof HTMLFormElement ? target : target.closest("form");
+  if (!form) throw new GenesisError("NOT_FOUND", `${what} is not in a form`);
+  const submitter = target instanceof HTMLButtonElement || target instanceof HTMLInputElement ? target : undefined;
+  return () => form.requestSubmit(submitter);
+}
+
 /** Sets a field's value the way typing does, so frameworks that track input see it. */
-function fill(target: HTMLElement, value: string) {
+export function fill(target: Element, value: string) {
   if (!(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement)) {
     throw new GenesisError("INVALID_STEPS", "fill needs an input or textarea");
   }
