@@ -105,6 +105,7 @@ dependencies {
     implementation(libs.androidx.core)
     implementation(libs.androidx.webkit)
     implementation(libs.material)
+    implementation(libs.androidx.work.runtime)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

@@ -132,12 +132,17 @@ final class Router {
                 String id = command.getString("appletId");
                 runtime.services.forget(id);
                 runtime.shortcuts.forget(id);
+                runtime.notifications.forget(id);
                 for (Shell shell : windows()) shell.forgetProfile(id);
                 Shell.forgetApplet(runtime.app, id);
                 break;
             }
             case "startAppletWindow": start(appletIntent(runtime.app, command.getString("appletId"))); break;
             case "openManager": start(new Intent(runtime.app, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); break;
+            case "postNotification":
+                runtime.notifications.post(command.getString("appletId"), command.getString("id"), command.getString("title"),
+                    appletText(command, "body"), appletText(command, "url"));
+                break;
             case "closeAppletWindow": closeAppletWindow(command.getString("appletId")); break;
             default: throw new IllegalArgumentException("Unknown command " + type);
         }
@@ -148,6 +153,7 @@ final class Router {
         entries = applets;
         updatesCheckedAt = checkedAt;
         runtime.shortcuts.update(applets);
+        runtime.notifications.sync(applets);
         for (Shell shell : applets().values()) shell.updateApplets(applets, checkedAt);
         if (manager == null) return;
         if (showLauncher) manager.showLauncher(applets, checkedAt);
@@ -192,6 +198,10 @@ final class Router {
 
     private static String appletIdOf(JSONObject command) {
         return command.isNull("appletId") ? null : command.optString("appletId", null);
+    }
+
+    private static String appletText(JSONObject command, String key) {
+        return command.isNull(key) ? null : command.optString(key, null);
     }
 
     private Map<String, Shell> applets() { return new HashMap<>(applets); }

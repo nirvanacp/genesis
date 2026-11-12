@@ -211,6 +211,11 @@ public final class Manage {
             }
         }
 
+        if (entry.optJSONObject("notifications") != null && !"incompatible".equals(entry.optString("status"))) {
+            content.addView(t.section("Notifications"));
+            content.addView(notifications(entry));
+        }
+
         content.addView(t.section("Privacy"));
         content.addView(hideInRecents(appletId));
 
@@ -260,6 +265,24 @@ public final class Manage {
         });
         return t.row(R.drawable.ic_lock, "Use a separate sign-in", "This applet signs in to its websites on its own. Other applets stay as they are.",
             toggle, false, t.onSurface, null);
+    }
+
+    /** "Notifications", off until the user turns it on. Android may refuse, which turns the switch back off. */
+    private View notifications(JSONObject entry) {
+        Tokens t = ui.tokens;
+        String appletId = entry.optString("appletId"), name = entry.optString("name");
+        JSONObject declaration = entry.optJSONObject("notifications");
+        MaterialSwitch toggle = new MaterialSwitch(ui.activity);
+        toggle.setChecked(ui.actions.notificationsOn(appletId));
+        toggle.setContentDescription("Notifications");
+        toggle.setOnCheckedChangeListener((button, checked) -> {
+            if (checked == ui.actions.notificationsOn(appletId)) return;
+            ui.actions.setNotificationsOn(appletId, checked, on -> { if (toggle.isChecked() != on) toggle.setChecked(on); });
+        });
+        String detail = declaration.has("service")
+            ? name + " can notify you, and checks its service for news about every " + Ui.minutes(declaration.optInt("intervalMinutes", 60)) + "."
+            : name + " can notify you while it runs.";
+        return t.row(R.drawable.ic_notifications, "Notifications", detail, toggle, false, t.onSurface, null);
     }
 
     /** "Hide in recent apps": a blank Recents card. Before Android 13 the only way is to block screenshots too. */

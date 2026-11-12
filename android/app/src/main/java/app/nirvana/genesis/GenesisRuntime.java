@@ -10,7 +10,7 @@ import org.json.JSONObject;
 
 /**
  * What every Genesis window shares for the life of the process: the host and its storage
- * results, the service client, the fetcher, the periodic tick and the import scan. Windows report
+ * results, the service client, the fetcher, shortcuts and notifications, the periodic tick and the import scan. Windows report
  * their lifecycle here; the router executes the host's commands on them.
  */
 final class GenesisRuntime implements NativeBridge.StorageResults {
@@ -25,6 +25,7 @@ final class GenesisRuntime implements NativeBridge.StorageResults {
     final Fetcher fetcher;
     final Router router;
     final Shortcuts shortcuts;
+    final Notifications notifications;
     private final Bridge bridge;
     private final Runnable tick = this::tick;
     private final Runnable scan = this::scanImports;
@@ -41,6 +42,7 @@ final class GenesisRuntime implements NativeBridge.StorageResults {
         services = new ServiceClient(app, files, this::send);
         fetcher = new Fetcher(app, this::send);
         shortcuts = new Shortcuts(app);
+        notifications = new Notifications(app);
         router = new Router(this);
         bridge = new Bridge(router);
     }

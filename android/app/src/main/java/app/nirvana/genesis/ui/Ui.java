@@ -61,6 +61,10 @@ public final class Ui {
         /** Whether the applet's Recents card hides its screen. */
         boolean hiddenInRecents(String appletId);
         void setHiddenInRecents(String appletId, boolean on);
+        /** Whether the user turned the applet's notifications on. */
+        boolean notificationsOn(String appletId);
+        /** Turning them on may ask Android first; `result` gets whether they are on afterwards. */
+        void setNotificationsOn(String appletId, boolean on, java.util.function.Consumer<Boolean> result);
         /** Asks the launcher to add the applet to the home screen. */
         void addToHomeScreen(String appletId);
         /** Every URL the open applet's pages have visited, for signing out of cookies on deeper paths. */
@@ -203,6 +207,13 @@ public final class Ui {
         if (object == null || object.isNull(key)) return null;
         String value = object.optString(key, null);
         return value == null || value.isEmpty() ? null : value;
+    }
+
+    /** "15 minutes", "hour", "2 hours" or "day", for "about every …". */
+    public static String minutes(int minutes) {
+        if (minutes >= 1440 && minutes % 1440 == 0) return minutes == 1440 ? "day" : minutes / 1440 + " days";
+        if (minutes % 60 == 0) return minutes == 60 ? "hour" : minutes / 60 + " hours";
+        return minutes + " minutes";
     }
 
     public static List<String> strings(JSONArray values) {

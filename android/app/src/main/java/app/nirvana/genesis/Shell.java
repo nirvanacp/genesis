@@ -1068,6 +1068,45 @@ final class Shell implements Views.Listener, Ui.Actions {
             () -> showInfo("Add to home screen", "Your launcher can't add icons. Open the applet from Genesis."));
     }
 
+    // -----------------------------------------------------------------------------------------
+    // Notifications
+
+    @Override public boolean notificationsOn(String appletId) { return GenesisApp.runtime(activity).notifications.on(appletId); }
+
+    /**
+     * Android 13+ asks the user first. When Android refuses for good, or notifications are off
+     * for all of Genesis, Genesis points to Android's notification settings.
+     */
+    @Override public void setNotificationsOn(String appletId, boolean on, java.util.function.Consumer<Boolean> result) {
+        Notifications notifications = GenesisApp.runtime(activity).notifications;
+        JSONObject entry = ui.entry(appletId);
+        if (!on || entry == null) { notifications.turnOff(appletId); result.accept(false); return; }
+        if (Build.VERSION.SDK_INT < 33) { turnOnNotifications(entry, result); return; }
+        String permission = android.Manifest.permission.POST_NOTIFICATIONS;
+        owner.requestPermissions(new String[] { permission }, granted -> {
+            if (granted != null && granted.contains(permission)) { turnOnNotifications(entry, result); return; }
+            result.accept(false);
+            if (granted != null && !activity.shouldShowRequestPermissionRationale(permission)) showNotificationSettings(entry.optString("name"));
+        });
+    }
+
+    private void turnOnNotifications(JSONObject entry, java.util.function.Consumer<Boolean> result) {
+        GenesisApp.runtime(activity).notifications.turnOn(entry);
+        result.accept(true);
+        if (!androidx.core.app.NotificationManagerCompat.from(activity).areNotificationsEnabled()) showNotificationSettings(entry.optString("name"));
+    }
+
+    private void showNotificationSettings(String name) {
+        new MaterialAlertDialogBuilder(activity)
+            .setTitle("Android blocks notifications from Genesis")
+            .setMessage("Allow them for Genesis in Android's settings, so " + name + " can notify you.")
+            .setPositiveButton("Open settings", (d, w) -> activity.startActivity(
+                new android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                    .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, activity.getPackageName())))
+            .setNegativeButton("Not now", null)
+            .show();
+    }
+
     @Override public boolean separateSignInAvailable() { return SiteData.profilesSupported(); }
 
     @Override public boolean separateSignIn(String appletId) {
