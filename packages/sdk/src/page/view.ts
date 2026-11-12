@@ -1,5 +1,5 @@
 import { entryKey, type ViewId } from "@genesis/core";
-import { watchNavigation } from "../adapter/observe.js";
+import { watchNavigation } from "./engine/observe.js";
 
 /**
  * The document's current view. `n` counts same-document navigations that change

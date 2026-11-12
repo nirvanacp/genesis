@@ -1,4 +1,4 @@
-import type { Evidence, PageStep } from "@genesis/core";
+import type { Evidence, Step } from "@genesis/core";
 
 /**
  * Page modules: applet code that runs in the website page next to the page agent. A module names
@@ -59,7 +59,7 @@ export interface CommandContext<A = any> {
 
 /** Steps a command asks the agent to run, with the same rules as the `run` operation. */
 export interface CommandSteps {
-  steps: PageStep[];
+  steps: Step[];
   /** Evidence that the steps took effect; in a module it may be a function of the document. */
   until?: Evidence | ((doc: Document) => boolean);
   navigates?: boolean;

@@ -1,5 +1,5 @@
-import type { Locator, PageStep, ScrollPosition, ScrollTo } from "@genesis/core";
-import { fill, submitEffect } from "../adapter/actions.js";
+import type { Locator, Step, ScrollPosition, ScrollTo } from "@genesis/core";
+import { fill, submitEffect } from "./engine/form.js";
 import { actionable, sleep, waitUntil } from "./actionable.js";
 import { PageError } from "./errors.js";
 import { locate, type RecordLookup } from "./locate.js";
@@ -30,7 +30,7 @@ export interface Prepared {
 let hovered: Element | null = null;
 
 /** Finds what a step needs, waiting up to its `timeoutMs`, and returns its effect. Throws when the target is missing, not actionable or protected. */
-export async function prepare(step: PageStep, context: InputContext): Promise<Prepared> {
+export async function prepare(step: Step, context: InputContext): Promise<Prepared> {
   const target = async (locator: Locator, options: { timeoutMs?: number; force?: boolean } = {}) =>
     actionable(locator, context.records, options, context.stop);
   switch (step.op) {

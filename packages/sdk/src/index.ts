@@ -42,7 +42,7 @@ export type {
   NavigateMode,
   PageInfo,
   PageOp,
-  PageStep,
+  Step,
   ReadSpec,
   ScrollPosition,
   ScrollTo,

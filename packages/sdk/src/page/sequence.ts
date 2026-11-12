@@ -7,7 +7,7 @@ import {
   type ActionResult,
   type ErrorCode,
   type Evidence,
-  type PageStep,
+  type Step,
   type ReadSpec,
   type WaitFor,
 } from "@genesis/core";
@@ -35,7 +35,7 @@ export interface SequenceContext extends InputContext {
 
 /** Steps to run with the same rules as `run`. `until` may be a function of the document in a page module. */
 export interface Sequence {
-  steps: PageStep[];
+  steps: Step[];
   until?: Evidence | ((doc: Document) => boolean);
   navigates?: boolean;
   /** Absolute time in milliseconds. */
@@ -57,7 +57,7 @@ export async function runSequence(sequence: Sequence, context: SequenceContext):
   if (!send && steps.some(isTrusted)) {
     return { outcome: "failed", code: "INPUT_UNAVAILABLE", message: "Trusted input is not available in this Genesis" };
   }
-  const prepareStep = (step: PageStep) => isTrusted(step) && send ? prepareTrusted(step, inner, send) : prepare(step, inner);
+  const prepareStep = (step: Step) => isTrusted(step) && send ? prepareTrusted(step, inner, send) : prepare(step, inner);
   let completed = 0;
   let dispatched = false;
   let navigating = false;
@@ -147,14 +147,14 @@ export async function runSequence(sequence: Sequence, context: SequenceContext):
 }
 
 /** A step's own `timeoutMs` never runs past the sequence's deadline. */
-function withDeadline(step: PageStep, deadline: number): PageStep {
+function withDeadline(step: Step, deadline: number): Step {
   if (!("timeoutMs" in step) || step.timeoutMs === undefined) return step;
-  return { ...step, timeoutMs: Math.min(step.timeoutMs, Math.max(0, deadline - Date.now())) } as PageStep;
+  return { ...step, timeoutMs: Math.min(step.timeoutMs, Math.max(0, deadline - Date.now())) } as Step;
 }
 
-const leaves = (step: PageStep | undefined) => step?.op === "navigate" || step?.op === "submit";
+const leaves = (step: Step | undefined) => step?.op === "navigate" || step?.op === "submit";
 
-const isTrusted = (step: PageStep) => (step as { input?: string }).input === "trusted";
+const isTrusted = (step: Step) => (step as { input?: string }).input === "trusted";
 
 /** True when a wait condition or evidence holds now. A read holds when its value is truthy; a list, when it has records. */
 export function holds(condition: WaitFor | Evidence | ((doc: Document) => boolean), context: { records: InputContext["records"]; compile(spec: ReadSpec): Compiled }): boolean {
@@ -185,7 +185,7 @@ const INPUT_OPS = new Set(["click", "longPress", "hover", "unhover", "focus", "b
 const STATES = new Set(["attached", "visible", "hidden", "detached"]);
 
 /** Checks a `run` step list; `navigate` and `submit` may only be last. Throws `InvalidSpecError`. */
-export function validateSteps(value: unknown, path = "steps"): asserts value is PageStep[] {
+export function validateSteps(value: unknown, path = "steps"): asserts value is Step[] {
   if (!Array.isArray(value) || value.length === 0) throw new InvalidSpecError(path, "must be a non-empty array of steps");
   value.forEach((step, i) => {
     validateStep(step, `${path}[${i}]`);
@@ -194,7 +194,7 @@ export function validateSteps(value: unknown, path = "steps"): asserts value is 
 }
 
 /** Checks one input operation written as `{ op, ...args }`, or a wait or navigate step. */
-export function validateStep(value: unknown, path: string): asserts value is PageStep {
+export function validateStep(value: unknown, path: string): asserts value is Step {
   if (!isObject(value) || typeof value.op !== "string") throw new InvalidSpecError(path, "must be an object with op");
   const { op } = value;
   if (op === "navigate") {

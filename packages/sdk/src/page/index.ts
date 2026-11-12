@@ -19,4 +19,4 @@ export type {
   ValueReader,
 } from "./module.js";
 export { startAgent } from "./agent.js";
-export type { Evidence, Locator, PageStep, ReadSpec, UrlGuard } from "@genesis/core";
+export type { Evidence, Locator, Step, ReadSpec, UrlGuard } from "@genesis/core";

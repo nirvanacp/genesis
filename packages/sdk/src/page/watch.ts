@@ -3,9 +3,7 @@ import {
   type ErrorBody,
   type Limits,
   type PageEmitParams,
-  type PageRecord,
   type ReadSpec,
-  type Region,
   type UrlGuard,
   type ViewId,
   type WatchPatch,
@@ -13,10 +11,10 @@ import {
   type WatchStatus,
 } from "@genesis/core";
 import { GenesisError } from "../bridge.js";
-import { diffRegion, json, keepNear, mergeVirtualized } from "../adapter/diff.js";
-import { invalidate, touches, type Change, type Invalidation, type RegionIndex } from "../adapter/invalidate.js";
-import { observe, type Observer } from "../adapter/observe.js";
-import { debounce } from "../adapter/publish.js";
+import { debounce } from "./engine/debounce.js";
+import { diffRegion, json, keepNear, mergeVirtualized, type PageRecord, type Region } from "./engine/diff.js";
+import { invalidate, touches, type Change, type Invalidation, type RegionIndex } from "./engine/invalidate.js";
+import { observe, type Observer } from "./engine/observe.js";
 import { errorBody, PageError } from "./errors.js";
 import type { Compiled, CompiledList } from "./read.js";
 
@@ -467,7 +465,7 @@ function indexOf(watch: Watch): RegionIndex {
   };
 }
 
-/** A list state in the old region shape, so the tested `diffRegion` compares it. */
+/** A list state in the region shape `diffRegion` compares. */
 function region(state: State): Region {
   return { kind: "collection", status: "ready", items: state.records, complete: state.complete ?? true };
 }

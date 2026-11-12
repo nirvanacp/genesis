@@ -7,10 +7,6 @@
       "types": "./dist/types/index.d.ts",
       "default": "./dist/index.js"
     },
-    "./adapter": {
-      "types": "./dist/types/legacy/adapter.d.ts",
-      "default": "./dist/legacy/adapter.js"
-    },
     "./react": {
       "types": "./dist/types/react.d.ts",
       "default": "./dist/react.js"
@@ -18,18 +14,6 @@
     "./router": {
       "types": "./dist/types/router/index.d.ts",
       "default": "./dist/router.js"
-    },
-    "./legacy": {
-      "types": "./dist/types/legacy/index.d.ts",
-      "default": "./dist/legacy/index.js"
-    },
-    "./legacy/adapter": {
-      "types": "./dist/types/legacy/adapter.d.ts",
-      "default": "./dist/legacy/adapter.js"
-    },
-    "./legacy/react": {
-      "types": "./dist/types/legacy/react.d.ts",
-      "default": "./dist/legacy/react.js"
     },
     "./page": {
       "types": "./dist/types/page/index.d.ts",

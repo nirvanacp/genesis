@@ -8,7 +8,7 @@ import {
   type PageCallEvent,
   type PageInfo,
   type PageResultParams,
-  type PageStep,
+  type Step,
   type ReadSpec,
 } from "@genesis/core";
 import { connect, type BridgeObject, type Connection } from "../bridge.js";
@@ -173,7 +173,7 @@ function serve(connection: Connection, module: PageModule | undefined, view: Vie
         return failed(error);
       }
       const { until, ...rest } = args;
-      return runSequence({ steps: [{ ...rest, op } as PageStep], until: until as never, deadline }, sequenceContext(call));
+      return runSequence({ steps: [{ ...rest, op } as Step], until: until as never, deadline }, sequenceContext(call));
     }
     if (op === "run") {
       try {
@@ -298,7 +298,6 @@ function serve(connection: Connection, module: PageModule | undefined, view: Vie
     watches.closeAll();
     for (const call of calls.values()) call.cancelled = true;
   });
-  connection.on("ping", () => {}); // The host answers pings; receiving one needs nothing here.
   connection.on("retired", stop);
   // Watches end with the document; a running input still reports that it is navigating.
   connection.on("pagehide", () => watches.stop());

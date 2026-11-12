@@ -1,4 +1,4 @@
-import type { InputEvent, Locator, PageStep } from "@genesis/core";
+import type { InputEvent, Locator, Step } from "@genesis/core";
 import { actionable } from "./actionable.js";
 import { PageError } from "./errors.js";
 import { refuseProtected, type InputContext, type Prepared } from "./input.js";
@@ -16,7 +16,7 @@ export type SendInput = (events: InputEvent[]) => Promise<void>;
 export const TRUSTED_OPS = new Set(["click", "hover", "unhover", "type", "press"]);
 
 /** Like `prepare`, for a step with `input: "trusted"`. Throws when the target is missing, not actionable or protected. */
-export async function prepareTrusted(step: PageStep, context: InputContext, send: SendInput): Promise<Prepared> {
+export async function prepareTrusted(step: Step, context: InputContext, send: SendInput): Promise<Prepared> {
   const target = async (locator: Locator, options: { timeoutMs?: number; force?: boolean }) =>
     actionable(locator, context.records, options, context.stop);
   switch (step.op) {

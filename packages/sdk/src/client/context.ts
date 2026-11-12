@@ -16,7 +16,7 @@ import {
   type PageEmitEvent,
   type PageInfo,
   type PageOp,
-  type PageStep,
+  type Step,
   type ReadSpec,
   type ScrollPosition,
   type ScrollTo,
@@ -130,7 +130,7 @@ export interface ContextHandle {
   check(target: Locator, checked: boolean, options?: InputCallOptions): Promise<ActionResult>;
   submit(target: Locator, options?: Omit<InputCallOptions, "navigates">): Promise<ActionResult>;
   /** Steps in order inside the page; `navigate` and `submit` may only be last. */
-  run(steps: PageStep[], options?: { until?: Evidence; navigates?: boolean; expect?: Expect; deadlineMs?: number; timeoutMs?: number }): Promise<ActionResult>;
+  run(steps: Step[], options?: { until?: Evidence; navigates?: boolean; expect?: Expect; deadlineMs?: number; timeoutMs?: number }): Promise<ActionResult>;
   /** A page module command. A command that returns a value answers `observed` with `value`. */
   invoke<T = unknown>(command: string, args?: unknown, options?: { target?: Locator; expect?: Expect; navigates?: boolean; timeoutMs?: number }): Promise<ActionResult & { value?: T }>;
 

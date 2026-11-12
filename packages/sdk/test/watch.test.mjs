@@ -61,6 +61,35 @@ describe("watch store", () => {
     assert.equal(s.emit(emit("patch", 2, { remove: ["a"] }, { n: 1 })), "resync");
   });
 
+  test("split patches: records arrive before their key enters the order", () => {
+    const s = store();
+    s.emit(emit("snapshot", 1, list(["a", "b"], { complete: false })));
+    assert.equal(s.emit(emit("patch", 2, { upsert: { c: { title: "c" } } })), "applied");
+    assert.deepEqual(s.get().order, ["a", "b"], "c is held but not ordered yet");
+    assert.deepEqual(s.get().records.c, { title: "c" });
+    assert.equal(s.emit(emit("patch", 3, { upsert: { d: { title: "d" } }, remove: ["b"], order: ["a", "c", "d"], complete: true })), "applied");
+    assert.deepEqual(s.get().order, ["a", "c", "d"]);
+    assert.equal(s.get().records.b, undefined, "a removed key loses its record");
+    assert.equal(s.get().complete, true);
+  });
+
+  test("a message the stream already passed is ignored", () => {
+    const s = store();
+    s.emit(emit("snapshot", 2, list(["a"])));
+    const before = s.get();
+    assert.equal(s.emit(emit("snapshot", 1, list(["old"]))), "ignored");
+    assert.equal(s.get(), before);
+  });
+
+  test("a snapshot of a new document restarts the stream", () => {
+    const s = store();
+    s.emit(emit("snapshot", 5, list(["a"])));
+    s.navigated(navigated(2, 0, URL_A));
+    assert.equal(s.emit(emit("snapshot", 1, list(["z"]), { generation: 2 })), "applied");
+    assert.deepEqual(s.get().order, ["z"]);
+    assert.equal(s.emit(emit("patch", 2, { remove: ["z"], order: [] }, { generation: 2 })), "applied");
+  });
+
   test("a snapshot with the same data keeps the same value object", () => {
     const s = store();
     s.emit(emit("snapshot", 1, list(["a", "b"])));

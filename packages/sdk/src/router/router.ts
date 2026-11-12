@@ -152,7 +152,7 @@ export function createRouter(genesis: Genesis, options: RouterOptions): Router {
     origins: manifest.origins,
     routes: options.routes.map(route => tableRoute(route)),
     contexts: manifest.contexts,
-    foreground: { screens: options.screens ?? [] },
+    screens: options.screens ?? [],
   };
   const routes = new Map(options.routes.map(route => [route.id, route]));
   const contextIds = manifest.contexts.map(context => context.id);
@@ -316,7 +316,7 @@ export function createRouter(genesis: Genesis, options: RouterOptions): Router {
 
   function navigate(target: NavigateTarget) {
     if ("screen" in target) {
-      if (!table.foreground.screens.includes(target.screen)) throw new GenesisError("NOT_FOUND", `No screen ${target.screen}`);
+      if (!table.screens.includes(target.screen)) throw new GenesisError("NOT_FOUND", `No screen ${target.screen}`);
       const screen: Screen = { key: screenKey(), id: target.screen, params: target.params ?? {} };
       guarded(() => dispatch({ type: "navigate.screen", screen, mode: target.mode ?? "push" }));
       return;
@@ -538,7 +538,7 @@ export function createRouter(genesis: Genesis, options: RouterOptions): Router {
 }
 
 function tableRoute(route: RouterRoute): TableRoute {
-  const out: TableRoute = { id: route.id, pattern: route.pattern, page: route.id, screen: route.screen ?? route.id };
+  const out: TableRoute = { id: route.id, pattern: route.pattern, screen: route.screen ?? route.id };
   if (route.query) out.query = route.query;
   if (route.context !== undefined) out.context = route.context;
   if (route.website) out.website = true;
