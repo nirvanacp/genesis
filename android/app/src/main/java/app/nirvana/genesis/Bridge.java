@@ -67,6 +67,7 @@ final class Bridge {
             case "historyGo": shell.historyGo(command.getJSONObject("view"), command.getInt("delta")); break;
             case "reload": shell.reload(command.getJSONObject("view")); break;
             case "postMessage": shell.postMessage(command.getJSONObject("view"), command.getString("payload")); break;
+            case "input": shell.input(command.getJSONObject("view"), command.getLong("token"), command.getJSONArray("events")); break;
             case "serviceRequest": services.request(command); break;
             case "showError": shell.showError(command.getString("message")); break;
             case "chooseApplet": shell.chooseApplet(command.getString("url"), command.getJSONArray("applets"), command.optBoolean("external")); break;
