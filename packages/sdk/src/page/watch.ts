@@ -221,15 +221,18 @@ export function createWatches(host: WatchHost): Watches {
     return host.emit(params);
   }
 
-  /** Emits a snapshot of the current state, shrinking a virtualized list or reporting `PAGE_TOO_LARGE` when it does not fit. */
+  /**
+   * Emits a snapshot of the current state, shrinking a virtualized list or reporting
+   * `PAGE_TOO_LARGE` when it does not fit, and `INVALID_ARGUMENT` when the value is not JSON data.
+   */
   function snapshot(watch: Watch) {
     watch.snapshot = false;
     let state = watch.state;
     let data = snapshotData(watch, state);
-    while (bytes(data) > limits.pageMaxBytes) {
-      const smaller = shrink(watch, state);
+    for (let size = bytes(data); size === null || size > limits.pageMaxBytes; size = bytes(data)) {
+      const smaller = size === null ? null : shrink(watch, state);
       if (!smaller) {
-        state = { ...state, status: "error", error: { code: "PAGE_TOO_LARGE", message: "The watch is too large to send" }, records: [], value: null };
+        state = { ...state, status: "error", error: size === null ? NOT_JSON : TOO_LARGE, records: [], value: null };
         data = snapshotData(watch, state);
         break;
       }
@@ -262,8 +265,17 @@ export function createWatches(host: WatchHost): Watches {
     return records.length === state.records.length ? null : { ...state, records };
   }
 
-  /** Emits what changed since the last emit: nothing, patches, or a snapshot. */
+  /** Emits what changed since the last emit. A value that cannot be compared (not JSON data) goes to `snapshot`, which reports it. */
   function update(watch: Watch) {
+    try {
+      changes(watch);
+    } catch {
+      snapshot(watch);
+    }
+  }
+
+  /** Emits what changed since the last emit: nothing, patches, or a snapshot. */
+  function changes(watch: Watch) {
     const sent = watch.sent;
     const state = watch.state;
     if (watch.snapshot || !sent || sent.status !== state.status || !sameError(sent.error, state.error) || Boolean(sent.truncated) !== Boolean(state.truncated)) {
@@ -277,7 +289,7 @@ export function createWatches(host: WatchHost): Watches {
     if (!patch) return;
     if (patch.kind !== "collection") return snapshot(watch);
     const patches = split(patch.upsert ?? [], { remove: patch.remove, order: patch.order, complete: patch.complete ?? (sent.complete !== state.complete ? state.complete : undefined) });
-    if (patches.some(item => bytes(item) > limits.patchMaxBytes)) return snapshot(watch);
+    if (patches.some(item => (bytes(item) ?? Infinity) > limits.patchMaxBytes)) return snapshot(watch);
     watch.sent = state;
     for (const item of patches) post(watch, "patch", item);
   }
@@ -292,7 +304,7 @@ export function createWatches(host: WatchHost): Watches {
     if (rest.remove?.length) tail.remove = rest.remove;
     if (rest.order) tail.order = rest.order;
     if (rest.complete !== undefined) tail.complete = rest.complete;
-    const budget = limits.patchMaxBytes - bytes(tail) - 256;
+    const budget = limits.patchMaxBytes - bytes(tail)! - 256;
     const chunks: PageRecord[][] = [];
     let chunk: PageRecord[] = [];
     let size = 0;
@@ -360,19 +372,32 @@ export function createWatches(host: WatchHost): Watches {
     const indexes: { [id: string]: RegionIndex } = {};
     for (const watch of watches.values()) {
       if (!active(watch)) continue;
-      if (watch.snapshot || whole || !watch.sent) readAll(watch);
+      if (watch.snapshot || whole || !watch.sent) isolated(watch, () => readAll(watch));
       else indexes[watch.id] = indexOf(watch);
     }
-    for (const [id, change] of invalidate(indexes, changes, document)) apply(watches.get(id)!, change);
+    for (const [id, change] of invalidate(indexes, changes, document)) {
+      const watch = watches.get(id)!;
+      isolated(watch, () => apply(watch, change));
+    }
     for (const watch of watches.values()) {
       if (watch.idle) continue;
       // The "more" link may sit outside every item; check it on every batch.
       if (watch.compiled.kind === "list" && watch.state.status === "ready") {
         try { watch.state = { ...watch.state, complete: watch.compiled.complete() }; } catch { /* the next read reports it */ }
       }
-      update(watch);
+      isolated(watch, () => update(watch));
     }
     measure();
+  }
+
+  /** Runs one watch's step of a batch; a throw becomes that watch's error, and the other watches go on. */
+  function isolated(watch: Watch, run: () => void) {
+    try {
+      run();
+    } catch (error) {
+      watch.state = { ...watch.state, status: "error", error: errorBody(error), records: [], value: null };
+      watch.snapshot = true;
+    }
   }
 
   function measure() {
@@ -395,10 +420,15 @@ export function createWatches(host: WatchHost): Watches {
         id, compiled, when, seq: 0, idle: false, snapshot: true, root: null, items: new WeakMap(), elements: new Map(),
         dependsOn: [], dependsOnMissing: false, state: { status: "ready", value: null, records: [] }, sent: null,
       };
+      // Read and serialize before registering: a value that is not JSON data fails the open and leaves no watch behind.
+      const reads = !when || matchesGuard(location.href, when);
+      if (reads) {
+        readAll(watch);
+        if (bytes(snapshotData(watch, watch.state)) === null) throw new PageError("INVALID_ARGUMENT", `The watch ${id} read a value that is not JSON data`);
+      }
       watches.set(id, watch);
       startObserving();
       if (!active(watch)) return;
-      readAll(watch);
       snapshot(watch);
       measure();
     },
@@ -470,8 +500,18 @@ function region(state: State): Region {
   return { kind: "collection", status: "ready", items: state.records, complete: state.complete ?? true };
 }
 
+const NOT_JSON: ErrorBody = { code: "INVALID_ARGUMENT", message: "The watch read a value that is not JSON data" };
+const TOO_LARGE: ErrorBody = { code: "PAGE_TOO_LARGE", message: "The watch is too large to send" };
+
 const encoder = new TextEncoder();
-const bytes = (value: unknown) => encoder.encode(JSON.stringify(value)).length;
+/** The UTF-8 size of the value as JSON; null when it is not JSON data (a BigInt, a cycle). */
+function bytes(value: unknown): number | null {
+  try {
+    return encoder.encode(JSON.stringify(value)).length;
+  } catch {
+    return null;
+  }
+}
 
 function sameError(a: ErrorBody | undefined, b: ErrorBody | undefined): boolean {
   return a?.code === b?.code && a?.message === b?.message;

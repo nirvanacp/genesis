@@ -1,6 +1,7 @@
 import {
   InvalidSpecError,
   matchesGuard,
+  TEXT_MAX,
   validateGuards,
   validateLocator,
   validateReadSpec,
@@ -83,10 +84,13 @@ export async function runSequence(sequence: Sequence, context: SequenceContext):
       void context.progress("navigating", completed);
     }
   });
-  const inner: InputContext = { records: context.records, stop };
+  const inner: InputContext = { records: context.records, stop, origins: context.origins };
+  // The document is retiring: stop where we are. The agent drops the answer; the host answers the call.
+  const retired = () => result(dispatched ? "unknown" : "failed", "RETIRED", "The page was retired");
 
   try {
     for (const step of steps) {
+      if (context.stop()) return retired();
       if (!dispatched && context.cancelled()) return result("cancelled");
       if (Date.now() >= deadline) return result(dispatched ? "unknown" : "failed", "DEADLINE", "The steps did not finish in time");
       if (step.op === "wait") {
@@ -97,6 +101,7 @@ export async function runSequence(sequence: Sequence, context: SequenceContext):
         continue;
       }
       let prepared = await prepareStep(withDeadline(step, deadline));
+      if (context.stop()) return retired();
       if (prepared.noop) {
         completed++;
         continue;
@@ -107,6 +112,7 @@ export async function runSequence(sequence: Sequence, context: SequenceContext):
         if (navigates) {
           navigating = true;
           await context.progress("navigating", completed);
+          if (context.stop()) return retired();
           // The page may have rendered again during the handoff; find the step's element again.
           if (prepared.element && !prepared.element.isConnected) prepared = await prepareStep(withDeadline(step, deadline));
         } else {
@@ -123,6 +129,7 @@ export async function runSequence(sequence: Sequence, context: SequenceContext):
     off();
   }
 
+  if (context.stop()) return retired();
   if (!dispatched && context.cancelled()) return result("cancelled");
   if (effects === 0) return { ...result("observed"), noop: true };
   const until = sequence.until;
@@ -203,11 +210,16 @@ export function validateStep(value: unknown, path: string): asserts value is Ste
   }
   if (op === "wait") {
     validateWaitFor(value.for, `${path}.for`);
-    if (typeof value.timeoutMs !== "number" || value.timeoutMs < 0) throw new InvalidSpecError(`${path}.timeoutMs`, "must be a number");
+    if (!isDuration(value.timeoutMs)) throw new InvalidSpecError(`${path}.timeoutMs`, "must be a finite number of 0 or more");
     return;
   }
   validateInput(op, value, path);
 }
+
+const GESTURES = new Set(["click", "tap", "mouse"]);
+const MODIFIERS = new Set(["Alt", "Control", "Meta", "Shift"]);
+/** The longest `longPress`; a longer hold would block the input queue. */
+export const LONG_PRESS_MS_MAX = 5000;
 
 /** Checks the arguments of an input operation. */
 export function validateInput(op: string, value: Record<string, unknown>, path = "args"): void {
@@ -221,18 +233,42 @@ export function validateInput(op: string, value: Record<string, unknown>, path =
   if (op === "type") string("text");
   if (op === "press") string("key");
   if (op === "check" && typeof value.checked !== "boolean") throw new InvalidSpecError(`${path}.checked`, "must be a boolean");
-  if (op === "select" && value.values === undefined && value.labels === undefined) throw new InvalidSpecError(path, "select needs values or labels");
+  if (op === "select") {
+    if (value.values === undefined && value.labels === undefined) throw new InvalidSpecError(path, "select needs values or labels");
+    for (const key of ["values", "labels"]) {
+      if (value[key] !== undefined && !isStringArray(value[key])) throw new InvalidSpecError(`${path}.${key}`, "must be an array of strings");
+    }
+  }
+  if (op === "click") {
+    if (value.gesture !== undefined && !GESTURES.has(value.gesture as string)) throw new InvalidSpecError(`${path}.gesture`, "must be click, tap or mouse");
+    if (value.count !== undefined && value.count !== 1 && value.count !== 2) throw new InvalidSpecError(`${path}.count`, "must be 1 or 2");
+  }
+  if (op === "longPress" && value.ms !== undefined && !(isDuration(value.ms) && value.ms <= LONG_PRESS_MS_MAX)) {
+    throw new InvalidSpecError(`${path}.ms`, `must be a number from 0 to ${LONG_PRESS_MS_MAX}`);
+  }
+  // Checked here, before any key event is dispatched.
+  if (op === "press" && value.modifiers !== undefined && !(isStringArray(value.modifiers) && value.modifiers.every(name => MODIFIERS.has(name)))) {
+    throw new InvalidSpecError(`${path}.modifiers`, "must be an array of Alt, Control, Meta or Shift");
+  }
+  if (value.force !== undefined && typeof value.force !== "boolean") throw new InvalidSpecError(`${path}.force`, "must be a boolean");
   if (op === "scroll" && value.to === undefined) throw new InvalidSpecError(`${path}.to`, "is required");
   if (op === "scroll" && value.to === "intoView" && value.target === undefined) throw new InvalidSpecError(`${path}.target`, "is required to scroll into view");
-  if (value.timeoutMs !== undefined && (typeof value.timeoutMs !== "number" || value.timeoutMs < 0)) throw new InvalidSpecError(`${path}.timeoutMs`, "must be a number");
+  if (value.timeoutMs !== undefined && !isDuration(value.timeoutMs)) throw new InvalidSpecError(`${path}.timeoutMs`, "must be a finite number of 0 or more");
   if (value.input !== undefined && value.input !== "synthetic" && value.input !== "trusted") throw new InvalidSpecError(`${path}.input`, "must be synthetic or trusted");
   if (value.input === "trusted") {
     if (!TRUSTED_OPS.has(op)) throw new InvalidSpecError(`${path}.input`, `${op} does not take trusted input`);
     if (op === "click" && ((value.gesture !== undefined && value.gesture !== "tap") || (value.count !== undefined && value.count !== 1))) {
       throw new InvalidSpecError(`${path}.input`, "a trusted click is one touch tap");
     }
+    // The shell refuses longer trusted text with the same limit.
+    if (op === "type" && (value.text as string).length > TEXT_MAX) throw new InvalidSpecError(`${path}.text`, `trusted input types at most ${TEXT_MAX} characters`);
   }
   if (value.until !== undefined) validateEvidence(value.until, `${path}.until`);
+}
+
+/** Checks a `deadlineMs` of `run` or of a command's steps: absent, or a finite number above 0. */
+export function validateDeadline(value: unknown, path = "deadlineMs"): asserts value is number | undefined {
+  if (value !== undefined && !(isDuration(value) && value > 0)) throw new InvalidSpecError(path, "must be a finite number above 0");
 }
 
 export function validateEvidence(value: unknown, path = "until"): asserts value is Evidence {
@@ -245,6 +281,15 @@ export function validateEvidence(value: unknown, path = "until"): asserts value 
 function validateWaitFor(value: unknown, path: string): asserts value is WaitFor {
   if (isObject(value) && "url" in value) return validateGuards([value.url], `${path}.url`);
   validateEvidence(value, path);
+}
+
+/** A finite number of milliseconds, 0 or more; NaN and Infinity are not. */
+function isDuration(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0;
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every(item => typeof item === "string");
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {

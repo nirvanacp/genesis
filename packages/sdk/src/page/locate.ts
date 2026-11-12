@@ -49,6 +49,8 @@ export function locateAll(locator: Locator, records: RecordLookup, scope: Scope 
     if (element === null) throw new PageError("NOT_FOUND", `No list watch ${locator.record.watch} is open`);
     if (element === undefined) throw new PageError("TARGET_NOT_FOUND", `Record ${locator.record.key} of ${locator.record.watch} is not on the page`);
     matches = locator.css || locator.text !== undefined || locator.role ? candidates(locator, element) : [element];
+    // Validation refuses `record` with `within` or `frame`; the scope here is a `has` test's element.
+    if (scope !== document && !scope.contains(element)) matches = [];
   } else {
     matches = candidates(locator, root);
   }
@@ -79,11 +81,12 @@ function first(locator: Locator, records: RecordLookup, scope: Scope): Element {
 
 /** The document of a same-origin iframe. A cross-origin frame is `NOT_FOUND` with the reason `cross-origin-frame`. */
 function frameDocument(frame: Element): Document {
-  if (!(frame instanceof HTMLIFrameElement || frame instanceof HTMLFrameElement)) {
+  // By tag, not `instanceof`: a frame inside a frame comes from that frame's realm.
+  if (frame.localName !== "iframe" && frame.localName !== "frame") {
     throw new PageError("NOT_FOUND", "frame must match an iframe");
   }
   let doc: Document | null = null;
-  try { doc = frame.contentDocument; } catch { doc = null; }
+  try { doc = (frame as HTMLIFrameElement).contentDocument; } catch { doc = null; }
   if (!doc) throw new PageError("NOT_FOUND", "The frame is cross-origin, so its content cannot be reached", { reason: "cross-origin-frame" });
   return doc;
 }
@@ -138,21 +141,41 @@ function query(scope: Scope, selector: string, deep: boolean): Element[] {
 
 /**
  * The deepest elements whose text contains the needle: an element is kept when none of its
- * child elements contains the needle too. Text here is `textContent` with white space
- * collapsed, which is cheap enough to test on every element of a page.
+ * child elements contains the needle too. Text here is `pageText` with white space collapsed,
+ * which is cheap enough to test on every element of a page.
  */
 function deepestWithText(scope: Scope, text: string, exact: boolean, deep: boolean): Element[] {
   const needle = normalize(text);
   const all = query(scope, "*", deep).filter(element => !NON_TEXT.has(element.localName));
-  const containing = new Set(all.filter(element => normalize(element.textContent ?? "").includes(needle)));
+  const texts = new Map(all.map(element => [element, normalize(pageText(element))]));
+  const containing = new Set(all.filter(element => texts.get(element)!.includes(needle)));
   const deepest = [...containing].filter(element => ![...element.children].some(child => containing.has(child)));
-  return exact ? deepest.filter(element => normalize(element.textContent ?? "") === needle) : deepest;
+  return exact ? deepest.filter(element => texts.get(element) === needle) : deepest;
 }
 
 const NON_TEXT = new Set(["script", "style", "noscript", "template", "head", "title", "meta", "link"]);
+/** Elements whose text is code or markup, not text the page shows. */
+const CODE = new Set(["script", "style", "noscript", "template"]);
+const CODE_SELECTOR = [...CODE].join(", ");
+
+/**
+ * `textContent` without the text inside script, style, noscript and template elements, so a
+ * JSON blob in an inline script does not match `{ text }`. Walks the nodes only when the
+ * element holds such an element; otherwise `textContent` is the same and faster.
+ */
+function pageText(element: Element): string {
+  if (!element.querySelector(CODE_SELECTOR)) return element.textContent ?? "";
+  const walker = element.ownerDocument.createTreeWalker(element, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
+    acceptNode: node => node.nodeType === Node.TEXT_NODE ? NodeFilter.FILTER_ACCEPT
+      : CODE.has((node as Element).localName) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_SKIP,
+  });
+  let text = "";
+  while (walker.nextNode()) text += walker.currentNode.nodeValue ?? "";
+  return text;
+}
 
 function textMatches(element: Element, needle: string, exact: boolean): boolean {
-  const text = normalize(element.textContent ?? "");
+  const text = normalize(pageText(element));
   return exact ? text === needle : text.includes(needle);
 }
 

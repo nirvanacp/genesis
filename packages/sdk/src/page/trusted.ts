@@ -2,6 +2,7 @@ import type { InputEvent, Locator, Step } from "@genesis/core";
 import { actionable } from "./actionable.js";
 import { PageError } from "./errors.js";
 import { refuseProtected, type InputContext, type Prepared } from "./input.js";
+import { isTextField } from "./read.js";
 
 /**
  * Trusted input: the agent finds the target and its point, and the shell sends real Android input
@@ -33,7 +34,7 @@ export async function prepareTrusted(step: Step, context: InputContext, send: Se
     case "type": {
       const element = await target(step.target, step);
       refuseProtected(element);
-      const editable = element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || (element instanceof HTMLElement && element.isContentEditable);
+      const editable = isTextField(element) || (element as HTMLElement).isContentEditable === true;
       if (!editable) throw new PageError("NOT_ACTIONABLE", "type needs an input, a textarea or an editable element", { reason: "not-editable" });
       return {
         element,

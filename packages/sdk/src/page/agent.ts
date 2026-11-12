@@ -11,14 +11,14 @@ import {
   type Step,
   type ReadSpec,
 } from "@genesis/core";
-import { connect, type BridgeObject, type Connection } from "../bridge.js";
+import { connect, GenesisError, type BridgeObject, type Connection } from "../bridge.js";
 import { waitUntil } from "./actionable.js";
 import { errorBody, messageOf, PageError } from "./errors.js";
 import { scroll, scrollPosition } from "./input.js";
 import { locate, locateAll, type RecordLookup } from "./locate.js";
 import type { CommandSteps, PageModule } from "./module.js";
 import { checkedOf, collapse, compile, isVisible, readOnce, rectOf, textOf, type Compiled } from "./read.js";
-import { holds, runSequence, validateEvidence, validateInput, validateSteps, type SequenceContext } from "./sequence.js";
+import { holds, runSequence, validateDeadline, validateEvidence, validateInput, validateSteps, type SequenceContext } from "./sequence.js";
 import { trackView, type ViewTracker } from "./view.js";
 import { createWatches } from "./watch.js";
 
@@ -81,7 +81,18 @@ function serve(connection: Connection, module: PageModule | undefined, view: Vie
 
   const answer = (callId: string, result: Omit<PageResultParams, "callId">) => {
     if (!calls.delete(callId)) return;
-    connection.request("page.result", { callId, ...result }).catch(() => {});
+    // Checked here, so a value the host would refuse answers an error now instead of the host's DEADLINE.
+    const size = jsonBytes(result);
+    const params: PageResultParams = size === null
+      ? { callId, ok: false, error: { code: "INVALID_ARGUMENT", message: "The result is not JSON data" } }
+      : size > limits.pageMaxBytes
+        ? { callId, ok: false, error: { code: "PAGE_TOO_LARGE", message: `The result is larger than ${limits.pageMaxBytes} bytes` } }
+        : { callId, ...result };
+    connection.request("page.result", params).catch((error: unknown) => {
+      // A refused value still gets an answer: the refusal itself. A refused error answer, or a retired page, gets none.
+      if (!params.ok || (error instanceof GenesisError && error.code === "RETIRED")) return;
+      connection.request("page.result", { callId, ok: false, error: errorBody(error) }).catch(() => {});
+    });
   };
 
   if (compat.adapterApi !== COMPAT.adapterApi) {
@@ -108,9 +119,13 @@ function serve(connection: Connection, module: PageModule | undefined, view: Vie
     return {
       records,
       compile: compileSpec,
+      origins: connection.bound.manifest.origins,
       stop: () => call.stopped || stopped,
       cancelled: () => call.cancelled,
-      progress: (state, completedSteps) => connection.request("page.progress", { callId, state, completedSteps }).then(() => {}, () => {}),
+      // A progress report the host refuses as RETIRED stops the call before its next step.
+      progress: (state, completedSteps) => connection.request("page.progress", { callId, state, completedSteps }).then(() => {}, (error: unknown) => {
+        if (error instanceof GenesisError && error.code === "RETIRED") call.stopped = true;
+      }),
       onPagehide: listener => connection.on("pagehide", listener),
       flush: () => watches.flush(),
       view: () => view.current().n,
@@ -179,10 +194,11 @@ function serve(connection: Connection, module: PageModule | undefined, view: Vie
       try {
         validateSteps(args.steps);
         if (args.until !== undefined) validateEvidence(args.until);
+        validateDeadline(args.deadlineMs);
       } catch (error) {
         return failed(error);
       }
-      const own = typeof args.deadlineMs === "number" ? call.arrived + args.deadlineMs : deadline;
+      const own = args.deadlineMs !== undefined ? call.arrived + args.deadlineMs : deadline;
       return runSequence({ steps: args.steps, until: args.until, navigates: args.navigates === true, deadline: Math.min(deadline, own) }, sequenceContext(call));
     }
     if (op === "invoke") return invoke(call, deadline);
@@ -214,10 +230,11 @@ function serve(connection: Connection, module: PageModule | undefined, view: Vie
     try {
       validateSteps(spec.steps);
       if (spec.until !== undefined && typeof spec.until !== "function") validateEvidence(spec.until);
+      validateDeadline(spec.deadlineMs);
     } catch (error) {
       throw new PageError("INVALID_STEPS", `${name}: ${messageOf(error)}`);
     }
-    const own = typeof spec.deadlineMs === "number" ? call.arrived + spec.deadlineMs : deadline;
+    const own = spec.deadlineMs !== undefined ? call.arrived + spec.deadlineMs : deadline;
     return runSequence({ steps: spec.steps, until: spec.until, navigates: spec.navigates === true, deadline: Math.min(deadline, own) }, sequenceContext(call));
   }
 
@@ -309,6 +326,17 @@ function serve(connection: Connection, module: PageModule | undefined, view: Vie
 function failed(error: unknown): ActionResult {
   const body = errorBody(error);
   return { outcome: "failed", code: body.code, message: body.message };
+}
+
+const encoder = new TextEncoder();
+
+/** The UTF-8 size of the value as JSON; null when it is not JSON data (a BigInt, a cycle). */
+function jsonBytes(value: unknown): number | null {
+  try {
+    return encoder.encode(JSON.stringify(value)).length;
+  } catch {
+    return null;
+  }
 }
 
 function isObject(value: unknown): value is { [key: string]: any } {

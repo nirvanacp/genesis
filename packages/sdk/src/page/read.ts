@@ -122,14 +122,15 @@ export function readOnce(compiled: Compiled): unknown {
   if (compiled.kind === "value") return json(compiled.read());
   if (compiled.kind === "one") return root ? json(compiled.read(root)) : null;
   const items = root ? compiled.items(root) : [];
-  const value: ListValue & { complete?: boolean } = { order: [], records: {} };
+  // No prototype, so keys such as `constructor` or `__proto__` are plain keys.
+  const value: ListValue & { complete?: boolean } = { order: [], records: Object.create(null) };
   for (const item of items) {
     if (value.order.length >= compiled.limit) {
       value.truncated = true;
       break;
     }
     const key = compiled.key(item);
-    if (key in value.records) throw new PageError("CONFLICT", `Two items have the key ${key}`);
+    if (Object.hasOwn(value.records, key)) throw new PageError("CONFLICT", `Two items have the key ${key}`);
     value.order.push(key);
     value.records[key] = json(compiled.read(item));
   }
@@ -184,7 +185,8 @@ function readField(element: Element, field: Field): unknown {
 
 function readTake(element: Element, take: Take, max: number): unknown {
   if (typeof take === "object") {
-    if (take.attr === "value" && isProtected(element)) return null;
+    // `getAttribute` ignores case in HTML, so the protected name is compared the same way.
+    if (take.attr.toLowerCase() === "value" && isProtected(element)) return null;
     return element.getAttribute(take.attr);
   }
   switch (take) {
@@ -203,7 +205,7 @@ function readTake(element: Element, take: Take, max: number): unknown {
 
 /** The rendered text when the element has layout, else its text content. */
 export function textOf(element: Element): string {
-  return element instanceof HTMLElement ? element.innerText ?? element.textContent ?? "" : element.textContent ?? "";
+  return (element as HTMLElement).innerText ?? element.textContent ?? "";
 }
 
 export function collapse(text: string): string {
@@ -229,7 +231,7 @@ function urlOf(element: Element): string | null {
 }
 
 export function checkedOf(element: Element): boolean | null {
-  if (element instanceof HTMLInputElement && (element.type === "checkbox" || element.type === "radio")) return element.checked;
+  if (isInput(element) && (element.type === "checkbox" || element.type === "radio")) return element.checked;
   const aria = element.getAttribute("aria-checked") ?? element.getAttribute("aria-pressed") ?? element.getAttribute("aria-selected");
   if (aria === "true" || aria === "mixed") return true;
   if (aria === "false") return false;
@@ -253,10 +255,21 @@ export function rectOf(element: Element): { x: number; y: number; width: number;
 
 const PROTECTED_AUTOCOMPLETE = new Set(["current-password", "new-password", "one-time-code"]);
 
+/**
+ * Tag tests by `localName`. An element of a same-origin frame comes from the frame's realm, where
+ * `instanceof HTMLInputElement` of this window is false, so the agent never uses `instanceof`
+ * for page elements.
+ */
+export const isInput = (element: Element): element is HTMLInputElement => element.localName === "input";
+export const isTextArea = (element: Element): element is HTMLTextAreaElement => element.localName === "textarea";
+export const isSelect = (element: Element): element is HTMLSelectElement => element.localName === "select";
+/** An input or a textarea, whose value the agent sets. */
+export const isTextField = (element: Element): element is HTMLInputElement | HTMLTextAreaElement => isInput(element) || isTextArea(element);
+
 /** Fields whose value the agent never reads or writes: passwords, hidden inputs, one-time codes, card data. */
 export function isProtected(element: Element): boolean {
-  if (!(element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || element instanceof HTMLSelectElement)) return false;
-  if (element instanceof HTMLInputElement && (element.type === "password" || element.type === "hidden")) return true;
+  if (!(isTextField(element) || isSelect(element))) return false;
+  if (isInput(element) && (element.type === "password" || element.type === "hidden")) return true;
   const autocomplete = (element.getAttribute("autocomplete") ?? "").trim().toLowerCase().split(/\s+/);
   return autocomplete.some(token => PROTECTED_AUTOCOMPLETE.has(token) || token.startsWith("cc-"));
 }

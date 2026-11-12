@@ -26,7 +26,7 @@ export function blocker(element: Element): "detached" | "hidden" | "disabled" | 
   // Outside the viewport (an element larger than it, say) elementFromPoint says nothing; do not call that covered.
   if (hit === null) return null;
   if (hit === element || element.contains(hit)) return null;
-  if (hit instanceof HTMLLabelElement && hit.control === element) return null;
+  if (hit.localName === "label" && (hit as HTMLLabelElement).control === element) return null;
   return "covered";
 }
 

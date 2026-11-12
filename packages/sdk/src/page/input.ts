@@ -1,9 +1,9 @@
 import type { Locator, Step, ScrollPosition, ScrollTo } from "@genesis/core";
-import { fill, submitEffect } from "./engine/form.js";
+import { fill, setValue, submitEffect } from "./engine/form.js";
 import { actionable, sleep, waitUntil } from "./actionable.js";
 import { PageError } from "./errors.js";
 import { locate, type RecordLookup } from "./locate.js";
-import { checkedOf, isProtected } from "./read.js";
+import { checkedOf, isInput, isProtected, isSelect, isTextArea, isTextField } from "./read.js";
 
 /**
  * Synthetic input: the agent dispatches DOM events itself. Events have `isTrusted: false`, CSS
@@ -14,6 +14,8 @@ export interface InputContext {
   records: RecordLookup;
   /** The call was cancelled, or the agent is stopping. */
   stop(): boolean;
+  /** The applet's declared origins, the only ones `navigate` goes to. */
+  origins: readonly string[];
 }
 
 /** A step whose target is found and ready: its effect has not run yet. */
@@ -77,7 +79,7 @@ export async function prepare(step: Step, context: InputContext): Promise<Prepar
     case "fill": {
       const element = await target(step.target, step);
       refuseProtected(element);
-      if (!(element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement)) {
+      if (!isTextField(element)) {
         throw new PageError("NOT_ACTIONABLE", "fill needs an input or textarea", { reason: "not-a-text-field" });
       }
       return { element, run: async () => fill(element, step.value) };
@@ -85,10 +87,10 @@ export async function prepare(step: Step, context: InputContext): Promise<Prepar
     case "type": {
       const element = await target(step.target, step);
       refuseProtected(element);
-      if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
+      if (isTextField(element)) {
         return { element, run: async () => { element.focus({ preventScroll: true }); for (const char of step.text) typeChar(element, char); } };
       }
-      if (element instanceof HTMLElement && element.isContentEditable) return { element, run: async () => typeEditable(element, step.text) };
+      if ((element as HTMLElement).isContentEditable === true) return { element, run: async () => typeEditable(element as HTMLElement, step.text) };
       throw new PageError("NOT_ACTIONABLE", "type needs an input, a textarea or an editable element", { reason: "not-editable" });
     }
     case "press": {
@@ -98,7 +100,8 @@ export async function prepare(step: Step, context: InputContext): Promise<Prepar
     }
     case "select": {
       const element = await target(step.target, step);
-      if (!(element instanceof HTMLSelectElement)) throw new PageError("NOT_ACTIONABLE", "select needs a select element", { reason: "not-a-select" });
+      if (!isSelect(element)) throw new PageError("NOT_ACTIONABLE", "select needs a select element", { reason: "not-a-select" });
+      refuseProtected(element);
       const options = matchingOptions(element, step.values, step.labels);
       return {
         element,
@@ -130,12 +133,19 @@ export async function prepare(step: Step, context: InputContext): Promise<Prepar
     }
     case "submit": {
       const element = locate(step.target, context.records);
-      return { element, run: async () => submitEffect(element, "The submit target")() };
+      // Found before the step reports `dispatched`: a target outside a form fails with nothing sent.
+      const effect = submitEffect(element, "The submit target");
+      return { element, run: async () => effect() };
     }
     case "navigate": {
-      let url: string;
-      try { url = new URL(step.url, location.href).href; } catch { throw new PageError("INVALID_ARGUMENT", `${step.url} is not a URL`); }
-      return { run: async () => location.assign(url) };
+      let url: URL;
+      try { url = new URL(step.url, location.href); } catch { throw new PageError("INVALID_ARGUMENT", `${step.url} is not a URL`); }
+      // Only https pages of the applet's own websites: a javascript:, data: or http: URL, or another
+      // website, would run outside the rules the applet declared.
+      if (url.protocol !== "https:" || !context.origins.includes(url.origin)) {
+        throw new PageError("INVALID_ARGUMENT", `navigate goes only to https URLs on the applet's origins, not ${step.url}`);
+      }
+      return { run: async () => location.assign(url.href) };
     }
     case "wait":
       throw new PageError("INVALID_STEPS", "A wait step does not run on its own");
@@ -230,8 +240,7 @@ function mouseClick(element: Element, count: number) {
 }
 
 function focusable(element: Element): HTMLElement | null {
-  const found = element.closest("a[href], button, input, select, textarea, [tabindex], [contenteditable='true']");
-  return found instanceof HTMLElement ? found : null;
+  return element.closest<HTMLElement>("a[href], button, input, select, textarea, [tabindex], [contenteditable='true']");
 }
 
 function hover(element: Element) {
@@ -283,8 +292,7 @@ function insert(element: HTMLInputElement | HTMLTextAreaElement, text: string) {
   let start = value.length;
   let end = value.length;
   try { start = element.selectionStart ?? start; end = element.selectionEnd ?? end; } catch { /* no selection on this input type */ }
-  const prototype = element instanceof HTMLInputElement ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype;
-  Object.getOwnPropertyDescriptor(prototype, "value")?.set?.call(element, value.slice(0, start) + text + value.slice(end));
+  setValue(element, value.slice(0, start) + text + value.slice(end));
   try { element.setSelectionRange(start + text.length, start + text.length); } catch { /* no selection on this input type */ }
   element.dispatchEvent(new InputEvent("input", { inputType: "insertText", data: text, bubbles: true, composed: true }));
 }
@@ -297,9 +305,11 @@ function typeChar(element: HTMLInputElement | HTMLTextAreaElement, char: string)
 
 function typeEditable(element: HTMLElement, text: string) {
   element.focus({ preventScroll: true });
-  const selection = getSelection();
+  // The element's own document: in a frame, selection and editing commands are the frame's.
+  const doc = element.ownerDocument;
+  const selection = doc.getSelection();
   if (selection && !element.contains(selection.anchorNode)) {
-    const range = document.createRange();
+    const range = doc.createRange();
     range.selectNodeContents(element);
     range.collapse(false);
     selection.removeAllRanges();
@@ -308,7 +318,7 @@ function typeEditable(element: HTMLElement, text: string) {
   const before = new InputEvent("beforeinput", { inputType: "insertText", data: text, bubbles: true, cancelable: true, composed: true });
   if (!element.dispatchEvent(before)) return;
   // execCommand is deprecated but is the one way a page script inserts text the editor's own way.
-  if (!document.execCommand("insertText", false, text)) {
+  if (!doc.execCommand("insertText", false, text)) {
     throw new PageError("NOT_ACTIONABLE", "This editor needs trusted input", { reason: "editor-needs-trusted-input" });
   }
 }
@@ -324,10 +334,10 @@ function press(element: Element, name: string, modifiers: string[]) {
   const character = isCharacter(name);
   const pressed = proceed && (character || name === "Enter") ? key(element, "keypress", name, modifiers) : proceed;
   if (proceed && pressed) {
-    const text = element instanceof HTMLTextAreaElement || (element instanceof HTMLInputElement && !["checkbox", "radio", "button", "submit", "reset", "image", "file"].includes(element.type));
+    const text = isTextArea(element) || (isInput(element) && !["checkbox", "radio", "button", "submit", "reset", "image", "file"].includes(element.type));
     const command = modifiers.some(modifier => modifier === "Control" || modifier === "Meta" || modifier === "Alt");
-    if (name === "Enter" && element instanceof HTMLInputElement && text) element.form?.requestSubmit();
-    else if ((name === "Enter" || name === " ") && (element instanceof HTMLButtonElement || element instanceof HTMLAnchorElement || element.getAttribute("role") === "button")) (element as HTMLElement).click();
+    if (name === "Enter" && isInput(element) && text) element.form?.requestSubmit();
+    else if ((name === "Enter" || name === " ") && (element.localName === "button" || element.localName === "a" || element.getAttribute("role") === "button")) (element as HTMLElement).click();
     else if (name === "Tab") moveFocus(element, modifiers.includes("Shift"));
     else if (character && text && !command && !isProtected(element)) insert(element as HTMLInputElement | HTMLTextAreaElement, name);
   }
