@@ -398,6 +398,8 @@ A read specification (`ReadSpec`) says what to read. It is one of three shapes:
 | --- | --- |
 | `{ one, fields, measure? }` | The fields of the first element `one` matches, or null when none does. `measure: true` reads again when the element changes size. |
 | `{ list, key, fields, within?, virtualized?, limit? }` | `{ order, records, truncated?, complete? }`: every element `list` matches (inside `within` when given), keyed by the `key` field. |
+
+A watch of the first two shapes whose fields take `value` or `checked` reads again on `input` and `change` events, because form values change without DOM mutations.
 | `{ reader, args? }` | The value of the page module's reader with that name. An unknown reader is `NOT_FOUND`. |
 
 `fields` maps names to fields. A field is `{ at?, take?, all?, fields?, max? }`:
@@ -446,7 +448,7 @@ The agent never reads or writes the value of a password field, a hidden input, o
 
 ## Trusted input
 
-`click`, `hover`, `unhover`, `type` and `press` accept `input: "trusted"`. The agent finds the target and its point, and sends `page.input` with the events for the shell to dispatch as real Android input to the hidden context's WebView. The events reach the page as trusted DOM events.
+`click`, `hover`, `unhover`, `type` and `press` accept `input: "trusted"`. The agent finds the target and its point (for an element in a same-origin frame, measured through every containing frame onto the top page), and sends `page.input` with the events for the shell to dispatch as real Android input to the hidden context's WebView. The events reach the page as trusted DOM events.
 
 | Event | Shape | Dispatch |
 | --- | --- | --- |

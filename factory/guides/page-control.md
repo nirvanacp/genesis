@@ -103,7 +103,7 @@ The agent never reads a password, a hidden input, or a field marked for one-time
 
 ## Watches
 
-A watch keeps a read up to date. The agent observes the page, re-reads what changed, and sends the difference; the handle holds the current value.
+A watch keeps a read up to date. The agent observes the page, re-reads what changed, and sends the difference; the handle holds the current value. A read specification whose fields take `value` or `checked` also reads again on `input` and `change` events. Content inside a same-origin frame or an open shadow root that the watch's locators reached (`frame`, `pierce`) is observed too. A page module reader is observed only in the top document; its `fields: true` turns on the input events.
 
 ```ts
 const stories = hn.watch<never, Story>(
@@ -250,6 +250,7 @@ Trusted input has more limits:
 - A key that would reach the clipboard fails with `INPUT_UNAVAILABLE`: `Control` or `Meta` with a one-character key (copy, paste, select all), and `Shift+Delete`.
 - One trusted `type` takes at most 2000 characters; a longer text fails with `INVALID_ARGUMENT`.
 - Once another document has started loading in the context, the shell refuses trusted input with `CONTEXT_REPLACED`, so it never reaches the next page. The outcome is `unknown` with that code, like other input cut short by a navigation.
+- An element inside a same-origin frame is tapped at its point on the top page, measured through every frame that contains it.
 - For 5 seconds after trusted input, the page may not open a window or hand a link to another app, even when the user reveals it and taps.
 
 ## Evidence and outcomes
