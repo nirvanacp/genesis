@@ -29,6 +29,10 @@ const FOREGROUND_METHODS: [&str; 16] = [
 const CONTEXT_METHODS: [&str; 4] = ["page.result", "page.progress", "page.emit", "page.input"];
 /// Events in one `page.input`.
 const INPUT_EVENTS_MAX: usize = 64;
+/// Characters of `text` in one `page.input`, all its text events together. The shell types each
+/// character as key events on the UI thread, so a long text would freeze it. Mirrors
+/// `Input.TEXT_MAX` in the shell.
+const INPUT_TEXT_MAX: usize = 2000;
 const LIST_LIMIT: usize = 100;
 
 /// What a call produced: an answer now, or one sent later (or already sent) by the call itself.
@@ -403,10 +407,19 @@ impl Host {
         if events.is_empty() || events.len() > INPUT_EVENTS_MAX {
             return error(ErrorCode::InvalidArgument, format!("page.input takes 1 to {INPUT_EVENTS_MAX} events"));
         }
+        let text: usize = events.iter().map(|e| if let InputEvent::Text { text } = e { text.chars().count() } else { 0 }).sum();
+        if text > INPUT_TEXT_MAX {
+            return error(ErrorCode::InvalidArgument, format!("page.input types at most {INPUT_TEXT_MAX} characters"));
+        }
         let Role::Context(id) = &view.role else { unreachable!() };
         let Some(session) = self.contexts.session.as_ref() else {
             return error(ErrorCode::Retired, "The applet is not active");
         };
+        // The view already committed another document, which this one's input would reach. The
+        // shell runs the command within this event, so it sees the same document the host does.
+        if session.contexts.get(id).is_some_and(|c| c.navigating_since.is_some()) {
+            return error(ErrorCode::ContextReplaced, "The page changed before the input");
+        }
         let Some(handle) = session.calls.get(&call_id).filter(|c| c.context_document == document_id) else {
             return error(ErrorCode::NotFound, "page.input needs an open call of this page");
         };
