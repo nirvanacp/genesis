@@ -56,6 +56,8 @@ final class Shell implements Views.Listener, Ui.Actions {
         void launcherShown();
         boolean chooseFiles(WebChromeClient.FileChooserParams params, ValueCallback<Uri[]> callback, java.util.function.BooleanSupplier valid);
         void cancelInvalidFiles();
+        /** The applet's "Hide in recent apps" choice changed; its window applies it. */
+        void privacyChanged(String appletId);
         /** Opens the system picker for a bundle file, with its release record if the user picks one. */
         void pickAppletFile();
         Connections.Store connections();
@@ -1088,6 +1090,34 @@ final class Shell implements Views.Listener, Ui.Actions {
         ui.pages.refresh();
     }
 
+    // -----------------------------------------------------------------------------------------
+    // Hide in recent apps
+
+    private static String privacyKey(String appletId) { return "applet-privacy/" + appletId; }
+
+    static boolean hiddenInRecents(android.content.Context context, String appletId) {
+        return state(context).getBoolean(privacyKey(appletId), false);
+    }
+
+    @Override public boolean hiddenInRecents(String appletId) { return state.getBoolean(privacyKey(appletId), false); }
+
+    @Override public void setHiddenInRecents(String appletId, boolean on) {
+        if (on) state.edit().putBoolean(privacyKey(appletId), true).apply();
+        else state.edit().remove(privacyKey(appletId)).apply();
+        owner.privacyChanged(appletId);
+    }
+
+    /**
+     * Android 13+ can leave the Recents card blank on its own. Earlier versions only offer
+     * FLAG_SECURE, which also blocks screenshots and screen recording of the window.
+     */
+    static void applyPrivacy(Activity activity, String appletId) {
+        boolean hidden = hiddenInRecents(activity, appletId);
+        if (Build.VERSION.SDK_INT >= 33) activity.setRecentsScreenshotEnabled(!hidden);
+        else if (hidden) activity.getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
+        else activity.getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
+    }
+
     /** This window lets go of a removed or erased applet's profile. */
     void forgetProfile(String appletId) {
         profiles.remove(appletId);
@@ -1100,6 +1130,12 @@ final class Shell implements Views.Listener, Ui.Actions {
         Set<String> pending = new LinkedHashSet<>(state.getStringSet(DELETE_PROFILES, Set.of()));
         pending.add(profileName(state, appletId));
         state.edit().remove(profileKey(appletId)).remove(profileNameKey(appletId)).putStringSet(DELETE_PROFILES, pending).apply();
+    }
+
+    /** A removed or erased applet's Genesis choices go with it. */
+    static void forgetApplet(android.content.Context context, String appletId) {
+        forgetProfile(context, appletId);
+        state(context).edit().remove(privacyKey(appletId)).apply();
     }
 
     /** Deletes the profiles waiting for deletion; one a WebView still holds waits for the next launcher. */

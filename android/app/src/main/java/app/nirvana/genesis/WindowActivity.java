@@ -82,6 +82,8 @@ abstract class WindowActivity extends Activity implements Shell.Owner {
 
     @Override public void pickAppletFile() {}
 
+    @Override public void privacyChanged(String appletId) { if (registered) runtime.router.privacyChanged(appletId); }
+
     @Override public Connections.Store connections() { return runtime.services; }
 
     @Override public void storageSize(LongConsumer result) { runtime.storageSize(result); }

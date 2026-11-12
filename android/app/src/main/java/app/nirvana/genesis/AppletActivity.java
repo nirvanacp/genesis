@@ -21,6 +21,7 @@ public final class AppletActivity extends WindowActivity {
         super.onCreate(savedInstanceState);
         appletId = Router.appletId(getIntent());
         if (appletId == null) { finishAndRemoveTask(); return; }
+        Shell.applyPrivacy(this, appletId);
         if (!createWindow()) return;
         try {
             send(Bridge.event("appletWindowCreated").put("appletId", appletId).put("restored", savedInstanceState != null));

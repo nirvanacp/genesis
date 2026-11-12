@@ -211,6 +211,9 @@ public final class Manage {
             }
         }
 
+        content.addView(t.section("Privacy"));
+        content.addView(hideInRecents(appletId));
+
         content.addView(t.section("Details"));
         if (Ui.str(entry, "publisher") != null) content.addView(t.pair("Publisher", entry.optString("publisher")));
         content.addView(t.pair("Source", Ui.sourceText(Ui.str(entry, "source"))));
@@ -253,6 +256,18 @@ public final class Manage {
         });
         return t.row(R.drawable.ic_lock, "Use a separate sign-in", "This applet signs in to its websites on its own. Other applets stay as they are.",
             toggle, false, t.onSurface, null);
+    }
+
+    /** "Hide in recent apps": a blank Recents card. Before Android 13 the only way is to block screenshots too. */
+    private View hideInRecents(String appletId) {
+        Tokens t = ui.tokens;
+        MaterialSwitch toggle = new MaterialSwitch(ui.activity);
+        toggle.setChecked(ui.actions.hiddenInRecents(appletId));
+        toggle.setContentDescription("Hide in recent apps");
+        toggle.setOnCheckedChangeListener((button, checked) -> ui.actions.setHiddenInRecents(appletId, checked));
+        String detail = android.os.Build.VERSION.SDK_INT >= 33 ? "Its card in recent apps shows no preview of the screen."
+            : "Its card in recent apps shows no preview of the screen, and screenshots of it are blocked.";
+        return t.row(R.drawable.ic_lock, "Hide in recent apps", detail, toggle, false, t.onSurface, null);
     }
 
     private void confirmClear(JSONObject entry) {

@@ -55,6 +55,12 @@ final class Router {
 
     void resumed(Shell shell) { recent = shell; }
 
+    /** The applet's window, if it exists, applies its "Hide in recent apps" choice now. */
+    void privacyChanged(String appletId) {
+        Shell shell = applets.get(appletId);
+        if (shell != null) Shell.applyPrivacy(shell.activity(), appletId);
+    }
+
     /** The canonical intent of an applet's window: one document task per applet. */
     static Intent appletIntent(Context context, String appletId) {
         return new Intent(context, AppletActivity.class).setAction(OPEN_APPLET)
@@ -123,7 +129,7 @@ final class Router {
                 String id = command.getString("appletId");
                 runtime.services.forget(id);
                 for (Shell shell : windows()) shell.forgetProfile(id);
-                Shell.forgetProfile(runtime.app, id);
+                Shell.forgetApplet(runtime.app, id);
                 break;
             }
             case "startAppletWindow": start(appletIntent(runtime.app, command.getString("appletId"))); break;
