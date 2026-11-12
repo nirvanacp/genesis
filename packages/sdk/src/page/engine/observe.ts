@@ -37,16 +37,18 @@ export function observe(onChanges: (changes: Change[]) => void): Observer {
     const target = event.target as Element | null;
     if (target?.localName === "iframe" || target?.localName === "frame") onChanges([{ target, kind: "childList" }]);
   };
-  // Field and load events stay in their own document, so each observed document gets the listeners.
-  const listen = (doc: Document) => {
-    doc.addEventListener("input", onField, true);
-    doc.addEventListener("change", onField, true);
-    doc.addEventListener("load", onLoad, true);
+  // `change` and `load` are not composed: they stay in the document or shadow root they fire in,
+  // so each observed scope gets the listeners. A composed `input` may then arrive twice; a second
+  // report of the same field only re-reads the same region.
+  const listen = (scope: Document | ShadowRoot) => {
+    scope.addEventListener("input", onField, true);
+    scope.addEventListener("change", onField, true);
+    scope.addEventListener("load", onLoad, true);
   };
-  const unlisten = (doc: Document) => {
-    doc.removeEventListener("input", onField, true);
-    doc.removeEventListener("change", onField, true);
-    doc.removeEventListener("load", onLoad, true);
+  const unlisten = (scope: Document | ShadowRoot) => {
+    scope.removeEventListener("input", onField, true);
+    scope.removeEventListener("change", onField, true);
+    scope.removeEventListener("load", onLoad, true);
   };
   listen(document);
   let observed = new Set<Document | ShadowRoot>();
@@ -77,8 +79,8 @@ export function observe(onChanges: (changes: Change[]) => void): Observer {
       mutations.disconnect();
       mutations.observe(document, options);
       for (const scope of scopes) mutations.observe(scope, options);
-      for (const scope of observed) if (scope.nodeType === Node.DOCUMENT_NODE && !scopes.has(scope)) unlisten(scope as Document);
-      for (const scope of scopes) if (scope.nodeType === Node.DOCUMENT_NODE && !observed.has(scope)) listen(scope as Document);
+      for (const scope of observed) if (scope !== document && !scopes.has(scope)) unlisten(scope);
+      for (const scope of scopes) if (scope !== document && !observed.has(scope)) listen(scope);
       observed = new Set(scopes);
       if (queued.length) onMutations(queued);
     },
@@ -86,7 +88,7 @@ export function observe(onChanges: (changes: Change[]) => void): Observer {
       mutations.disconnect();
       resize?.disconnect();
       unlisten(document);
-      for (const scope of observed) if (scope.nodeType === Node.DOCUMENT_NODE) unlisten(scope as Document);
+      for (const scope of observed) if (scope !== document) unlisten(scope);
       observed = new Set();
     },
   };
