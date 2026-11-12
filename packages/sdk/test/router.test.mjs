@@ -128,6 +128,21 @@ describe("router", () => {
     router.destroy();
   });
 
+  test("a page that needs the account but shows nothing about it uses the account already known", async () => {
+    const { host, router } = await start({ account: { signedIn: { reader: "account" } } });
+    load(host, START);
+    await tick();
+    snapshot(host, "router:account", START, "alice");
+    await tick();
+    load(host, `${ORIGIN}/hidden`);
+    await tick();
+    snapshot(host, "router:account", `${ORIGIN}/hidden`, null);
+    await tick(READY_MS + 20);
+    assert.equal(router.status().status, "ready");
+    assert.equal(router.presentation(), "custom");
+    router.destroy();
+  });
+
   test("Back pops an overlay, then goes back in history, then leaves", async () => {
     const { host, router } = await start();
     load(host, `${ORIGIN}/item?id=1`, { index: 1, size: 2 });

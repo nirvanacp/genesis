@@ -423,7 +423,8 @@ export function createRouter(genesis: Genesis, options: RouterOptions): Router {
 
   function statusOf(id: string, entry: Tracked, route: RouterRoute | null, params: Readonly<Record<string, string>>): RouteStatus {
     const context = genesis.context(id).state;
-    const known = options.account ? accountOf(entry) : undefined;
+    // A page that shows nothing about the account, such as a form, keeps the account already known.
+    const known = options.account ? accountOf(entry) ?? signedIn : undefined;
     const base = { routeId: route?.id ?? null, params, url: context.url, signedIn: known, stale: false, error: context.error };
     if (!route || route.website) return { ...base, status: "unsupported" };
     if (context.error && !context.bound) return { ...base, status: "unsupported" };
@@ -456,7 +457,11 @@ export function createRouter(genesis: Genesis, options: RouterOptions): Router {
     if (value === undefined || value === signedIn) return;
     const before = signedIn;
     signedIn = value;
-    if (before === undefined) return;
+    if (before === undefined) {
+      // Contexts whose pages showed nothing about the account were waiting for it.
+      for (const other of contextIds) if (other !== id && tracked.has(other)) update(other);
+      return;
+    }
     const shown = genesis.website.state.shown;
     for (const other of contextIds) {
       if (other !== id && other !== shown) void genesis.context(other).reload();
