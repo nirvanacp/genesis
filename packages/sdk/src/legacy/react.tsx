@@ -13,11 +13,11 @@ import {
 } from "react";
 import { createRoot } from "react-dom/client";
 import type { ActionResult, ContextState, Presentation, Screen } from "@genesis/core";
-import { createForeground, type CurrentScreen, type Foreground, type NavigateTarget, type PendingAction } from "./foreground.js";
-import type { ContextStore, RegionState } from "./store.js";
-import type { ErrorInfo, PageState, Record, Storage, StorageBatch, StoredDocument } from "./types.js";
+import { createForeground, type CurrentScreen, type Foreground, type NavigateTarget, type PendingAction } from "../foreground.js";
+import type { ContextStore, RegionState } from "../store.js";
+import type { ErrorInfo, PageState, Record, Storage, StorageBatch, StoredDocument } from "../types.js";
 
-export type { ActionCall, CurrentScreen, Foreground, NavigateTarget, PendingAction } from "./foreground.js";
+export type { ActionCall, CurrentScreen, Foreground, NavigateTarget, PendingAction } from "../foreground.js";
 
 const GenesisContext = createContext<Foreground | null>(null);
 

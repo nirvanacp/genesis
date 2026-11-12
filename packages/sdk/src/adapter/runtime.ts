@@ -13,7 +13,7 @@ import {
 import { connect, GenesisError, type BridgeObject, type Connection } from "../bridge.js";
 import { createActions, type Target } from "./actions.js";
 import { assignKeys, keepNear, mergeVirtualized } from "./diff.js";
-import type { AdapterDefinition, CollectionRegion, Page, Region, SingleRegion } from "./index.js";
+import type { AdapterDefinition, CollectionRegion, Page, Region, SingleRegion } from "../legacy/adapter.js";
 import { invalidate, touches, type Change, type Invalidation, type RegionIndex } from "./invalidate.js";
 import { observe, watchNavigation } from "./observe.js";
 import { debounce, Publisher, type PageContent } from "./publish.js";

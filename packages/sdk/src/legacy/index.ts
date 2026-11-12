@@ -1,7 +1,7 @@
-export * from "./adapter/index.js";
-export { createForeground } from "./foreground.js";
-export type { ActionCall, CurrentScreen, Foreground, NavigateTarget, PendingAction } from "./foreground.js";
-export { createStore } from "./store.js";
+export * from "./adapter.js";
+export { createForeground } from "../foreground.js";
+export type { ActionCall, CurrentScreen, Foreground, NavigateTarget, PendingAction } from "../foreground.js";
+export { createStore } from "../store.js";
 export type {
   ApplyResult,
   ContextStore,
@@ -11,8 +11,8 @@ export type {
   ShownPage,
   Store,
   StoreState,
-} from "./store.js";
-export { GenesisError, ServiceError, serviceMessage } from "./types.js";
+} from "../store.js";
+export { GenesisError, ServiceError, serviceMessage } from "../types.js";
 export type {
   ActionResult,
   ErrorInfo,
@@ -24,8 +24,8 @@ export type {
   StorageChange,
   StorageKey,
   StoredDocument,
-} from "./types.js";
-export type { Bound, BridgeObject, Connection, Limits } from "./bridge.js";
+} from "../types.js";
+export type { Bound, BridgeObject, Connection, Limits } from "../bridge.js";
 export type {
   ActionOutcome,
   ContextState,

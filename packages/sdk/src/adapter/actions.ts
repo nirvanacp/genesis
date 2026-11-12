@@ -1,6 +1,6 @@
 import type { ActionExpect, ActionRequest, ActionResult, ActionUpdate, ErrorCode, Limits, Step } from "@genesis/core";
 import { GenesisError, type Connection } from "../bridge.js";
-import type { Action, ActionSpec } from "./index.js";
+import type { Action, ActionSpec } from "../legacy/adapter.js";
 
 const STEP_POLL_MS = 100;
 

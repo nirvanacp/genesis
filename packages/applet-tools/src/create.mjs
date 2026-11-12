@@ -17,7 +17,7 @@ function localStamp(date) {
   return { local, file: local.slice(0, 10) + '-' + local.slice(11, 19).replaceAll(':', '') };
 }
 
-const ADAPTER = `import { collection, defineAdapter } from "@genesis/sdk/adapter";
+const ADAPTER = `import { collection, defineAdapter } from "@genesis/sdk/legacy/adapter";
 
 /** One link on the home page. Replace it with the records your applet needs. */
 export interface Link {
@@ -70,7 +70,7 @@ export default defineAdapter({
 `;
 
 const MAIN = `import { memo } from "react";
-import { mountForeground, useAction, useNavigation, usePage, usePending, useRecord, useRegion, ScrollMemory, type PageView } from "@genesis/sdk/react";
+import { mountForeground, useAction, useNavigation, usePage, usePending, useRecord, useRegion, ScrollMemory, type PageView } from "@genesis/sdk/legacy/react";
 import type { Link } from "./adapter";
 import "./theme.css";
 

@@ -152,4 +152,4 @@ function isObject(value: unknown): value is { [key: string]: any } {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export { runAdapter } from "./runtime.js";
+export { runAdapter } from "../adapter/runtime.js";

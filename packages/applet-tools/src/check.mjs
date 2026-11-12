@@ -15,8 +15,8 @@ const require = createRequire(import.meta.url);
 export const noReactInAdapters = {
   name: 'genesis-no-react-in-adapters',
   setup(builder) {
-    builder.onResolve({ filter: /^@genesis\/sdk\/react$/ }, args => ({
-      errors: [{ text: `Adapters must not import @genesis/sdk/react (imported by ${args.importer})` }],
+    builder.onResolve({ filter: /^@genesis\/sdk\/(legacy\/)?react$/ }, args => ({
+      errors: [{ text: `Adapters must not import ${args.path} (imported by ${args.importer})` }],
     }));
   },
 };
@@ -35,7 +35,7 @@ export function adapterEntry(base, adapter) {
       builder.onResolve({ filter: /^genesis:adapter-entry$/ }, () => ({ path: ADAPTER_ENTRY, namespace: 'genesis' }));
       builder.onLoad({ filter: /.*/, namespace: 'genesis' }, () => ({
         resolveDir: base, loader: 'js',
-        contents: `import adapter from ${JSON.stringify(specifier)};\nimport { runAdapter } from "@genesis/sdk/adapter";\nrunAdapter(adapter);\n`,
+        contents: `import adapter from ${JSON.stringify(specifier)};\nimport { runAdapter } from "@genesis/sdk/legacy/adapter";\nrunAdapter(adapter);\n`,
       }));
     },
   };
