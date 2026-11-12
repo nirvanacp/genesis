@@ -788,6 +788,8 @@ pub struct Limits {
     pub action_timeout_ms: u64,
     pub back_answer_ms: u64,
     pub history_entries_max: usize,
+    /// Open watches per context document. The page agent enforces it, not the host.
+    pub watches_max: usize,
 }
 
 impl Default for Limits {
@@ -807,6 +809,7 @@ impl Default for Limits {
             action_timeout_ms: 15_000,
             back_answer_ms: 300,
             history_entries_max: 16,
+            watches_max: 32,
         }
     }
 }
@@ -844,17 +847,30 @@ pub enum ErrorCode {
     AsyncRead,
     AuthRequired,
     Rejected,
+    NotActionable,
+    AmbiguousTarget,
+    ProtectedField,
+    InputUnavailable,
+    UnknownOperation,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ErrorBody {
     pub code: ErrorCode,
     pub message: String,
+    /// What a failed page call got to before it failed: `dispatched`, `navigating`, `completedSteps`, `reason`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub details: Option<Value>,
 }
 
 impl ErrorBody {
     pub fn new(code: ErrorCode, message: impl Into<String>) -> Self {
-        Self { code, message: message.into() }
+        Self { code, message: message.into(), details: None }
+    }
+
+    pub fn with_details(mut self, details: Value) -> Self {
+        self.details = Some(details);
+        self
     }
 }
 
@@ -889,6 +905,23 @@ pub enum ActionState {
     Observed,
     Failed,
     Cancelled,
+}
+
+/// `state` of a page call the context reports with `page.progress`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum CallState {
+    Dispatched,
+    Navigating,
+}
+
+/// What a `page.emit` carries: a whole value, a change to the last one, or the stream's status.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum EmitKind {
+    Snapshot,
+    Patch,
+    Status,
 }
 
 /// A request's method and parameters, decoded from `method` and `params` of `DocumentMessage::Request`.
@@ -976,6 +1009,45 @@ pub enum Call {
         #[serde(default)]
         result: Option<Value>,
     },
+    /// Asks the bound document of `context` to run one page operation. The host never reads `op` or `args`.
+    #[serde(rename = "page.call")]
+    PageCall {
+        context: String,
+        generation: u64,
+        op: String,
+        #[serde(default)]
+        args: Value,
+        #[serde(default)]
+        timeout_ms: Option<u64>,
+    },
+    /// Cancels one call of the asking document in `context`, or all of them when `call_id` is absent.
+    #[serde(rename = "page.cancel")]
+    PageCancel {
+        context: String,
+        #[serde(default)]
+        call_id: Option<String>,
+    },
+    /// The context's answer to a `call`; ends the call.
+    #[serde(rename = "page.result")]
+    PageResult {
+        call_id: String,
+        ok: bool,
+        #[serde(default)]
+        value: Option<Value>,
+        #[serde(default)]
+        error: Option<ErrorBody>,
+    },
+    /// How far a running call got.
+    #[serde(rename = "page.progress")]
+    PageProgress {
+        call_id: String,
+        state: CallState,
+        #[serde(default)]
+        completed_steps: Option<u64>,
+    },
+    /// One message of a watch stream, forwarded to the foreground. The host checks only its size.
+    #[serde(rename = "page.emit")]
+    PageEmit { stream: String, kind: EmitKind, seq: u64, view: Value, url: String, data: Value },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
