@@ -24,6 +24,10 @@ abstract class GenesisBuild : DefaultTask() {
     @get:Internal abstract val workspace: DirectoryProperty
     @get:OutputDirectory abstract val assetsDirectory: DirectoryProperty
     @get:OutputDirectory abstract val jniDirectory: DirectoryProperty
+    /** App drawer entries of bundled applets: their labels, colors and icons. */
+    @get:OutputDirectory abstract val resDirectory: DirectoryProperty
+    /** The manifest overlay with their aliases. AGP chooses its location. */
+    @get:OutputFile abstract val manifestFile: RegularFileProperty
     @get:Inject abstract val execOperations: ExecOperations
 
     @TaskAction fun generate() {
@@ -33,7 +37,8 @@ abstract class GenesisBuild : DefaultTask() {
                 workingDir(workspace.get().asFile)
                 commandLine(nodeExecutable.get(), "tools/build.mjs", "--stage", "all", "--variant", variant.get(),
                     "--cargo", cargoExecutable.get(),
-                    "--sdk", sdkPath.get())
+                    "--sdk", sdkPath.get(),
+                    "--manifest", manifestFile.get().asFile.absolutePath)
             }
         } catch (error: org.gradle.process.internal.ExecException) {
             throw GradleException("Cannot start Node 24.15.0. Set genesis.node to its absolute executable path in android/local.properties.", error)
@@ -94,9 +99,12 @@ androidComponents {
             })
             assetsDirectory.set(layout.buildDirectory.dir("generated/genesis/${variant.name}/assets"))
             jniDirectory.set(layout.buildDirectory.dir("generated/genesis/${variant.name}/jniLibs"))
+            resDirectory.set(layout.buildDirectory.dir("generated/genesis/${variant.name}/res"))
         }
         variant.sources.assets?.addGeneratedSourceDirectory(producer, GenesisBuild::assetsDirectory)
         variant.sources.jniLibs?.addGeneratedSourceDirectory(producer, GenesisBuild::jniDirectory)
+        variant.sources.res?.addGeneratedSourceDirectory(producer, GenesisBuild::resDirectory)
+        variant.sources.manifests.addGeneratedManifestFile(producer, GenesisBuild::manifestFile)
         genesisBuild.configure { dependsOn(producer) }
     }
 }

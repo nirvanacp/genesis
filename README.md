@@ -48,6 +48,8 @@ node packages/applet-tools/src/cli.mjs dev install applets/x-bookmarks --device 
 
 `dev install` sends the last build, so run `build` first. Hacker News is bundled into the APK through `genesis.packages.json`; X is installed with `dev install`. Release builds refuse `dev install`: they bundle each applet's published release, and users add other applets with **Add applet** in the launcher's Genesis menu, from a public GitHub repository or a downloaded bundle file. Genesis reviews every build before installing it and offers updates from the same source. [Publishing](factory/guides/publishing.md) covers versions, tags and the CI workflows that publish a release.
 
+An entry in `genesis.packages.json` can be an object, `{ "id": "hn-bookmarks", "drawer": true }`, to give that bundled applet its own entry in the Android app drawer. The entry shows the applet's name over its accent color, with the icon its manifest names as `shell.icon`; an applet without an icon gets no entry. The entry appears once the applet is installed and runs on this device. Before shipping a build to a store, check that each icon is original artwork and that each name does not claim to be the website's own app.
+
 ## Applets directory
 
 The applets live in their own repository, outside this one's history. `genesis.workspace.json` says where:
