@@ -71,8 +71,8 @@ async function main(args) {
     }
     case 'check': {
       const { positional } = parse(args.slice(1), ['json']);
-      const { manifest, pages, warnings, compat } = await checkApplet(one(positional, 'applet directory'));
-      return ['check', { appletId: manifest.id, compat, pages, warnings }];
+      const { manifest, pages, module, warnings, compat } = await checkApplet(one(positional, 'applet directory'));
+      return ['check', { appletId: manifest.id, compat, ...(module ? { module } : { pages }), warnings }];
     }
     case 'build': {
       const { positional, options } = parse(args.slice(1), ['json', 'out', 'debug']);
