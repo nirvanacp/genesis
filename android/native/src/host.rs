@@ -1,7 +1,7 @@
 //! The host core: turns shell events into shell commands.
 use crate::{
     applets::{self, Applets},
-    contexts::{BackSlot, ContextView, Contexts, Resume, Session},
+    contexts::{BackSlot, CallHandle, ContextView, Contexts, Resume, Session},
     documents::Documents,
     flows::{Deletion, Flow, Updates, erasing_message},
     storage_worker,
@@ -97,6 +97,7 @@ impl Host {
             }
             ShellEvent::RendererGone { view } => self.renderer_gone(&view),
             ShellEvent::HistoryUnmoved { view } => self.history_unmoved(&view),
+            ShellEvent::InputDone { view, token, ok, message } => self.input_done(&view, token, ok, message),
             ShellEvent::WindowRequested { view, url } => self.window_requested(view, &url),
             ShellEvent::ImportFound { kind: ImportKind::Bundle, path, payload, release: _ } => self.import_dev(&path, &payload),
             ShellEvent::ImportFound { kind: ImportKind::Bundled, path, payload, release } => {
@@ -420,7 +421,7 @@ impl Host {
                 None => self.out.push(ShellCommand::ShowError { applet_id: window, message: format!("Applet {applet_id} is not installed") }),
             };
         };
-        let script = match self.applets.read_text(applet_id, revision, "adapter.js") {
+        let script = match self.applets.read_text(applet_id, revision, "page.js") {
             Ok(script) => script,
             Err(message) => return self.out.push(ShellCommand::ShowError { applet_id: window, message }),
         };
@@ -437,7 +438,7 @@ impl Host {
         });
         self.out.push(ShellCommand::CreateView {
             view: ViewRef { applet_id: applet_id.into(), role: Role::Foreground },
-            url: self.applets.foreground_url(applet_id, revision),
+            url: self.applets.foreground_url(applet_id, revision, &manifest.foreground.entry),
             origins: vec![FOREGROUND_ORIGIN.into()],
             start_script: None,
         });
@@ -719,29 +720,33 @@ impl Host {
         });
     }
 
-    /// Retires a context's or the foreground's document: it receives `retired`, and its actions
-    /// are dropped. Every action of a retired context document was delivered to it and some of
-    /// its steps may have run, so the foreground learns that their outcome is unknown. Actions a
-    /// retired foreground document asked for are only forgotten.
+    /// Retires a context's or the foreground's document: it receives `retired`, and its page calls
+    /// are dropped. Each open call of a retired context document fails with `CONTEXT_REPLACED` and
+    /// how far it got. Calls a retired foreground document asked for are only forgotten.
     pub fn retire_document(&mut self, view: &ViewRef) {
         let Some(document_id) = self.documents.retire(view) else { return };
         let message = HostMessage::Event { document_id: document_id.clone(), name: "retired".into(), data: json!({}) };
         self.post(view, &message);
         let Some(session) = self.contexts.sessions.get_mut(&view.applet_id) else { return };
-        session.take_actions(|a| a.foreground_document == document_id);
-        let actions = session.take_actions(|a| a.context_document == document_id);
-        for (action_id, handle) in actions.into_iter().filter(|(_, a)| !a.navigating) {
-            let result = json!({ "outcome": "unknown", "code": ErrorCode::ContextReplaced, "message": "The page changed before the action finished" });
-            self.action_update(&view.applet_id, &handle.foreground_document, json!({ "actionId": action_id, "state": "failed", "result": result }));
+        session.take_calls(|c| c.foreground_document == document_id);
+        let calls = session.take_calls(|c| c.context_document == document_id);
+        for (_, handle) in calls {
+            self.fail_call(&view.applet_id, &handle, ErrorBody::new(ErrorCode::ContextReplaced, "The page changed before the call finished"));
         }
     }
 
-    /// Sends `action.update` to the foreground document that asked, if it is still current.
-    pub fn action_update(&mut self, applet_id: &str, foreground_document: &str, update: Value) {
+    /// Answers the foreground request behind a page call, if the document that asked is still current.
+    pub fn answer_call(&mut self, applet_id: &str, handle: &CallHandle, outcome: Result<Value, ErrorBody>) {
         let Some(view) = self.foreground_view(applet_id) else { return };
-        if self.documents.is_current(&view, foreground_document) {
-            self.event(&view, "action.update", update);
+        if self.documents.is_current(&view, &handle.foreground_document) {
+            self.respond(&view, &handle.foreground_document, handle.request_id, outcome);
         }
+    }
+
+    /// Ends a page call the context did not answer, with how far it got as the error's `details`.
+    pub fn fail_call(&mut self, applet_id: &str, handle: &CallHandle, error: ErrorBody) {
+        let error = error.with_details(handle.details());
+        self.answer_call(applet_id, handle, Err(error));
     }
 
     // -----------------------------------------------------------------------------------------
@@ -789,14 +794,12 @@ impl Host {
         }
     }
 
-    /// One live applet's deadlines: its actions, its Back slot, its unbound documents and its suspension.
+    /// One live applet's deadlines: its page calls, its Back slot, its unbound documents and its suspension.
     fn tick_session(&mut self, applet_id: &str, now: u64) {
         let Some(session) = self.session_mut(applet_id) else { return };
-        let expired = session.take_actions(|a| a.deadline_ms <= now);
-        for (action_id, handle) in expired.into_iter().filter(|(_, a)| !a.navigating) {
-            // The document received the action and may have run some of its steps; the outcome is unknown.
-            let result = json!({ "outcome": "unknown", "code": ErrorCode::Deadline, "message": "The page did not finish the action in time" });
-            self.action_update(applet_id, &handle.foreground_document, json!({ "actionId": action_id, "state": "failed", "result": result }));
+        let expired = session.take_calls(|c| c.deadline_ms <= now);
+        for (_, handle) in expired {
+            self.fail_call(applet_id, &handle, ErrorBody::new(ErrorCode::Deadline, "The page did not answer the call in time"));
         }
         let Some(session) = self.session_mut(applet_id) else { return };
         if session.back.as_ref().is_some_and(|slot| slot.deadline_ms <= now) {

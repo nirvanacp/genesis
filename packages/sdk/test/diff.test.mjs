@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 // diff.ts has only type imports, so Node runs it directly by stripping the types.
-import { assignKeys, diffRegion, keepNear, mergeVirtualized } from "../src/adapter/diff.ts";
+import { assignKeys, diffRegion, keepNear, mergeVirtualized } from "../src/page/engine/diff.ts";
 
 const record = (key, data = { title: key }) => ({ key, data });
 const collection = (items, extra = {}) => ({ kind: "collection", status: "ready", items, complete: true, ...extra });

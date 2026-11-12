@@ -234,6 +234,15 @@ pub enum ShellEvent {
     ClearData { applet_id: String },
     /// Keeps the installed release the publisher withdrew; later checks stop flagging that tag.
     KeepVersion { applet_id: String },
+    /// The end of an `Input`: `ok` is false, with `message`, when the shell dispatched nothing,
+    /// because the view is gone, is not a hidden context, or cannot take an event.
+    InputDone {
+        view: ViewRef,
+        token: u64,
+        ok: bool,
+        #[serde(default)]
+        message: Option<String>,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
@@ -415,6 +424,30 @@ pub enum ShellCommand {
     /// The foreground asked to notify the user. The shell posts it only when the user turned
     /// the applet's notifications on; `url` opens in the applet's window when tapped.
     PostNotification { applet_id: String, id: String, title: String, body: Option<String>, url: Option<String> },
+    /// Real Android input for a hidden context's WebView, dispatched in order. The shell answers
+    /// with `InputDone` carrying `token`.
+    Input { view: ViewRef, token: u64, events: Vec<InputEvent> },
+}
+
+/// One input event of `Input` or `page.input`. `x` and `y` are CSS pixels of the visual viewport
+/// at scale 1, which the shell multiplies by the display density.
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase")]
+pub enum InputEvent {
+    /// A touch tap: down and up at one point.
+    Tap { x: f64, y: f64 },
+    /// A mouse pointer entering or moving to the point.
+    Hover { x: f64, y: f64 },
+    /// The mouse pointer leaving the view.
+    HoverExit,
+    /// One key by its DOM `key` name, with `Shift`, `Control`, `Alt` or `Meta` held.
+    Key {
+        key: String,
+        #[serde(default)]
+        modifiers: Vec<String>,
+    },
+    /// Text typed into the focused element, as key presses.
+    Text { text: String },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
@@ -615,9 +648,7 @@ pub struct Manifest {
     pub name: String,
     pub origins: Vec<String>,
     pub foreground: Foreground,
-    pub adapter: String,
     pub contexts: Vec<Context>,
-    pub routes: Vec<Route>,
     pub capabilities: Capabilities,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub shell: Option<Shell>,
@@ -626,8 +657,16 @@ pub struct Manifest {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Foreground {
+    pub kind: ForegroundKind,
+    /// The UI's HTML file inside the bundle.
     pub entry: String,
-    pub screens: Vec<String>,
+}
+
+/// How the host creates the applet's UI. A web UI is an HTML document in the foreground WebView.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ForegroundKind {
+    Web,
 }
 
 /// One WebView with its own history. The first context is active at launch.
@@ -636,19 +675,6 @@ pub struct Foreground {
 pub struct Context {
     pub id: String,
     pub start_url: String,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct Route {
-    pub id: String,
-    pub pattern: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub query: Option<Vec<String>>,
-    pub page: String,
-    pub screen: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub context: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -875,6 +901,11 @@ pub struct Limits {
     pub action_timeout_ms: u64,
     pub back_answer_ms: u64,
     pub history_entries_max: usize,
+    /// Open watches per context document. The page agent enforces it, not the host.
+    pub watches_max: usize,
+    /// The shell can send real input to a hidden context (`page.input`).
+    #[serde(default)]
+    pub trusted_input: bool,
 }
 
 impl Default for Limits {
@@ -894,6 +925,8 @@ impl Default for Limits {
             action_timeout_ms: 15_000,
             back_answer_ms: 300,
             history_entries_max: 16,
+            watches_max: 32,
+            trusted_input: true,
         }
     }
 }
@@ -931,17 +964,30 @@ pub enum ErrorCode {
     AsyncRead,
     AuthRequired,
     Rejected,
+    NotActionable,
+    AmbiguousTarget,
+    ProtectedField,
+    InputUnavailable,
+    UnknownOperation,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ErrorBody {
     pub code: ErrorCode,
     pub message: String,
+    /// What a failed page call got to before it failed: `dispatched`, `navigating`, `completedSteps`, `reason`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub details: Option<Value>,
 }
 
 impl ErrorBody {
     pub fn new(code: ErrorCode, message: impl Into<String>) -> Self {
-        Self { code, message: message.into() }
+        Self { code, message: message.into(), details: None }
+    }
+
+    pub fn with_details(mut self, details: Value) -> Self {
+        self.details = Some(details);
+        self
     }
 }
 
@@ -968,14 +1014,21 @@ pub enum DocumentMessage {
     },
 }
 
-/// `state` of an action the context reports with `context.actionResult`.
+/// `state` of a page call the context reports with `page.progress`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub enum ActionState {
+pub enum CallState {
     Dispatched,
-    Observed,
-    Failed,
-    Cancelled,
+    Navigating,
+}
+
+/// What a `page.emit` carries: a whole value, a change to the last one, or the stream's status.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum EmitKind {
+    Snapshot,
+    Patch,
+    Status,
 }
 
 /// A request's method and parameters, decoded from `method` and `params` of `DocumentMessage::Request`.
@@ -1035,15 +1088,6 @@ pub enum Call {
     ContextReveal { id: String },
     #[serde(rename = "context.cover")]
     ContextCover {},
-    #[serde(rename = "context.resync")]
-    ContextResync { id: String },
-    /// `action` is `{region, key, name, args}`; the host adds `actionId`.
-    #[serde(rename = "context.act")]
-    ContextAct { id: String, generation: u64, action: Map<String, Value> },
-    #[serde(rename = "context.cancel")]
-    ContextCancel { action_id: u64 },
-    #[serde(rename = "context.ping")]
-    ContextPing { id: String },
     /// The foreground's coordinator state, handed back in `bound.session` after background retirement.
     #[serde(rename = "session.save")]
     SessionSave { version: u32, state: Value },
@@ -1052,26 +1096,49 @@ pub enum Call {
     /// Leaves the applet after a Back the foreground handled by asking first, once the user confirms.
     #[serde(rename = "back.leave")]
     BackLeave {},
-    /// Exactly one of `page` and `patch`.
-    #[serde(rename = "context.publish")]
-    ContextPublish {
+    /// Asks the bound document of `context` to run one page operation. The host never reads `op` or `args`.
+    #[serde(rename = "page.call")]
+    PageCall {
+        context: String,
+        generation: u64,
+        op: String,
         #[serde(default)]
-        page: Option<Value>,
+        args: Value,
         #[serde(default)]
-        patch: Option<Value>,
+        timeout_ms: Option<u64>,
     },
-    #[serde(rename = "context.actionResult")]
-    ContextActionResult {
-        action_id: u64,
-        state: ActionState,
+    /// Cancels one call of the asking document in `context`, or all of them when `call_id` is absent.
+    #[serde(rename = "page.cancel")]
+    PageCancel {
+        context: String,
         #[serde(default)]
-        navigating: Option<bool>,
-        /// On a navigating `dispatched`: the destination pages the foreground judges by, passed through.
-        #[serde(default)]
-        expect: Option<Value>,
-        #[serde(default)]
-        result: Option<Value>,
+        call_id: Option<String>,
     },
+    /// The context's answer to a `call`; ends the call.
+    #[serde(rename = "page.result")]
+    PageResult {
+        call_id: String,
+        ok: bool,
+        #[serde(default)]
+        value: Option<Value>,
+        #[serde(default)]
+        error: Option<ErrorBody>,
+    },
+    /// How far a running call got.
+    #[serde(rename = "page.progress")]
+    PageProgress {
+        call_id: String,
+        state: CallState,
+        #[serde(default)]
+        completed_steps: Option<u64>,
+    },
+    /// One message of a watch stream, forwarded to the foreground. The host checks only its size.
+    #[serde(rename = "page.emit")]
+    PageEmit { stream: String, kind: EmitKind, seq: u64, view: Value, url: String, data: Value },
+    /// Real input for an open call of the asking context document: the host has the shell dispatch
+    /// `events` to that document's view and answers once the shell has.
+    #[serde(rename = "page.input")]
+    PageInput { call_id: String, events: Vec<InputEvent> },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]

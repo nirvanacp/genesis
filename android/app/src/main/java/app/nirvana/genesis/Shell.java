@@ -8,6 +8,7 @@ import android.net.ConnectivityManager;
 import android.net.NetworkCapabilities;
 import android.net.Uri;
 import android.os.Build;
+import android.os.SystemClock;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -372,6 +373,32 @@ final class Shell implements Views.Listener, Ui.Actions {
     void postMessage(JSONObject ref, String payload) {
         Views.Page page = pages.get(key(ref));
         if (page != null) page.post(payload);
+    }
+
+    /**
+     * Dispatches the page agent's trusted input to a hidden context, then reports `inputDone`.
+     * A revealed context gets none, since input there would count as the user's own gesture.
+     */
+    void input(JSONObject ref, long token, JSONArray events) {
+        Views.Page page = pages.get(key(ref));
+        String refusal = null;
+        if (page == null || !page.isContext()) refusal = "The page is gone";
+        else if (page.isRevealed()) refusal = "Trusted input goes only to a hidden page";
+        else {
+            try {
+                Input.dispatch(page.web, events);
+                page.trustedInputAt = SystemClock.uptimeMillis();
+            }
+            catch (Input.Refused refused) { refusal = refused.getMessage(); }
+        }
+        String message = refusal;
+        // Answered after this command batch, since the host is still handling the event that sent it.
+        bar.post(() -> {
+            try {
+                owner.send(Bridge.event("inputDone").put("view", ref).put("token", token)
+                    .put("ok", message == null).put("message", message == null ? JSONObject.NULL : message));
+            } catch (JSONException ignored) { /* Unreachable for these values. */ }
+        });
     }
 
     /** Shows the foreground once its first frame with applet content is ready to draw. */

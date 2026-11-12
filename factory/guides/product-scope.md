@@ -4,7 +4,7 @@ Use this to turn a website address and an ordinary request into the app the user
 
 ## One app, many parts
 
-An applet is the app the user opens. Its website contexts, adapter, screens, records and services are internal parts. A request for "an X client with categorized bookmarks" means one applet with timelines, search, conversations, profiles and bookmarking, not a bookmark app and a separate client. Make two applets only when the user asks for two apps.
+An applet is the app the user opens. Its website contexts, page module, screens, records and services are internal parts. A request for "an X client with categorized bookmarks" means one applet with timelines, search, conversations, profiles and bookmarking, not a bookmark app and a separate client. Make two applets only when the user asks for two apps.
 
 When customizing, keep the applet's id, launcher entry, working features, stored data and explicit choices. Do not shrink a full client to the feature that needs the most new code. Reference applets show technique; do not copy their placeholders, restrictions, themes or data models unless the user asked for them.
 
@@ -27,11 +27,11 @@ Mark each requirement `required`, `preserve` or `deferred by user`, and track it
 
 | Journey | Expected result | Owner and data | Status |
 | --- | --- | --- | --- |
-| Launch, browse, open a detail, Back | Right content, section and scroll position on return | Adapter and foreground | |
+| Launch, browse, open a detail, Back | Right content, section and scroll position on return | Page module and UI | |
 | Sign in or open an account page | The site's sign-in as the website; the applet screen after signing in | Website | |
-| Use the added feature, leave, reopen | The result persists in its store | Foreground and its store | |
+| Use the added feature, leave, reopen | The result persists in its store | UI and its store | |
 | Open an outside link and return | Correct destination as the website; Done or Back restores the detail | Website | |
-| Service down or unfamiliar page | A clear error; the rest of the app keeps working | Foreground | |
+| Service down or unfamiliar page | A clear error; the rest of the app keeps working | UI | |
 
 Size the brief to the change. A style fix does not need a full client audit; a full client does.
 

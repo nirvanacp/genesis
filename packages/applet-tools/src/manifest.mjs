@@ -2,7 +2,7 @@ import { readFile, realpath, stat } from 'node:fs/promises';
 import { existsSync, statSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
-import { parseManifest } from '@genesis/core';
+import { parseSourceManifest } from '@genesis/core';
 
 export function toolError(code, message) { return Object.assign(new Error(message), { code }); }
 export function requireValue(condition, message) { if (!condition) throw toolError('INVALID_PACKAGE', message); }
@@ -34,7 +34,8 @@ function readService(value, file) {
 }
 
 /**
- * Reads and validates `applet.json` with the schema rules in `@genesis/core`. Also loads the
+ * Reads and validates `applet.json` with the schema rules in `@genesis/core`, splitting it into
+ * the manifest the bundle carries and the `build` section only the tools use. Also loads the
  * service declaration `serviceFile`, or the first declared service's config when none is given.
  */
 export async function readApplet(directory, { serviceFile } = {}) {
@@ -46,11 +47,11 @@ export async function readApplet(directory, { serviceFile } = {}) {
     const file = path.join(base, relative);
     return existsSync(file) && statSync(file).isFile();
   };
-  const parsed = parseManifest(json, exists);
+  const parsed = parseSourceManifest(json, exists);
   if ('errors' in parsed) {
     throw toolError('INVALID_MANIFEST', `applet.json is invalid:\n${parsed.errors.map(e => `  ${e.path || '/'}: ${e.message}`).join('\n')}`);
   }
-  const { manifest } = parsed;
+  const { manifest, build } = parsed;
   const declared = manifest.capabilities.services ?? [];
   const config = serviceFile ?? declared[0]?.config;
   let service;
@@ -61,5 +62,5 @@ export async function readApplet(directory, { serviceFile } = {}) {
     requireValue(service.serviceId === declaration.id, `${config}: serviceId must be ${declaration.id}`);
     await containedFile(base, service.entry);
   }
-  return { base, manifest, service };
+  return { base, manifest, build, service };
 }

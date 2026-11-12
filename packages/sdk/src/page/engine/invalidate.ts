@@ -1,6 +1,7 @@
 /**
- * Maps DOM changes to the records they can affect. Pure: it reads only the `parentNode` chain of
- * the nodes it is given, so tests can pass plain objects instead of DOM nodes.
+ * Maps DOM changes to the records they can affect. Pure: it reads only the chain of nodes above
+ * the ones it is given (`parentNode`, then a shadow root's host or a frame document's iframe), so
+ * tests can pass plain objects instead of DOM nodes.
  */
 
 export interface TreeNode {
@@ -98,7 +99,7 @@ function locate(region: RegionIndex, target: TreeNode): { key?: string; inRoot: 
   let key: string | undefined;
   let inRoot = false;
   let dependent = false;
-  for (let node: TreeNode | null = target; node; node = node.parentNode) {
+  for (let node: TreeNode | null = target; node; node = above(node)) {
     key ??= region.items.get(node);
     if (node === region.root) inRoot = true;
     if (region.dependsOn.includes(node)) dependent = true;
@@ -109,8 +110,20 @@ function locate(region: RegionIndex, target: TreeNode): { key?: string; inRoot: 
 }
 
 function attached(node: TreeNode, top: TreeNode): boolean {
-  for (let current: TreeNode | null = node; current; current = current.parentNode) {
+  for (let current: TreeNode | null = node; current; current = above(current)) {
     if (current === top) return true;
   }
   return false;
+}
+
+/**
+ * The node above: the parent, else the host of a shadow root or the iframe of a same-origin frame
+ * document, so a change inside either reaches the regions around it.
+ */
+function above(node: TreeNode): TreeNode | null {
+  if (node.parentNode) return node.parentNode;
+  const outer = node as { nodeType?: number; host?: TreeNode; defaultView?: { frameElement: TreeNode | null } | null };
+  if (outer.nodeType === 11) return outer.host ?? null;
+  if (outer.nodeType === 9) return outer.defaultView?.frameElement ?? null;
+  return null;
 }

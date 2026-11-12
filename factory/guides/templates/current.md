@@ -9,7 +9,7 @@ Name, applet id, origins, context ids, screen ids and service ids. Write "unknow
 | Manifest schema | 6 |
 | Bundle format | 3 |
 | Protocol | 1 |
-| Adapter API | 1 |
+| Page control API (`adapterApi`) | 1 |
 | SDK and tools | 0.0.0 |
 | Kit | `frameworkVersion` from `kit.json` |
 
@@ -25,12 +25,18 @@ The app the user asked for, its core journeys, the workflows and data to preserv
 
 ## Routes
 
-| Route id | Example URL | Page and screen | Context | Loading, empty, sign-in and error | Back | Status | Evidence |
-| --- | --- | --- | --- | --- | --- | --- | --- |
+The router table is in `src/routes.ts`. Any URL without a route shows the website.
+
+| Route id | Pattern and example URL | Screen | Context | Ready reader | Loading, empty, sign-in and error | Back | Status | Evidence |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+
+## Page module
+
+The module file (`build.page`, usually `src/page.ts`), each reader with its kind, key and extent, each command with the evidence it waits for, and the watches each screen opens.
 
 ## Interactions
 
-| Screen and control | Result | Action, navigation, website or store | Pending, failure and unknown | Status | Evidence |
+| Screen and control | Result | Input or command, navigation, website or store | Pending, failure and unknown | Status | Evidence |
 | --- | --- | --- | --- | --- | --- |
 
 ## Data

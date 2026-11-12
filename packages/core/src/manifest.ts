@@ -1,25 +1,28 @@
 import { COMPAT } from "./compat.js";
-import { compilePattern } from "./routes.js";
+import { isBundlePath } from "./bundle.js";
 
 export const MANIFEST_SCHEMA_VERSION = COMPAT.manifestSchema;
 export const MAX_CONTEXTS = 3;
 
-/** `applet.json`, schema 6. */
+/** The manifest inside a bundle: the source `applet.json` without its `build` section. */
 export interface Manifest {
   schemaVersion: typeof MANIFEST_SCHEMA_VERSION;
   id: string;
   name: string;
   /** Exact `https://host` origins the applet adapts. Other origins open as website. */
   origins: string[];
-  foreground: { entry: string; screens: string[] };
-  /** The adapter module, run at document start in every context. */
-  adapter: string;
+  foreground: Foreground;
   /** One WebView each, with its own history. The first is active at launch. */
   contexts: Context[];
-  /** The first matching route wins. */
-  routes: Route[];
   capabilities: Capabilities;
   shell?: { accent?: string; icon?: string };
+}
+
+/** The applet's UI. `web` is the only kind: an HTML document inside the bundle. */
+export interface Foreground {
+  kind: "web";
+  /** The UI's HTML file inside the bundle. */
+  entry: string;
 }
 
 export interface Context {
@@ -27,18 +30,23 @@ export interface Context {
   startUrl: string;
 }
 
-export interface Route {
-  id: string;
-  /** Literal segments, `:name` segments and an optional trailing `*`. */
-  pattern: string;
-  /** Required query keys; their values become params. */
-  query?: string[];
-  /** The adapter page that reads this route. */
-  page: string;
-  /** The foreground screen that renders it. */
-  screen: string;
-  /** The context `navigate({ url })` uses for this route from a tab root or `select`. */
-  context?: string;
+/**
+ * The `build` section of the source `applet.json`. The tool reads it and leaves it out of the
+ * bundled manifest.
+ */
+export interface BuildConfig {
+  /** A source file the tool bundles, or a command that writes the built UI into `dir`. */
+  foreground: { entry: string } | { command: string; dir: string };
+  /** The page module, bundled into `page.js` with the page agent. Without it `page.js` is the agent alone. */
+  page?: string;
+  /** The type check command, for a project without `tsconfig.json`. */
+  check?: string;
+}
+
+/** A parsed source `applet.json`. */
+export interface SourceManifest {
+  manifest: Manifest;
+  build: BuildConfig;
 }
 
 export interface Capabilities {
@@ -57,13 +65,14 @@ export interface NotificationCapability {
   intervalMinutes?: number;
 }
 
-/** `path` is a JSON pointer into the manifest, such as `/routes/3/screen`. */
+/** `path` is a JSON pointer into the manifest, such as `/contexts/0/startUrl`. */
 export interface ManifestError {
   path: string;
   message: string;
 }
 
 export type ParseResult = { manifest: Manifest } | { errors: ManifestError[] };
+export type SourceParseResult = SourceManifest | { errors: ManifestError[] };
 
 const ID = /^[a-z0-9-]+$/;
 const ORIGIN = /^https:\/\/[a-z0-9.-]+(:[0-9]+)?$/;
@@ -76,16 +85,56 @@ function isObject(value: unknown): value is Json {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/** Fields of the layout before the open SDK, which `parseSourceManifest` reports together. */
+const OLD_LAYOUT = "routes, foreground.screens and adapter are no longer manifest fields: routes and screens moved to code (the router helper of @genesis/sdk/router), and the page script moved to build.page";
+
 /**
- * Validates `json` against schema 6. `exists` reports whether a path relative to the
- * applet directory exists, so the same rules run in Node tooling and in tests.
+ * Validates a source `applet.json` and splits it into the bundled manifest and its `build`
+ * section. `exists` reports whether a path relative to the applet directory exists, so the same
+ * rules run in Node tooling and in tests.
+ */
+export function parseSourceManifest(json: unknown, exists: (relativePath: string) => boolean): SourceParseResult {
+  if (!isObject(json)) return { errors: [{ path: "", message: "manifest must be an object" }] };
+  if ("routes" in json || "adapter" in json || (isObject(json.foreground) && "screens" in json.foreground)) {
+    return { errors: [{ path: "", message: OLD_LAYOUT }] };
+  }
+  const { build, ...rest } = json;
+  const errors: ManifestError[] = [];
+  const fail = (path: string, message: string) => { errors.push({ path, message }); };
+  const parsed = parseManifest(rest, exists);
+  if ("errors" in parsed) errors.push(...parsed.errors);
+
+  if (!isObject(build)) fail("/build", "must be an object");
+  else {
+    allowKeys(build, "/build", ["foreground", "page", "check"], fail);
+    const foreground = build.foreground;
+    if (!isObject(foreground)) fail("/build/foreground", "must be { entry } or { command, dir }");
+    else if ("entry" in foreground) {
+      allowKeys(foreground, "/build/foreground", ["entry"], fail);
+      filePath(foreground.entry, "/build/foreground/entry", exists, fail);
+    } else {
+      allowKeys(foreground, "/build/foreground", ["command", "dir"], fail);
+      if (typeof foreground.command !== "string" || foreground.command.trim() === "") fail("/build/foreground/command", "must be a non-empty shell command");
+      if (typeof foreground.dir !== "string" || !isBundlePath(foreground.dir)) fail("/build/foreground/dir", "must be a relative directory inside the applet directory");
+    }
+    if (build.page !== undefined) filePath(build.page, "/build/page", exists, fail);
+    if (build.check !== undefined && (typeof build.check !== "string" || build.check.trim() === "")) fail("/build/check", "must be a non-empty shell command");
+  }
+
+  if (errors.length > 0 || "errors" in parsed) return { errors };
+  return { manifest: parsed.manifest, build: build as unknown as BuildConfig };
+}
+
+/**
+ * Validates a bundled manifest against schema 6. `exists` reports whether a path relative to
+ * the applet directory exists, for the service configurations.
  */
 export function parseManifest(json: unknown, exists: (relativePath: string) => boolean): ParseResult {
   const errors: ManifestError[] = [];
   const fail = (path: string, message: string) => { errors.push({ path, message }); };
 
   if (!isObject(json)) return { errors: [{ path: "", message: "manifest must be an object" }] };
-  allowKeys(json, "", ["schemaVersion", "id", "name", "origins", "foreground", "adapter", "contexts", "routes", "capabilities", "shell"], fail);
+  allowKeys(json, "", ["schemaVersion", "id", "name", "origins", "foreground", "contexts", "capabilities", "shell"], fail);
 
   if (json.schemaVersion !== MANIFEST_SCHEMA_VERSION) fail("/schemaVersion", `must be ${MANIFEST_SCHEMA_VERSION}`);
   if (typeof json.id !== "string" || !ID.test(json.id)) fail("/id", "must match [a-z0-9-]+");
@@ -95,19 +144,14 @@ export function parseManifest(json: unknown, exists: (relativePath: string) => b
   origins.forEach((origin, i) => { if (!ORIGIN.test(origin)) fail(`/origins/${i}`, "must be an exact https://host origin"); });
   if (origins.length === 0) fail("/origins", "must list at least one origin");
 
-  const screens = new Set<string>();
   if (!isObject(json.foreground)) fail("/foreground", "must be an object");
   else {
-    allowKeys(json.foreground, "/foreground", ["entry", "screens"], fail);
-    filePath(json.foreground.entry, "/foreground/entry", exists, fail);
-    stringArray(json.foreground.screens, "/foreground/screens", fail).forEach((screen, i) => {
-      if (!ID.test(screen)) fail(`/foreground/screens/${i}`, "must match [a-z0-9-]+");
-      if (screens.has(screen)) fail(`/foreground/screens/${i}`, "is declared twice");
-      screens.add(screen);
-    });
+    allowKeys(json.foreground, "/foreground", ["kind", "entry"], fail);
+    if (json.foreground.kind !== "web") fail("/foreground/kind", "must be \"web\"");
+    if (typeof json.foreground.entry !== "string" || !isBundlePath(json.foreground.entry) || !json.foreground.entry.endsWith(".html")) {
+      fail("/foreground/entry", "must be the path of an HTML file inside the bundle, such as index.html");
+    }
   }
-
-  filePath(json.adapter, "/adapter", exists, fail);
 
   const contextIds = new Set<string>();
   if (!Array.isArray(json.contexts)) fail("/contexts", "must be an array");
@@ -123,28 +167,6 @@ export function parseManifest(json: unknown, exists: (relativePath: string) => b
       else contextIds.add(context.id);
       if (typeof context.startUrl !== "string" || !origins.includes(originOf(context.startUrl))) {
         fail(`${at}/startUrl`, "must be an https URL on a declared origin");
-      }
-    });
-  }
-
-  if (!Array.isArray(json.routes)) fail("/routes", "must be an array");
-  else {
-    const routeIds = new Set<string>();
-    json.routes.forEach((route, i) => {
-      const at = `/routes/${i}`;
-      if (!isObject(route)) return fail(at, "must be an object");
-      allowKeys(route, at, ["id", "pattern", "query", "page", "screen", "context"], fail);
-      if (typeof route.id !== "string" || !ID.test(route.id)) fail(`${at}/id`, "must match [a-z0-9-]+");
-      else if (routeIds.has(route.id)) fail(`${at}/id`, "is declared twice");
-      else routeIds.add(route.id);
-      if (typeof route.pattern !== "string" || compilePattern(route.pattern) === null) {
-        fail(`${at}/pattern`, "must be a path of literal segments, :name segments and an optional trailing *");
-      }
-      if (route.query !== undefined) stringArray(route.query, `${at}/query`, fail);
-      if (typeof route.page !== "string" || !ID.test(route.page)) fail(`${at}/page`, "must match [a-z0-9-]+");
-      if (typeof route.screen !== "string" || !screens.has(route.screen)) fail(`${at}/screen`, "must name a declared screen");
-      if (route.context !== undefined && (typeof route.context !== "string" || !contextIds.has(route.context))) {
-        fail(`${at}/context`, "must name a declared context");
       }
     });
   }

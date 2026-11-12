@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 // invalidate.ts has no imports, so Node runs it directly by stripping the types.
-import { invalidate, touches } from "../src/adapter/invalidate.ts";
+import { invalidate, touches } from "../src/page/engine/invalidate.ts";
 
 // A tree of plain nodes: document > body > list > (a > a-title, b > b-title), body > a-comments, body > header.
 const node = parentNode => ({ parentNode });

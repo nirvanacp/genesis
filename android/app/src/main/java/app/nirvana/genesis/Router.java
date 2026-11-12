@@ -104,6 +104,7 @@ final class Router {
             case "historyGo": { Shell shell = view(command, type); if (shell != null) shell.historyGo(command.getJSONObject("view"), command.getInt("delta")); break; }
             case "reload": { Shell shell = view(command, type); if (shell != null) shell.reload(command.getJSONObject("view")); break; }
             case "postMessage": { Shell shell = view(command, type); if (shell != null) shell.postMessage(command.getJSONObject("view"), command.getString("payload")); break; }
+            case "input": { Shell shell = view(command, type); if (shell != null) shell.input(command.getJSONObject("view"), command.getLong("token"), command.getJSONArray("events")); break; }
             case "showWindow": { Shell shell = view(command, type); if (shell != null) shell.showWindow(command.getJSONObject("view"), command.getString("url")); break; }
             case "revealForeground": { Shell shell = named(command, type); if (shell != null) shell.revealForeground(); break; }
             case "coverContext": { Shell shell = named(command, type); if (shell != null) shell.coverContext(); break; }

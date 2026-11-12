@@ -4,11 +4,12 @@
 
 ```text
 applet.json
-src/main.tsx              mountForeground
+src/main.tsx              mount with the router options
+src/routes.ts             the router's routes, overlay screens and sign-in URL
 src/app.tsx               the screen switch and the tabs
-src/adapter.ts            defineAdapter: account, signInUrl and the pages
-src/adapter/*.ts          one file per page or shared reader
-src/model.ts              data types shared by the adapter and screens
+src/page.ts               definePageModule: the readers and commands
+src/adapter/*.ts          one file per sort of page or shared reader, imported by src/page.ts
+src/model.ts              data types shared by the page module and screens
 src/screens/*.tsx         one file per screen
 src/components/*.tsx      shared rows, skeletons, sheets
 src/library.ts            record and service access: the service client, hooks and validation
@@ -16,17 +17,17 @@ src/theme.css             tokens and base styles
 backend/                  optional service
 ```
 
-The adapter imports only `@genesis/sdk/adapter` and pure helpers; the build rejects an adapter that imports `@genesis/sdk/react`. Screens import `@genesis/sdk/react`. Share types, not code with side effects, between them; the adapter is bundled separately and runs inside the website's page. Extract a helper only after a second real use.
+The page module imports only `@genesis/sdk/page` and pure helpers; `check` and `build` reject a page module that imports `@genesis/sdk/react`. Screens import `@genesis/sdk/react`. Share types, not code with side effects, between them; the page module is bundled separately and runs inside the website's page. Extract a helper only after a second real use.
 
-## Adapters
+## Page modules
 
-Write one adapter page for each sort of page the site has, with `ready` as positive evidence and small, pure `read` functions. Name the nodes each read touches with `extent` or `dependsOn`, give every item a stable unique key, and express actions as desired state. [Adapters](adapters.md) covers each of these; [interactions](interactions.md) covers actions.
+Write readers for each sort of page the site has, with a `ready` read per route as positive evidence and small, pure `read` functions. Name the nodes each read touches with `extent` or `dependsOn`, give every item a stable unique key, and express commands as desired state. [Page modules](page-modules.md) covers each of these; [interactions](interactions.md) covers commands and inputs.
 
 ## The screen switch
 
 ```tsx
 export function App() {
-  const { screen } = useNavigation();
+  const { screen } = useRouter();
   const Screen = screen ? SCREENS[screen.id] : undefined;
   return <div className="app">
     <main className="content">{Screen && <Screen key={screen!.key} />}</main>
@@ -40,9 +41,11 @@ export function App() {
 ## Screens
 
 ```tsx
+const FEED_PAGES = [{ pattern: "/" }, { pattern: "/newest" }];
+
 function FeedScreen() {
-  const page = usePage();
-  const stories = useRegion<Story>("stories");
+  const page = useRouter().status();
+  const stories = useWatch<never, Story>("feed:stories", { reader: "stories" }, { when: FEED_PAGES });
   if (stories.order.length === 0) {
     if (page.status === "ready" && stories.status === "ready") return <Empty />;
     if (page.status === "error" || stories.status === "error") return <LoadError error={page.error ?? stories.error} />;
@@ -55,15 +58,16 @@ function FeedScreen() {
 }
 
 const StoryRow = memo(function StoryRow({ id }: { id: string }) {
-  const story = useRecord<Story>("stories", id);
-  return story ? <Row story={story.data} /> : null;
+  const story = useRecord<Story>("feed:stories", id);
+  return story ? <Row story={story} /> : null;
 });
 ```
 
-- Handle each state: loading, empty, error, stale and the region's own error. `auth` and pages without a route show the website, so screens do not draw a sign-in wall of their own. See [presentation](presentation.md).
+- Handle each state: loading, empty, error, stale and the watch's own error. `auth` and pages without a route show the website, so screens do not draw a sign-in wall of their own. See [presentation](presentation.md).
 - Render `stale` content with an unobtrusive refreshing state instead of a skeleton.
-- Read the screen's regions with `useRegion` and each row with `useRecord` in a memoized row component keyed by the record key, so an update to one record renders one row.
-- Read another context with `usePage(contextId)` and `useRegion(name, contextId)` only for what the screen needs, such as the account name on a Me tab.
+- Name each watch after its screen and reader (`feed:stories`), and guard it with `when` to the URLs of the screen's routes, so it reads only on its own pages and two screens can watch the same reader.
+- Read the screen's lists with `useWatch` and each row with `useRecord` in a memoized row component keyed by the record key, so an update to one record renders one row.
+- Read another context with `useWatch(id, spec, { context })` and `useRouter().status(contextId)` only for what the screen needs, such as the account name on a Me tab.
 - Put each screen's scroll container in `ScrollMemory`.
 
 ## Records and services
@@ -72,4 +76,4 @@ Wrap storage and service calls in one module, `src/library.ts`, that screens cal
 
 ## Performance
 
-Bound list sizes in the adapter's selectors; a page is at most 192 KiB of JSON. Memoize rows by key. Keep images lazy and sized. Do not poll; records arrive when the page changes.
+Bound list sizes in the readers' selectors; a page is at most 192 KiB of JSON. Memoize rows by key. Keep images lazy and sized. Do not poll; records arrive when the page changes.

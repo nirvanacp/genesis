@@ -115,6 +115,8 @@ final class Views {
         boolean capturing;
         /** Downloads this document started; a second one asks first. */
         int downloads;
+        /** `SystemClock.uptimeMillis()` of the last trusted input dispatched here; 0 for none. */
+        long trustedInputAt;
 
         /** The profile the page's cookies and permission answers belong to. */
         final SiteData site;
@@ -265,7 +267,7 @@ final class Views {
             if (web) return false;
             // Only the revealed page may hand a link to another app, and only from a tap. A server
             // redirect from a tapped link to mailto: arrives without a gesture and is blocked too.
-            if (!SitePolicy.mayHandOff(page, request.hasGesture())) return true;
+            if (!SitePolicy.mayHandOff(page, SitePolicy.usersGesture(page, request.hasGesture()))) return true;
             android.content.Intent intent = Handoff.intent(url);
             if (intent == null) return true;
             if (listener.handOff(intent)) return true;
@@ -413,7 +415,7 @@ final class Views {
          * it keeps `window.opener`.
          */
         @Override public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture, android.os.Message resultMsg) {
-            if (page.opener != null || !isUserGesture || !SitePolicy.mayShowUi(page)) return false;
+            if (page.opener != null || !SitePolicy.usersGesture(page, isUserGesture) || !SitePolicy.mayShowUi(page)) return false;
             WebView.HitTestResult hit = view.getHitTestResult();
             String link = hit == null || hit.getType() != WebView.HitTestResult.SRC_ANCHOR_TYPE ? null : hit.getExtra();
             if (link != null && (link.startsWith("https:") || link.startsWith("http:"))) {
