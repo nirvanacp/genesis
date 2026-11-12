@@ -8,6 +8,7 @@ import android.net.ConnectivityManager;
 import android.net.NetworkCapabilities;
 import android.net.Uri;
 import android.os.Build;
+import android.os.SystemClock;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -371,7 +372,10 @@ final class Shell implements Views.Listener, Ui.Actions {
         if (page == null || !page.isContext()) refusal = "The page is gone";
         else if (page.isRevealed()) refusal = "Trusted input goes only to a hidden page";
         else {
-            try { Input.dispatch(page.web, events); }
+            try {
+                Input.dispatch(page.web, events);
+                page.trustedInputAt = SystemClock.uptimeMillis();
+            }
             catch (Input.Refused refused) { refusal = refused.getMessage(); }
         }
         String message = refusal;
