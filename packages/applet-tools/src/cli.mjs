@@ -27,6 +27,7 @@ function parse(args, permitted) {
 
 const help = `genesis-applet
   create <directory> --origin <https://host> [--id <id>] [--name <name>]
+         [--template react|vanilla]              default react
   check <directory>
   build <directory> [--out <directory>] [--debug]
                                                  default <directory>/dist
@@ -67,7 +68,7 @@ async function main(args) {
   };
   switch (command) {
     case 'create': {
-      const { positional, options } = parse(args.slice(1), ['json', 'origin', 'id', 'name']);
+      const { positional, options } = parse(args.slice(1), ['json', 'origin', 'id', 'name', 'template']);
       return ['create', await createApplet(one(positional, 'target directory'), options)];
     }
     case 'check': {
