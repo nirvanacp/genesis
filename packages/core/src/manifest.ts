@@ -44,6 +44,17 @@ export interface Route {
 export interface Capabilities {
   storage?: boolean;
   services?: { id: string; config: string }[];
+  notifications?: NotificationCapability;
+}
+
+/**
+ * `{}` lets the foreground post notifications. `service` and `path` add a background poll of
+ * that declared service every `intervalMinutes` (15 to 1440, default 60).
+ */
+export interface NotificationCapability {
+  service?: string;
+  path?: string;
+  intervalMinutes?: number;
 }
 
 /** `path` is a JSON pointer into the manifest, such as `/routes/3/screen`. */
@@ -140,7 +151,7 @@ export function parseManifest(json: unknown, exists: (relativePath: string) => b
 
   if (!isObject(json.capabilities)) fail("/capabilities", "must be an object");
   else {
-    allowKeys(json.capabilities, "/capabilities", ["storage", "services"], fail);
+    allowKeys(json.capabilities, "/capabilities", ["storage", "services", "notifications"], fail);
     if (json.capabilities.storage !== undefined && typeof json.capabilities.storage !== "boolean") fail("/capabilities/storage", "must be a boolean");
     const services = json.capabilities.services;
     if (services !== undefined) {
@@ -153,6 +164,7 @@ export function parseManifest(json: unknown, exists: (relativePath: string) => b
         filePath(service.config, `${at}/config`, exists, fail);
       });
     }
+    if (json.capabilities.notifications !== undefined) notifications(json.capabilities.notifications, services, fail);
   }
 
   if (json.shell !== undefined) {
@@ -170,6 +182,25 @@ export function parseManifest(json: unknown, exists: (relativePath: string) => b
   }
 
   return errors.length > 0 ? { errors } : { manifest: json as unknown as Manifest };
+}
+
+/** `capabilities.notifications`: its service must be declared, and polling needs both service and path. */
+function notifications(value: unknown, services: unknown, fail: (path: string, message: string) => void): void {
+  const at = "/capabilities/notifications";
+  if (!isObject(value)) return fail(at, "must be an object");
+  allowKeys(value, at, ["service", "path", "intervalMinutes"], fail);
+  const declared = Array.isArray(services) ? services.filter(isObject).map((s) => s.id) : [];
+  if (value.service !== undefined && (typeof value.service !== "string" || !declared.includes(value.service))) {
+    fail(`${at}/service`, "must be the id of a service in capabilities.services");
+  }
+  if (value.path !== undefined && (typeof value.path !== "string" || !/^\/(?!\/)\S*$/.test(value.path))) {
+    fail(`${at}/path`, "must be a path that starts with one /");
+  }
+  if ((value.service === undefined) !== (value.path === undefined)) fail(at, "service and path go together");
+  const interval = value.intervalMinutes;
+  if (interval !== undefined && (!Number.isInteger(interval) || (interval as number) < 15 || (interval as number) > 1440)) {
+    fail(`${at}/intervalMinutes`, "must be an integer from 15 to 1440");
+  }
 }
 
 function allowKeys(value: Json, at: string, keys: string[], fail: (path: string, message: string) => void) {
