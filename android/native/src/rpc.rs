@@ -291,8 +291,20 @@ impl Host {
             let Some(view) = self.context_view(&id) else { continue };
             self.event(&view, "reset", json!({}));
             if let Some(document) = self.documents.current(&view) {
+                let generation = document.generation;
                 let data = json!({ "id": id, "generation": document.generation, "url": document.url });
                 self.foreground_event("context.bound", data);
+                // A new foreground also needs the context's history position, or Back cannot tell
+                // that the website has entries to go back to until the next navigation.
+                if let Some(context) = self.contexts.session.as_ref().and_then(|s| s.contexts.get(&id)) {
+                    let data = json!({
+                        "id": id, "url": context.url, "generation": generation,
+                        "index": context.index, "size": context.size,
+                        "canGoBack": context.can_go_back, "canGoForward": context.can_go_forward,
+                        "sameDocument": true, "reload": false,
+                    });
+                    self.foreground_event("context.navigated", data);
+                }
             }
         }
     }
