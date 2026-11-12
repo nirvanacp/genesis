@@ -142,7 +142,7 @@ export async function prepare(step: PageStep, context: InputContext): Promise<Pr
   }
 }
 
-function refuseProtected(element: Element) {
+export function refuseProtected(element: Element) {
   if (isProtected(element)) throw new PageError("PROTECTED_FIELD", "Genesis does not enter text into password, one-time code or card fields");
 }
 

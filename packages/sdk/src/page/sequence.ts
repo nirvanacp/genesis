@@ -16,6 +16,7 @@ import { errorBody, PageError } from "./errors.js";
 import { prepare, type InputContext } from "./input.js";
 import { locate } from "./locate.js";
 import { isVisible, readOnce, type Compiled } from "./read.js";
+import { prepareTrusted, TRUSTED_OPS, type SendInput } from "./trusted.js";
 
 export interface SequenceContext extends InputContext {
   compile(spec: ReadSpec): Compiled;
@@ -28,6 +29,8 @@ export interface SequenceContext extends InputContext {
   cancelled(): boolean;
   /** The current view's `n`. */
   view(): number;
+  /** Sends trusted input for this call; absent when the shell cannot. */
+  trusted?: SendInput;
 }
 
 /** Steps to run with the same rules as `run`. `until` may be a function of the document in a page module. */
@@ -50,9 +53,11 @@ export interface Sequence {
 export async function runSequence(sequence: Sequence, context: SequenceContext): Promise<ActionResult> {
   const { steps, deadline } = sequence;
   const navigates = sequence.navigates === true || leaves(steps.at(-1));
-  if (steps.some(step => (step as { input?: string }).input === "trusted")) {
+  const send = context.trusted;
+  if (!send && steps.some(isTrusted)) {
     return { outcome: "failed", code: "INPUT_UNAVAILABLE", message: "Trusted input is not available in this Genesis" };
   }
+  const prepareStep = (step: PageStep) => isTrusted(step) && send ? prepareTrusted(step, inner, send) : prepare(step, inner);
   let completed = 0;
   let dispatched = false;
   let navigating = false;
@@ -68,7 +73,9 @@ export async function runSequence(sequence: Sequence, context: SequenceContext):
   };
   const failure = (error: unknown) => {
     const body = errorBody(error);
-    return result(dispatched ? "unknown" : "failed", body.code, body.message, body.details?.reason);
+    // The shell refuses trusted input before dispatching any of it; if no earlier step had an effect, nothing did.
+    const none = !dispatched || (body.code === "INPUT_UNAVAILABLE" && effects === 0);
+    return result(none ? "failed" : "unknown", body.code, body.message, body.details?.reason);
   };
   const off = context.onPagehide(() => {
     if (dispatched && !navigating) {
@@ -89,7 +96,7 @@ export async function runSequence(sequence: Sequence, context: SequenceContext):
         completed++;
         continue;
       }
-      let prepared = await prepare(withDeadline(step, deadline), inner);
+      let prepared = await prepareStep(withDeadline(step, deadline));
       if (prepared.noop) {
         completed++;
         continue;
@@ -101,7 +108,7 @@ export async function runSequence(sequence: Sequence, context: SequenceContext):
           navigating = true;
           await context.progress("navigating", completed);
           // The page may have rendered again during the handoff; find the step's element again.
-          if (prepared.element && !prepared.element.isConnected) prepared = await prepare(withDeadline(step, deadline), inner);
+          if (prepared.element && !prepared.element.isConnected) prepared = await prepareStep(withDeadline(step, deadline));
         } else {
           void context.progress("dispatched", completed);
         }
@@ -146,6 +153,8 @@ function withDeadline(step: PageStep, deadline: number): PageStep {
 }
 
 const leaves = (step: PageStep | undefined) => step?.op === "navigate" || step?.op === "submit";
+
+const isTrusted = (step: PageStep) => (step as { input?: string }).input === "trusted";
 
 /** True when a wait condition or evidence holds now. A read holds when its value is truthy; a list, when it has records. */
 export function holds(condition: WaitFor | Evidence | ((doc: Document) => boolean), context: { records: InputContext["records"]; compile(spec: ReadSpec): Compiled }): boolean {
@@ -217,6 +226,12 @@ export function validateInput(op: string, value: Record<string, unknown>, path =
   if (op === "scroll" && value.to === "intoView" && value.target === undefined) throw new InvalidSpecError(`${path}.target`, "is required to scroll into view");
   if (value.timeoutMs !== undefined && (typeof value.timeoutMs !== "number" || value.timeoutMs < 0)) throw new InvalidSpecError(`${path}.timeoutMs`, "must be a number");
   if (value.input !== undefined && value.input !== "synthetic" && value.input !== "trusted") throw new InvalidSpecError(`${path}.input`, "must be synthetic or trusted");
+  if (value.input === "trusted") {
+    if (!TRUSTED_OPS.has(op)) throw new InvalidSpecError(`${path}.input`, `${op} does not take trusted input`);
+    if (op === "click" && ((value.gesture !== undefined && value.gesture !== "tap") || (value.count !== undefined && value.count !== 1))) {
+      throw new InvalidSpecError(`${path}.input`, "a trusted click is one touch tap");
+    }
+  }
   if (value.until !== undefined) validateEvidence(value.until, `${path}.until`);
 }
 

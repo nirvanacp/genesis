@@ -114,6 +114,7 @@ function serve(connection: Connection, module: PageModule | undefined, view: Vie
       onPagehide: listener => connection.on("pagehide", listener),
       flush: () => watches.flush(),
       view: () => view.current().n,
+      trusted: limits.trustedInput ? events => connection.request("page.input", { callId, events }).then(() => {}) : undefined,
     };
   }
 
