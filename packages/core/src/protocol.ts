@@ -29,6 +29,8 @@ export interface Limits {
   historyEntriesMax: number;
   /** Open watches per context document, enforced by the page agent. */
   watchesMax: number;
+  /** The shell can send real input to a hidden context (`page.input`). Absent in an older Genesis. */
+  trustedInput?: boolean;
 }
 
 /** The first message a document sends. */
@@ -121,7 +123,7 @@ export type ForegroundMethod =
   | "session.save"
   | "back.handled" | "back.leave"
   | "page.call" | "page.cancel";
-export type ContextMethod = "context.publish" | "context.actionResult" | "page.result" | "page.progress" | "page.emit";
+export type ContextMethod = "context.publish" | "context.actionResult" | "page.result" | "page.progress" | "page.emit" | "page.input";
 export type Method = ForegroundMethod | ContextMethod;
 
 export type ForegroundEventName =
@@ -362,6 +364,27 @@ export interface PageProgressEvent extends PageProgressParams {
   context: string;
 }
 
+/**
+ * One real input event. `x` and `y` are CSS pixels of the visual viewport at scale 1: the
+ * element's client position minus `visualViewport.offsetLeft`/`offsetTop`, times `visualViewport.scale`.
+ */
+export type InputEvent =
+  | { type: "tap"; x: number; y: number }
+  | { type: "hover"; x: number; y: number }
+  | { type: "hoverExit" }
+  | { type: "key"; key: string; modifiers?: string[] }
+  | { type: "text"; text: string };
+
+/**
+ * Params of the context method `page.input`: real input for one of the document's open calls,
+ * dispatched by the shell to the hidden context's WebView. The result is `{}` once the shell has
+ * dispatched the events; `INPUT_UNAVAILABLE` when it could not.
+ */
+export interface PageInputParams {
+  callId: string;
+  events: InputEvent[];
+}
+
 /** Params of the context method `page.result`: the answer to one call. */
 export interface PageResultParams {
   callId: string;
@@ -417,7 +440,12 @@ export interface InputOptions {
   timeoutMs?: number;
   /** Skips the actionability check. */
   force?: boolean;
-  /** Fidelity: `trusted` answers `INPUT_UNAVAILABLE` where the shell cannot inject real input. */
+  /**
+   * Fidelity. `trusted` has the shell send real Android input to the hidden page: events are
+   * trusted, CSS `:hover` applies, and a tap or key gives user activation. It is accepted by
+   * `click` (a touch tap), `hover`, `unhover`, `type` and `press`, and answers `INPUT_UNAVAILABLE`
+   * where the shell cannot inject real input or the context is revealed.
+   */
   input?: "synthetic" | "trusted";
   until?: Evidence;
 }
