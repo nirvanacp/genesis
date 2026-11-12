@@ -31,7 +31,7 @@ The scaffold contains:
 
 ## The first watch
 
-The page module runs inside every website page the applet opens. Its readers turn the page into JSON. The scaffold's reader lists the page's links, keyed by the URL and its occurrence, because a key must be unique in the list:
+The page module runs inside every website page the applet opens. Its readers turn the page into JSON. The scaffold's reader lists the page's links, keyed by the URL and its occurrence, because a key must be unique in the list. A link's address can carry a session or form token in its query, and a reader never sends one out of the page, so the reader drops token-like query parameters and the fragment:
 
 ```ts
 import { definePageModule, list } from "@genesis/sdk/page";
@@ -41,9 +41,20 @@ export interface Link {
   url: string;
 }
 
+/** Query parameters that often carry a session or form token. */
+const SECRET = /auth|token|csrf|xsrf|sig|session|key|nonce/i;
+
+/** The link's address without its fragment and without token-like query parameters. */
+function linkUrl(link: Element): string {
+  const url = new URL((link as HTMLAnchorElement).href);
+  for (const name of [...url.searchParams.keys()]) if (SECRET.test(name)) url.searchParams.delete(name);
+  url.hash = "";
+  return url.href;
+}
+
 function linkKey(link: Element): string {
-  const url = (link as HTMLAnchorElement).href;
-  const same = [...link.ownerDocument.querySelectorAll("a[href]")].filter(other => (other as HTMLAnchorElement).href === url);
+  const url = linkUrl(link);
+  const same = [...link.ownerDocument.querySelectorAll("a[href]")].filter(other => linkUrl(other) === url);
   return `${url}#${same.indexOf(link)}`;
 }
 
@@ -53,7 +64,7 @@ export default definePageModule({
       root: "body",
       items: "a[href]",
       key: linkKey,
-      read: link => ({ text: link.textContent?.trim() ?? "", url: (link as HTMLAnchorElement).href }),
+      read: link => ({ text: link.textContent?.trim() ?? "", url: linkUrl(link) }),
       extent: link => [link.closest("li, p")],
     }),
   },
@@ -117,7 +128,7 @@ npx genesis-applet dev status my-applet --device emulator-5554
 
 `check` compares the applet with the tools and fails with `APPLET_INCOMPATIBLE` on a difference. It then validates the manifest against schema 6, type-checks the project (the `build.check` command, or `tsc` when there is a `tsconfig.json`), and bundles and imports the page module that `build.page` names. Importing runs the applet's code, so check only applets you trust. The page module must not import `@genesis/sdk/react`.
 
-`build` bundles the UI and the page module into `dist/`; `--debug` adds runtime measurements. `dev install` takes the applet directory (it uses `dist/`) or a build output directory. It does not build, so run `build` first. It copies the bundle to the debug app, which applies it without restarting Genesis, and reports the accepted revision or the rejection reason, including an incompatible SDK. `dev status` lists the installed applets with their status and, given an id, its last install receipt. Every command accepts `--json`; device commands accept `--adb <path>` and `--application <id>`.
+`build` bundles the UI and the page module into `dist/`. `--debug` sets the constant `__GENESIS_DEBUG__` to `true` instead of `false` in the code esbuild bundles (the page script, and the UI when `build.foreground` names an `entry`), so code guarded by `if (__GENESIS_DEBUG__)` stays in the build. A project's own UI build command does not see it. `dev install` takes the applet directory (it uses `dist/`) or a build output directory. It does not build, so run `build` first. It copies the bundle to the debug app, which applies it without restarting Genesis, and reports the accepted revision or the rejection reason, including an incompatible SDK. `dev status` lists the installed applets with their status and, given an id, its last install receipt. Every command accepts `--json`; device commands accept `--adb <path>` and `--application <id>`.
 
 To sign in once on your laptop instead of on the phone, start Chrome with a separate profile and a DevTools port (`chrome --user-data-dir=<directory> --remote-debugging-port=9222`), sign in to the applet's websites there, and run `npx genesis-applet dev cookies . --device <serial>`. It copies only the cookies of the manifest's origins into a debug Genesis and reports counts per domain. Websites can treat imported cookies as a new sign-in and email the account about it, and Google sign-ins do not transfer. Partitioned cookies are not imported. Reload websites that were already open from the Genesis menu.
 

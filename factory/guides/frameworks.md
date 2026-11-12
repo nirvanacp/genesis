@@ -49,7 +49,7 @@ Pick an output directory other than `dist/`. `genesis-applet build` writes its o
 
 | Check | Rule |
 | --- | --- |
-| Relative URLs | An HTML file may not have a `src=` or `href=` value that starts with `/`. Genesis serves the UI from a revision directory, so every URL must be relative. A Vite project sets `base: "./"`. |
+| Relative URLs | The build refuses a built file that references a path starting with `/`: an HTML `src`, `href` or `srcset` entry, a CSS `url(/…)` or a JS import specifier. The check reads the built text, so a URL assembled at run time escapes it. Genesis serves the UI from a revision directory, so every URL must be relative. A Vite project sets `base: "./"`. |
 | File names | Every path segment uses only `A-Z a-z 0-9 . _ -`, does not start with a dot, and is at most 256 characters. A build that writes `.vite/` or other dot directories into the output fails. |
 | No symlinks | The output directory may not contain symbolic links. |
 | Reserved names | The UI may not write `page.js` or `bundle.json`, and no two files may share a path. |

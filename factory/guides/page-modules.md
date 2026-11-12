@@ -113,6 +113,21 @@ function readAccount(doc: Document): string | false | null {
 
 A reader that throws puts its watch in `status: "error"` with the thrown message, and the client keeps the last data it had, marked `stale`. A reader that returns a promise fails the same way with `ASYNC_READ`, and `check` warns about any reader with an `async` function.
 
+### Ready readers
+
+A route's `ready` reader is the page's positive evidence: return `true` only when the content the screen reads is there. Until then the route is `loading`, and the screen shows its skeleton. Return `true` for an empty page only when the page itself says there is nothing, such as an empty results container or a "No results" message.
+
+When the site shows its own failure text, throw an `Error` with that text from the `ready` reader. The route's status becomes `error`, and `status().error.message` carries the site's text, so a screen with `onError: "applet"`, or one still showing the last copy, can show it ([presentation](presentation.md#errors)); otherwise the router shows the website, where the user reads the same text. Returning `false` instead leaves the route `loading` until the deadline.
+
+```ts
+"ready.results": value(doc => {
+  const failure = doc.querySelector("[data-testid=error-detail]")?.textContent?.trim();
+  if (failure) throw new Error(failure);
+  const list = doc.querySelector("[data-testid=results]");
+  return list !== null && (list.querySelector("article") !== null || doc.querySelector("[data-testid=empty]") !== null);
+}),
+```
+
 ## Keys
 
 `key(item)` returns the same string for the same thing across reloads: the site's id for the post, not its position. The UI uses keys as React keys, and the locator `record("stories", key)` finds the item with that key in the open watch `stories`. An empty key fails the read with `INVALID_ARGUMENT`. Two items with one key fail it with `CONFLICT` ("Two items have the key ..."). Fix the `items` selector or the key rather than working around it.
@@ -191,7 +206,7 @@ The steps themselves fail as `run` does, for example with `TARGET_NOT_FOUND` or 
 - The default export must come from `definePageModule`, or the check fails with `PAGE_MODULE_INVALID`.
 - `definePageModule` itself rejects names that do not match `^[A-Za-z][A-Za-z0-9_.-]{0,63}$`, readers not made with `list`, `one` or `value`, missing or empty selectors, a `read`, `key` or `extent` that is not a function, and commands that are not functions. Its error names the first bad field.
 - A reader with an `async` function gets a warning.
-- Each of the applet's own module files is checked line by line, skipping comment lines. A line fails with `PAGE_MODULE_INVALID` when it imports `react`, `react-dom`, `vue`, `svelte`, `solid-js`, `preact` or `@genesis/sdk/react`, calls `eval` or `fetch`, uses `new Function`, `XMLHttpRequest`, `document.cookie`, `localStorage`, `sessionStorage` or `indexedDB`.
+- Each of the applet's own module files is checked line by line, skipping comment lines. A line fails with `PAGE_MODULE_INVALID` when it imports `react`, `react-dom`, `vue`, `svelte`, `solid-js`, `preact` or `@genesis/sdk/react`, calls `eval` or `fetch`, uses `new Function`, `XMLHttpRequest`, `document.cookie`, `localStorage`, `sessionStorage` or `indexedDB`. These rules are a text lint, not a sandbox: they cover only files inside the applet directory (not `node_modules` or shared code outside it), and they miss code that reaches the same API indirectly, such as `window["fe" + "tch"]`. Keep page module code inside the applet so the lint sees it, and treat the rules as a guard against mistakes.
 
 The build refuses `@genesis/sdk/react` in the page script as well. Import from `@genesis/sdk/page` and pure helpers, and share types, not code with side effects, with the UI.
 

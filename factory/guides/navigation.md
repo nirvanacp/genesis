@@ -42,7 +42,27 @@ Routes match in order: the first route whose `pattern` and `query` keys match a 
 | `website: true` | The route is known but always shows the website |
 | `onError: "applet"` | The screen stays up on error and past the loading deadline, and shows its own error state |
 
-`account.signedIn` is a read whose value is truthy while signed in, `false` while signed out, and `null` while the page does not say. `account.signInUrl` turns a URL that needs the account into the site's sign-in URL, or returns `null`. When the account changes, the router reloads the other contexts, except the one whose website is shown, so no context shows another account's pages. `decide` replaces the presentation rules ([presentation](presentation.md#who-decides)).
+`account.signedIn` is a read whose value names the account while signed in, such as the user name, `false` while signed out, and `null` while the page does not say. A `one` read without a match and an empty list read count as `null`, so a read that can see a signed-out page should return `false` there. The router compares account values by their JSON value, and any other value counts as another account. Return a value that stays the same while the same person is signed in; a plain `true` works but cannot tell two accounts apart. A page that shows nothing about the account keeps the account already known. `account.signInUrl` turns a URL that needs the account into the site's sign-in URL, or returns `null`.
+
+When the account changes (signed in, signed out, or another person), no copy of an earlier account's pages may show. Every context forgets the copies its watches kept for Back. The other contexts settle their pending inputs as `unknown` with `CONTEXT_REPLACED`. Those whose website is not shown also clear their data and reload; the context whose website is shown keeps its page and reads it again. `decide` replaces the presentation rules ([presentation](presentation.md#who-decides)).
+
+### Route patterns
+
+Routes match only `https:` URLs on the manifest's origins; any other URL shows the website. A `pattern` starts with `/` and is at most 256 characters. Its segments are:
+
+| Segment | Matches |
+| --- | --- |
+| A literal, such as `news` or `item.php` | That exact path segment, case-sensitive. Letters, digits and `_ . ~ @ -`. |
+| `:name` | Any one non-empty segment. Its decoded value becomes `params.name`. The name starts with a letter and has letters, digits and `_`. |
+| A trailing `*` | The rest of the path, in `params.rest` (`/user/*` matches `/user/ada/posts` with `rest` `ada/posts`). The bare prefix matches too, with an empty `rest`. |
+
+- `/` matches only the site root.
+- A trailing slash in the URL is ignored: `/news/` matches `/news`. An empty segment in the middle, as in `/news//2`, matches no literal or `:name` segment.
+- Path segments are percent-decoded before matching.
+- `query` lists keys that must be present in the URL. Their values become params under the same names, and other query keys are ignored. A route cannot select by a query value; read the value in the screen.
+- A pattern outside this syntax, such as `/item?id` or `/:id-:slug`, never matches, and nothing reports it. Check that each route's screen appears on its page.
+
+There is no exclusion syntax: the first route that matches wins, so put a narrower route before a broader one (`/user/settings` before `/user/:name`). `createRouter` warns in the console about a route that an earlier route always matches first, because no URL can reach it.
 
 ## One history per context
 

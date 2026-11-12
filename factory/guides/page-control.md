@@ -99,7 +99,7 @@ The `key` of a list reads one value per item and must be unique and non-empty: t
 
 ### Protected values
 
-The agent never reads a password, a hidden input, or a field marked for one-time codes, new or current passwords, or card details (`autocomplete` of `current-password`, `new-password`, `one-time-code` or `cc-*`). Their `value` reads null. `fill`, `type` and `press` into one fail with `PROTECTED_FIELD`. The user types those on the website.
+The agent never reads a password, a hidden input, or a field marked for one-time codes, new or current passwords, or card details (`autocomplete` of `current-password`, `new-password`, `one-time-code` or `cc-*`). Their `value` reads null. `fill`, `type`, `press` and `select` on one fail with `PROTECTED_FIELD`. A selector, in a locator or a field's `at`, may not test the `value` attribute: it fails with `INVALID_ARGUMENT`, because a selector such as `[value^=a]` would reveal the value one character at a time. The user types those on the website.
 
 ## Watches
 
@@ -167,14 +167,14 @@ Input operations act on the page as a user would. Each answers an `ActionResult`
 | Method | What it sends |
 | --- | --- |
 | `click(target, { gesture, count })` | `gesture: "click"` (default) calls the element's `click()`, twice plus `dblclick` for `count: 2`. `"tap"` sends pointer and touch events, then the mouse events and `click` unless the page cancelled `touchend`. `"mouse"` sends pointer and mouse events with `click`, and `dblclick` for `count: 2`. |
-| `longPress(target, { ms })` | `pointerdown`, a wait of `ms` (default 600), then `contextmenu` and `pointerup`. |
+| `longPress(target, { ms })` | `pointerdown`, a wait of `ms` (default 600, at most 5000), then `contextmenu` and `pointerup`. |
 | `hover(target)` | Pointer and mouse over, enter and move. Unhovers the previous element first. |
 | `unhover()` | Pointer and mouse out and leave on the last hovered element. |
 | `focus(target)`, `blur(target)` | Focuses or blurs the element. |
 | `fill(target, value)` | Sets an input's or textarea's value at once, with `input` and `change`. |
 | `type(target, text)` | Per character: `keydown`, `keypress`, `beforeinput`, the value, `input`, `keyup`. In a contenteditable element, inserts the text as an editing command. |
-| `press(key, { target, modifiers })` | `keydown`, `keypress` for characters and Enter, `keyup`, to the target or the focused element. Unless the page cancels the key, Enter in a text field submits its form, Enter or Space on a button or link clicks it, Tab moves focus, and a character is inserted into a text field. |
-| `select(target, { values, labels })` | Chooses options of a `select` by value or label, with `input` and `change`. |
+| `press(key, { target, modifiers })` | `keydown`, `keypress` for characters and Enter, `keyup`, to the target or the focused element. Unless the page cancels the key, Enter in a text field submits its form, Enter or Space on a button or link clicks it, Tab moves focus, and a character is inserted into a text field. `modifiers` are `Shift`, `Control`, `Alt` and `Meta`; any other name fails with `INVALID_ARGUMENT` before any key is sent. |
+| `select(target, { values, labels })` | Chooses options of a `select` by value or label, with `input` and `change`. `values` and `labels` are arrays of strings. A value matches exactly; a label matches an option's label or text, ignoring white space at the ends. |
 | `check(target, checked)` | Clicks the control when its checked state (or `aria-checked`) differs, then waits until it holds. |
 | `submit(target)` | Submits the form. |
 | `scroll(to, { target })` | Scrolls the page or the target: `"start"`, `"end"`, `"intoView"`, `{ x, y }` or `{ by: { x, y } }`. Answers the scroll position with `atEnd`. |
@@ -193,7 +193,7 @@ An input sent twice while the first is still pending (the same operation, argume
 
 ### Steps
 
-`run` sends several steps that the agent runs inside the page without a round trip between them. `navigate` and `submit` may only be the last step.
+`run` sends several steps that the agent runs inside the page without a round trip between them. `navigate` and `submit` may only be the last step. `navigate` goes only to an `https` URL on one of the manifest's origins, and a relative URL resolves against the page; any other URL fails with `INVALID_ARGUMENT`.
 
 ```ts
 await hn.run(
@@ -244,6 +244,13 @@ if (genesis.limits.trustedInput) {
 | Available | always | when `limits.trustedInput` is true and the context is not revealed |
 
 Trusted input fails with `INPUT_UNAVAILABLE` when this Genesis cannot send it, and while the context is revealed, because the user is then looking at the website and applet input would pass as theirs. Use trusted input only where synthetic input does not work.
+
+Trusted input has more limits:
+
+- A key that would reach the clipboard fails with `INPUT_UNAVAILABLE`: `Control` or `Meta` with a one-character key (copy, paste, select all), and `Shift+Delete`.
+- One trusted `type` takes at most 2000 characters; a longer text fails with `INVALID_ARGUMENT`.
+- Once another document has started loading in the context, the shell refuses trusted input with `CONTEXT_REPLACED`, so it never reaches the next page. The outcome is `unknown` with that code, like other input cut short by a navigation.
+- For 5 seconds after trusted input, the page may not open a window or hand a link to another app, even when the user reveals it and taps.
 
 ## Evidence and outcomes
 

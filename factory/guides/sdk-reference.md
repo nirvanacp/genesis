@@ -108,8 +108,12 @@ genesis.ready();
 | Inputs | `click(target, { gesture?, count? })`, `longPress(target, { ms? })`, `hover(target)`, `unhover()`, `focus(target)`, `blur(target)`, `fill(target, value)`, `type(target, text)`, `press(key, { target?, modifiers? })`, `select(target, { values?, labels? })`, `check(target, checked)`, `submit(target)` |
 | Sequences | `run(steps, { until?, navigates?, expect?, deadlineMs? })`, `invoke(command, args?, { target?, expect?, navigates?, timeoutMs? })` |
 | Pending | `pending(target?)`, `subscribePending(listener)`, `cancel()` |
-| Watches | `watch(id, spec, { when? })` |
+| Watches | `watch(id, spec, { when? })`, `resync()`, `forget({ current?, keepInputs? })` |
 | Raw | `call(op, args?, options?)` sends one page agent operation as is. |
+
+`resync()` asks every open watch of the context for a fresh snapshot. `forget()` drops the copies the watches kept of earlier history entries, so none shows after the account changed; with `current: true` it also clears the data shown now. It settles the context's pending inputs as `unknown` with `CONTEXT_REPLACED`, unless `keepInputs` is true. The router calls both when the account changes.
+
+A closed watch keeps its copies: the context keeps up to 32 closed watches, dropping the one closed longest ago. Opening the same id with the same specification again shows the kept data at once, marked `stale` with `status: "loading"`, until the page sends a snapshot.
 
 Inputs resolve to an `ActionResult` and never reject for a page failure. Reads reject with a `GenesisError`. Only `click` (a single tap), `hover`, `unhover`, `type` and `press` take `input: "trusted"`. It needs `limits.trustedInput`, and a context whose website is shown refuses it with `INPUT_UNAVAILABLE`.
 
@@ -162,7 +166,7 @@ A locator's `options` take the other locator fields `within`, `has`, `nth`, `fra
 | `Website` | `genesis.website`, with `state`, `show(contextId)`, `hide()`, `subscribe(listener)` and `on(event, listener)`. |
 | `WebsiteState` | `{ shown: string \| null }`, the context whose website is on screen. |
 
-`on` takes `viewWebsite` (View website in the menu), `done` (Done on the website bar) and `showContext` (a link from outside opened in a context). Without a listener the client shows the website for `viewWebsite` and `showContext` and hides it for `done`. The router helper listens to all three.
+`on` takes `viewWebsite` (View website in the menu), `done` (Done on the website bar) and `showContext` (a link from outside opened in a context). The listener gets the context id, or `null` for `viewWebsite` when the user chose it while the UI was shown: the UI then picks the context to show. Without a listener the client shows the website for `viewWebsite` (the first context for `null`) and `showContext`, and hides it for `done`. The router helper listens to all three, and shows its active context for `null`.
 
 ### Storage and services
 

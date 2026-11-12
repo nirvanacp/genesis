@@ -126,7 +126,7 @@ Every input and command returns a promise that never rejects. Handle each outcom
 | --- | --- | --- |
 | `observed` | The page shows the result. | The new state, from the watches. |
 | `failed` | The input did not take effect: `TARGET_NOT_FOUND`, `NOT_FOUND`, `NOT_ACTIONABLE`, `AMBIGUOUS_TARGET`, `PROTECTED_FIELD`, `INVALID_STEPS`, `INVALID_ARGUMENT`, `NOT_READY`, `INPUT_UNAVAILABLE`, `REJECTED`, or `DEADLINE` before any step had an effect. | The previous state and what went wrong. |
-| `unknown` | It may have taken effect: `DEADLINE` waiting for evidence or a destination, an error after a step had an effect, a destination outside `expect`, or the applet was retired (`RETIRED`). | That the outcome is uncertain, and a way to check the website. |
+| `unknown` | It may have taken effect: `DEADLINE` waiting for evidence or a destination, or when the client stopped waiting for an answer that never arrived; an error after a step had an effect; a destination outside `expect`; the account changed (`CONTEXT_REPLACED`); or the applet was retired (`RETIRED`). | That the outcome is uncertain, and a way to check the website. |
 | `cancelled` | The input was stopped before it reached the page, by `cancel()` on the context. | The previous state. |
 
 Identical pending calls share one promise, so a double tap runs once. `partial: true` with `completedSteps` says how far a multi-step input got.

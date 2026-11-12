@@ -43,7 +43,7 @@ if (stories.order.length === 0) {
 }
 ```
 
-`status()` is the route's status for the active context, or for the context you name: `loading`, `ready`, `error`, `auth` or `unsupported`, with `stale`, `error`, `params` and `signedIn`. Treat empty as a ready page with an empty list, never as "no records yet".
+`status()` is the route's status for the active context, or for the context you name: `loading`, `ready`, `error`, `auth` or `unsupported`, with `stale`, `error`, `params` and `signedIn`. Between a context's document going away and the next one binding, it is `loading`. Treat empty as a ready page with an empty list, never as "no records yet".
 
 ## Stale pages
 

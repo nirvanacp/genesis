@@ -148,7 +148,7 @@ Only a context document sends these, and only about calls the host gave it.
 | `page.emit` | `{ stream, kind, seq, view, url, data }` | `{}`. One message of a watch stream. |
 | `page.input` | `{ callId, events }` | `{}` once the shell dispatched the events. |
 
-- `page.result` and `page.progress` about a call that is not this document's, or that has already ended, are accepted and ignored. `page.result` with `ok: false` and no `error` ends the call with `INVALID_ARGUMENT`.
+- `page.result` and `page.progress` about a call that is not this document's, or that has already ended, are accepted and ignored. `page.result` with `ok: false` and no `error` ends the call with `INVALID_ARGUMENT`. The page agent checks a value before it answers: a value that is not JSON data (a BigInt, a cycle) answers `INVALID_ARGUMENT`, and one over `limits.pageMaxBytes` answers `PAGE_TOO_LARGE`.
 - `page.progress` marks the call `dispatched`, and `navigating` when that is the state. The host forwards it to the foreground as the event `page.progress`.
 - `page.emit` answers `PAGE_TOO_LARGE` for a snapshot whose `data` is over `limits.pageMaxBytes`, and `PATCH_TOO_LARGE` for a patch over `limits.patchMaxBytes` or with more than `limits.patchRecordsMax` upserts. The host adds `context` and `generation` and forwards it as the event `page.emit`.
 - `page.input` carries 1 to 64 real input events for one of the document's open calls (see [Trusted input](#trusted-input)).
@@ -245,7 +245,7 @@ Invalid input arguments answer `{ outcome: "failed", code: "INVALID_ARGUMENT" }`
 
 ### Steps
 
-`run` takes a list of steps. A step is an input operation written as `{ "op": "<name>", ...args }`, a wait `{ "op": "wait", "for": <condition>, "timeoutMs": n }`, or a navigation `{ "op": "navigate", "url": "..." }`. `navigate` and `submit` may only be the last step. The agent runs the steps inside the page with no round trip between them. `deadlineMs`, counted from the call's arrival, shortens the call's own deadline.
+`run` takes a list of steps. A step is an input operation written as `{ "op": "<name>", ...args }`, a wait `{ "op": "wait", "for": <condition>, "timeoutMs": n }`, or a navigation `{ "op": "navigate", "url": "..." }`. `navigate` goes only to an `https` URL on one of the manifest's origins, and a relative URL resolves against the page; any other URL answers `failed` with `INVALID_ARGUMENT`. `navigate` and `submit` may only be the last step. The agent runs the steps inside the page with no round trip between them. `deadlineMs`, counted from the call's arrival, shortens the call's own deadline; it must be a finite number above 0.
 
 ```json
 { "op": "run", "args": { "steps": [
@@ -342,6 +342,7 @@ open ─▶ snapshot ─▶ patch* ─▶ snapshot (new view, resync, refused pa
 - A watch with `when` reads only while the page URL matches one of its guards. When the URL stops matching, it sends one `status { idle: true }` and stops reading. When it matches again, the next message is a snapshot.
 - `status` is a `PageStatus`: `loading`, `ready`, `error`, `auth` or `unsupported`. The page agent sends only `ready` and `error`; the other values are for clients.
 - A read that throws makes the watch `error`: the snapshot has `status: "error"` and `error`. The next successful read sends `status: "ready"` in a snapshot.
+- A read whose value is not JSON data (a BigInt, a cycle) fails `watch.open` with `INVALID_ARGUMENT`. When that happens later, the watch reports `status: "error"` with `INVALID_ARGUMENT`.
 - Changes are batched: the agent sends a batch after `limits.publishQuietMs` without changes, and at least every `limits.publishMaxDelayMs`.
 - The agent splits a change into patches of at most `limits.patchRecordsMax` upserts and `limits.patchMaxBytes`. Only the last patch carries `remove`, `order` and `complete`, so the client gets the new order only after every record it names. A patch the host refuses makes the next message a snapshot.
 - A snapshot over `limits.pageMaxBytes` drops a quarter of a virtualized list's records farthest from those on screen until it fits. Otherwise the watch reports `status: "error"` with `PAGE_TOO_LARGE`.
@@ -360,9 +361,9 @@ A locator is a JSON object that finds elements in the page when the operation ru
 | `css` | string | Elements matching the selector. |
 | `role` | string | Elements with that ARIA role, from the `role` attribute or the tag's implicit role. |
 | `name` | string | With `role`: the accessible name contains this text. |
-| `text` | string | The deepest elements whose text contains this text. With `css` or `role`, filters their matches. |
+| `text` | string | The deepest elements whose text contains this text. The text leaves out the content of `script`, `style`, `noscript` and `template` elements. With `css` or `role`, filters their matches. |
 | `exact` | boolean | With `text`: the text must be equal, not contained. |
-| `record` | `{ watch, key }` | The element of one record of an open list watch. With `css`, `role` or `text`, searches inside it. |
+| `record` | `{ watch, key }` | The element of one record of an open list watch. With `css`, `role` or `text`, searches inside it. It cannot be combined with `within` or `frame`. |
 | `within` | locator | Searches inside the first match of this locator. |
 | `has` | locator | Keeps elements that contain a match of this locator. |
 | `nth` | integer | Keeps the match at this index; a negative index counts from the end. |
@@ -374,6 +375,7 @@ Rules:
 
 - A locator needs one of `css`, `role`, `text` or `record`. `name` needs `role`; `exact` needs `text`. Unknown keys are invalid.
 - `within`, `has` and `frame` nest at most 4 levels.
+- A `css` selector, and a read field's `at`, may not test the `value` attribute, in any case, with a namespace, or written with CSS escapes. Such a selector is `INVALID_ARGUMENT`, because a selector like `[value^=a]` would reveal a protected value one character at a time.
 - Text comparisons collapse white space, trim and ignore case.
 - Matches are in document order. `has` and `strict` apply before `nth`.
 - An invalid locator is `INVALID_ARGUMENT` with the path of the bad field, such as `target.within.nth: must be an integer`.
@@ -440,7 +442,7 @@ A URL guard is `{ pattern, query? }`. `pattern` uses the route syntax: it starts
 
 ## Protected fields
 
-The agent never reads or writes the value of a password field, a hidden input, or a field whose `autocomplete` is `current-password`, `new-password`, `one-time-code` or starts with `cc-`. A read of `value`, or of the `value` attribute, gives null. `fill` and `type` into one, and `press` with such a target, are `PROTECTED_FIELD`. A trusted `press` refuses a protected field even without a target, because the key goes to the focused element.
+The agent never reads or writes the value of a password field, a hidden input, or a field whose `autocomplete` is `current-password`, `new-password`, `one-time-code` or starts with `cc-`. A read of `value`, or of the `value` attribute, gives null. `fill`, `type` and `select` on one, and `press` with such a target, are `PROTECTED_FIELD`. A selector may not test the `value` attribute (see [Locators](#locators)). A trusted `press` refuses a protected field even without a target, because the key goes to the focused element.
 
 ## Trusted input
 
@@ -459,11 +461,13 @@ The agent never reads or writes the value of a password field, a hidden input, o
 ```
 
 - `x` and `y` are CSS pixels of the visual viewport at scale 1: the element's client position minus `visualViewport.offsetLeft` and `offsetTop`, times `visualViewport.scale`. The shell multiplies them by the display density.
-- Named keys are `Enter`, `Tab`, `Escape`, `Backspace`, `Delete`, `" "` (space), `ArrowUp`, `ArrowDown`, `ArrowLeft`, `ArrowRight`, `Home`, `End`, `PageUp` and `PageDown`; any other key is one character. Modifiers are `Shift`, `Control`, `Alt` and `Meta`.
-- The shell converts every event first and dispatches nothing when one cannot be converted: an unknown event, key or modifier, a point outside the view, or text that cannot be typed as keys. That answers `INPUT_UNAVAILABLE`.
-- `page.input` answers `INPUT_UNAVAILABLE` when `limits.trustedInput` is not true, and when the context is revealed: the user is looking at the website then, and applet input there would count as the user's own gesture. It answers `NOT_FOUND` when `callId` is not an open call of the asking document, and `DEADLINE` when the call's budget runs out first.
+- Named keys are `Enter`, `Tab`, `Escape`, `Backspace`, `Delete`, `" "` (space), `ArrowUp`, `ArrowDown`, `ArrowLeft`, `ArrowRight`, `Home`, `End`, `PageUp` and `PageDown`; any other key is one character. Modifiers are `Shift`, `Control`, `Alt` and `Meta`. `Control` and `Meta` work only with named keys.
+- The shell converts every event first and dispatches nothing when one cannot be converted: an unknown event, key or modifier, a point outside the view, text that cannot be typed as keys, or a key that would reach the clipboard (`Control` or `Meta` with a one-character key, or `Shift+Delete`). That answers `INPUT_UNAVAILABLE`.
+- One `page.input` types at most 2000 characters across its `text` events; more is `INVALID_ARGUMENT`. The page agent refuses a trusted `type` of a longer text the same way, before it sends anything.
+- `page.input` answers `INPUT_UNAVAILABLE` when `limits.trustedInput` is not true, and when the context is revealed: the user is looking at the website then, and applet input there would count as the user's own gesture. It answers `CONTEXT_REPLACED` when another document has already started loading in the context, `NOT_FOUND` when `callId` is not an open call of the asking document, and `DEADLINE` when the call's budget runs out first.
 - A trusted `click` is one touch tap: `gesture` other than `tap`, or `count` other than 1, is `INVALID_ARGUMENT`. Any other operation with `input: "trusted"` is `INVALID_ARGUMENT`.
 - A trusted tap or key gives the page user activation. A trusted hover does not.
+- For 5 seconds after the last trusted input to a context's page, that page may not open a window or hand a link to another app, even once it is revealed and the user taps it. The page's user activation can outlast the input, so the shell does not count any gesture as the user's in that time.
 
 ## Error codes
 
@@ -476,7 +480,7 @@ The agent never reads or writes the value of a password field, a hidden input, o
 | `STORAGE_FAILURE` | Storage could not complete the request. |
 | `ORIGIN_NOT_DECLARED` | Reserved. Nothing returns it now. |
 | `MESSAGE_TOO_LARGE` | A request is over `limits.messageMaxBytes`. |
-| `PAGE_TOO_LARGE` | A watch snapshot is over `limits.pageMaxBytes`. |
+| `PAGE_TOO_LARGE` | A watch snapshot, or a page call's value, is over `limits.pageMaxBytes`. |
 | `PATCH_TOO_LARGE` | A watch patch is over `limits.patchMaxBytes` or `limits.patchRecordsMax`. |
 | `DEADLINE` | A request, call, wait or evidence ran out of time. |
 | `INVALID_STEPS` | A page module command threw, returned a promise, or returned invalid steps. |
