@@ -49,7 +49,6 @@ impl Host {
         let now = now_ms();
         match event {
             ShellEvent::Attach { files_dir, debuggable } => {
-                // A new Activity has none of the old flow's screens.
                 self.end_flow();
                 self.contexts = Contexts::default();
                 self.documents = Documents::default();
@@ -57,23 +56,35 @@ impl Host {
                 self.files_dir = Some(files_dir.into());
                 self.debuggable = debuggable;
                 self.load_updates();
+            }
+            ShellEvent::ManagerAttached => {
+                // A new manager window has none of the old flow's screens.
+                self.end_flow();
                 self.show_launcher();
             }
-            ShellEvent::Resumed => self.resumed(now),
-            ShellEvent::Suspended => {
-                self.contexts.suspended_at_ms = Some(now);
-                self.broadcast("suspended", json!({}));
+            ShellEvent::Resumed { applet_id: Some(applet_id) } => self.window_resumed(&applet_id, now),
+            ShellEvent::Resumed { applet_id: None } => {
+                if self.flow.is_none() {
+                    self.show_launcher();
+                }
             }
-            ShellEvent::Back => self.back(now),
-            ShellEvent::WebsiteDone => self.website_done(),
-            ShellEvent::OpenApplet { applet_id } => {
-                self.retire_active();
-                let resume = self.contexts.resume.take().filter(|r| r.applet_id == applet_id);
-                self.activate(&applet_id, resume, None);
+            ShellEvent::Suspended { applet_id } => self.window_suspended(applet_id.as_deref(), now),
+            ShellEvent::Back { applet_id } => self.back(applet_id, now),
+            ShellEvent::WebsiteDone { applet_id } => {
+                if self.is_session(applet_id.as_deref()) {
+                    self.website_done();
+                }
             }
+            ShellEvent::OpenApplet { applet_id } => self.start_window(&applet_id, None),
+            ShellEvent::AppletWindowCreated { applet_id, restored } => self.window_created(&applet_id, restored),
+            ShellEvent::AppletWindowClosed { applet_id, finished } => self.window_closed(&applet_id, finished),
             ShellEvent::OpenUrl { url, applet_id, external } => self.open_url(&url, applet_id, external),
-            ShellEvent::Home => self.home(),
-            ShellEvent::Menu { action } => self.menu(action),
+            ShellEvent::Home => self.show_launcher(),
+            ShellEvent::Menu { applet_id, action } => {
+                if self.is_session(applet_id.as_deref()) {
+                    self.menu(action);
+                }
+            }
             ShellEvent::DocumentStarted { view, url } => self.document_started(view, url, now),
             ShellEvent::DocumentMessage { view, payload } => self.document_message(view, &payload, now),
             ShellEvent::ContextNavigated { view, url, index, size, can_go_back, can_go_forward, same_document, reload } => {
@@ -182,26 +193,139 @@ impl Host {
         self.out.push(ShellCommand::ShowLauncher { applets: self.launcher_entries(), updates_checked_at });
     }
 
-    /// Sends the launcher entries without leaving the open applet.
-    pub fn update_applets(&mut self) {
-        let updates_checked_at = self.updates_checked_at();
-        self.out.push(ShellCommand::UpdateApplets { applets: self.launcher_entries(), updates_checked_at });
+    /// Whether `applet_id` names the window of the live applet.
+    fn is_session(&self, applet_id: Option<&str>) -> bool {
+        applet_id.is_some() && self.contexts.session.as_ref().map(|s| s.applet_id.as_str()) == applet_id
     }
 
-    /// Leaves the applet. A pending recreation is forgotten with it.
-    pub fn home(&mut self) {
-        self.contexts.resume = None;
-        self.retire_active();
-        self.show_launcher();
+    // -----------------------------------------------------------------------------------------
+    // Applet windows
+
+    /// Starts or brings forward an applet's window. The applet starts when the window resumes,
+    /// with `opening`, a `(context, url)` link, loaded in place of where it was.
+    fn start_window(&mut self, applet_id: &str, opening: Option<(String, String)>) {
+        let url = opening.as_ref().map(|(_, url)| url.clone());
+        let opens_link = opening.is_some();
+        self.contexts.pending_open.insert(applet_id.into(), opening);
+        self.out.push(ShellCommand::StartAppletWindow { applet_id: applet_id.into(), url });
+        // A window already on screen does not resume again: a link, or a Reload after the
+        // pages stopped, starts the applet now.
+        let resumed = self.contexts.resumed_window.as_deref() == Some(applet_id);
+        if resumed && (opens_link || !self.is_session(Some(applet_id))) {
+            self.window_resumed(applet_id, now_ms());
+        }
+    }
+
+    /// An applet's window resumed: its applet becomes the live one. A live applet continues
+    /// where it was; any other live applet retires and keeps where it was.
+    fn window_resumed(&mut self, applet_id: &str, now: u64) {
+        self.contexts.resumed_window = Some(applet_id.into());
+        let opening = self.contexts.pending_open.remove(applet_id).flatten();
+        if self.is_session(Some(applet_id)) {
+            self.retire_if_long_suspended(now);
+        }
+        if self.is_session(Some(applet_id)) {
+            let suspended = self.contexts.suspended_at_ms.take().is_some();
+            if opening.is_none() {
+                if suspended {
+                    self.broadcast("resumed", json!({}));
+                }
+                return;
+            }
+        }
+        // A link starts the applet again with a fresh history, so its first Back leaves the
+        // applet, and the shell's events reach a foreground that binds after the commands below.
+        self.retire_for_resume();
+        let resume = self.take_resume(applet_id);
+        let open_context = opening.as_ref().map(|(context, _)| context.clone());
+        self.activate(applet_id, resume, opening);
+        if let Some(session) = self.contexts.session.as_mut().filter(|s| s.applet_id == applet_id) {
+            session.open_context = open_context;
+        }
+    }
+
+    /// Only the live applet's window suspends it. Where it is gets saved, so its Recents card
+    /// restores it if the process ends in the background.
+    fn window_suspended(&mut self, applet_id: Option<&str>, now: u64) {
+        if applet_id.is_some() && self.contexts.resumed_window.as_deref() == applet_id {
+            self.contexts.resumed_window = None;
+        }
+        if !self.is_session(applet_id) {
+            return;
+        }
+        self.contexts.suspended_at_ms = Some(now);
+        if let Some(session) = self.contexts.session.as_ref() {
+            let (applet_id, resume) = (session.applet_id.clone(), Self::resume_of(session));
+            self.save_resume(&applet_id, &resume);
+        }
+        self.broadcast("suspended", json!({}));
+    }
+
+    /// A window Android created anew (not from its Recents card) starts its applet fresh.
+    fn window_created(&mut self, applet_id: &str, restored: bool) {
+        if !restored {
+            if self.is_session(Some(applet_id)) {
+                self.retire_active();
+            }
+            self.forget_resume(applet_id);
+        }
+    }
+
+    /// A destroyed window takes its applet's views with it. The applet keeps where it was
+    /// unless the user closed the window.
+    fn window_closed(&mut self, applet_id: &str, finished: bool) {
+        if self.contexts.resumed_window.as_deref() == Some(applet_id) {
+            self.contexts.resumed_window = None;
+        }
+        self.contexts.pending_open.remove(applet_id);
+        if self.is_session(Some(applet_id)) {
+            self.retire_for_resume();
+        }
+        if finished {
+            self.forget_resume(applet_id);
+        }
+    }
+
+    fn resume_path(&self, applet_id: &str) -> Option<PathBuf> {
+        Some(self.files_dir.as_ref()?.join("applets").join(applet_id).join("resume.json"))
+    }
+
+    fn resume_of(session: &Session) -> Resume {
+        Resume {
+            urls: session.contexts.iter().map(|(id, c)| (id.clone(), c.url.clone())).collect::<BTreeMap<_, _>>(),
+            saved: session.saved.clone(),
+        }
+    }
+
+    fn save_resume(&self, applet_id: &str, resume: &Resume) {
+        let (Some(path), Ok(bytes)) = (self.resume_path(applet_id), serde_json::to_vec(resume)) else { return };
+        let _ = applets::write_atomic(&path, &bytes);
+    }
+
+    /// Where the applet was: kept in memory, else saved before the process last ended.
+    fn take_resume(&mut self, applet_id: &str) -> Option<Resume> {
+        self.contexts.resumes.remove(applet_id).or_else(|| {
+            let bytes = std::fs::read(self.resume_path(applet_id)?).ok()?;
+            serde_json::from_slice(&bytes).ok()
+        })
+    }
+
+    pub fn forget_resume(&mut self, applet_id: &str) {
+        self.contexts.resumes.remove(applet_id);
+        if let Some(path) = self.resume_path(applet_id) {
+            let _ = std::fs::remove_file(path);
+        }
     }
 
     /// Opens a website link. Without a picked applet the user chooses first: one of the applets
-    /// that declare its site, or a new applet. The picked applet starts again, its other contexts
-    /// at their last URLs, with the link in the context that starts on its site (or the first),
-    /// and its routes decide whether the link shows the applet's screen or the website. A link
-    /// from another app (`external`) returns there on the Back that leaves the applet.
+    /// that declare its site, or a new applet. The picked applet's window opens and the applet
+    /// starts again, its other contexts at their last URLs, with the link in the context that
+    /// starts on its site (or the first), and its routes decide whether the link shows the
+    /// applet's screen or the website.
     fn open_url(&mut self, url: &str, chosen: Option<String>, external: bool) {
-        let info = |message: String| ShellCommand::ShowInfo { title: "Genesis".into(), message };
+        // A link from an applet's page explains itself there.
+        let window = self.contexts.resumed_window.clone();
+        let info = |message: String| ShellCommand::ShowInfo { applet_id: window.clone(), title: "Genesis".into(), message };
         let Some(parsed) = url::Url::parse(url.trim()).ok().filter(|u| matches!(u.scheme(), "http" | "https")) else {
             return self.out.push(info("Genesis opens only website links".into()));
         };
@@ -224,19 +348,7 @@ impl Host {
         let Some((_, manifest)) = self.applets.current(&applet_id) else { return };
         let starts_here = manifest.contexts.iter().find(|c| applets::origin_of(&c.start_url).as_deref() == Some(&origin));
         let Some(context) = starts_here.or(manifest.contexts.first()).map(|c| c.id.clone()) else { return };
-        // Starting again gives the link a fresh history, so its first Back leaves the applet, and
-        // the shell's events reach a foreground that binds after the commands below.
-        if self.contexts.session.as_ref().is_some_and(|s| s.applet_id == applet_id) {
-            self.retire_for_resume(false);
-        } else {
-            self.retire_active();
-        }
-        let resume = self.contexts.resume.take().filter(|r| r.applet_id == applet_id);
-        self.activate(&applet_id, resume, Some((context.clone(), url)));
-        if let Some(session) = self.contexts.session.as_mut().filter(|s| s.applet_id == applet_id) {
-            session.open_context = Some(context);
-            session.return_to_caller = external;
-        }
+        self.start_window(&applet_id, Some((context, url)));
     }
 
     /// A context's window the shell did not open as a popup. A page on the applet's own sites
@@ -274,47 +386,40 @@ impl Host {
         self.contexts.session.as_ref().is_some_and(|s| s.applet_id == view.applet_id && s.contexts.contains_key(id))
     }
 
-    /// A Back that leaves the applet: Home, and back to the app that shared the link it opened.
-    fn leave_on_back(&mut self) {
-        let caller = self.contexts.session.as_ref().is_some_and(|s| s.return_to_caller);
-        self.home();
-        if caller {
-            self.out.push(ShellCommand::MoveTaskToBack);
-        }
+    /// A Back that leaves the applet moves its window behind the previous task, as an app's
+    /// does. The applet stays where it was and suspends.
+    pub fn leave_on_back(&mut self) {
+        let Some(session) = self.contexts.session.as_ref() else { return };
+        self.out.push(ShellCommand::MoveTaskToBack { applet_id: Some(session.applet_id.clone()) });
     }
 
-    /// Starts an applet, or recreates it from `resume` at its contexts' last committed URLs.
-    /// `opening` loads one context at a shared link instead. An incompatible applet answers the
-    /// status sheet and does not start.
+    /// Starts an applet in its window, or recreates it from `resume` at its contexts' last
+    /// committed URLs. `opening` loads one context at a shared link instead. An applet that
+    /// cannot start explains why in its window, which closes after.
     pub fn activate(&mut self, applet_id: &str, resume: Option<Resume>, opening: Option<(String, String)>) {
+        let window = Some(applet_id.to_string());
         if self.erasing(applet_id) {
-            self.out.push(ShellCommand::ShowError { message: erasing_message(applet_id) });
-            return self.show_launcher();
+            return self.out.push(ShellCommand::ShowError { applet_id: window, message: erasing_message(applet_id) });
         }
         let Some((revision, manifest)) = self.applets.current(applet_id).map(|(r, m)| (r, m.clone())) else {
-            match self.applets.entry(applet_id) {
+            return match self.applets.entry(applet_id) {
                 Some(entry) => self.out.push(ShellCommand::ShowStatus {
+                    applet_id: window,
                     kind: StatusKind::Incompatible,
                     details: incompatible_details(&entry),
                     applet: Some(entry),
                 }),
-                None => self.out.push(ShellCommand::ShowError { message: format!("Applet {applet_id} is not installed") }),
-            }
-            return self.show_launcher();
+                None => self.out.push(ShellCommand::ShowError { applet_id: window, message: format!("Applet {applet_id} is not installed") }),
+            };
         };
         let script = match self.applets.read_text(applet_id, revision, "adapter.js") {
             Ok(script) => script,
-            Err(message) => {
-                self.out.push(ShellCommand::ShowError { message });
-                return self.show_launcher();
-            }
+            Err(message) => return self.out.push(ShellCommand::ShowError { applet_id: window, message }),
         };
         let mut session = Session::new(applet_id.into(), revision, resume.is_some());
-        let (mut urls, saved, return_to_caller) =
-            resume.map(|r| (r.urls, r.saved, r.return_to_caller)).unwrap_or_default();
+        let (mut urls, saved) = resume.map(|r| (r.urls, r.saved)).unwrap_or_default();
         urls.extend(opening);
         session.saved = saved;
-        session.return_to_caller = return_to_caller;
         self.out.push(ShellCommand::ShowApplet {
             applet_id: applet_id.into(),
             name: manifest.name.clone(),
@@ -351,7 +456,7 @@ impl Host {
             self.post(view, &message);
         }
         if session.revealed.is_some() {
-            self.out.push(ShellCommand::CoverContext);
+            self.out.push(ShellCommand::CoverContext { applet_id: Some(session.applet_id.clone()) });
         }
         let mut roles = vec![Role::Foreground];
         roles.extend(session.contexts.keys().map(|id| Role::Context(id.clone())));
@@ -360,29 +465,14 @@ impl Host {
         }
     }
 
-    /// Retires the active applet and keeps what recreating it needs.
-    fn retire_for_resume(&mut self, on_resume: bool) {
+    /// Retires the active applet and keeps what recreating it needs, in memory and on disk. Its
+    /// window recreates it when it resumes.
+    fn retire_for_resume(&mut self) {
         let Some(session) = self.contexts.session.as_ref() else { return };
-        self.contexts.resume = Some(Resume {
-            applet_id: session.applet_id.clone(),
-            urls: session.contexts.iter().map(|(id, c)| (id.clone(), c.url.clone())).collect::<BTreeMap<_, _>>(),
-            saved: session.saved.clone(),
-            on_resume,
-            return_to_caller: session.return_to_caller,
-        });
+        let (applet_id, resume) = (session.applet_id.clone(), Self::resume_of(session));
+        self.save_resume(&applet_id, &resume);
+        self.contexts.resumes.insert(applet_id, resume);
         self.retire_active();
-    }
-
-    fn resumed(&mut self, now: u64) {
-        self.retire_if_long_suspended(now);
-        self.contexts.suspended_at_ms = None;
-        if self.contexts.resume.as_ref().is_some_and(|r| r.on_resume) {
-            let resume = self.contexts.resume.take().expect("checked above");
-            let applet_id = resume.applet_id.clone();
-            self.activate(&applet_id, Some(resume), None);
-        } else if self.contexts.session.is_some() {
-            self.broadcast("resumed", json!({}));
-        }
     }
 
     fn retire_if_long_suspended(&mut self, now: u64) {
@@ -391,7 +481,7 @@ impl Host {
         let limit = if revealed { REVEALED_RETIRE_MS } else { SUSPEND_RETIRE_MS };
         let long = self.contexts.suspended_at_ms.is_some_and(|at| now.saturating_sub(at) >= limit);
         if long && self.contexts.session.is_some() {
-            self.retire_for_resume(true);
+            self.retire_for_resume();
         }
     }
 
@@ -399,9 +489,11 @@ impl Host {
         let Some(session) = self.contexts.session.as_ref() else { return };
         let (applet_id, revision, revealed) = (session.applet_id.clone(), session.revision, session.revealed.clone());
         match action {
-            MenuAction::Home => self.home(),
+            // "Open Genesis" leaves the applet as it is.
+            MenuAction::Home => self.out.push(ShellCommand::OpenManager),
             MenuAction::Reload => {
                 self.retire_active();
+                self.forget_resume(&applet_id);
                 self.activate(&applet_id, None, None);
             }
             // The foreground pins its active context when `id` is null.
@@ -410,7 +502,7 @@ impl Host {
                 let Some((_, manifest)) = self.active_manifest() else { return };
                 let message = format!("{applet_id}, revision {revision}\nWebsites: {}", manifest.origins.join(", "));
                 let title = manifest.name.clone();
-                self.out.push(ShellCommand::ShowInfo { title, message });
+                self.out.push(ShellCommand::ShowInfo { applet_id: Some(applet_id), title, message });
             }
         }
     }
@@ -424,14 +516,17 @@ impl Host {
             return;
         }
         if session.revealed.replace(context_id.into()).is_some() {
-            self.out.push(ShellCommand::CoverContext);
+            let applet_id = Some(session.applet_id.clone());
+            self.out.push(ShellCommand::CoverContext { applet_id });
         }
         self.out.push(ShellCommand::RevealContext { view, title: title.into() });
     }
 
     pub fn cover(&mut self) {
-        if self.contexts.session.as_mut().and_then(|s| s.revealed.take()).is_some() {
-            self.out.push(ShellCommand::CoverContext);
+        let Some(session) = self.contexts.session.as_mut() else { return };
+        if session.revealed.take().is_some() {
+            let applet_id = Some(session.applet_id.clone());
+            self.out.push(ShellCommand::CoverContext { applet_id });
         }
     }
 
@@ -445,10 +540,13 @@ impl Host {
         self.foreground_event("user.done", json!({ "id": revealed }));
     }
 
-    fn back(&mut self, now: u64) {
-        let Some(session) = self.contexts.session.as_ref() else {
-            return self.out.push(ShellCommand::MoveTaskToBack);
-        };
+    /// Back in a window. The manager's, and an applet window's without its live applet, moves
+    /// the window's task back.
+    fn back(&mut self, applet_id: Option<String>, now: u64) {
+        if !self.is_session(applet_id.as_deref()) {
+            return self.out.push(ShellCommand::MoveTaskToBack { applet_id });
+        }
+        let Some(session) = self.contexts.session.as_ref() else { return };
         if session.back.is_some() {
             return; // A second Back while the foreground decides is ignored.
         }
@@ -574,9 +672,9 @@ impl Host {
             return; // Another view of the same burst, after the applet was retired.
         }
         let entry = self.applets.entry(&view.applet_id);
-        self.retire_for_resume(false);
-        self.show_launcher();
+        self.retire_for_resume();
         self.out.push(ShellCommand::ShowStatus {
+            applet_id: Some(view.applet_id.clone()),
             kind: StatusKind::RendererLost,
             applet: entry,
             details: "The pages stopped. Reload opens the applet again where it was.".into(),
@@ -689,26 +787,24 @@ impl Host {
     // -----------------------------------------------------------------------------------------
     // Imports
 
-    /// After an install: an active applet restarts on the new revision (an incompatible one
-    /// returns to the launcher), the previous revision's files go, and an incompatible import
-    /// explains itself once. `restart` starts the applet even though it was retired first.
+    /// After an install: an active applet restarts on the new revision, now when its window is
+    /// on screen and otherwise when it resumes; the previous revision's files go, and an
+    /// incompatible import explains itself once, in the applet's window when it is on screen.
+    /// `restart` restarts the applet even though it was retired first.
     pub fn after_install(&mut self, applet_id: &str, previous: Option<u64>, restart: bool) {
         let incompatible = self.applets.entry(applet_id).filter(|e| e.status == AppletStatus::Incompatible);
-        let active = self.contexts.session.as_ref().map(|s| s.applet_id.clone());
-        let restart = restart || active.as_deref() == Some(applet_id);
-        if restart {
-            self.retire_active();
-            // An incompatible import cannot start; the notice below explains it, once.
-            match incompatible {
-                Some(_) => self.show_launcher(),
-                None => {
-                    self.update_applets();
-                    self.activate(applet_id, None, None);
-                }
+        let on_screen = self.contexts.resumed_window.as_deref() == Some(applet_id);
+        if restart || self.is_session(Some(applet_id)) {
+            if self.is_session(Some(applet_id)) {
+                self.retire_active();
             }
-        } else if active.is_none() {
-            self.show_launcher();
+            self.forget_resume(applet_id);
+            // An incompatible import cannot start; the notice below explains it, once.
+            if incompatible.is_none() && on_screen {
+                self.activate(applet_id, None, None);
+            }
         }
+        self.show_launcher();
         if let Some(previous) = previous {
             self.applets.remove_revision(applet_id, previous);
         }
@@ -717,7 +813,8 @@ impl Host {
                 Some(Direction::Newer) => "Needs a newer Genesis",
                 _ => "Needs update",
             };
-            self.out.push(ShellCommand::ShowStatus { kind: StatusKind::ImportReceived, details: details.into(), applet: Some(entry) });
+            let window = on_screen.then(|| applet_id.to_string());
+            self.out.push(ShellCommand::ShowStatus { applet_id: window, kind: StatusKind::ImportReceived, details: details.into(), applet: Some(entry) });
         }
     }
 }

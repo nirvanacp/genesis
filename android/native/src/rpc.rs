@@ -165,7 +165,8 @@ impl Host {
             Call::UiReady {} => {
                 if let Some(session) = self.contexts.session.as_mut().filter(|s| !s.foreground_shown) {
                     session.foreground_shown = true;
-                    self.out.push(ShellCommand::RevealForeground);
+                    let applet_id = Some(session.applet_id.clone());
+                    self.out.push(ShellCommand::RevealForeground { applet_id });
                 }
                 ok()
             }
@@ -310,9 +311,8 @@ impl Host {
                 ok()
             }
             Call::BackLeave {} => {
-                // Answer before Home retires the document.
                 self.respond(view, document_id, request_id, Ok(json!({})));
-                self.home();
+                self.leave_on_back();
                 Outcome::Later
             }
             Call::ContextPublish { page, patch } => {

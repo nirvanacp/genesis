@@ -379,7 +379,7 @@ impl Host {
         let silent = self.flow.as_ref().is_some_and(Flow::silent);
         self.end_flow();
         if !silent {
-            self.out.push(ShellCommand::ShowError { message });
+            self.out.push(ShellCommand::ShowError { applet_id: None, message });
         }
     }
 
@@ -583,7 +583,7 @@ impl Host {
         if let Err(message) = started {
             match self.flow.is_some() && message != BUSY {
                 true => self.fail(message),
-                false => self.out.push(ShellCommand::ShowError { message }),
+                false => self.out.push(ShellCommand::ShowError { applet_id: None, message }),
             }
         }
     }
@@ -839,18 +839,14 @@ impl Host {
         });
     }
 
-    /// Shows the launcher again when it is on screen, so entries and badges are current.
+    /// Shows the manager's list again, so entries and badges are current.
     fn refresh_launcher(&mut self) {
-        match self.contexts.session {
-            None => self.show_launcher(),
-            Some(_) => self.update_applets(),
-        }
+        self.show_launcher();
     }
 
+    /// Retires the applet and forgets where it was.
     fn retire_active_applet(&mut self, applet_id: &str) {
-        if self.contexts.resume.as_ref().is_some_and(|r| r.applet_id == applet_id) {
-            self.contexts.resume = None;
-        }
+        self.forget_resume(applet_id);
         if self.contexts.session.as_ref().is_some_and(|s| s.applet_id == applet_id) {
             self.retire_active();
         }
@@ -895,7 +891,7 @@ impl Host {
                     (Ok(()), true) => self.end_flow(),
                     (Ok(()), false) => self.refresh_launcher(),
                     (Err(message), true) => self.fail(message),
-                    (Err(message), false) => self.out.push(ShellCommand::ShowError { message }),
+                    (Err(message), false) => self.out.push(ShellCommand::ShowError { applet_id: None, message }),
                 }
             }
             Deletion::Remove { applet_id } => {
@@ -910,7 +906,7 @@ impl Host {
                         self.clear_update(&applet_id);
                         self.forget_kept(&applet_id);
                     }
-                    Err(message) => self.out.push(ShellCommand::ShowError { message }),
+                    Err(message) => self.out.push(ShellCommand::ShowError { applet_id: None, message }),
                 }
                 self.refresh_launcher();
             }
@@ -919,11 +915,11 @@ impl Host {
                     Ok(()) => {
                         let name = self.applets.entry(&applet_id).map_or(applet_id.clone(), |e| e.name);
                         let message = format!("{name}'s saved data was erased.");
-                        self.out.push(ShellCommand::ShowInfo { title: "Data cleared".into(), message });
+                        self.out.push(ShellCommand::ShowInfo { applet_id: None, title: "Data cleared".into(), message });
                     }
                     Err(e) => {
                         let message = format!("The stored data of {applet_id} was not erased: {e}");
-                        self.out.push(ShellCommand::ShowError { message });
+                        self.out.push(ShellCommand::ShowError { applet_id: None, message });
                     }
                 }
                 self.refresh_launcher();
@@ -940,11 +936,11 @@ impl Host {
         let file = PathBuf::from(path);
         let inside = self.files_path(FETCH_DIRECTORY).is_some_and(|d| file.starts_with(d));
         if !inside {
-            return self.out.push(ShellCommand::ShowError { message: "Genesis reads files only from its own folder".into() });
+            return self.out.push(ShellCommand::ShowError { applet_id: None, message: "Genesis reads files only from its own folder".into() });
         }
         if let Err(message) = self.begin(Kind::File, Stage::Reviewing) {
             let _ = fs::remove_file(&file);
-            return self.out.push(ShellCommand::ShowError { message });
+            return self.out.push(ShellCommand::ShowError { applet_id: None, message });
         }
         let reviewed = (|| {
             self.flow_mut()?.files.push(file.clone());
@@ -999,7 +995,7 @@ impl Host {
         match outcome {
             Ok(Some((applet_id, previous, _))) => self.after_install(&applet_id, previous, false),
             Ok(None) => {}
-            Err(error) => self.out.push(ShellCommand::ShowError { message: error.message }),
+            Err(error) => self.out.push(ShellCommand::ShowError { applet_id: None, message: error.message }),
         }
     }
 
@@ -1059,7 +1055,7 @@ impl Host {
     pub fn import_bundled(&mut self, path: &str, payload: &str, release: Option<&str>) {
         let _ = fs::remove_file(path);
         let installed = match imports::verify(payload) {
-            Err(error) => return self.out.push(ShellCommand::ShowError { message: error.message }),
+            Err(error) => return self.out.push(ShellCommand::ShowError { applet_id: None, message: error.message }),
             Ok(Verified::Incompatible(bundle)) => {
                 let id = bundle.id.clone();
                 let takes = !self.applets.removed_bundled(&id)
@@ -1088,7 +1084,7 @@ impl Host {
         };
         match installed {
             Ok((id, previous)) => self.after_install(&id, previous, false),
-            Err(message) => self.out.push(ShellCommand::ShowError { message }),
+            Err(message) => self.out.push(ShellCommand::ShowError { applet_id: None, message }),
         }
     }
 
@@ -1117,19 +1113,20 @@ impl Host {
     }
 
     /// Starts a removal or a data clear: refused during a review or another erase of the applet.
-    /// An open applet returns to the launcher first.
+    /// An open applet retires and its window closes first.
     fn erase_applet(&mut self, deletion: Deletion) {
         let applet_id = deletion.applet_id().to_string();
         let reviewing = self.flow.as_ref().and_then(|f| f.review.as_ref()).is_some();
         if reviewing || self.erasing(&applet_id) {
-            return self.out.push(ShellCommand::ShowError { message: BUSY.into() });
+            return self.out.push(ShellCommand::ShowError { applet_id: None, message: BUSY.into() });
         }
         if self.applets.source(&applet_id).is_none() {
-            return self.out.push(ShellCommand::ShowError { message: format!("Applet {applet_id} is not installed") });
+            return self.out.push(ShellCommand::ShowError { applet_id: None, message: format!("Applet {applet_id} is not installed") });
         }
         self.retire_active_applet(&applet_id);
+        self.out.push(ShellCommand::CloseAppletWindow { applet_id: applet_id.clone() });
         if let Err(message) = self.erase_data(deletion) {
-            self.out.push(ShellCommand::ShowError { message });
+            self.out.push(ShellCommand::ShowError { applet_id: None, message });
         }
         self.show_launcher();
     }
@@ -1137,7 +1134,7 @@ impl Host {
     /// Keeps an installed release the publisher withdrew: later checks no longer flag its tag.
     pub fn keep_version(&mut self, applet_id: &str) {
         let Some(release) = self.github_source(applet_id).as_ref().and_then(kept_release) else {
-            return self.out.push(ShellCommand::ShowError { message: format!("{applet_id} has no GitHub release to keep") });
+            return self.out.push(ShellCommand::ShowError { applet_id: None, message: format!("{applet_id} has no GitHub release to keep") });
         };
         self.updates.kept.insert(applet_id.into(), release);
         self.updates.applets.remove(applet_id);
@@ -1160,7 +1157,7 @@ impl Host {
         let now = now_ms();
         if self.flow.is_some() {
             if manual {
-                self.out.push(ShellCommand::ShowError { message: BUSY.into() });
+                self.out.push(ShellCommand::ShowError { applet_id: None, message: BUSY.into() });
             }
             return;
         }
@@ -1187,7 +1184,7 @@ impl Host {
                     Some(_) => "This applet was not installed from GitHub, so Genesis cannot check it for updates.",
                     None => "No applets are installed from GitHub.",
                 };
-                self.out.push(ShellCommand::ShowInfo { title: "Updates".into(), message: message.into() });
+                self.out.push(ShellCommand::ShowInfo { applet_id: None, title: "Updates".into(), message: message.into() });
             }
             return;
         }
@@ -1395,7 +1392,7 @@ impl Host {
                 (true, 1) => message.push_str(" 1 applet could not be checked."),
                 (true, n) => message.push_str(&format!(" {n} applets could not be checked.")),
             }
-            self.out.push(ShellCommand::ShowInfo { title: "Updates".into(), message });
+            self.out.push(ShellCommand::ShowInfo { applet_id: None, title: "Updates".into(), message });
         }
         self.refresh_launcher();
     }

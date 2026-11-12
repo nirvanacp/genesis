@@ -105,31 +105,61 @@ impl TryFrom<String> for Role {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum ShellEvent {
-    /// First event after process start. `files_dir` is the app's private files directory;
-    /// `debuggable` is true on a debug build, the only build that accepts development imports.
+    /// Sent once per process, before any window's events. `files_dir` is the app's private
+    /// files directory; `debuggable` is true on a debug build, the only build that accepts
+    /// development imports.
     Attach {
         files_dir: String,
         #[serde(default)]
         debuggable: bool,
     },
-    Resumed,
-    Suspended,
-    /// Android Back. The WebViews never handle Back themselves.
-    Back,
+    /// The manager window (the Genesis list) was created. It has none of an earlier flow's screens.
+    ManagerAttached,
+    /// A window resumed. `applet_id` names an applet window; None is the manager. An applet
+    /// starts only when its own window resumes.
+    Resumed {
+        #[serde(default)]
+        applet_id: Option<String>,
+    },
+    Suspended {
+        #[serde(default)]
+        applet_id: Option<String>,
+    },
+    /// Android Back in a window. The WebViews never handle Back themselves.
+    Back {
+        #[serde(default)]
+        applet_id: Option<String>,
+    },
     /// The website bar's Done button over a revealed context.
-    WebsiteDone,
+    WebsiteDone {
+        #[serde(default)]
+        applet_id: Option<String>,
+    },
+    /// The manager's list opened an applet: the host starts or brings forward its window.
     OpenApplet { applet_id: String },
+    /// An applet window was created. `restored` is true when Android recreated it from its
+    /// Recents card; a new window forgets where the applet was and starts it fresh.
+    AppletWindowCreated { applet_id: String, restored: bool },
+    /// An applet window was destroyed. `finished` is true when the user closed it, such as by
+    /// swiping its Recents card away; the host then forgets where the applet was.
+    AppletWindowClosed { applet_id: String, finished: bool },
     /// A website link shared to Genesis or typed in "Open a link". `applet_id` is set when the
     /// user picked an applet from `ChooseApplet`. `external` is true for a link another app
-    /// shared, so a Back that leaves the applet returns to that app.
+    /// shared. The link opens in the applet's own window.
     OpenUrl {
         url: String,
         applet_id: Option<String>,
         #[serde(default)]
         external: bool,
     },
+    /// Shows the manager's list.
     Home,
-    Menu { action: MenuAction },
+    /// A Genesis menu choice in an applet window.
+    Menu {
+        #[serde(default)]
+        applet_id: Option<String>,
+        action: MenuAction,
+    },
     /// `onPageStarted`: a new document committed in a view, with its post-redirect URL.
     DocumentStarted { view: ViewRef, url: String },
     /// A string a document posted on `__genesisBridge`, forwarded unparsed.
@@ -206,6 +236,7 @@ pub enum ShellEvent {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum MenuAction {
+    /// "Open Genesis": brings the manager forward and leaves the applet as it is.
     Home,
     Reload,
     ViewWebsite,
@@ -264,11 +295,12 @@ pub enum ShellCommand {
     DestroyView { view: ViewRef },
     /// `push` is `loadUrl`; `replace` is `location.replace(url)`, with `loadUrl` when the page cannot run script.
     LoadUrl { view: ViewRef, url: String, mode: NavigateMode },
-    RevealForeground,
+    /// Hides the splash of `applet_id`'s window.
+    RevealForeground { applet_id: Option<String> },
     /// Moves the context's WebView above the foreground and shows the website bar.
     RevealContext { view: ViewRef, title: String },
-    /// Moves the revealed context back under the foreground.
-    CoverContext,
+    /// Moves the revealed context of `applet_id`'s window back under the foreground.
+    CoverContext { applet_id: Option<String> },
     /// Page-side `history.go(delta)`, with the native fallback the shell applies.
     HistoryGo { view: ViewRef, delta: i32 },
     Reload { view: ViewRef },
@@ -282,8 +314,19 @@ pub enum ShellCommand {
         method: String,
         body: Option<Value>,
     },
-    ShowError { message: String },
-    ShowInfo { title: String, message: String },
+    /// `applet_id` names the window that shows it; None is the manager, or the most recently
+    /// resumed window when the manager is not attached.
+    ShowError {
+        #[serde(default)]
+        applet_id: Option<String>,
+        message: String,
+    },
+    ShowInfo {
+        #[serde(default)]
+        applet_id: Option<String>,
+        title: String,
+        message: String,
+    },
     /// What to do with an opened link: open it in one of `applets` (the applets that use its
     /// website, possibly none) or create a new applet. The shell answers a pick with `OpenUrl`
     /// carrying its id and `external` unchanged.
@@ -297,10 +340,24 @@ pub enum ShellCommand {
     /// bar's Done to close it. It answers a `WindowRequested` for a site no applet uses.
     ShowWindow { view: ViewRef, url: String },
     /// The status sheet: an incompatible applet, a lost renderer or a received import.
-    ShowStatus { kind: StatusKind, applet: Option<LauncherEntry>, details: String },
+    ShowStatus {
+        #[serde(default)]
+        applet_id: Option<String>,
+        kind: StatusKind,
+        applet: Option<LauncherEntry>,
+        details: String,
+    },
     /// Asks the shell to send `Tick` after `delay_ms`, for deadlines shorter than the periodic tick.
     Wake { delay_ms: u64 },
-    MoveTaskToBack,
+    /// Moves the task of `applet_id`'s window (None: the manager's) behind the previous task.
+    MoveTaskToBack { applet_id: Option<String> },
+    /// Starts or brings forward the applet's window, its own task in Recents. `url` is a link it
+    /// opens; the host keeps the link and loads it when the window resumes.
+    StartAppletWindow { applet_id: String, url: Option<String> },
+    /// Closes the applet's window and removes its Recents card.
+    CloseAppletWindow { applet_id: String },
+    /// Brings the manager window (the Genesis list) forward.
+    OpenManager,
     /// An HTTPS GET for the host. The shell follows redirects only to `hosts`, which must also be
     /// in its own `FETCH_HOSTS`. With `to_file`, the body is written to that path (through
     /// `<to_file>.part`) and refused beyond `max_bytes`.

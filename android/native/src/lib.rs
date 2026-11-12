@@ -37,11 +37,21 @@ fn dispatch(input: &str) -> String {
     }));
     let commands = match outcome {
         Ok(Ok(commands)) => commands,
-        Ok(Err(message)) => vec![ShellCommand::ShowError { message }],
+        Ok(Err(message)) => vec![ShellCommand::ShowError { applet_id: None, message }],
         Err(_) => {
-            // A panic may leave the host half-updated; start over from the launcher on next attach.
-            HOST.with(|host| *host.borrow_mut() = Host::default());
-            vec![ShellCommand::ShowError { message: "Native host failed. Restart Genesis.".into() }]
+            // A panic may leave the host half-updated: start over, attached to the same files.
+            HOST.with(|host| {
+                let mut host = host.borrow_mut();
+                let attach = host.files_dir.as_ref().map(|dir| ShellEvent::Attach {
+                    files_dir: dir.to_string_lossy().into_owned(),
+                    debuggable: host.debuggable,
+                });
+                *host = Host::default();
+                if let Some(attach) = attach {
+                    let _ = catch_unwind(AssertUnwindSafe(|| host.dispatch(attach)));
+                }
+            });
+            vec![ShellCommand::ShowError { applet_id: None, message: "Native host failed. Restart Genesis.".into() }]
         }
     };
     serde_json::to_string(&commands)
