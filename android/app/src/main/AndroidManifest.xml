@@ -27,7 +27,7 @@
         android:theme="@style/Theme.NirvanaGenesis">
         <activity
             android:name=".MainActivity"
-            android:configChanges="orientation|screenSize|uiMode|fontScale"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode|fontScale"
             android:launchMode="singleTask"
             android:exported="true"
             android:theme="@style/Theme.NirvanaGenesis"
@@ -76,7 +76,7 @@
         <activity
             android:name=".AppletActivity"
             android:autoRemoveFromRecents="false"
-            android:configChanges="orientation|screenSize|uiMode|fontScale"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode|fontScale"
             android:documentLaunchMode="intoExisting"
             android:exported="false"
             android:launchMode="standard"

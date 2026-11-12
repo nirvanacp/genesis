@@ -184,8 +184,9 @@ final class Notifications {
      */
     static String problem(String id, String title, String body, String url, List<String> origins) {
         if (id == null || !ID.matcher(id).matches()) return "id";
-        if (title == null || title.isEmpty() || title.length() > 120) return "title";
-        if (body != null && body.length() > 500) return "body";
+        // Characters, not UTF-16 units, as the host counts them.
+        if (title == null || title.isEmpty() || title.codePointCount(0, title.length()) > 120) return "title";
+        if (body != null && body.codePointCount(0, body.length()) > 500) return "body";
         if (url != null) {
             String origin = httpsOrigin(url);
             boolean declared = false;

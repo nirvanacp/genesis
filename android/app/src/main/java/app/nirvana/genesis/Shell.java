@@ -1080,7 +1080,14 @@ final class Shell implements Views.Listener, Ui.Actions {
     /** The applet's own profile when it keeps a separate sign-in, otherwise the shared one. */
     @Override public SiteData sitesFor(String appletId) {
         if (appletId == null || !separateSignIn(appletId)) return sites;
-        return profiles.computeIfAbsent(appletId, id -> SiteData.profile(activity, profileName(id)));
+        // Another window may have switched the applet to a new profile, so the cached one must match.
+        String name = profileName(appletId);
+        SiteData cached = profiles.get(appletId);
+        if (cached == null || !name.equals(cached.profile)) {
+            cached = SiteData.profile(activity, name);
+            profiles.put(appletId, cached);
+        }
+        return cached;
     }
 
     /** The same, for work outside a window, such as a cookie import. */

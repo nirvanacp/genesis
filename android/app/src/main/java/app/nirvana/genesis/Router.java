@@ -6,6 +6,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
 import android.util.Log;
+import app.nirvana.genesis.ui.Ui;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -87,7 +88,7 @@ final class Router {
             case "showApplet": {
                 Shell shell = applet(command.getString("appletId"), type);
                 String id = command.getString("appletId"), name = command.getString("name");
-                String accent = command.optString("accent", null), icon = command.optString("icon", null);
+                String accent = Ui.str(command, "accent"), icon = Ui.str(command, "icon");
                 if (shell != null) shell.showApplet(id, name, accent, icon);
                 runtime.shortcuts.opened(id, name, accent, icon);
                 break;
