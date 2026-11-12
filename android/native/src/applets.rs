@@ -210,8 +210,8 @@ impl Applets {
         modified.duration_since(UNIX_EPOCH).ok().map(|d| d.as_millis() as u64)
     }
 
-    pub fn foreground_url(&self, applet_id: &str, revision: u64) -> String {
-        format!("{FOREGROUND_ORIGIN}/genesis/{applet_id}/{revision}/index.html")
+    pub fn foreground_url(&self, applet_id: &str, revision: u64, entry: &str) -> String {
+        format!("{FOREGROUND_ORIGIN}/genesis/{applet_id}/{revision}/{entry}")
     }
 
     pub fn read_text(&self, applet_id: &str, revision: u64, path: &str) -> Result<String, String> {

@@ -12,7 +12,7 @@ Use flat files named with the user's local time; no phase or date folders. Add a
 
 Start from the [current spec](templates/current.md), [decisions](templates/decisions.md) and [change record](templates/change.md) templates. On an existing applet without records, create them the first time you change it, from the actual code and prior decisions. Mark unknowns as unknown, say whether a choice came from the user or from you, and never backdate a record.
 
-Read the current spec first, then the relevant decisions and recent changes. The current spec holds identity, origins, versions, product scope, defaults and overrides, the route and interaction inventories, data authority, remaining work and verification. Refer to manifest route ids instead of copying patterns. Keep implementation status separate from verification evidence. The latest user intent wins within platform constraints; only the user can approve a deferral.
+Read the current spec first, then the relevant decisions and recent changes. The current spec holds identity, origins, versions, product scope, defaults and overrides, the route and interaction inventories, data authority, remaining work and verification. Refer to route ids from the route table instead of copying patterns. Keep implementation status separate from verification evidence. The latest user intent wins within platform constraints; only the user can approve a deferral.
 
 Append material decisions to `decisions.md` with a stable id, local date, origin, rationale, the rules and journeys affected, evidence, and any decision it supersedes. Update the current spec so a reader does not need the whole history. Never drop an earlier explicit choice while summarizing.
 

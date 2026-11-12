@@ -1,5 +1,3 @@
-import type { Manifest } from "./manifest.js";
-
 type Segment = { literal: string } | { param: string };
 
 export interface CompiledPattern {
@@ -8,8 +6,27 @@ export interface CompiledPattern {
   rest: boolean;
 }
 
+/** A route of the router table. The applet declares its routes in code, with the router helper of `@genesis/sdk/router`. */
+export interface Route {
+  id: string;
+  /** Literal segments, `:name` segments and an optional trailing `*`. */
+  pattern: string;
+  /** Required query keys; their values become params. */
+  query?: string[];
+  /** The screen that renders it. */
+  screen: string;
+  /** The context `navigate({ url })` uses for this route from a tab root or `select`. */
+  context?: string;
+}
+
+/** The fields route matching reads. */
+export interface RouteSet {
+  origins: string[];
+  routes: Route[];
+}
+
 export type RouteMatch =
-  | { kind: "route"; routeId: string; page: string; screen: string; context?: string; params: Record<string, string> }
+  | { kind: "route"; routeId: string; screen: string; context?: string; params: Record<string, string> }
   | { kind: "website"; url: string }
   | { kind: "external"; url: string };
 
@@ -57,9 +74,9 @@ export function entryKey(value: string): string | null {
  * Classifies a URL. On a declared origin the first route whose pattern and required query keys
  * match wins, and a URL no route matches is `website`. Every other URL is `external`.
  */
-export function matchRoute(manifest: Pick<Manifest, "origins" | "routes">, value: string): RouteMatch {
+export function matchRoute(table: RouteSet, value: string): RouteMatch {
   const url = parseHttps(value);
-  if (!url || !manifest.origins.includes(url.origin)) return { kind: "external", url: value };
+  if (!url || !table.origins.includes(url.origin)) return { kind: "external", url: value };
 
   let actual: string[];
   try {
@@ -69,14 +86,14 @@ export function matchRoute(manifest: Pick<Manifest, "origins" | "routes">, value
   }
   if (actual.at(-1) === "") actual.pop(); // "/news/" matches "/news"; "/" becomes no segments
 
-  for (const route of manifest.routes) {
+  for (const route of table.routes) {
     const pattern = compilePattern(route.pattern);
     if (!pattern) continue;
     const params = matchSegments(pattern, actual);
     if (!params) continue;
     if (!(route.query ?? []).every(key => url.searchParams.has(key))) continue;
     for (const key of route.query ?? []) params[key] = url.searchParams.get(key)!;
-    const match: RouteMatch = { kind: "route", routeId: route.id, page: route.page, screen: route.screen, params };
+    const match: RouteMatch = { kind: "route", routeId: route.id, screen: route.screen, params };
     if (route.context !== undefined) match.context = route.context;
     return match;
   }
@@ -87,12 +104,12 @@ export function matchRoute(manifest: Pick<Manifest, "origins" | "routes">, value
  * Ids of routes no URL can reach, because an earlier route matches every URL they match:
  * its segments cover theirs one by one and it requires no query key they do not require.
  */
-export function unreachableRoutes(manifest: Pick<Manifest, "routes">): string[] {
+export function unreachableRoutes(table: Pick<RouteSet, "routes">): string[] {
   const unreachable: string[] = [];
-  manifest.routes.forEach((route, i) => {
+  table.routes.forEach((route, i) => {
     const pattern = compilePattern(route.pattern);
     if (!pattern) return;
-    const shadowed = manifest.routes.slice(0, i).some(earlier => {
+    const shadowed = table.routes.slice(0, i).some(earlier => {
       const cover = compilePattern(earlier.pattern);
       if (!cover || !covers(cover, pattern)) return false;
       const required = new Set(route.query ?? []);

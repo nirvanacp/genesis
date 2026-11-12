@@ -1,8 +1,8 @@
 # Genesis applet factory
 
-Build an application around the websites you use. Describe the screens and behavior you want to a coding agent; the agent uses this kit to write the website adapters, the custom UI and the application data. You do not need to know how Genesis's Android or Rust code works.
+Build an application around the websites you use. Describe the screens and behavior you want to a coding agent; the agent uses this kit to write the page code, the custom UI and the application data. You do not need to know how Genesis's Android or Rust code works.
 
-An applet is a React UI over one or more live website sessions. An adapter reads the pages of those sessions into records and turns the applet's actions into steps on the page. The foreground renders the records as native-feeling screens, keeps applet records and talks to an optional backend. Pages the applet does not customize appear as the website itself, in the same session and history. Genesis runs the websites, decides when a page shows as the applet or as the website, draws the floating Genesis menu button and the website bar, and handles Android Back.
+An applet is a web UI, in any web framework, over one or more live website sessions. The UI reads the pages of those sessions into records through the Genesis page agent, with JSON read specifications or an optional page module of readers and commands, and runs inputs such as clicks and fills on the hidden page. It renders the records as native-feeling screens, keeps applet records and talks to an optional backend. Pages the applet does not customize appear as the website itself, in the same session and history. Genesis runs the websites, draws the floating Genesis menu button and the website bar, and passes Android Back to the UI. The router helper decides when a page shows as the applet or as the website, unless the applet sets its own rules.
 
 Example request to an agent:
 
@@ -16,8 +16,11 @@ Example request to an agent:
 | Requirements, defaults and how to resolve conflicts | [Rules](guides/rules.md), [defaults](guides/defaults.md) |
 | Keep the intended app and resolve ambiguous requests | [Product scope](guides/product-scope.md) |
 | Create, build and install an applet | [Getting started](guides/getting-started.md) |
-| Look up a hook, an adapter option or a manifest field | [SDK reference](guides/sdk-reference.md) |
-| Read website pages into records | [Adapters](guides/adapters.md) |
+| Look up a client method, a hook, a router option or a manifest field | [SDK reference](guides/sdk-reference.md) |
+| Read pages and run inputs on them: locators, read specifications, watches and operations | [Page control](guides/page-control.md) |
+| Write readers and commands for pages that need code | [Page modules](guides/page-modules.md) |
+| Build the UI with another framework or an existing project | [Frameworks](guides/frameworks.md) |
+| Implement a client in another language from the message format | [Protocol](guides/protocol.md) |
 | Move between screens, tabs and the website | [Navigation](guides/navigation.md) |
 | Make buttons perform website actions | [Interactions](guides/interactions.md) |
 | Show loading, stale and error states, and the switch to the website | [Presentation](guides/presentation.md) |
@@ -35,7 +38,7 @@ Agents work from an ordinary product request. They ask focused questions when un
 
 ## What is available
 
-This kit matches SDK 0.0.0, tools 0.0.0, manifest schema 6, bundle format 3, protocol 1, adapter API 1. `kit.json` in an exported copy records the same versions. Applets use TypeScript and React, up to three website contexts, one adapter with pages, regions and desired-state actions, declared routes, overlay screens, applet document storage and declared HTTPS services. Genesis refuses an applet built for other versions, and the tools report the difference.
+This kit matches SDK 0.0.0, tools 0.0.0, manifest schema 6, bundle format 3, protocol 1, page control API (`adapterApi`) 1. `kit.json` in an exported copy records the same versions. Applets have up to three website contexts, a UI built with any web framework, an optional page module with readers and desired-state commands, routes and overlay screens declared in code through the router helper, applet document storage and declared HTTPS services. Genesis refuses an applet built for other versions, and the tools report the difference.
 
 The `genesis-applet` CLI creates, checks and builds applets with Node only. A debug build of the Genesis app accepts development installs over adb and applies them without restarting. Release builds install applets bundled into the APK and applets that people add from a public GitHub repository, whose releases CI rebuilt and compared with the committed build ([publishing](guides/publishing.md)). Publisher signing does not exist yet.
 

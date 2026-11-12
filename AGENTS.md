@@ -2,7 +2,7 @@
 
 ## What Genesis is
 
-Genesis is an Android app that runs user-built applets. An applet is a native-feeling React UI over one or more live website sessions. Genesis keeps the websites' sessions, history and behavior; the applet owns the screens, data and rules the user asked for, and pages the applet does not customize appear as the website itself in the same session.
+Genesis is an Android app that runs user-built applets. An applet is a native-feeling web UI, built with any web framework, over one or more live website sessions. Genesis keeps the websites' sessions, history and behavior; the applet owns the screens, data and rules the user asked for, and pages the applet does not customize appear as the website itself in the same session.
 
 ## Instruction sets
 
@@ -28,8 +28,8 @@ Do not edit any `AGENTS.md` file unless the user explicitly asks you to update i
 | `android/app/` | Java shell: activity, launcher, context WebViews, website bar, native Genesis menu, service HTTPS client | Platform |
 | `android/native/` | Rust host crate `genesis-host`: applets, contexts, documents, RPC, storage, services, compatibility, imports (JNI library `libgenesis_host.so`) | Platform |
 | `crates/contracts/` | `genesis-contracts`: shell events and commands, document messages, manifest and bundle types, limits, error codes | Platform |
-| `packages/core/` | `@genesis/core`: manifest validation, route matching, presentation coordinator, compatibility table, protocol types, bundle format, error codes (TypeScript, no DOM) | Platform |
-| `packages/sdk/` | `@genesis/sdk`: bridge, foreground runtime, record store and React hooks, adapter runtime | Platform |
+| `packages/core/` | `@genesis/core`: manifest validation, route matching, presentation coordinator, compatibility table, protocol types including page control (locators, read specifications, operations), bundle format, error codes (TypeScript, no DOM) | Platform |
+| `packages/sdk/` | `@genesis/sdk`: the framework-free client (`connect`, contexts, watches, storage, services), the page agent and page modules (`/page`), the router helper (`/router`) and React bindings (`/react`) | Platform |
 | `packages/applet-tools/` | `genesis-applet` CLI: create, check (including compatibility), build, device install, services, kit export | Platform |
 | `tools/` | APK asset and native build pipeline, package index check, service helpers, git hooks | Platform |
 | `factory/` | Applet-builder instructions, guides, skills and templates | Platform (shared guidance) |

@@ -12,197 +12,227 @@ import {
   type ReactNode,
 } from "react";
 import { createRoot } from "react-dom/client";
-import type { ActionResult, ContextState, Presentation, Screen } from "@genesis/core";
-import { createForeground, type CurrentScreen, type Foreground, type NavigateTarget, type PendingAction } from "./foreground.js";
-import type { ContextStore, RegionState } from "./store.js";
-import type { ErrorInfo, PageState, Record, Storage, StorageBatch, StoredDocument } from "./types.js";
+import type { ActionResult, Locator, ReadSpec } from "@genesis/core";
+import type { ContextHandle, ContextState, Expect, PendingInput, Watch, WatchOptions } from "./client/context.js";
+import { connect, type ConnectOptions, type Genesis } from "./client/session.js";
+import { emptyWatchValue, type WatchValue } from "./client/watch.js";
+import { createRouter, type CurrentScreen, type NavigateTarget, type Router, type RouterOptions, type RouteStatus } from "./router/router.js";
+import type { Storage, StorageBatch, StoredDocument } from "./types.js";
 
-export type { ActionCall, CurrentScreen, Foreground, NavigateTarget, PendingAction } from "./foreground.js";
+/**
+ * `@genesis/sdk/react`: React bindings over the client. Every hook reads the client of the
+ * surrounding `GenesisProvider`; `mount` connects and renders in one call.
+ */
 
-const GenesisContext = createContext<Foreground | null>(null);
-
-export function GenesisProvider({ foreground, children }: { foreground: Foreground; children?: ReactNode }) {
-  return <GenesisContext.Provider value={foreground}>{children}</GenesisContext.Provider>;
+interface Runtime {
+  genesis: Genesis;
+  router: Router | null;
+  /** Watches opened by `useWatch`, by context and id, so `useRecord` can read them. */
+  watches: Registry;
+  /** Scroll positions by screen key. */
+  scroll: Map<string, number>;
 }
 
-/** The foreground runtime of the surrounding `GenesisProvider`. */
-export function useForeground(): Foreground {
-  const foreground = useContext(GenesisContext);
-  if (!foreground) throw new Error("Genesis hooks need mountForeground or GenesisProvider");
-  return foreground;
+const RuntimeContext = createContext<Runtime | null>(null);
+
+export function GenesisProvider({ genesis, router, children }: { genesis: Genesis; router?: Router | null; children?: ReactNode }) {
+  const runtime = useMemo<Runtime>(() => ({ genesis, router: router ?? null, watches: createRegistry(), scroll: new Map() }), [genesis, router]);
+  return <RuntimeContext.Provider value={runtime}>{children}</RuntimeContext.Provider>;
+}
+
+function useRuntime(): Runtime {
+  const runtime = useContext(RuntimeContext);
+  if (!runtime) throw new Error("Genesis hooks need mount or GenesisProvider");
+  return runtime;
+}
+
+/** The connected client of the surrounding `GenesisProvider`. */
+export function useGenesis(): Genesis {
+  return useRuntime().genesis;
 }
 
 /** Reports `ui.ready` after the first committed layout has been painted. */
-function Ready({ foreground, children }: { foreground: Foreground; children?: ReactNode }) {
+function Ready({ genesis, children }: { genesis: Genesis; children?: ReactNode }) {
   useLayoutEffect(() => {
-    requestAnimationFrame(() => requestAnimationFrame(() => foreground.ready()));
-  }, [foreground]);
+    requestAnimationFrame(() => requestAnimationFrame(() => genesis.ready()));
+  }, [genesis]);
   return children;
 }
 
+export interface MountOptions extends ConnectOptions {
+  /** `#root` by default. */
+  container?: HTMLElement;
+  /** Creates the router helper with these options; `useRouter` then returns it. */
+  router?: RouterOptions;
+}
+
 /**
- * Connects to the host, renders `element` into `#root` (or `container`), reports the first
- * layout, and unmounts when the host retires the document.
+ * Connects to Genesis, renders `element` into `#root` (or `container`), reports the first layout,
+ * and unmounts when Genesis retires the document.
  */
-export async function mountForeground(element: ReactNode, container?: HTMLElement): Promise<Foreground> {
+export async function mount(element: ReactNode, options: MountOptions = {}): Promise<{ genesis: Genesis; router: Router | null }> {
+  const { container, router: routerOptions, ...connectOptions } = options;
   const target = container ?? document.getElementById("root") ?? document.body.appendChild(document.createElement("div"));
-  const foreground = await createForeground();
+  const genesis = await connect(connectOptions);
+  const router = routerOptions ? createRouter(genesis, routerOptions) : null;
   const root = createRoot(target);
-  foreground.onRetired(() => root.unmount());
+  genesis.onRetired(() => {
+    router?.destroy();
+    root.unmount();
+  });
   root.render(
-    <GenesisProvider foreground={foreground}>
-      <Ready foreground={foreground}>{element}</Ready>
+    <GenesisProvider genesis={genesis} router={router}>
+      <Ready genesis={genesis}>{element}</Ready>
     </GenesisProvider>,
   );
-  return foreground;
+  return { genesis, router };
 }
 
-/** The coordinator state; re-renders on presentation, overlay and history changes only. */
-function useCoordinator() {
-  const foreground = useForeground();
-  return useSyncExternalStore(foreground.navigation.subscribe, foreground.navigation.state);
+// ---- Contexts -----------------------------------------------------------------------------------
+
+const noSubscribe = () => () => {};
+
+/** The router's version, so a hook re-renders on its changes; 0 without a router. */
+function useRouterVersion(router: Router | null): number {
+  return useSyncExternalStore(router ? router.subscribe : noSubscribe, () => router?.version ?? 0);
 }
 
-/** The context a hook reads: the given one, else the active one. */
-function useContextId(contextId?: string): string {
-  const state = useCoordinator();
-  return contextId ?? state.active;
+/** The context a hook reads: the given one, else the router's active context, else the first. */
+function useContextHandle(contextId?: string): ContextHandle {
+  const { genesis, router } = useRuntime();
+  useRouterVersion(contextId === undefined ? router : null);
+  return genesis.context(contextId ?? router?.state.active);
 }
 
-/**
- * A value selected from one context's store entry. It listens to that context only and
- * re-renders only when the selected value's identity changes.
- */
-function useContextSelect<T>(contextId: string, select: (context: ContextStore | undefined) => T): T {
-  const { store } = useForeground();
-  const subscribe = useCallback((listener: () => void) => store.subscribe(listener, contextId), [store, contextId]);
-  return useSyncExternalStore(subscribe, () => select(store.context(contextId)));
+/** The context handle a call uses: the given one, else the active one at call time. */
+function handleAt(runtime: Runtime, contextId?: string): ContextHandle {
+  return runtime.genesis.context(contextId ?? runtime.router?.state.active);
 }
 
-const samePage = (a: PageView, b: PageView) =>
-  a.pageId === b.pageId && a.status === b.status && a.stale === b.stale && a.generation === b.generation
-  && a.params === b.params && a.error === b.error && a.account === b.account && a.url === b.url;
+/** A context's state, the active context by default. */
+export function useContextState(contextId?: string): ContextState {
+  const handle = useContextHandle(contextId);
+  return useSyncExternalStore(handle.subscribe, () => handle.state);
+}
 
-export type PageView = PageState & { url: string | null };
+// ---- Watches ------------------------------------------------------------------------------------
 
-function pageOf(context: ContextStore | undefined, account: string | null): PageView {
+interface Registry {
+  get(context: string, id: string): Watch | undefined;
+  add(context: string, watch: Watch): () => void;
+  subscribe(listener: () => void): () => void;
+}
+
+function createRegistry(): Registry {
+  const watches = new Map<string, { watch: Watch; refs: number }>();
+  const listeners = new Set<() => void>();
+  const changed = () => { for (const listener of [...listeners]) listener(); };
+  const key = (context: string, id: string) => `${context}\n${id}`;
   return {
-    pageId: context?.pageId ?? null,
-    status: context?.status ?? "loading",
-    stale: context ? context.stale && context.content : false,
-    generation: context?.view?.generation ?? null,
-    params: context?.params ?? EMPTY_PARAMS,
-    error: (context?.error ?? null) as ErrorInfo | null,
-    account,
-    url: context?.url ?? null,
+    get: (context, id) => watches.get(key(context, id))?.watch,
+    add(context, watch) {
+      const k = key(context, watch.id);
+      const entry = watches.get(k);
+      if (entry) entry.refs++;
+      else {
+        watches.set(k, { watch, refs: 1 });
+        changed();
+      }
+      return () => {
+        const current = watches.get(k);
+        if (!current || --current.refs > 0) return;
+        watches.delete(k);
+        changed();
+      };
+    },
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => { listeners.delete(listener); };
+    },
   };
 }
 
-/** The page a context shows, the active context by default. Patches to its regions do not re-render it. */
-export function usePage(contextId?: string): PageView {
-  const { store } = useForeground();
-  const id = useContextId(contextId);
-  const cache = useRef<PageView | null>(null);
-  // Every store change can change the account, so this listens to all of them and keeps its snapshot while nothing it shows changed.
-  const subscribe = useCallback((listener: () => void) => store.subscribe(listener), [store]);
-  const snapshot = useCallback(() => {
-    const next = pageOf(store.context(id), store.state().account);
-    if (!cache.current || !samePage(cache.current, next)) cache.current = next;
-    return cache.current;
-  }, [store, id]);
-  return useSyncExternalStore(subscribe, snapshot);
-}
+const EMPTY = emptyWatchValue();
 
-const EMPTY_PARAMS: { [name: string]: string } = Object.freeze({}) as { [name: string]: string };
-
-export interface RegionView<T = unknown> {
-  /** Keys in page order. A single region has its record's key, or none. */
-  order: readonly string[];
-  get(key: string): Record<T> | undefined;
-  complete: boolean;
-  status: "ready" | "error" | "missing";
-  error: ErrorInfo | null;
-  /** Keys are positions: record actions are unavailable. */
-  ephemeral: boolean;
-}
-
-const views = new WeakMap<RegionState, RegionView>();
-const MISSING: RegionView = Object.freeze({
-  order: Object.freeze([]) as readonly string[], get: () => undefined, complete: false, status: "missing", error: null, ephemeral: false,
-}) as RegionView;
-
-function regionView(region: RegionState | undefined): RegionView {
-  if (!region) return MISSING;
-  let view = views.get(region);
-  if (view) return view;
-  if (region.kind === "collection") {
-    const { records } = region;
-    view = {
-      order: region.order.filter(key => records[key] !== undefined),
-      get: key => records[key] as Record | undefined,
-      complete: region.complete, status: region.status, error: region.error, ephemeral: region.ephemeral,
+/**
+ * Opens a watch while the component is mounted and returns its value: an empty `loading` value
+ * until it opens. The same `id` with the same specification shares one watch.
+ */
+export function useWatch<V = unknown, R = unknown>(id: string, spec: ReadSpec, options: WatchOptions & { context?: string } = {}): WatchValue<V, R> {
+  const { watches } = useRuntime();
+  const handle = useContextHandle(options.context);
+  const json = JSON.stringify([spec, options.when ?? null]);
+  const [watch, setWatch] = useState<Watch | null>(null);
+  useEffect(() => {
+    const [parsedSpec, when] = JSON.parse(json) as [ReadSpec, WatchOptions["when"] | null];
+    const opened = handle.watch(id, parsedSpec, when ? { when } : {});
+    const remove = watches.add(handle.id, opened);
+    setWatch(opened);
+    return () => {
+      remove();
+      opened.close();
+      setWatch(current => (current === opened ? null : current));
     };
-  } else {
-    const { record } = region;
-    view = {
-      order: record ? [record.key] : [],
-      get: key => (record && record.key === key ? record as Record : undefined),
-      complete: true, status: region.status, error: region.error, ephemeral: false,
-    };
-  }
-  views.set(region, view);
-  return view;
+  }, [handle, id, json, watches]);
+  const value = useSyncExternalStore(watch ? watch.subscribe : noSubscribe, () => watch?.get() ?? EMPTY);
+  return value as WatchValue<V, R>;
 }
 
 /**
- * A region of the page a context shows. Its identity changes only when the region does; a
- * record's identity changes only when that record does, so `memo` rows keyed by record stay put.
+ * One record of a list watch that a `useWatch` in this provider has open, or undefined. It
+ * re-renders only when that record changes.
  */
-export function useRegion<T = unknown>(name: string, contextId?: string): RegionView<T> {
-  return useContextSelect(useContextId(contextId), context => regionView(context?.regions[name])) as RegionView<T>;
+export function useRecord<R = unknown>(watchId: string, key: string, contextId?: string): R | undefined {
+  const { watches } = useRuntime();
+  const handle = useContextHandle(contextId);
+  const subscribe = useCallback((listener: () => void) => {
+    let stopWatch = () => {};
+    const follow = () => {
+      stopWatch();
+      stopWatch = watches.get(handle.id, watchId)?.subscribe(listener) ?? (() => {});
+    };
+    const stopRegistry = watches.subscribe(() => { follow(); listener(); });
+    follow();
+    return () => { stopRegistry(); stopWatch(); };
+  }, [watches, handle, watchId]);
+  return useSyncExternalStore(subscribe, () => watches.get(handle.id, watchId)?.get().records[key] as R | undefined);
 }
 
-/** One record of a region, or undefined. A single region's record is returned whatever `key` is when `key` is null. */
-export function useRecord<T = unknown>(name: string, key: string | null, contextId?: string): Record<T> | undefined {
-  return useContextSelect(useContextId(contextId), context => recordOf(context?.regions[name], key)) as Record<T> | undefined;
-}
-
-function recordOf(region: RegionState | undefined, key: string | null): Record | undefined {
-  if (!region) return undefined;
-  if (region.kind === "single") return (key === null || region.record?.key === key ? region.record ?? undefined : undefined) as Record | undefined;
-  return key === null ? undefined : region.records[key] as Record | undefined;
+export interface CommandOptions {
+  target?: Locator;
+  expect?: Expect;
+  navigates?: boolean;
+  timeoutMs?: number;
 }
 
 /**
- * Runs `name` on a record of `region` (or on the page without a region) in a context, the
- * active one at call time by default. Identical pending calls share one promise; the promise
- * never rejects and settles with the outcome.
+ * Runs a page module command in a context, the active one at call time by default. The promise
+ * never rejects; identical pending calls share it.
  */
-export function useAction<A = unknown>(name: string, region?: string | null, contextId?: string) {
-  const foreground = useForeground();
-  return useCallback((key: string | null, args?: A): Promise<ActionResult> =>
-    foreground.actions.act({
-      context: contextId ?? foreground.navigation.state().active, region: region ?? null, key, name, args,
-    }), [foreground, name, region, contextId]);
+export function useCommand<A = unknown, T = unknown>(name: string, contextId?: string) {
+  const runtime = useRuntime();
+  return useCallback((args?: A, options?: CommandOptions): Promise<ActionResult & { value?: T }> =>
+    handleAt(runtime, contextId).invoke<T>(name, args, options), [runtime, name, contextId]);
 }
 
-/** The pending actions on a record, for optimistic display; an empty list when there are none. */
-export function usePending(region: string | null, key: string | null, contextId?: string): readonly PendingAction[] {
-  const foreground = useForeground();
-  const id = useContextId(contextId);
-  return useSyncExternalStore(foreground.actions.subscribe, () => foreground.actions.pending(id, region, key));
+/** The inputs that have not settled in a context, only those on `target` when given; for optimistic display. */
+export function usePending(target?: Locator, contextId?: string): readonly PendingInput[] {
+  const handle = useContextHandle(contextId);
+  return useSyncExternalStore(handle.subscribePending, () => handle.pending(target));
 }
 
-export interface Navigation {
-  /** The active context's presentation. */
-  presentation: Presentation;
+// ---- Router -------------------------------------------------------------------------------------
+
+export interface RouterView {
+  /** The active context. */
   active: string;
-  contexts: { [id: string]: ContextState };
-  overlay: readonly Screen[];
   /** The screen to render, or null when the active context shows a URL without a route. */
   screen: CurrentScreen | null;
   /** The context whose website is shown, or null. */
   revealed: string | null;
+  status(contextId?: string): RouteStatus;
+  presentation(contextId?: string): ReturnType<Router["presentation"]>;
+  state: Router["state"];
   navigate(target: NavigateTarget): void;
   back(): void;
   select(contextId: string): void;
@@ -210,28 +240,33 @@ export interface Navigation {
   viewWebsite(contextId?: string): void;
   done(contextId?: string): void;
   setLeaveGuard(message: string | null): void;
+  onConfirmLeave: Router["onConfirmLeave"];
 }
 
-export function useNavigation(): Navigation {
-  const foreground = useForeground();
-  const state = useCoordinator();
-  const { navigation } = foreground;
+/** The router helper given to `mount` or `GenesisProvider`, re-rendering on its changes. */
+export function useRouter(): RouterView {
+  const { router } = useRuntime();
+  if (!router) throw new Error("useRouter needs a router: pass `router` to mount or GenesisProvider");
+  const version = useRouterVersion(router);
   return useMemo(() => ({
-    presentation: navigation.presentation(state.active),
-    active: state.active,
-    contexts: state.contexts,
-    overlay: state.overlay,
-    screen: navigation.screen(),
-    revealed: navigation.revealed(),
-    navigate: navigation.navigate,
-    back: navigation.back,
-    select: navigation.select,
-    reload: navigation.reload,
-    viewWebsite: navigation.viewWebsite,
-    done: navigation.done,
-    setLeaveGuard: navigation.setLeaveGuard,
-  }), [navigation, state]);
+    active: router.state.active,
+    screen: router.screen(),
+    revealed: router.revealed(),
+    status: router.status,
+    presentation: router.presentation,
+    state: router.state,
+    navigate: router.navigate,
+    back: router.back,
+    select: router.select,
+    reload: router.reload,
+    viewWebsite: router.viewWebsite,
+    done: router.done,
+    setLeaveGuard: router.setLeaveGuard,
+    onConfirmLeave: router.onConfirmLeave,
+  }), [router, version]);
 }
+
+// ---- Storage, services, scroll, resume ----------------------------------------------------------
 
 /**
  * Every document in `collection`, reloaded after each change to it. `storage` defaults to the
@@ -244,8 +279,8 @@ export function useNavigation(): Navigation {
  * the batch as it is, so it must carry a check for each document it changes.
  */
 export function useRecords<T>(collection: string, options: { storage?: Storage } = {}) {
-  const foreground = useForeground();
-  const storage = options.storage ?? foreground.storage;
+  const genesis = useGenesis();
+  const storage = options.storage ?? genesis.storage;
   const [state, setState] = useState<{ records: StoredDocument<T>[]; loading: boolean; error: unknown }>(
     { records: [], loading: true, error: null });
 
@@ -293,28 +328,35 @@ export function useRecords<T>(collection: string, options: { storage?: Storage }
 
 /** `request(path, options)` for a declared service. Shell failures throw `ServiceError`. */
 export function useService(serviceId: string) {
-  const foreground = useForeground();
+  const genesis = useGenesis();
   return useCallback(<T = unknown>(path: string, options: { method?: string; body?: unknown } = {}) =>
-    foreground.services.request<T>(serviceId, path, options), [foreground, serviceId]);
+    genesis.services.request<T>(serviceId, path, options), [genesis, serviceId]);
 }
 
-/** Restoring stops after this long, or as soon as the person scrolls. */
-const RESTORE_MS = 1500;
+/**
+ * Restoring waits this long for the content to grow tall enough, since a screen's data can
+ * arrive seconds after it shows; it stops earlier once the position is reached or as soon as the
+ * person scrolls.
+ */
+const RESTORE_MS = 10_000;
+const SCROLL_ENTRIES_MAX = 64;
 
 /**
- * A ref callback for the current screen's scroll container. Positions are kept per context
- * history entry (and per overlay screen), so Back returns to where the person was; selecting
- * the shown tab again on its start page scrolls to top.
+ * A ref callback for the current screen's scroll container. Positions are kept per screen: per
+ * context history entry and per overlay screen with the router, per history entry of the context
+ * without it. Back returns to where the person was; with the router, selecting the shown tab
+ * again on its start page scrolls to top.
  */
 export function useScrollMemory() {
-  const foreground = useForeground();
-  useCoordinator();
-  const screen = foreground.navigation.screen();
-  const key = screen?.key ?? `${foreground.navigation.state().active}:none`;
-  const context = screen && !screen.overlay ? screen.context : null;
+  const { router, scroll } = useRuntime();
+  useRouterVersion(router);
+  const state = useContextState();
+  const screen = router?.screen() ?? null;
+  const key = router ? screen?.key ?? `${router.state.active}:none` : `${state.id}:${state.index}`;
+  const context = router ? (screen && !screen.overlay ? screen.context : null) : state.id;
   return useCallback((element: HTMLElement | null) => {
     if (!element) return;
-    const target = foreground.scroll.get(key) ?? 0;
+    const target = scroll.get(key) ?? 0;
     let restoring = target > 0;
     const started = performance.now();
     let frame = 0;
@@ -325,8 +367,13 @@ export function useScrollMemory() {
       else frame = requestAnimationFrame(restore);
     };
     const stopRestoring = () => { restoring = false; };
-    const record = () => { if (!restoring) foreground.scroll.set(key, element.scrollTop); };
-    const stopTop = foreground.navigation.onScrollToTop(id => {
+    const record = () => {
+      if (restoring) return;
+      scroll.delete(key);
+      scroll.set(key, element.scrollTop);
+      while (scroll.size > SCROLL_ENTRIES_MAX) scroll.delete(scroll.keys().next().value!);
+    };
+    const stopTop = router?.onScrollToTop(id => {
       if (id !== context) return;
       restoring = false;
       element.scrollTo({ top: 0, behavior: "smooth" });
@@ -337,23 +384,33 @@ export function useScrollMemory() {
     element.addEventListener("wheel", stopRestoring, { passive: true });
     return () => {
       cancelAnimationFrame(frame);
-      stopTop();
+      stopTop?.();
       element.removeEventListener("scroll", record);
       element.removeEventListener("touchstart", stopRestoring);
       element.removeEventListener("wheel", stopRestoring);
     };
-  }, [foreground, key, context]);
+  }, [scroll, router, key, context]);
 }
 
-/** A scroll container that keeps its position per context history entry. */
+/** A scroll container that keeps its position per screen. */
 export function ScrollMemory(props: HTMLAttributes<HTMLDivElement>) {
   return <div {...props} ref={useScrollMemory()} />;
 }
 
-/** Runs `callback` when the applet returns from the background and when the person leaves the website with Done. */
+/** Runs `callback` when the applet returns from the background and, with the router, when the person leaves the website with Done. */
 export function useAppResume(callback: () => void) {
-  const foreground = useForeground();
+  const { genesis, router } = useRuntime();
   const latest = useRef(callback);
   latest.current = callback;
-  useEffect(() => foreground.onResume(() => latest.current()), [foreground]);
+  useEffect(() => {
+    const stopResume = genesis.onResume(() => latest.current());
+    const stopDone = router?.onDone(() => latest.current());
+    return () => { stopResume(); stopDone?.(); };
+  }, [genesis, router]);
 }
+
+export { createRouter } from "./router/router.js";
+export type { CurrentScreen, NavigateTarget, Router, RouterOptions, RouterRoute, RouteStatus } from "./router/router.js";
+export type { ContextHandle, ContextState, Expect, PendingInput, Watch, WatchOptions } from "./client/context.js";
+export type { Genesis } from "./client/session.js";
+export type { WatchValue } from "./client/watch.js";

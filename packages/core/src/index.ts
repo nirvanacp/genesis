@@ -6,3 +6,5 @@ export * from "./protocol.js";
 export * from "./coordinator.js";
 export * from "./bundle.js";
 export * from "./release.js";
+export * from "./locator.js";
+export * from "./readspec.js";

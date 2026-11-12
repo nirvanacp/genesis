@@ -1,4 +1,47 @@
-import type { PageRecord, Region, RegionPatch } from "@genesis/core";
+import type { ErrorCode } from "@genesis/core";
+
+/** One item a read produced: JSON only, no nodes, callbacks or HTML. */
+export interface PageRecord {
+  key: string;
+  /** Identity across views and contexts; defaults to `key`. */
+  entity?: string;
+  /** Defaults to the region name. */
+  entityType?: string;
+  data: unknown;
+}
+
+type RegionStatus = "ready" | "error";
+type RegionError = { code: ErrorCode; message: string };
+
+/** A read as the diff compares it: a list of records, or a single record. */
+export type Region =
+  | {
+    kind: "collection";
+    status: RegionStatus;
+    error?: RegionError;
+    /** In page order. */
+    items: PageRecord[];
+    /** False while the page offers more items. */
+    complete: boolean;
+    /** Keys repeated in one read, so keys are positions. */
+    ephemeral?: boolean;
+  }
+  | { kind: "single"; status: RegionStatus; error?: RegionError; record: PageRecord | null };
+
+/** The changes between two regions. `replace` stands for a change a delta cannot describe. */
+export type RegionPatch =
+  | {
+    kind: "collection";
+    upsert?: PageRecord[];
+    remove?: string[];
+    /** The full key order, present when membership or order changed. */
+    order?: string[];
+    complete?: boolean;
+    status?: RegionStatus;
+    error?: RegionError | null;
+  }
+  | { kind: "single"; record: PageRecord | null; status?: RegionStatus; error?: RegionError | null }
+  | { kind: "replace"; region: Region };
 
 /**
  * Compares regions as published with regions as read now. Pure. Records are compared by key
