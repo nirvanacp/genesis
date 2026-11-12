@@ -61,6 +61,7 @@ function checkLocator(value: unknown, path: string, depth: number): void {
     throw new InvalidSpecError(path, "needs one of css, text, role or record");
   }
   optionalString(css, `${path}.css`);
+  if (typeof css === "string") validateSelector(css, `${path}.css`);
   optionalString(text, `${path}.text`);
   optionalString(role, `${path}.role`);
   if (name !== undefined) {
@@ -75,6 +76,8 @@ function checkLocator(value: unknown, path: string, depth: number): void {
     const valid = isObject(record) && typeof record.watch === "string" && record.watch !== ""
       && typeof record.key === "string" && Object.keys(record).length === 2;
     if (!valid) throw new InvalidSpecError(`${path}.record`, "must be { watch, key } with two strings");
+    // A record is already one element on the top document; a scope around it would be ignored.
+    if (value.within !== undefined || value.frame !== undefined) throw new InvalidSpecError(`${path}.record`, "cannot be combined with within or frame");
   }
   if (nth !== undefined && !Number.isInteger(nth)) throw new InvalidSpecError(`${path}.nth`, "must be an integer");
   for (const [key, flag] of [["pierce", pierce], ["strict", strict]] as const) {
@@ -84,6 +87,24 @@ function checkLocator(value: unknown, path: string, depth: number): void {
     if (value[key] === undefined) continue;
     if (depth + 1 > LOCATOR_DEPTH_MAX) throw new InvalidSpecError(`${path}.${key}`, `nests deeper than ${LOCATOR_DEPTH_MAX} levels`);
     checkLocator(value[key], `${path}.${key}`, depth + 1);
+  }
+}
+
+/** An attribute selector's name: after `[`, an optional `ns|` (not the `|=` operator), up to an operator, a space or `]`. */
+const ATTRIBUTE_NAME = /\[\s*(?:[\w*-]*\|(?!=))?([^\s~|^$*!=\]]*)/g;
+
+/**
+ * Refuses a CSS selector that tests the `value` attribute. The agent never reads a protected
+ * field's value, and `input[type=hidden][value^="a"]` with `inspect` or `wait` would read it
+ * one character at a time. Comments are removed first, every `[` is checked, even one inside a
+ * quoted string, and a name written with a CSS escape is refused too, so the rule over-refuses
+ * rather than misses.
+ */
+export function validateSelector(selector: string, path: string): void {
+  for (const [, name] of selector.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(ATTRIBUTE_NAME)) {
+    if (name.includes("\\") || name.toLowerCase() === "value") {
+      throw new InvalidSpecError(path, "may not test the value attribute");
+    }
   }
 }
 

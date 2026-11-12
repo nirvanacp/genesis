@@ -1,4 +1,4 @@
-import { InvalidSpecError, validateLocator, type Locator } from "./locator.js";
+import { InvalidSpecError, validateLocator, validateSelector, type Locator } from "./locator.js";
 import { compilePattern, matchRoute } from "./routes.js";
 
 /** What a field reads from its element. */
@@ -93,6 +93,7 @@ function validateField(value: unknown, path: string, depth: number): void {
   onlyKeys(value, FIELD_KEYS, path);
   const { at, take, all, fields, max } = value;
   if (at !== undefined && (typeof at !== "string" || at === "")) throw new InvalidSpecError(`${path}.at`, "must be a non-empty CSS selector");
+  if (at !== undefined) validateSelector(at, `${path}.at`);
   if ((take === undefined) === (fields === undefined)) throw new InvalidSpecError(path, "needs exactly one of take and fields");
   if (take !== undefined) validateTake(take, `${path}.take`);
   if (fields !== undefined) validateFields(fields, `${path}.fields`, depth + 1);
