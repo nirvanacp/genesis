@@ -64,12 +64,27 @@ export async function prepareTrusted(step: Step, context: InputContext, send: Se
 /**
  * The element's center in CSS pixels of the visual viewport at scale 1, the unit the shell
  * multiplies by the display density. Measured when the input runs, after the scroll into view.
+ * An element of a same-origin frame is measured in its frame's viewport, so each containing
+ * frame's content-box offset is added to reach the top page's layout viewport.
  */
 function point(element: Element): { x: number; y: number } {
   const rect = element.getBoundingClientRect();
+  let left = rect.left + rect.width / 2;
+  let top = rect.top + rect.height / 2;
+  for (let frame = frameOf(element.ownerDocument); frame; frame = frameOf(frame.ownerDocument)) {
+    const box = frame.getBoundingClientRect();
+    const style = frame.ownerDocument.defaultView!.getComputedStyle(frame);
+    left += box.left + frame.clientLeft + parseFloat(style.paddingLeft);
+    top += box.top + frame.clientTop + parseFloat(style.paddingTop);
+  }
   const viewport = window.visualViewport;
   const scale = viewport?.scale ?? 1;
-  const x = (rect.left + rect.width / 2 - (viewport?.offsetLeft ?? 0)) * scale;
-  const y = (rect.top + rect.height / 2 - (viewport?.offsetTop ?? 0)) * scale;
+  const x = (left - (viewport?.offsetLeft ?? 0)) * scale;
+  const y = (top - (viewport?.offsetTop ?? 0)) * scale;
   return { x: Math.round(x * 100) / 100, y: Math.round(y * 100) / 100 };
+}
+
+/** The iframe that holds a document; null for the top page's document. */
+function frameOf(doc: Document): Element | null {
+  return doc === document ? null : doc.defaultView?.frameElement ?? null;
 }

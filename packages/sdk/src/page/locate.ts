@@ -34,6 +34,26 @@ const IMPLICIT_ROLES: { [role: string]: string } = {
   cell: "td",
 };
 
+/** The frame documents and open shadow roots searched while `reach` runs; null otherwise. */
+let reached: Set<Document | ShadowRoot> | null = null;
+
+/**
+ * Runs `run` and returns the same-origin frame documents and open shadow roots its locators
+ * searched, so a watch can observe changes there. Nested calls also add to the outer set.
+ */
+export function reach(run: () => void): Set<Document | ShadowRoot> {
+  const outer = reached;
+  const scopes = new Set<Document | ShadowRoot>();
+  reached = scopes;
+  try {
+    run();
+  } finally {
+    reached = outer;
+    for (const scope of scopes) outer?.add(scope);
+  }
+  return scopes;
+}
+
 /**
  * The elements a locator matches now, in document order, after `has`, `strict` and `nth`.
  * Throws `NOT_FOUND` when a scope (`frame`, `within`) is missing, `TARGET_NOT_FOUND` when a
@@ -88,6 +108,7 @@ function frameDocument(frame: Element): Document {
   let doc: Document | null = null;
   try { doc = (frame as HTMLIFrameElement).contentDocument; } catch { doc = null; }
   if (!doc) throw new PageError("NOT_FOUND", "The frame is cross-origin, so its content cannot be reached", { reason: "cross-origin-frame" });
+  reached?.add(doc);
   return doc;
 }
 
@@ -132,7 +153,10 @@ function query(scope: Scope, selector: string, deep: boolean): Element[] {
   const walk = (root: Scope) => {
     for (const element of root.querySelectorAll("*")) {
       if (element.matches(selector)) result.push(element);
-      if (element.shadowRoot) walk(element.shadowRoot);
+      if (element.shadowRoot) {
+        reached?.add(element.shadowRoot);
+        walk(element.shadowRoot);
+      }
     }
   };
   walk(scope);

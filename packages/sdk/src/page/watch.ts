@@ -16,6 +16,7 @@ import { diffRegion, json, keepNear, mergeVirtualized, type PageRecord, type Reg
 import { invalidate, touches, type Change, type Invalidation, type RegionIndex } from "./engine/invalidate.js";
 import { observe, type Observer } from "./engine/observe.js";
 import { errorBody, PageError } from "./errors.js";
+import { reach } from "./locate.js";
 import type { Compiled, CompiledList } from "./read.js";
 
 /** Past this many unprocessed changes a batch re-reads every watch instead of tracking them. */
@@ -56,6 +57,8 @@ interface Watch {
   elements: Map<string, Element>;
   dependsOn: Element[];
   dependsOnMissing: boolean;
+  /** Same-origin frame documents and open shadow roots the reads searched; their changes are observed too. */
+  scopes: Set<Document | ShadowRoot>;
   state: State;
   /** What the client has: the state as last emitted. */
   sent: State | null;
@@ -121,12 +124,12 @@ export function createWatches(host: WatchHost): Watches {
       watch.dependsOn.push(...found);
     }
     watch.items = new WeakMap();
-    guarded(watch, () => {
+    watch.scopes = reach(() => guarded(watch, () => {
       watch.root = compiled.root();
       if (compiled.kind === "list") return readList(watch, compiled, "all");
       if (compiled.kind === "one") return ready(watch.root ? compiled.read(watch.root) : null);
       return ready(compiled.read());
-    });
+    }));
   }
 
   function ready(value: unknown): State {
@@ -208,9 +211,10 @@ export function createWatches(host: WatchHost): Watches {
 
   function apply(watch: Watch, change: Invalidation) {
     const { compiled } = watch;
-    if (change.resolve || change.whole || compiled.kind !== "list") readAll(watch);
-    else if (change.membership) guarded(watch, () => readList(watch, compiled, change.keys));
-    else rereadKeys(watch, compiled, change.keys);
+    if (change.resolve || change.whole || compiled.kind !== "list") return readAll(watch);
+    // Querying the items again can search new shadow roots; the next full read drops the ones left behind.
+    const scopes = reach(() => change.membership ? guarded(watch, () => readList(watch, compiled, change.keys)) : rereadKeys(watch, compiled, change.keys));
+    for (const scope of scopes) watch.scopes.add(scope);
   }
 
   // ---- Emitting ---------------------------------------------------------------------------------
@@ -388,6 +392,7 @@ export function createWatches(host: WatchHost): Watches {
       isolated(watch, () => update(watch));
     }
     measure();
+    observeScopes();
   }
 
   /** Runs one watch's step of a batch; a throw becomes that watch's error, and the other watches go on. */
@@ -411,6 +416,14 @@ export function createWatches(host: WatchHost): Watches {
     observer.measure(elements);
   }
 
+  /** Observes the frame documents and shadow roots the watches' last reads reached, and no others. */
+  function observeScopes() {
+    if (!observer) return;
+    const scopes = new Set<Document | ShadowRoot>();
+    for (const watch of watches.values()) for (const scope of watch.scopes) if (scope.isConnected) scopes.add(scope);
+    observer.scopes(scopes);
+  }
+
   return {
     open(id, spec, when) {
       if (watches.has(id)) throw new PageError("CONFLICT", `A watch ${id} is already open`);
@@ -418,7 +431,7 @@ export function createWatches(host: WatchHost): Watches {
       const compiled = host.compile(spec);
       const watch: Watch = {
         id, compiled, when, seq: 0, idle: false, snapshot: true, root: null, items: new WeakMap(), elements: new Map(),
-        dependsOn: [], dependsOnMissing: false, state: { status: "ready", value: null, records: [] }, sent: null,
+        dependsOn: [], dependsOnMissing: false, scopes: new Set(), state: { status: "ready", value: null, records: [] }, sent: null,
       };
       // Read and serialize before registering: a value that is not JSON data fails the open and leaves no watch behind.
       const reads = !when || matchesGuard(location.href, when);
@@ -428,6 +441,7 @@ export function createWatches(host: WatchHost): Watches {
       }
       watches.set(id, watch);
       startObserving();
+      observeScopes();
       if (!active(watch)) return;
       snapshot(watch);
       measure();
@@ -435,6 +449,7 @@ export function createWatches(host: WatchHost): Watches {
     close(id) {
       watches.delete(id);
       if (watches.size === 0) stopObserving();
+      else observeScopes();
     },
     resync(id) {
       if (id !== undefined && !watches.has(id)) throw new PageError("NOT_FOUND", `No watch ${id} is open`);

@@ -61,7 +61,7 @@ export function compile(spec: ReadSpec, context: CompileContext): Compiled {
       root: () => optional(() => locate(locator, records)),
       read: element => readFields(element, spec.fields),
       dependsOn: [],
-      fields: false,
+      fields: readsForm(spec.fields),
       measure: spec.measure === true,
     };
   }
@@ -78,9 +78,17 @@ export function compile(spec: ReadSpec, context: CompileContext): Compiled {
     virtualized: spec.virtualized === true,
     limit,
     dependsOn: [],
-    fields: false,
+    fields: readsForm(spec.fields) || readsForm({ key: spec.key }),
     measure: false,
   };
+}
+
+/**
+ * Whether a field, at any depth, takes `value` or `checked`: typing and toggling change those
+ * properties without a DOM mutation, so the watch listens to `input` and `change` for them.
+ */
+function readsForm(fields: Fields): boolean {
+  return Object.values(fields).some(field => field.take === "value" || field.take === "checked" || (field.fields !== undefined && readsForm(field.fields)));
 }
 
 function compileReader(reader: Reader, args: unknown, listMax: number): Compiled {
