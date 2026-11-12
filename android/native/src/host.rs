@@ -531,10 +531,14 @@ impl Host {
         match action {
             // "Open Genesis" leaves the applet as it is.
             MenuAction::Home => self.out.push(ShellCommand::OpenManager),
+            // An applet whose window is in the background (separate sign-in turned on from the
+            // manager) starts fresh when its window resumes, so it never runs unsuspended unseen.
             MenuAction::Reload => {
                 self.retire_session(applet_id);
                 self.forget_resume(applet_id);
-                self.activate(applet_id, None, None);
+                if self.contexts.resumed_window.as_deref() == Some(applet_id) {
+                    self.activate(applet_id, None, None);
+                }
             }
             // The foreground pins its active context when `id` is null.
             MenuAction::ViewWebsite => self.foreground_event(applet_id, "user.viewWebsite", json!({ "id": revealed })),
