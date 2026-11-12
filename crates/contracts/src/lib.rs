@@ -201,6 +201,15 @@ pub enum ShellEvent {
     ClearData { applet_id: String },
     /// Keeps the installed release the publisher withdrew; later checks stop flagging that tag.
     KeepVersion { applet_id: String },
+    /// The end of an `Input`: `ok` is false, with `message`, when the shell dispatched nothing,
+    /// because the view is gone, is not a hidden context, or cannot take an event.
+    InputDone {
+        view: ViewRef,
+        token: u64,
+        ok: bool,
+        #[serde(default)]
+        message: Option<String>,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
@@ -352,6 +361,30 @@ pub enum ShellCommand {
     },
     /// The shell deletes the applet's stored service credentials.
     ForgetApplet { applet_id: String },
+    /// Real Android input for a hidden context's WebView, dispatched in order. The shell answers
+    /// with `InputDone` carrying `token`.
+    Input { view: ViewRef, token: u64, events: Vec<InputEvent> },
+}
+
+/// One input event of `Input` or `page.input`. `x` and `y` are CSS pixels of the visual viewport
+/// at scale 1, which the shell multiplies by the display density.
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase")]
+pub enum InputEvent {
+    /// A touch tap: down and up at one point.
+    Tap { x: f64, y: f64 },
+    /// A mouse pointer entering or moving to the point.
+    Hover { x: f64, y: f64 },
+    /// The mouse pointer leaving the view.
+    HoverExit,
+    /// One key by its DOM `key` name, with `Shift`, `Control`, `Alt` or `Meta` held.
+    Key {
+        key: String,
+        #[serde(default)]
+        modifiers: Vec<String>,
+    },
+    /// Text typed into the focused element, as key presses.
+    Text { text: String },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
@@ -790,6 +823,9 @@ pub struct Limits {
     pub history_entries_max: usize,
     /// Open watches per context document. The page agent enforces it, not the host.
     pub watches_max: usize,
+    /// The shell can send real input to a hidden context (`page.input`).
+    #[serde(default)]
+    pub trusted_input: bool,
 }
 
 impl Default for Limits {
@@ -810,6 +846,7 @@ impl Default for Limits {
             back_answer_ms: 300,
             history_entries_max: 16,
             watches_max: 32,
+            trusted_input: true,
         }
     }
 }
@@ -1048,6 +1085,10 @@ pub enum Call {
     /// One message of a watch stream, forwarded to the foreground. The host checks only its size.
     #[serde(rename = "page.emit")]
     PageEmit { stream: String, kind: EmitKind, seq: u64, view: Value, url: String, data: Value },
+    /// Real input for an open call of the asking context document: the host has the shell dispatch
+    /// `events` to that document's view and answers once the shell has.
+    #[serde(rename = "page.input")]
+    PageInput { call_id: String, events: Vec<InputEvent> },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
