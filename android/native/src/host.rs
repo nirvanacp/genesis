@@ -303,7 +303,7 @@ impl Host {
             }
             return self.show_launcher();
         };
-        let script = match self.applets.read_text(applet_id, revision, "adapter.js") {
+        let script = match self.applets.read_text(applet_id, revision, "page.js") {
             Ok(script) => script,
             Err(message) => {
                 self.out.push(ShellCommand::ShowError { message });
@@ -323,7 +323,7 @@ impl Host {
         });
         self.out.push(ShellCommand::CreateView {
             view: ViewRef { applet_id: applet_id.into(), role: Role::Foreground },
-            url: self.applets.foreground_url(applet_id, revision),
+            url: self.applets.foreground_url(applet_id, revision, &manifest.foreground.entry),
             origins: vec![FOREGROUND_ORIGIN.into()],
             start_script: None,
         });
@@ -583,24 +583,16 @@ impl Host {
         });
     }
 
-    /// Retires a context's or the foreground's document: it receives `retired`, and its actions
-    /// and page calls are dropped. Every action of a retired context document was delivered to it
-    /// and some of its steps may have run, so the foreground learns that their outcome is unknown,
-    /// and each of its open calls fails with `CONTEXT_REPLACED` and how far it got. Actions and
-    /// calls a retired foreground document asked for are only forgotten.
+    /// Retires a context's or the foreground's document: it receives `retired`, and its page calls
+    /// are dropped. Each open call of a retired context document fails with `CONTEXT_REPLACED` and
+    /// how far it got. Calls a retired foreground document asked for are only forgotten.
     pub fn retire_document(&mut self, view: &ViewRef) {
         let Some(document_id) = self.documents.retire(view) else { return };
         let message = HostMessage::Event { document_id: document_id.clone(), name: "retired".into(), data: json!({}) };
         self.post(view, &message);
         let Some(session) = self.contexts.session.as_mut() else { return };
-        session.take_actions(|a| a.foreground_document == document_id);
         session.take_calls(|c| c.foreground_document == document_id);
-        let actions = session.take_actions(|a| a.context_document == document_id);
         let calls = session.take_calls(|c| c.context_document == document_id);
-        for (action_id, handle) in actions.into_iter().filter(|(_, a)| !a.navigating) {
-            let result = json!({ "outcome": "unknown", "code": ErrorCode::ContextReplaced, "message": "The page changed before the action finished" });
-            self.action_update(&handle.foreground_document, json!({ "actionId": action_id, "state": "failed", "result": result }));
-        }
         for (_, handle) in calls {
             self.fail_call(&handle, ErrorBody::new(ErrorCode::ContextReplaced, "The page changed before the call finished"));
         }
@@ -618,14 +610,6 @@ impl Host {
     pub fn fail_call(&mut self, handle: &CallHandle, error: ErrorBody) {
         let error = error.with_details(handle.details());
         self.answer_call(handle, Err(error));
-    }
-
-    /// Sends `action.update` to the foreground document that asked, if it is still current.
-    pub fn action_update(&mut self, foreground_document: &str, update: Value) {
-        let Some(view) = self.foreground_view() else { return };
-        if self.documents.is_current(&view, foreground_document) {
-            self.event(&view, "action.update", update);
-        }
     }
 
     // -----------------------------------------------------------------------------------------
@@ -667,13 +651,6 @@ impl Host {
         for op in self.documents.expired_ops(now) {
             let error = ErrorBody::new(ErrorCode::Deadline, "The request took too long");
             self.respond(&op.view, &op.document_id, op.request_id, Err(error));
-        }
-        let Some(session) = self.contexts.session.as_mut() else { return };
-        let expired = session.take_actions(|a| a.deadline_ms <= now);
-        for (action_id, handle) in expired.into_iter().filter(|(_, a)| !a.navigating) {
-            // The document received the action and may have run some of its steps; the outcome is unknown.
-            let result = json!({ "outcome": "unknown", "code": ErrorCode::Deadline, "message": "The page did not finish the action in time" });
-            self.action_update(&handle.foreground_document, json!({ "actionId": action_id, "state": "failed", "result": result }));
         }
         let Some(session) = self.contexts.session.as_mut() else { return };
         let expired = session.take_calls(|c| c.deadline_ms <= now);
