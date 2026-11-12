@@ -370,9 +370,9 @@ impl Host {
         for file in &flow.files {
             let _ = fs::remove_file(file);
         }
-        if !flow.silent() {
-            self.out.push(ShellCommand::ShowProgress { message: None });
-        }
+        // Background checks end this way too: the shell keeps the window that started a flow until
+        // the flow ends, and a refused manual start during a background check named one.
+        self.out.push(ShellCommand::ShowProgress { message: None });
     }
 
     fn fail(&mut self, message: String) {
