@@ -1,7 +1,7 @@
 //! The host core: turns shell events into shell commands.
 use crate::{
     applets::{self, Applets},
-    contexts::{BackSlot, ContextView, Contexts, Resume, Session},
+    contexts::{BackSlot, CallHandle, ContextView, Contexts, Resume, Session},
     documents::Documents,
     flows::{Deletion, Flow, Updates, erasing_message},
     storage_worker,
@@ -583,20 +583,40 @@ impl Host {
     }
 
     /// Retires a context's or the foreground's document: it receives `retired`, and its actions
-    /// are dropped. Every action of a retired context document was delivered to it and some of
-    /// its steps may have run, so the foreground learns that their outcome is unknown. Actions a
-    /// retired foreground document asked for are only forgotten.
+    /// and page calls are dropped. Every action of a retired context document was delivered to it
+    /// and some of its steps may have run, so the foreground learns that their outcome is unknown,
+    /// and each of its open calls fails with `CONTEXT_REPLACED` and how far it got. Actions and
+    /// calls a retired foreground document asked for are only forgotten.
     pub fn retire_document(&mut self, view: &ViewRef) {
         let Some(document_id) = self.documents.retire(view) else { return };
         let message = HostMessage::Event { document_id: document_id.clone(), name: "retired".into(), data: json!({}) };
         self.post(view, &message);
         let Some(session) = self.contexts.session.as_mut() else { return };
         session.take_actions(|a| a.foreground_document == document_id);
+        session.take_calls(|c| c.foreground_document == document_id);
         let actions = session.take_actions(|a| a.context_document == document_id);
+        let calls = session.take_calls(|c| c.context_document == document_id);
         for (action_id, handle) in actions.into_iter().filter(|(_, a)| !a.navigating) {
             let result = json!({ "outcome": "unknown", "code": ErrorCode::ContextReplaced, "message": "The page changed before the action finished" });
             self.action_update(&handle.foreground_document, json!({ "actionId": action_id, "state": "failed", "result": result }));
         }
+        for (_, handle) in calls {
+            self.fail_call(&handle, ErrorBody::new(ErrorCode::ContextReplaced, "The page changed before the call finished"));
+        }
+    }
+
+    /// Answers the foreground request behind a page call, if the document that asked is still current.
+    pub fn answer_call(&mut self, handle: &CallHandle, outcome: Result<Value, ErrorBody>) {
+        let Some(view) = self.foreground_view() else { return };
+        if self.documents.is_current(&view, &handle.foreground_document) {
+            self.respond(&view, &handle.foreground_document, handle.request_id, outcome);
+        }
+    }
+
+    /// Ends a page call the context did not answer, with how far it got as the error's `details`.
+    pub fn fail_call(&mut self, handle: &CallHandle, error: ErrorBody) {
+        let error = error.with_details(handle.details());
+        self.answer_call(handle, Err(error));
     }
 
     /// Sends `action.update` to the foreground document that asked, if it is still current.
@@ -653,6 +673,11 @@ impl Host {
             // The document received the action and may have run some of its steps; the outcome is unknown.
             let result = json!({ "outcome": "unknown", "code": ErrorCode::Deadline, "message": "The page did not finish the action in time" });
             self.action_update(&handle.foreground_document, json!({ "actionId": action_id, "state": "failed", "result": result }));
+        }
+        let Some(session) = self.contexts.session.as_mut() else { return };
+        let expired = session.take_calls(|c| c.deadline_ms <= now);
+        for (_, handle) in expired {
+            self.fail_call(&handle, ErrorBody::new(ErrorCode::Deadline, "The page did not answer the call in time"));
         }
         let Some(session) = self.contexts.session.as_mut() else { return };
         if session.back.as_ref().is_some_and(|slot| slot.deadline_ms <= now) {

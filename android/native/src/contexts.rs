@@ -1,5 +1,5 @@
-//! State of the active applet's contexts: navigation, reveal, actions and the Back slot.
-use serde_json::Value;
+//! State of the active applet's contexts: navigation, reveal, actions, page calls and the Back slot.
+use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap};
 
 pub struct BackSlot {
@@ -33,6 +33,32 @@ pub struct ActionHandle {
     pub deadline_ms: u64,
 }
 
+/// A page operation the foreground asked a context document to run (`page.call`). The foreground's
+/// request stays open until the context answers with `page.result` or the host fails the call.
+pub struct CallHandle {
+    pub foreground_document: String,
+    pub request_id: u64,
+    pub context_id: String,
+    pub context_document: String,
+    /// The context reported `dispatched`: input left the page agent.
+    pub dispatched: bool,
+    /// The context reported `navigating`: the input started a navigation.
+    pub navigating: bool,
+    pub completed_steps: Option<u64>,
+    pub deadline_ms: u64,
+}
+
+impl CallHandle {
+    /// The `details` of an error that ends this call early.
+    pub fn details(&self) -> Value {
+        let mut details = json!({ "dispatched": self.dispatched, "navigating": self.navigating });
+        if let Some(steps) = self.completed_steps {
+            details["completedSteps"] = json!(steps);
+        }
+        details
+    }
+}
+
 pub struct Session {
     pub applet_id: String,
     pub revision: u64,
@@ -46,6 +72,9 @@ pub struct Session {
     pub contexts: BTreeMap<String, ContextView>,
     pub actions: HashMap<u64, ActionHandle>,
     next_action: u64,
+    /// Open page calls by call id.
+    pub calls: HashMap<String, CallHandle>,
+    next_call: u64,
     /// The applet was recreated after being retired in the background.
     pub restored: bool,
     /// The foreground's last `session.save` (`{version, state}`), handed back in `bound` when restored.
@@ -68,6 +97,8 @@ impl Session {
             contexts: BTreeMap::new(),
             actions: HashMap::new(),
             next_action: 0,
+            calls: HashMap::new(),
+            next_call: 0,
             restored,
             saved: None,
             open_context: None,
@@ -79,6 +110,19 @@ impl Session {
         self.next_action += 1;
         self.actions.insert(self.next_action, handle);
         self.next_action
+    }
+
+    pub fn begin_call(&mut self, handle: CallHandle) -> String {
+        self.next_call += 1;
+        let call_id = format!("c{}", self.next_call);
+        self.calls.insert(call_id.clone(), handle);
+        call_id
+    }
+
+    /// Removes and returns the calls matching `predicate`.
+    pub fn take_calls(&mut self, predicate: impl Fn(&CallHandle) -> bool) -> Vec<(String, CallHandle)> {
+        let ids: Vec<String> = self.calls.iter().filter(|(_, c)| predicate(c)).map(|(id, _)| id.clone()).collect();
+        ids.into_iter().filter_map(|id| self.calls.remove(&id).map(|c| (id, c))).collect()
     }
 
     /// Removes and returns the actions matching `predicate`.

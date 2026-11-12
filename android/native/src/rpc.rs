@@ -1,6 +1,6 @@
 //! Document messages: handshake, role authorization and method dispatch.
 use crate::{
-    contexts::ActionHandle,
+    contexts::{ActionHandle, CallHandle},
     documents::PendingOp,
     host::Host,
     services::{self, ServiceCall},
@@ -8,7 +8,7 @@ use crate::{
 use genesis_contracts::*;
 use serde_json::{Map, Value, json};
 
-const FOREGROUND_METHODS: [&str; 18] = [
+const FOREGROUND_METHODS: [&str; 20] = [
     "ui.ready",
     "storage.get",
     "storage.list",
@@ -27,8 +27,10 @@ const FOREGROUND_METHODS: [&str; 18] = [
     "session.save",
     "back.handled",
     "back.leave",
+    "page.call",
+    "page.cancel",
 ];
-const CONTEXT_METHODS: [&str; 2] = ["context.publish", "context.actionResult"];
+const CONTEXT_METHODS: [&str; 5] = ["context.publish", "context.actionResult", "page.result", "page.progress", "page.emit"];
 const LIST_LIMIT: usize = 100;
 
 /// What a call produced: an answer now, or one sent later (or already sent) by the call itself.
@@ -106,6 +108,7 @@ impl Host {
             _ => None,
         };
         let document = self.documents.bind(&view, &url, context_id.is_some(), started);
+        let document_generation = document.generation;
         let bound = HostMessage::Bound {
             protocol: compat::PROTOCOL,
             compat: HostCompat::default(),
@@ -120,6 +123,15 @@ impl Host {
             session: saved,
         };
         self.post(&view, &bound);
+        match &view.role {
+            // The client learns that the context's page agent now accepts calls.
+            Role::Context(id) => {
+                let data = json!({ "id": id, "generation": document_generation, "url": url });
+                self.foreground_event("context.bound", data);
+            }
+            // A new foreground knows none of the old one's watches and calls; the pages drop them.
+            Role::Foreground => self.reset_contexts(),
+        }
         // An opened link started the applet; the foreground shows that context once bound, and
         // its routes decide between the applet's screen and the website.
         if view.role == Role::Foreground
@@ -358,7 +370,152 @@ impl Host {
                 self.action_update(&foreground_document, update);
                 ok()
             }
+            Call::PageCall { context, generation, op, args, timeout_ms } => {
+                self.page_call(document_id, request_id, context, generation, op, args, timeout_ms, now)
+            }
+            Call::PageCancel { context, call_id } => self.page_cancel(document_id, context, call_id),
+            Call::PageResult { call_id, ok, value, error } => self.page_result(document_id, call_id, ok, value, error),
+            Call::PageProgress { call_id, state, completed_steps } => self.page_progress(document_id, call_id, state, completed_steps),
+            Call::PageEmit { stream, kind, seq, view: page_view, url, data } => {
+                self.page_emit(view, stream, kind, seq, page_view, url, data)
+            }
         }
+    }
+
+    /// Sends `reset` to every bound context document of the session.
+    fn reset_contexts(&mut self) {
+        let Some(session) = self.contexts.session.as_ref() else { return };
+        let ids: Vec<String> = session.contexts.keys().cloned().collect();
+        for id in ids {
+            if let Some(view) = self.context_view(&id) {
+                self.event(&view, "reset", json!({}));
+            }
+        }
+    }
+
+    /// Starts a page call: checks the context and its document, then hands the operation to the page.
+    #[allow(clippy::too_many_arguments)]
+    fn page_call(&mut self, document_id: &str, request_id: u64, context: String, generation: u64, op: String, args: Value, timeout_ms: Option<u64>, now: u64) -> Outcome {
+        let Some(target) = self.context_view(&context) else { return unknown_context(&context) };
+        let Some(document) = self.documents.current(&target) else {
+            return error(ErrorCode::NotReady, "The context has no bound page");
+        };
+        if generation < document.generation {
+            return error(ErrorCode::ContextReplaced, "The page the call was for has been replaced");
+        }
+        if generation > document.generation {
+            return error(ErrorCode::NotReady, "The page the call is for has not bound yet");
+        }
+        let context_document = document.id.clone();
+        let Some(session) = self.contexts.session.as_mut() else {
+            return error(ErrorCode::Retired, "The applet is not active");
+        };
+        if session.calls.values().filter(|c| c.context_id == context).count() >= self.limits.pending_requests_max {
+            return error(ErrorCode::QuotaExceeded, "Too many open calls in this context");
+        }
+        let budget_ms = timeout_ms.unwrap_or(self.limits.rpc_deadline_ms).min(self.limits.action_timeout_ms);
+        let handle = CallHandle {
+            foreground_document: document_id.into(),
+            request_id,
+            context_id: context,
+            context_document,
+            dispatched: false,
+            navigating: false,
+            completed_steps: None,
+            deadline_ms: now + budget_ms,
+        };
+        let call_id = session.begin_call(handle);
+        self.event(&target, "call", json!({ "callId": call_id, "op": op, "args": args, "deadlineMs": budget_ms }));
+        Outcome::Later
+    }
+
+    /// Asks the context to cancel the asking document's calls that have not dispatched input.
+    fn page_cancel(&mut self, document_id: &str, context: String, call_id: Option<String>) -> Outcome {
+        let Some(target) = self.context_view(&context) else { return unknown_context(&context) };
+        let Some(session) = self.contexts.session.as_ref() else {
+            return error(ErrorCode::Retired, "The applet is not active");
+        };
+        let mine = |id: &String, c: &CallHandle| {
+            c.foreground_document == document_id && c.context_id == context && call_id.as_ref().is_none_or(|wanted| wanted == id)
+        };
+        let open = session.calls.iter().any(|(id, c)| mine(id, c) && !c.dispatched);
+        if open {
+            let data = match call_id {
+                Some(id) => json!({ "callId": id }),
+                None => json!({}),
+            };
+            self.event(&target, "cancel", data);
+        }
+        ok()
+    }
+
+    /// The context's answer to a call. An answer from a document other than the one called is ignored.
+    fn page_result(&mut self, document_id: &str, call_id: String, succeeded: bool, value: Option<Value>, failure: Option<ErrorBody>) -> Outcome {
+        let Some(session) = self.contexts.session.as_mut() else {
+            return error(ErrorCode::Retired, "The applet is not active");
+        };
+        if session.calls.get(&call_id).is_none_or(|c| c.context_document != document_id) {
+            return ok(); // Expired, failed by the host, or not this document's.
+        }
+        let Some(handle) = session.calls.remove(&call_id) else { return ok() };
+        let outcome = match succeeded {
+            true => Ok(value.unwrap_or(Value::Null)),
+            false => Err(failure.unwrap_or_else(|| ErrorBody::new(ErrorCode::InvalidArgument, "page.result failed without an error"))),
+        };
+        self.answer_call(&handle, outcome);
+        ok()
+    }
+
+    /// Records how far a call got and tells the foreground document that asked.
+    fn page_progress(&mut self, document_id: &str, call_id: String, state: CallState, completed_steps: Option<u64>) -> Outcome {
+        let Some(session) = self.contexts.session.as_mut() else {
+            return error(ErrorCode::Retired, "The applet is not active");
+        };
+        let Some(handle) = session.calls.get_mut(&call_id).filter(|c| c.context_document == document_id) else {
+            return ok();
+        };
+        handle.dispatched = true;
+        if state == CallState::Navigating {
+            handle.navigating = true;
+        }
+        if completed_steps.is_some() {
+            handle.completed_steps = completed_steps;
+        }
+        let foreground_document = handle.foreground_document.clone();
+        let mut data = json!({ "context": handle.context_id, "callId": call_id, "state": state });
+        if let Some(steps) = completed_steps {
+            data["completedSteps"] = json!(steps);
+        }
+        if let Some(view) = self.foreground_view().filter(|v| self.documents.is_current(v, &foreground_document)) {
+            self.event(&view, "page.progress", data);
+        }
+        ok()
+    }
+
+    /// Forwards one watch message to the foreground, after the size rule for its kind.
+    #[allow(clippy::too_many_arguments)]
+    fn page_emit(&mut self, view: &ViewRef, stream: String, kind: EmitKind, seq: u64, page_view: Value, url: String, data: Value) -> Outcome {
+        let Role::Context(id) = &view.role else { unreachable!() };
+        let size = serde_json::to_vec(&data).map(|b| b.len()).unwrap_or(usize::MAX);
+        match kind {
+            EmitKind::Snapshot if size > self.limits.page_max_bytes => {
+                return error(ErrorCode::PageTooLarge, "The snapshot is too large");
+            }
+            EmitKind::Patch => {
+                let records = data.get("upsert").and_then(Value::as_array).map_or(0, Vec::len);
+                if size > self.limits.patch_max_bytes || records > self.limits.patch_records_max {
+                    return error(ErrorCode::PatchTooLarge, "The patch is too large");
+                }
+            }
+            _ => {}
+        }
+        let generation = self.documents.current(view).map_or(0, |d| d.generation);
+        let message = json!({
+            "context": id, "generation": generation, "stream": stream, "kind": kind,
+            "seq": seq, "view": page_view, "url": url, "data": data,
+        });
+        self.foreground_event("page.emit", message);
+        ok()
     }
 
     /// The size check for one publish: bytes per kind, and records upserted by a patch.
