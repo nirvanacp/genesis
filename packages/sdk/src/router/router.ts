@@ -2,6 +2,7 @@ import {
   COMPAT,
   entryKey,
   matchRoute,
+  unreachableRoutes,
   presentation,
   reduce,
   restore,
@@ -50,10 +51,13 @@ export interface RouterOptions {
   screens?: string[];
   account?: {
     /**
-     * Read on every page: truthy while the person is signed in, `false` (or another falsy value)
-     * while signed out, and `null` on a page that shows no evidence either way, such as a page
-     * on another origin. A `one` read without a match and an empty list read are `null` too, so
-     * an account read that can see a signed-out page should return `false` there.
+     * Read on every page: a value that names the account, such as the user name, while the
+     * person is signed in; `false` (or another falsy value) while signed out; and `null` on a
+     * page that shows no evidence either way, such as a page on another origin. A `one` read
+     * without a match and an empty list read are `null` too, so an account read that can see a
+     * signed-out page should return `false` there. Another value than the one known counts as
+     * another account, so the value must not change for other reasons; a plain `true` cannot
+     * tell two accounts apart.
      */
     signedIn: ReadSpec;
     /** The sign-in page for a URL that needs the account, relative to that URL. */
@@ -155,6 +159,9 @@ export function createRouter(genesis: Genesis, options: RouterOptions): Router {
     screens: options.screens ?? [],
   };
   const routes = new Map(options.routes.map(route => [route.id, route]));
+  for (const id of unreachableRoutes(table)) {
+    console.warn(`Genesis router: route ${id} is unreachable, because an earlier route matches every URL it matches. Put narrower routes first.`);
+  }
   const contextIds = manifest.contexts.map(context => context.id);
   const listeners = new Set<() => void>();
   const stops: (() => void)[] = [];
@@ -364,8 +371,8 @@ export function createRouter(genesis: Genesis, options: RouterOptions): Router {
   // ---- Status -----------------------------------------------------------------------------------
 
   const tracked = new Map<string, Tracked>();
-  /** Whether the person is signed in, from the latest account value any context reported. */
-  let signedIn: boolean | undefined;
+  /** The account the latest report named: its value as JSON, `false` when signed out, undefined until known. */
+  let account: string | false | undefined;
 
   /** Keeps the `ready` watch of the context's current route open, and reports the context's status. */
   function update(id: string) {
@@ -387,7 +394,6 @@ export function createRouter(genesis: Genesis, options: RouterOptions): Router {
         entry.stopReady = entry.ready.subscribe(() => update(id));
       }
     }
-    accountChanged(id, entry);
 
     let params: Readonly<Record<string, string>> = match.kind === "route" ? match.params : NO_PARAMS;
     if (entry.status && JSON.stringify(entry.status.params) === JSON.stringify(params)) params = entry.status.params;
@@ -424,14 +430,15 @@ export function createRouter(genesis: Genesis, options: RouterOptions): Router {
   function statusOf(id: string, entry: Tracked, route: RouterRoute | null, params: Readonly<Record<string, string>>): RouteStatus {
     const context = genesis.context(id).state;
     // A page that shows nothing about the account, such as a form, keeps the account already known.
-    const known = options.account ? accountOf(entry) ?? signedIn : undefined;
-    const base = { routeId: route?.id ?? null, params, url: context.url, signedIn: known, stale: false, error: context.error };
+    const known = options.account ? accountOf(entry) ?? account : undefined;
+    const signedIn = known === undefined ? undefined : known !== false;
+    const base = { routeId: route?.id ?? null, params, url: context.url, signedIn, stale: false, error: context.error };
     if (!route || route.website) return { ...base, status: "unsupported" };
-    if (context.error && !context.bound) return { ...base, status: "unsupported" };
+    // A gone document (`error` set) is replaced by the next one, which binds.
     if (!context.bound) return { ...base, status: "loading" };
     if (route.requiresAccount && options.account) {
-      if (known === false) return { ...base, status: "auth" };
-      if (known === undefined) return { ...base, status: "loading" };
+      if (signedIn === false) return { ...base, status: "auth" };
+      if (signedIn === undefined) return { ...base, status: "loading" };
     }
     if (!entry.ready) return { ...base, status: "ready" };
     const value = entry.ready.get();
@@ -441,30 +448,45 @@ export function createRouter(genesis: Genesis, options: RouterOptions): Router {
     return { ...base, status: "loading", stale: value.stale && truthy(value) };
   }
 
-  function accountOf(entry: Tracked): boolean | undefined {
+  /** The account the context's page shows: its value as JSON, `false` when signed out, undefined without evidence. */
+  function accountOf(entry: Tracked): string | false | undefined {
     const value = entry.account?.get();
     if (!value || value.status !== "ready" || value.stale || value.idle) return undefined;
-    return value.value === null && value.order.length === 0 ? undefined : truthy(value);
+    if (value.value === null && value.order.length === 0) return undefined;
+    if (!truthy(value)) return false;
+    return JSON.stringify(value.order.length > 0 ? value.order : value.value);
   }
 
   /**
-   * The account rule: when a context reports another account than the one known, the other
-   * contexts reload, except the one whose website is shown, so no context shows another
-   * account's pages.
+   * The account rule: when a context reports another account than the one known (signed in,
+   * signed out, or another person), no copy of an earlier account's pages may show. Every
+   * context forgets its kept copies. The other contexts also drop their data, settle their
+   * pending inputs as `unknown` and reload, except the one whose website is shown, which keeps
+   * its page and reads it again.
    */
   function accountChanged(id: string, entry: Tracked) {
     const value = accountOf(entry);
-    if (value === undefined || value === signedIn) return;
-    const before = signedIn;
-    signedIn = value;
+    if (value === undefined || value === account) return;
+    const before = account;
+    account = value;
     if (before === undefined) {
       // Contexts whose pages showed nothing about the account were waiting for it.
       for (const other of contextIds) if (other !== id && tracked.has(other)) update(other);
       return;
     }
     const shown = genesis.website.state.shown;
+    // The reporting page already shows the new account; only its older copies go.
+    genesis.context(id).forget({ keepInputs: true });
     for (const other of contextIds) {
-      if (other !== id && other !== shown) void genesis.context(other).reload();
+      if (other === id) continue;
+      const context = genesis.context(other);
+      if (other === shown) {
+        context.forget();
+        context.resync();
+      } else {
+        context.forget({ current: true });
+        void context.reload();
+      }
     }
   }
 
@@ -476,7 +498,11 @@ export function createRouter(genesis: Genesis, options: RouterOptions): Router {
     tracked.set(id, entry);
     if (options.account) {
       entry.account = context.watch(ACCOUNT_WATCH, options.account.signedIn);
-      stops.push(entry.account.subscribe(() => update(id)));
+      // Only the page's account reports run the account rule.
+      stops.push(entry.account.subscribe(() => {
+        accountChanged(id, entry);
+        update(id);
+      }));
     }
     stops.push(context.subscribe(() => update(id)));
     stops.push(context.onNavigated(navigation => {
@@ -489,10 +515,11 @@ export function createRouter(genesis: Genesis, options: RouterOptions): Router {
     update(id);
   }
 
-  stops.push(genesis.website.on("viewWebsite", id => viewWebsite(id)));
+  // View website from the menu names no context while the UI shows: the active one is meant.
+  stops.push(genesis.website.on("viewWebsite", id => viewWebsite(id ?? state.active)));
   // The person opened a link from outside the applet; it already restarted, so no guard asks.
-  stops.push(genesis.website.on("showContext", id => { dispatch({ type: "user.showContext", id }); }));
-  stops.push(genesis.website.on("done", id => done(id)));
+  stops.push(genesis.website.on("showContext", id => { dispatch({ type: "user.showContext", id: id ?? state.active }); }));
+  stops.push(genesis.website.on("done", id => done(id ?? state.active)));
   stops.push(genesis.onBack(() => back(true)));
   show();
 

@@ -41,6 +41,12 @@ export interface WatchStore {
   failed(error: ErrorBody): void;
   /** Forgets the stream, so the next snapshot starts it again; the data stays. */
   restart(): void;
+  /** Places a new store at the context's current history entry, without changing its data. */
+  at(navigation: ContextNavigated): void;
+  /** A UI opens the watch again: the data it kept is shown, marked stale, until the page's snapshot. */
+  reopened(): void;
+  /** Forgets every kept copy; with `current`, also the data shown now. */
+  forget(current: boolean): void;
 }
 
 type Data = Pick<WatchValue, "value" | "order" | "records" | "truncated" | "complete" | "view">;
@@ -185,6 +191,22 @@ export function createWatchStore(options: { historyEntriesMax: number }): WatchS
 
     restart() {
       stream = null;
+    },
+
+    at(navigation) {
+      entry = { index: navigation.index, url: navigation.url };
+    },
+
+    reopened() {
+      stream = null;
+      if (hasData(current)) set({ ...current, status: "loading", error: null, stale: true });
+    },
+
+    forget(all) {
+      history.clear();
+      if (!all) return;
+      url = null;
+      set(emptyWatchValue());
     },
   };
 

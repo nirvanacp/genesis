@@ -24,7 +24,7 @@ import {
   type ViewId,
 } from "@genesis/core";
 import { GenesisError } from "../bridge.js";
-import type { Session } from "./session.js";
+import { AnswerTimeout, type Session } from "./session.js";
 import { createWatchStore, type WatchStore, type WatchValue } from "./watch.js";
 
 /** What the UI knows about one context. */
@@ -140,8 +140,20 @@ export interface ContextHandle {
   /** Cancels the inputs that have not reached the page yet. */
   cancel(): void;
 
-  /** Opens a watch. The same `id` with an equal specification returns the same watch; another specification throws `CONFLICT`. */
+  /**
+   * Opens a watch. The same `id` with an equal specification returns the same watch; another
+   * specification throws `CONFLICT` while the watch is open. A closed watch keeps its copies of
+   * this context's history entries, so opening it again shows them at once, marked stale.
+   */
   watch<V = unknown, R = unknown>(id: string, spec: ReadSpec, options?: WatchOptions): Watch<V, R>;
+  /** Asks every open watch for a fresh snapshot. */
+  resync(): void;
+  /**
+   * Forgets every copy the watches kept of this context's pages, so none shows after the account
+   * changed; with `current`, also the data shown now. Pending inputs settle as `unknown` with
+   * `CONTEXT_REPLACED`, unless `keepInputs` is set.
+   */
+  forget(options?: { current?: boolean; keepInputs?: boolean }): void;
 }
 
 /** The handle and the event entry points the session calls. */
@@ -160,6 +172,8 @@ export interface ContextControl {
 const RETRY = new Set(["CONTEXT_REPLACED", "NOT_READY"]);
 /** The shortest time between two resyncs of one watch. */
 const RESYNC_GAP_MS = 1000;
+/** Closed watches kept per context for their history copies; the oldest closed one goes first. */
+const CLOSED_WATCHES_MAX = 32;
 
 interface InputRecord {
   key: string;
@@ -185,6 +199,8 @@ interface WatchEntry {
   /** The generation the watch is open in, or null. */
   openIn: number | null;
   lastResync: number;
+  /** A resync that came within `RESYNC_GAP_MS` of the last one, sent when the gap is over. */
+  resyncTimer: ReturnType<typeof setTimeout> | null;
 }
 
 export function createContext(id: string, startUrl: string, session: Session): ContextControl {
@@ -199,6 +215,8 @@ export function createContext(id: string, startUrl: string, session: Session): C
   let latest = 0;
   const listeners = new Set<() => void>();
   let lastNavigation: ContextNavigated | null = null;
+  /** Clears `loading` when a started navigation never commits, such as a download or a cancelled load. */
+  let loadingTimer: ReturnType<typeof setTimeout> | null = null;
   const navigationListeners = new Set<(navigation: ContextNavigated) => void>();
 
   function set(patch: Partial<ContextState>) {
@@ -342,7 +360,8 @@ export function createContext(id: string, startUrl: string, session: Session): C
         const message = error instanceof Error ? error.message : "The input failed";
         const details = error instanceof GenesisError ? error.details : undefined;
         if (details?.navigating) judge();
-        else if (details?.dispatched || code === "RETIRED") settle(record, { outcome: "unknown", code, message });
+        // No answer in time from the client's side: the input may have run.
+        else if (details?.dispatched || code === "RETIRED" || error instanceof AnswerTimeout) settle(record, { outcome: "unknown", code, message });
         else settle(record, { outcome: "failed", code, message, ...(details?.reason ? { reason: details.reason } : {}) });
       },
     );
@@ -408,7 +427,16 @@ export function createContext(id: string, startUrl: string, session: Session): C
 
   function resyncWatch(entry: WatchEntry, force = false) {
     const now = Date.now();
-    if (!force && now - entry.lastResync < RESYNC_GAP_MS) return;
+    if (!force && now - entry.lastResync < RESYNC_GAP_MS) {
+      // Too soon after the last one: send it once the gap is over, so the request is not lost.
+      entry.resyncTimer ??= setTimeout(() => {
+        entry.resyncTimer = null;
+        if (entry.refs > 0) resyncWatch(entry);
+      }, entry.lastResync + RESYNC_GAP_MS - now);
+      return;
+    }
+    if (entry.resyncTimer) clearTimeout(entry.resyncTimer);
+    entry.resyncTimer = null;
     entry.lastResync = now;
     if (entry.openIn !== state.generation || !state.bound) return openWatch(entry);
     send("watch.resync", { id: entry.id }).catch(() => {});
@@ -419,14 +447,19 @@ export function createContext(id: string, startUrl: string, session: Session): C
     if (options.when) validateGuards(options.when, "when");
     const specJson = JSON.stringify([spec, options.when ?? null]);
     const existing = watches.get(watchId);
-    if (existing) {
+    if (existing && (existing.refs > 0 || existing.specJson === specJson)) {
       if (existing.specJson !== specJson) throw new GenesisError("CONFLICT", `The watch ${watchId} is open with another specification`);
-      existing.refs++;
+      if (existing.refs++ === 0) {
+        // Opened again: its kept copy shows at once, marked stale, until the page sends a snapshot.
+        existing.store.reopened();
+        openWatch(existing);
+      }
       return existing.handle;
     }
     const store = createWatchStore({ historyEntriesMax: limits.historyEntriesMax });
+    if (lastNavigation) store.at(lastNavigation);
     const entry: WatchEntry = {
-      id: watchId, specJson, spec, when: options.when, store, refs: 1, openIn: null, lastResync: 0,
+      id: watchId, specJson, spec, when: options.when, store, refs: 1, openIn: null, lastResync: 0, resyncTimer: null,
       handle: {
         id: watchId,
         get: store.get,
@@ -434,15 +467,44 @@ export function createContext(id: string, startUrl: string, session: Session): C
         resync: () => resyncWatch(entry, true),
         close() {
           if (entry.refs === 0 || --entry.refs > 0) return;
-          watches.delete(watchId);
           if (entry.openIn !== null && entry.openIn === state.generation && state.bound) send("watch.close", { id: watchId }).catch(() => {});
           entry.openIn = null;
+          if (entry.resyncTimer) clearTimeout(entry.resyncTimer);
+          entry.resyncTimer = null;
+          // The closed watch stays, following navigations, so its history copies outlive the screen.
+          watches.delete(watchId);
+          watches.set(watchId, entry);
+          dropClosedWatches();
         },
       },
     };
     watches.set(watchId, entry);
     openWatch(entry);
     return entry.handle;
+  }
+
+  /** Keeps at most `CLOSED_WATCHES_MAX` closed watches, dropping the ones closed longest ago. */
+  function dropClosedWatches() {
+    const closed = [...watches.values()].filter(entry => entry.refs === 0);
+    for (const entry of closed.slice(0, Math.max(0, closed.length - CLOSED_WATCHES_MAX))) watches.delete(entry.id);
+  }
+
+  function forget(options: { current?: boolean; keepInputs?: boolean } = {}) {
+    for (const entry of watches.values()) entry.store.forget(options.current === true);
+    if (options.keepInputs) return;
+    for (const record of [...inputs.values()]) {
+      record.abort?.();
+      settle(record, { outcome: "unknown", code: "CONTEXT_REPLACED", message: "The account changed before the input finished" });
+    }
+  }
+
+  function resyncAll() {
+    if (state.bound && [...watches.values()].some(entry => entry.refs > 0)) send("watch.resync", {}).catch(() => {});
+  }
+
+  function stopLoading() {
+    if (loadingTimer) clearTimeout(loadingTimer);
+    loadingTimer = null;
   }
 
   // ---- Handle -----------------------------------------------------------------------------------
@@ -526,6 +588,8 @@ export function createContext(id: string, startUrl: string, session: Session): C
     },
 
     watch: watch as ContextHandle["watch"],
+    resync: resyncAll,
+    forget,
   };
 
   return {
@@ -534,6 +598,7 @@ export function createContext(id: string, startUrl: string, session: Session): C
       if (data.generation < latest) return;
       latest = data.generation;
       boundCount++;
+      stopLoading();
       set({ generation: data.generation, url: data.url, bound: true, loading: false, error: null });
       for (const entry of watches.values()) openWatch(entry);
     },
@@ -544,6 +609,7 @@ export function createContext(id: string, startUrl: string, session: Session): C
       latest = data.generation;
       if (newer) for (const entry of watches.values()) entry.openIn = null;
       for (const entry of watches.values()) entry.store.navigated(data);
+      stopLoading();
       set({
         url: data.url, index: data.index, canGoBack: data.canGoBack, canGoForward: data.canGoForward, loading: false,
         ...(newer ? { bound: false, view: null } : {}),
@@ -552,6 +618,8 @@ export function createContext(id: string, startUrl: string, session: Session): C
       for (const listener of [...navigationListeners]) listener(data);
     },
     started() {
+      stopLoading();
+      loadingTimer = setTimeout(() => { loadingTimer = null; set({ loading: false }); }, limits.actionTimeoutMs);
       set({ loading: true });
     },
     gone(data) {
@@ -561,6 +629,7 @@ export function createContext(id: string, startUrl: string, session: Session): C
         entry.openIn = null;
         entry.store.gone(error);
       }
+      stopLoading();
       set({ bound: false, loading: false, error });
     },
     emit(data) {
@@ -570,9 +639,7 @@ export function createContext(id: string, startUrl: string, session: Session): C
       if (!entry || entry.openIn !== data.generation) return;
       if (entry.store.emit(data) === "resync") resyncWatch(entry);
     },
-    resumed() {
-      if (state.bound && watches.size > 0) send("watch.resync", {}).catch(() => {});
-    },
+    resumed: resyncAll,
     retired() {
       for (const record of [...inputs.values()]) {
         record.abort?.();

@@ -15,17 +15,18 @@ export interface Website {
   subscribe(listener: () => void): () => void;
   /**
    * The user's choices in the shell, each with the context id: View website from the menu, Done
-   * on the website bar, and a link from outside opened in a context. Without a listener for an
-   * event the client applies its default: `show` for `viewWebsite` and `showContext`, `hide` for
-   * `done`.
+   * on the website bar, and a link from outside opened in a context. View website gives `null`
+   * when the person chose it while the UI was shown: the UI picks the context it shows. Without a
+   * listener for an event the client applies its default: `show` for `viewWebsite` (the first
+   * context when the id is `null`) and `showContext`, `hide` for `done`.
    */
-  on(event: WebsiteEvent, listener: (contextId: string) => void): () => void;
+  on(event: WebsiteEvent, listener: (contextId: string | null) => void): () => void;
 }
 
 export function createPresentation(session: Session) {
   let state: WebsiteState = { shown: null };
   const listeners = new Set<() => void>();
-  const userListeners: Record<WebsiteEvent, Set<(contextId: string) => void>> = {
+  const userListeners: Record<WebsiteEvent, Set<(contextId: string | null) => void>> = {
     viewWebsite: new Set(), done: new Set(), showContext: new Set(),
   };
   const fail = (method: string) => (error: unknown) => console.error(`Genesis ${method} failed`, error);
@@ -59,9 +60,10 @@ export function createPresentation(session: Session) {
 
   function user(event: WebsiteEvent, fallback: (id: string) => void) {
     session.on(`user.${event}`, (data: { id?: string | null } | null) => {
-      const id = data?.id ?? state.shown ?? first;
+      // Only View website may name no context; the UI then picks the one it shows.
+      const id = data?.id ?? state.shown ?? (event === "viewWebsite" ? null : first);
       const set = userListeners[event];
-      if (set.size === 0) fallback(id);
+      if (set.size === 0) fallback(id ?? first);
       for (const listener of [...set]) listener(id);
     });
   }

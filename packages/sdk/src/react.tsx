@@ -333,8 +333,12 @@ export function useService(serviceId: string) {
     genesis.services.request<T>(serviceId, path, options), [genesis, serviceId]);
 }
 
-/** Restoring stops after this long, or as soon as the person scrolls. */
-const RESTORE_MS = 1500;
+/**
+ * Restoring waits this long for the content to grow tall enough, since a screen's data can
+ * arrive seconds after it shows; it stops earlier once the position is reached or as soon as the
+ * person scrolls.
+ */
+const RESTORE_MS = 10_000;
 const SCROLL_ENTRIES_MAX = 64;
 
 /**

@@ -22,6 +22,13 @@ import { webViewTransport, type Transport } from "./transport.js";
 /** Time the client waits past a request's own deadline before it gives up on the answer itself. */
 const DEADLINE_GRACE_MS = 2000;
 
+/** The client stopped waiting for an answer; the host may still have acted on the request. */
+export class AnswerTimeout extends GenesisError {
+  constructor(method: string) {
+    super("DEADLINE", `${method} did not answer in time`);
+  }
+}
+
 /** The protocol connection of one bound document: requests matched to responses, and events. */
 export interface Session {
   readonly bound: Bound;
@@ -61,7 +68,7 @@ export function openSession(transport: Transport, url: string): Promise<Session>
         return new Promise<T>((resolve, reject) => {
           const timer = setTimeout(() => {
             pending.delete(requestId);
-            reject(new GenesisError("DEADLINE", `${method} did not answer in time`));
+            reject(new AnswerTimeout(method));
           }, timeoutMs);
           pending.set(requestId, { resolve: resolve as (value: unknown) => void, reject, timer });
           transport.send(JSON.stringify({ type: "request", documentId: bound!.documentId, requestId, method, params }));
