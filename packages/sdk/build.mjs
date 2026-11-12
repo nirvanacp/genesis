@@ -38,12 +38,12 @@ if (!handle) throw new Error('Timed out waiting for the SDK artifact builder');
 try {
   const stamp = path.join(cwd, 'dist/.build-stamp');
   const current = await readFile(stamp, 'utf8').catch(() => '');
-  const outputs = ['index.js','types/index.d.ts','page.js','types/page/index.d.ts','legacy/index.js','legacy/adapter.js','legacy/react.js','types/legacy/index.d.ts','types/legacy/adapter.d.ts','types/legacy/react.d.ts'];
+  const outputs = ['index.js','types/index.d.ts','react.js','types/react.d.ts','router.js','types/router/index.d.ts','page.js','types/page/index.d.ts','legacy/index.js','legacy/adapter.js','legacy/react.js','types/legacy/index.d.ts','types/legacy/adapter.d.ts','types/legacy/react.d.ts'];
   const chunks = await readdir(path.join(cwd, 'dist/chunks')).catch(() => []);
   if (current !== signature || chunks.length === 0 || !(await Promise.all(outputs.map(name => stat(path.join(cwd, 'dist', name)).then(s => s.isFile()).catch(() => false)))).every(Boolean)) {
     await rm(path.join(cwd, 'dist'), { recursive: true, force: true });
     await mkdir(path.join(cwd, 'dist'), { recursive: true });
-    await build({ absWorkingDir: cwd, entryPoints: { index: 'src/index.ts', page: 'src/page/index.ts', 'legacy/index': 'src/legacy/index.ts', 'legacy/adapter': 'src/legacy/adapter.ts', 'legacy/react': 'src/legacy/react.tsx' }, outdir: 'dist', bundle: true, splitting: true, chunkNames: 'chunks/[name]-[hash]', format: 'esm', platform: 'browser', target: 'es2022', external: ['react', 'react-dom/client', 'react/jsx-runtime'], jsx: 'automatic' });
+    await build({ absWorkingDir: cwd, entryPoints: { index: 'src/index.ts', react: 'src/react.tsx', router: 'src/router/index.ts', page: 'src/page/index.ts', 'legacy/index': 'src/legacy/index.ts', 'legacy/adapter': 'src/legacy/adapter.ts', 'legacy/react': 'src/legacy/react.tsx' }, outdir: 'dist', bundle: true, splitting: true, chunkNames: 'chunks/[name]-[hash]', format: 'esm', platform: 'browser', target: 'es2022', external: ['react', 'react-dom/client', 'react/jsx-runtime'], jsx: 'automatic' });
     const compiler = path.join(path.dirname(require.resolve('typescript/package.json')), 'lib/tsc.js');
     const result = spawnSync(process.execPath, [compiler, '-p', 'tsconfig.json', '--noEmit', 'false', '--declaration', '--emitDeclarationOnly', '--outDir', 'dist/types', '--rootDir', 'src'], { cwd, stdio: 'inherit' });
     if (result.error || result.status !== 0) throw new Error('SDK declarations failed');

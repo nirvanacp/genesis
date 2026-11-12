@@ -97,6 +97,10 @@ export interface ContextHandle {
   readonly id: string;
   readonly state: ContextState;
   subscribe(listener: () => void): () => void;
+  /** The last committed navigation, or null before the first. */
+  readonly navigation: ContextNavigated | null;
+  /** Runs after each committed navigation, once `state` reflects it. */
+  onNavigated(listener: (navigation: ContextNavigated) => void): () => void;
 
   navigate(url: string, options?: { mode?: NavigateMode }): Promise<void>;
   back(steps?: number): Promise<void>;
@@ -194,6 +198,8 @@ export function createContext(id: string, startUrl: string, session: Session): C
   /** The generation of the latest committed document, bound or not. */
   let latest = 0;
   const listeners = new Set<() => void>();
+  let lastNavigation: ContextNavigated | null = null;
+  const navigationListeners = new Set<(navigation: ContextNavigated) => void>();
 
   function set(patch: Partial<ContextState>) {
     const next = { ...state, ...patch };
@@ -453,6 +459,11 @@ export function createContext(id: string, startUrl: string, session: Session): C
     id,
     get state() { return state; },
     subscribe,
+    get navigation() { return lastNavigation; },
+    onNavigated(listener) {
+      navigationListeners.add(listener);
+      return () => { navigationListeners.delete(listener); };
+    },
     navigate(url, options = {}) {
       const absolute = new URL(url, state.url).href;
       return navigation("context.navigate", { url: absolute, mode: options.mode ?? "push" });
@@ -537,6 +548,8 @@ export function createContext(id: string, startUrl: string, session: Session): C
         url: data.url, index: data.index, canGoBack: data.canGoBack, canGoForward: data.canGoForward, loading: false,
         ...(newer ? { bound: false, view: null } : {}),
       });
+      lastNavigation = data;
+      for (const listener of [...navigationListeners]) listener(data);
     },
     started() {
       set({ loading: true });
