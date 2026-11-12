@@ -1016,15 +1016,21 @@ final class Shell implements Views.Listener, Ui.Actions {
         return value.matches("(?i)https?://\\S+") ? value : null;
     }
 
+    /** Sends an event that starts or continues a repository flow, whose pages come back here. */
+    private void flowEvent(JSONObject event) {
+        GenesisApp.runtime(activity).router.flowStarted(this);
+        owner.send(event);
+    }
+
     @Override public void addFromRepository(String input) {
-        try { owner.send(Bridge.event("addFromRepository").put("input", input)); }
+        try { flowEvent(Bridge.event("addFromRepository").put("input", input)); }
         catch (JSONException ignored) { /* Unreachable for string values. */ }
     }
 
     @Override public void pickFile() { owner.pickAppletFile(); }
 
     @Override public void chooseCandidate(String id, String version) {
-        try { owner.send(Bridge.event("chooseCandidate").put("appletId", id).put("version", version == null ? JSONObject.NULL : version)); }
+        try { flowEvent(Bridge.event("chooseCandidate").put("appletId", id).put("version", version == null ? JSONObject.NULL : version)); }
         catch (JSONException ignored) { /* Unreachable for string values. */ }
     }
 
@@ -1032,13 +1038,17 @@ final class Shell implements Views.Listener, Ui.Actions {
 
     @Override public void reviewDecision(String reviewId, boolean accept, String replace) {
         try {
-            owner.send(Bridge.event("reviewDecision").put("reviewId", reviewId).put("accept", accept)
+            flowEvent(Bridge.event("reviewDecision").put("reviewId", reviewId).put("accept", accept)
                 .put("replace", replace == null ? JSONObject.NULL : replace));
         } catch (JSONException ignored) { /* Unreachable for these values. */ }
     }
 
     @Override public void checkUpdates(String id, boolean manual) {
-        try { owner.send(Bridge.event("checkUpdates").put("appletId", id == null ? JSONObject.NULL : id).put("manual", manual)); }
+        try {
+            JSONObject event = Bridge.event("checkUpdates").put("appletId", id == null ? JSONObject.NULL : id).put("manual", manual);
+            if (manual) flowEvent(event);
+            else owner.send(event);
+        }
         catch (JSONException ignored) { /* Unreachable for these values. */ }
     }
 

@@ -102,6 +102,7 @@ public final class MainActivity extends WindowActivity {
      * host to review them. The copy runs on the fetch thread.
      */
     private void reviewFiles(List<Uri> uris) {
+        runtime.router.flowStarted(shell);
         ContentResolver resolver = getContentResolver();
         File directory = runtime.fetcher.directory();
         runtime.fetcher.background(() -> {

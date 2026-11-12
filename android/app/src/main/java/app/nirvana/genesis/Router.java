@@ -31,6 +31,8 @@ final class Router {
     private final Map<String, Shell> applets = new HashMap<>();
     /** The window that resumed last, while it exists. */
     private Shell recent;
+    /** The window whose Add, update or version page started the repository flow under way. */
+    private Shell flowWindow;
     /** The host's latest launcher entries, which a new window starts with. */
     private JSONArray entries = new JSONArray();
     private long updatesCheckedAt;
@@ -52,9 +54,16 @@ final class Router {
         if (manager == shell) manager = null;
         if (shell.window() != null && applets.get(shell.window()) == shell) applets.remove(shell.window());
         if (recent == shell) recent = null;
+        if (flowWindow == shell) flowWindow = null;
     }
 
     void resumed(Shell shell) { recent = shell; }
+
+    /** The user started an add, update review, version change or file import in this window. */
+    void flowStarted(Shell shell) { flowWindow = shell; }
+
+    /** The flow's pages go back to the window that started it, else to the window in front. */
+    private Shell flowWindow() { return flowWindow != null ? flowWindow : messageWindow(null); }
 
     /** The applet's window, if it exists, applies its "Hide in recent apps" choice now. */
     void privacyChanged(String appletId) {
@@ -124,11 +133,11 @@ final class Router {
                 break;
             }
             // Update review, version change and import pages belong to the window the user started
-            // them from: an applet's own Applet info page, or the manager.
-            case "showProgress": { Shell shell = messageWindow(null); if (shell != null) shell.showProgress(command.isNull("message") ? null : command.optString("message", null)); break; }
-            case "showRepositoryApplets": { Shell shell = messageWindow(null); if (shell != null) shell.showRepositoryApplets(command); break; }
-            case "showImportReview": { Shell shell = messageWindow(null); if (shell != null) shell.showImportReview(command); break; }
-            case "showInstalled": { Shell shell = messageWindow(null); if (shell != null) shell.showInstalled(command); break; }
+            // them from: an applet's own Applet info page, or the manager's Add page.
+            case "showProgress": { Shell shell = flowWindow(); if (shell != null) shell.showProgress(command.isNull("message") ? null : command.optString("message", null)); break; }
+            case "showRepositoryApplets": { Shell shell = flowWindow(); if (shell != null) shell.showRepositoryApplets(command); break; }
+            case "showImportReview": { Shell shell = flowWindow(); if (shell != null) shell.showImportReview(command); break; }
+            case "showInstalled": { Shell shell = flowWindow(); if (shell != null) shell.showInstalled(command); break; }
             case "serviceRequest": runtime.services.request(command); break;
             case "fetch": runtime.fetcher.fetch(command); break;
             case "wake": runtime.wake(command.getLong("delayMs")); break;
