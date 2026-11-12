@@ -59,8 +59,12 @@ final class Router {
 
     void resumed(Shell shell) { recent = shell; }
 
-    /** The user started an add, update review, version change or file import in this window. */
-    void flowStarted(Shell shell) { flowWindow = shell; }
+    /**
+     * The user started or continued an add, update review, version change or file import in this
+     * window. The host runs one flow at a time and refuses another while one runs, so the window
+     * that started the running flow keeps it until the host ends it.
+     */
+    void flowStarted(Shell shell) { if (flowWindow == null) flowWindow = shell; }
 
     /** The flow's pages go back to the window that started it, else to the window in front. */
     private Shell flowWindow() { return flowWindow != null ? flowWindow : messageWindow(null); }
@@ -134,7 +138,14 @@ final class Router {
             }
             // Update review, version change and import pages belong to the window the user started
             // them from: an applet's own Applet info page, or the manager's Add page.
-            case "showProgress": { Shell shell = flowWindow(); if (shell != null) shell.showProgress(command.isNull("message") ? null : command.optString("message", null)); break; }
+            case "showProgress": {
+                Shell shell = flowWindow();
+                String message = command.isNull("message") ? null : command.optString("message", null);
+                if (shell != null) shell.showProgress(message);
+                // Every flow that shows pages ends with an empty progress.
+                if (message == null) flowWindow = null;
+                break;
+            }
             case "showRepositoryApplets": { Shell shell = flowWindow(); if (shell != null) shell.showRepositoryApplets(command); break; }
             case "showImportReview": { Shell shell = flowWindow(); if (shell != null) shell.showImportReview(command); break; }
             case "showInstalled": { Shell shell = flowWindow(); if (shell != null) shell.showInstalled(command); break; }
