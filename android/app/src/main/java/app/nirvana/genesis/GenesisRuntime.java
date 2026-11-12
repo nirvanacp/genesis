@@ -133,6 +133,11 @@ final class GenesisRuntime implements NativeBridge.StorageResults {
         main.postDelayed(tick, TICK_MS);
     }
 
+    void trimMemory(int level) {
+        try { send(Bridge.event("trimMemory").put("level", level)); }
+        catch (JSONException error) { throw new IllegalStateException(error); }
+    }
+
     void wake(long delayMs) {
         main.postDelayed(() -> send(Bridge.event("tick")), Math.max(0, delayMs));
     }

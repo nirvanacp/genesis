@@ -13,4 +13,10 @@ public final class GenesisApp extends Application {
         if (app.runtime == null) app.runtime = new GenesisRuntime(app);
         return app.runtime;
     }
+
+    /** The host retires background applets to their resume targets when Android asks for memory. */
+    @Override public void onTrimMemory(int level) {
+        super.onTrimMemory(level);
+        if (runtime != null) runtime.trimMemory(level);
+    }
 }
