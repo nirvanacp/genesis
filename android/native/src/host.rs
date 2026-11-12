@@ -298,14 +298,14 @@ impl Host {
         Some(self.files_dir.as_ref()?.join("applets").join(applet_id).join("resume.json"))
     }
 
-    fn resume_of(session: &Session) -> Resume {
+    pub(crate) fn resume_of(session: &Session) -> Resume {
         Resume {
             urls: session.contexts.iter().map(|(id, c)| (id.clone(), c.url.clone())).collect::<BTreeMap<_, _>>(),
             saved: session.saved.clone(),
         }
     }
 
-    fn save_resume(&self, applet_id: &str, resume: &Resume) {
+    pub(crate) fn save_resume(&self, applet_id: &str, resume: &Resume) {
         let (Some(path), Ok(bytes)) = (self.resume_path(applet_id), serde_json::to_vec(resume)) else { return };
         let _ = applets::write_atomic(&path, &bytes);
     }

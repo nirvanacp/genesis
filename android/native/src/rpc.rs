@@ -267,8 +267,13 @@ impl Host {
                 if version != compat::SESSION_STATE {
                     return error(ErrorCode::InvalidArgument, format!("session.save version must be {}", compat::SESSION_STATE));
                 }
-                if let Some(session) = self.session_mut(applet_id) {
-                    session.saved = Some(json!({ "version": version, "state": state }));
+                let Some(session) = self.session_mut(applet_id) else { return ok() };
+                session.saved = Some(json!({ "version": version, "state": state }));
+                // A suspended applet flushes its last saves after `suspended`, so its Recents card
+                // restores them if the process ends in the background.
+                if session.suspended_at_ms.is_some() {
+                    let resume = Self::resume_of(session);
+                    self.save_resume(applet_id, &resume);
                 }
                 ok()
             }
