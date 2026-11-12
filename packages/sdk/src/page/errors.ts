@@ -3,8 +3,8 @@ import { GenesisError } from "../bridge.js";
 
 /** An error a page operation answers with: a shared error code, and optionally how far it got. */
 export class PageError extends GenesisError {
-  constructor(code: ErrorCode, message: string, readonly details?: CallDetails) {
-    super(code, message);
+  constructor(code: ErrorCode, message: string, details?: CallDetails) {
+    super(code, message, details);
     this.name = "PageError";
   }
 }
@@ -13,7 +13,7 @@ export class PageError extends GenesisError {
 export function errorBody(error: unknown): ErrorBody {
   const code = error instanceof GenesisError ? error.code : (error as { code?: ErrorCode })?.code ?? "INVALID_ARGUMENT";
   const body: ErrorBody = { code, message: messageOf(error) };
-  if (error instanceof PageError && error.details) body.details = error.details;
+  if (error instanceof GenesisError && error.details) body.details = error.details;
   return body;
 }
 

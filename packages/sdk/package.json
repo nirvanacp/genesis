@@ -4,8 +4,8 @@
   "type": "module",
   "exports": {
     ".": {
-      "types": "./dist/types/legacy/index.d.ts",
-      "default": "./dist/legacy/index.js"
+      "types": "./dist/types/index.d.ts",
+      "default": "./dist/index.js"
     },
     "./adapter": {
       "types": "./dist/types/legacy/adapter.d.ts",
