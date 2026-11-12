@@ -262,7 +262,11 @@ impl Host {
     }
 
     /// A window Android created anew (not from its Recents card) starts its applet fresh.
+    /// The window gets the launcher entries its menu and info pages read, which a process
+    /// started from a Recents card has not sent to any window yet.
     fn window_created(&mut self, applet_id: &str, restored: bool) {
+        let updates_checked_at = self.updates_checked_at();
+        self.out.push(ShellCommand::UpdateApplets { applets: self.launcher_entries(), updates_checked_at });
         if !restored {
             if self.is_session(Some(applet_id)) {
                 self.retire_active();

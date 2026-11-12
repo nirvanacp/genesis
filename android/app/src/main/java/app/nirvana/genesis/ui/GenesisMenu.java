@@ -58,7 +58,7 @@ public final class GenesisMenu {
         header.addView(t.text("GENESIS", Tokens.Type.SECTION, t.onChromeVariant));
         column.addView(header);
 
-        column.addView(row(ui, dialog, listener, R.drawable.ic_home, "Home", null, Action.HOME));
+        column.addView(row(ui, dialog, listener, R.drawable.ic_home, "Open Genesis", null, Action.HOME));
         column.addView(row(ui, dialog, listener, R.drawable.ic_reload, "Reload " + name, null, Action.RELOAD));
         if (websiteRevealed) {
             column.addView(row(ui, dialog, listener, R.drawable.ic_open_in_browser, "Open in browser", null, Action.OPEN_IN_BROWSER));

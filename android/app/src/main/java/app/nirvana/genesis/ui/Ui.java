@@ -44,8 +44,10 @@ public final class Ui {
         void removeApplet(String appletId);
         void clearData(String appletId);
         void keepVersion(String appletId);
-        /** A Genesis menu action the host handles: home, reload or viewWebsite. */
+        /** A Genesis menu action the host handles: home (open Genesis), reload or viewWebsite. */
         void menu(String action);
+        /** "Go to Home" on a notice: an applet window opens the Genesis list. */
+        void goHome();
         void openExternal(String url);
         Connections.Store connections();
         /** The shared cookies and site storage of the websites applets use. */

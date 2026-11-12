@@ -1,6 +1,5 @@
 package app.nirvana.genesis;
 
-import android.app.Activity;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
@@ -51,7 +50,7 @@ final class ServiceClient implements Connections.Store {
         static Outcome failed(String code, String message) { return new Outcome(0, null, code, message); }
     }
 
-    private final Activity activity;
+    private final Context context;
     private final Files files;
     private final Consumer<JSONObject> events;
     private final SharedPreferences settings;
@@ -61,16 +60,16 @@ final class ServiceClient implements Connections.Store {
     /** The last failed request's label per "applet/service", for this session. */
     private final java.util.Map<String, String> failures = new java.util.HashMap<>();
 
-    ServiceClient(Activity activity, Files files, Consumer<JSONObject> events) {
-        this.activity = activity;
+    ServiceClient(Context context, Files files, Consumer<JSONObject> events) {
+        this.context = context;
         this.files = files;
         this.events = events;
-        settings = activity.getSharedPreferences("genesis-services", Context.MODE_PRIVATE);
+        settings = context.getSharedPreferences("genesis-services", Context.MODE_PRIVATE);
     }
 
     private static String setting(String applet, String service) { return applet + "/" + service; }
 
-    private boolean debuggable() { return (activity.getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0; }
+    private boolean debuggable() { return (context.getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0; }
 
     /** Executes a host `serviceRequest` and answers with `serviceResponse` or `serviceFailed`. */
     void request(JSONObject command) {

@@ -282,8 +282,8 @@ pub enum ShellCommand {
         #[serde(default)]
         updates_checked_at: u64,
     },
-    /// The launcher entries changed while an applet is open, such as after an update of the
-    /// open applet. The shell keeps them for its menu and pages and stays on the applet.
+    /// The launcher entries for applet windows, such as when one is created. Each window
+    /// keeps them for its menu and pages and stays on its applet.
     UpdateApplets {
         applets: Vec<LauncherEntry>,
         #[serde(default)]

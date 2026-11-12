@@ -12,6 +12,7 @@
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <application
+        android:name=".GenesisApp"
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -62,6 +63,27 @@
                 <data android:pathPattern=".*\\..*\\.bundle\\.json" />
             </intent-filter>
         </activity>
+        <!-- One window per applet, each in its own document task, so every applet has its own Recents
+             card. Its intent's data names the applet (genesis-applet:<id>); intoExisting reuses that task. -->
+        <activity
+            android:name=".AppletActivity"
+            android:autoRemoveFromRecents="false"
+            android:configChanges="orientation|screenSize|uiMode|fontScale"
+            android:documentLaunchMode="intoExisting"
+            android:exported="false"
+            android:launchMode="standard"
+            android:persistableMode="persistRootOnly"
+            android:theme="@style/Theme.NirvanaGenesis.Applet"
+            android:windowSoftInputMode="adjustResize" />
+        <!-- Shortcuts and drawer entries start this invisible activity, which brings forward the
+             applet's window without the launcher's CLEAR_TASK ending it. -->
+        <activity
+            android:name=".AppletEntryActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.NoDisplay" />
     </application>
 
 </manifest>
