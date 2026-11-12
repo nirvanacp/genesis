@@ -154,6 +154,7 @@ final class Router {
         updatesCheckedAt = checkedAt;
         runtime.shortcuts.update(applets);
         runtime.notifications.sync(applets);
+        runtime.drawer.sync(applets);
         for (Shell shell : applets().values()) shell.updateApplets(applets, checkedAt);
         if (manager == null) return;
         if (showLauncher) manager.showLauncher(applets, checkedAt);
