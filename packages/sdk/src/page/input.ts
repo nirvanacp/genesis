@@ -94,8 +94,9 @@ export async function prepare(step: Step, context: InputContext): Promise<Prepar
       throw new PageError("NOT_ACTIONABLE", "type needs an input, a textarea or an editable element", { reason: "not-editable" });
     }
     case "press": {
+      // A press without a target goes to the focused element, which may be a protected field.
       const element = step.target ? await target(step.target, step) : (document.activeElement ?? document.body);
-      if (step.target) refuseProtected(element);
+      refuseProtected(element);
       return { element, run: async () => press(element, step.key, step.modifiers ?? []) };
     }
     case "select": {

@@ -187,8 +187,8 @@ function serve(connection: Connection, module: PageModule | undefined, view: Vie
       } catch (error) {
         return failed(error);
       }
-      const { until, ...rest } = args;
-      return runSequence({ steps: [{ ...rest, op } as Step], until: until as never, deadline }, sequenceContext(call));
+      const { until, navigates, ...rest } = args;
+      return runSequence({ steps: [{ ...rest, op } as Step], until: until as never, navigates: navigates === true, deadline }, sequenceContext(call));
     }
     if (op === "run") {
       try {
@@ -235,7 +235,7 @@ function serve(connection: Connection, module: PageModule | undefined, view: Vie
       throw new PageError("INVALID_STEPS", `${name}: ${messageOf(error)}`);
     }
     const own = spec.deadlineMs !== undefined ? call.arrived + spec.deadlineMs : deadline;
-    return runSequence({ steps: spec.steps, until: spec.until, navigates: spec.navigates === true, deadline: Math.min(deadline, own) }, sequenceContext(call));
+    return runSequence({ steps: spec.steps, until: spec.until, navigates: spec.navigates === true || args.navigates === true, deadline: Math.min(deadline, own) }, sequenceContext(call));
   }
 
   function inspect(target: Parameters<typeof locateAll>[0]): InspectResult {

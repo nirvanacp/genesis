@@ -349,7 +349,9 @@ export function createContext(id: string, startUrl: string, session: Session): C
       record.judging = true;
       void judgeDestination(record, from, expect).then(result => settle(record, result));
     };
-    send<unknown>(op, args, timeoutMs).then(
+    // The agent must know the input leaves the page, or a click that never navigates answers
+    // `observed` and the destination is never judged against `expect`.
+    send<unknown>(op, leaves ? { ...args, navigates: true } : args, timeoutMs).then(
       value => {
         const result = asResult(op, value);
         if (result.outcome === "unknown" && !result.code && leaves) judge();
