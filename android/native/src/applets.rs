@@ -364,6 +364,7 @@ fn entry(applet_id: &str, installed: &Installed) -> LauncherEntry {
         origins: Vec::new(),
         services: Vec::new(),
         storage: false,
+        notifications: None,
         publisher: None,
         repository: None,
         path: None,
@@ -378,6 +379,7 @@ fn entry(applet_id: &str, installed: &Installed) -> LauncherEntry {
                 origins: manifest.origins.clone(),
                 services: capabilities.services,
                 storage: capabilities.storage,
+                notifications: manifest.capabilities.notifications.clone().map(Box::new),
                 ..blank(&manifest.name, accent, AppletStatus::Current)
             }
         }

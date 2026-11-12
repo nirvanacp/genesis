@@ -8,12 +8,13 @@ use crate::{
 use genesis_contracts::*;
 use serde_json::{Map, Value, json};
 
-const FOREGROUND_METHODS: [&str; 18] = [
+const FOREGROUND_METHODS: [&str; 19] = [
     "ui.ready",
     "storage.get",
     "storage.list",
     "storage.commit",
     "services.request",
+    "notifications.post",
     "context.navigate",
     "context.back",
     "context.forward",
@@ -207,6 +208,18 @@ impl Host {
                     }
                 }
             }
+            Call::NotificationsPost { id, title, body, url } => {
+                if manifest.capabilities.notifications.is_none() {
+                    return error(ErrorCode::ConfigurationRequired, "Notifications are not declared in applet.json");
+                }
+                if let Err(message) = notification_problem(&manifest, &id, &title, body.as_deref(), url.as_deref()) {
+                    return error(ErrorCode::InvalidArgument, message);
+                }
+                // `posted` means accepted: only the shell knows whether the user turned them on.
+                let applet_id = manifest.id.clone();
+                self.out.push(ShellCommand::PostNotification { applet_id, id, title, body, url });
+                Outcome::Now(Ok(json!({ "posted": true })))
+            }
             Call::ContextNavigate { id, url, mode } => {
                 let Some(target) = self.context_view(&id) else { return unknown_context(&id) };
                 // Any http or https origin: an undeclared one presents as website.
@@ -379,6 +392,29 @@ impl Host {
 
 fn unknown_context(id: &str) -> Outcome {
     error(ErrorCode::NotFound, format!("Unknown context {id}"))
+}
+
+/// Why a notification is refused: an `id` of 1 to 64 `[A-Za-z0-9._-]`, a title of 1 to 120
+/// characters, a body of at most 500, and a `url` that is https on one of the applet's origins.
+fn notification_problem(manifest: &Manifest, id: &str, title: &str, body: Option<&str>, url: Option<&str>) -> Result<(), String> {
+    let id_ok = (1..=64).contains(&id.len()) && id.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'));
+    if !id_ok {
+        return Err("notifications.post needs an id of 1 to 64 letters, digits, '.', '_' or '-'".into());
+    }
+    if title.trim().is_empty() || title.chars().count() > 120 {
+        return Err("notifications.post needs a title of 1 to 120 characters".into());
+    }
+    if body.is_some_and(|b| b.chars().count() > 500) {
+        return Err("notifications.post takes a body of at most 500 characters".into());
+    }
+    if let Some(url) = url {
+        let origin = url::Url::parse(url).ok().filter(|u| u.scheme() == "https").map(|u| u.origin().ascii_serialization());
+        let declared = origin.is_some_and(|o| manifest.origins.iter().any(|d| crate::applets::origin_of(d).as_deref() == Some(o.as_str())));
+        if !declared {
+            return Err("notifications.post takes only an https url on one of the applet's origins".into());
+        }
+    }
+    Ok(())
 }
 
 /// An http or https URL with a host and no credentials.

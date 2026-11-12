@@ -409,6 +409,9 @@ pub enum ShellCommand {
     },
     /// The shell deletes the applet's stored service credentials.
     ForgetApplet { applet_id: String },
+    /// The foreground asked to notify the user. The shell posts it only when the user turned
+    /// the applet's notifications on; `url` opens in the applet's window when tapped.
+    PostNotification { applet_id: String, id: String, title: String, body: Option<String>, url: Option<String> },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
@@ -449,6 +452,9 @@ pub struct LauncherEntry {
     pub services: Vec<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub storage: bool,
+    /// The installed manifest's `capabilities.notifications`, which the shell schedules from.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notifications: Option<Box<NotificationDeclaration>>,
     /// The GitHub owner of a GitHub source.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub publisher: Option<String>,
@@ -649,6 +655,21 @@ pub struct Capabilities {
     pub storage: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub services: Option<Vec<ServiceDeclaration>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notifications: Option<NotificationDeclaration>,
+}
+
+/// `capabilities.notifications`: `{}` lets the foreground notify; `service` and `path` add a
+/// background poll of the applet's service every `intervalMinutes` (15 to 1440, default 60).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NotificationDeclaration {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub service: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interval_minutes: Option<u32>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -979,6 +1000,15 @@ pub enum Call {
         method: String,
         #[serde(default)]
         body: Option<Value>,
+    },
+    #[serde(rename = "notifications.post")]
+    NotificationsPost {
+        id: String,
+        title: String,
+        #[serde(default)]
+        body: Option<String>,
+        #[serde(default)]
+        url: Option<String>,
     },
     #[serde(rename = "context.navigate")]
     ContextNavigate {
