@@ -1,7 +1,7 @@
 import { COMPAT } from "./compat.js";
-import type { Context, Route } from "./manifest.js";
+import type { Context } from "./manifest.js";
 import type { NavigateMode, PageStatus, SavedSession, ViewId } from "./protocol.js";
-import { entryKey, matchRoute } from "./routes.js";
+import { entryKey, matchRoute, type Route } from "./routes.js";
 
 /**
  * The presentation coordinator: a pure reducer, run in the foreground runtime, that decides per
@@ -14,14 +14,14 @@ import { entryKey, matchRoute } from "./routes.js";
 export interface Screen {
   /** Unique per entry; scroll memory uses it. */
   key: string;
-  /** A declared screen name from `foreground.screens`. */
+  /** A screen name of the router table. */
   id: string;
   params: Record<string, string>;
 }
 
 export type Presentation = "custom" | "website";
 
-/** A route as the coordinator reads it. A manifest route fits; the two optional fields come from the router helper. */
+/** A route as the coordinator reads it: a router table route with the router helper's two presentation fields. */
 export interface TableRoute extends Route {
   /** The website is shown for this route, whatever the page reports. */
   website?: boolean;
@@ -29,12 +29,13 @@ export interface TableRoute extends Route {
   onError?: "applet";
 }
 
-/** The fields the coordinator reads. A manifest satisfies it. */
+/** The fields the coordinator reads: the manifest's origins and contexts, and the router helper's routes and screens. */
 export interface RouteTable {
   origins: string[];
   routes: TableRoute[];
   contexts: Context[];
-  foreground: { screens: string[] };
+  /** The screen names an overlay may use. */
+  screens: string[];
 }
 
 export interface ContextPage {
@@ -120,10 +121,10 @@ type Result = { state: CoordinatorState; effects: CoordinatorEffect[] };
 
 const LOADING: ContextPage = { status: "loading", pageId: null, routeId: null, view: null, stale: false, expired: false };
 
-export function initialState(manifest: Pick<RouteTable, "contexts">): CoordinatorState {
+export function initialState(table: Pick<RouteTable, "contexts">): CoordinatorState {
   const contexts: Record<string, ContextState> = {};
-  for (const context of manifest.contexts) contexts[context.id] = freshContext(context.id, context.startUrl);
-  return { active: manifest.contexts[0].id, overlay: [], contexts, leaveGuard: null };
+  for (const context of table.contexts) contexts[context.id] = freshContext(context.id, context.startUrl);
+  return { active: table.contexts[0].id, overlay: [], contexts, leaveGuard: null };
 }
 
 function freshContext(id: string, url: string | null): ContextState {
@@ -140,12 +141,12 @@ function freshContext(id: string, url: string | null): ContextState {
  * everything else shows the website. A route with `onError: "applet"` keeps the applet screen
  * on error and past the deadline, so the applet shows its own error state.
  */
-export function presentation(context: ContextState, manifest: Pick<RouteTable, "origins" | "routes">): Presentation {
+export function presentation(context: ContextState, table: Pick<RouteTable, "origins" | "routes">): Presentation {
   if (context.pin !== "none") return "website";
   if (context.url === null) return "custom";
-  const match = matchRoute(manifest, context.url);
+  const match = matchRoute(table, context.url);
   if (match.kind !== "route") return "website";
-  const route = manifest.routes.find(r => r.id === match.routeId);
+  const route = table.routes.find(r => r.id === match.routeId);
   if (route?.website) return "website";
   const keep = route?.onError === "applet";
   const { status, stale, expired } = context.page;
@@ -156,20 +157,20 @@ export function presentation(context: ContextState, manifest: Pick<RouteTable, "
 }
 
 /** The context whose WebView is revealed: the active one, when no overlay covers it and it presents as website. */
-export function revealed(state: CoordinatorState, manifest: Pick<RouteTable, "origins" | "routes">): string | null {
+export function revealed(state: CoordinatorState, table: Pick<RouteTable, "origins" | "routes">): string | null {
   const active = state.contexts[state.active];
-  return state.overlay.length === 0 && active && presentation(active, manifest) === "website" ? state.active : null;
+  return state.overlay.length === 0 && active && presentation(active, table) === "website" ? state.active : null;
 }
 
-export function reduce(state: CoordinatorState, event: CoordinatorEvent, manifest: RouteTable): Result {
-  const result = apply(state, event, manifest);
-  const before = revealed(state, manifest);
-  const after = revealed(result.state, manifest);
+export function reduce(state: CoordinatorState, event: CoordinatorEvent, table: RouteTable): Result {
+  const result = apply(state, event, table);
+  const before = revealed(state, table);
+  const after = revealed(result.state, table);
   if (after !== before) result.effects.push(after === null ? { type: "cover" } : { type: "reveal", id: after });
   return result;
 }
 
-function apply(state: CoordinatorState, event: CoordinatorEvent, manifest: RouteTable): Result {
+function apply(state: CoordinatorState, event: CoordinatorEvent, table: RouteTable): Result {
   const effects: CoordinatorEffect[] = [];
   const unchanged = { state, effects };
   switch (event.type) {
@@ -200,7 +201,7 @@ function apply(state: CoordinatorState, event: CoordinatorEvent, manifest: Route
         // A repeated auth page while the sign-in it opened is under way sends nobody anywhere again.
         if (target !== null && entryKey(target) !== entryKey(event.view.url) && signIn?.url !== target) {
           effects.push({ type: "context.navigate", id: context.id, url: target, mode: "push" });
-          const start = manifest.contexts.find(c => c.id === context.id)?.startUrl;
+          const start = table.contexts.find(c => c.id === context.id)?.startUrl;
           signIn = { index: moved.index, start: start !== undefined && entryKey(start) === entryKey(event.view.url), url: target };
         }
       } else if (event.status === "ready" && event.account !== null && pin === "auth") {
@@ -252,14 +253,14 @@ function apply(state: CoordinatorState, event: CoordinatorEvent, manifest: Route
     case "user.done": {
       const context = state.contexts[event.id];
       if (!context) return unchanged;
-      if (context.pin === "auth" && context.signIn) return declineSignIn(state, context, manifest) ?? unchanged;
+      if (context.pin === "auth" && context.signIn) return declineSignIn(state, context, table) ?? unchanged;
       const unpinned = context.pin === "none" ? context : { ...context, pin: "none" as const };
       const next = unpinned === context ? state : withContext(state, unpinned);
       // A page that still shows as website (one no route maps, such as a reply form) leaves for the page before it.
-      if (presentation(unpinned, manifest) !== "website") return { state: next, effects };
+      if (presentation(unpinned, table) !== "website") return { state: next, effects };
       if (unpinned.canGoBack) effects.push({ type: "context.back", id: context.id });
       else {
-        const start = manifest.contexts.find(c => c.id === context.id)?.startUrl;
+        const start = table.contexts.find(c => c.id === context.id)?.startUrl;
         if (start) effects.push({ type: "context.navigate", id: context.id, url: start, mode: "push" });
       }
       return { state: next, effects };
@@ -287,7 +288,7 @@ function apply(state: CoordinatorState, event: CoordinatorEvent, manifest: Route
         return { state: { ...state, active: event.id, overlay: [], leaveGuard: null }, effects };
       }
       // Reselecting the shown tab returns it to its start page; on the start page the screen scrolls to top.
-      const start = manifest.contexts.find(c => c.id === event.id)?.startUrl;
+      const start = table.contexts.find(c => c.id === event.id)?.startUrl;
       if (start && (context.url === null || entryKey(context.url) !== entryKey(start))) {
         effects.push({ type: "context.navigate", id: event.id, url: start, mode: "push" });
       }
@@ -298,7 +299,7 @@ function apply(state: CoordinatorState, event: CoordinatorEvent, manifest: Route
       if (state.leaveGuard) return { state, effects: [{ type: "confirmLeave", message: state.leaveGuard.message }] };
       if (state.overlay.length > 0) return { state: { ...state, overlay: state.overlay.slice(0, -1) }, effects };
       const active = state.contexts[state.active];
-      if (active?.pin === "auth" && active.signIn) return declineSignIn(state, active, manifest) ?? { state, effects: [{ type: "leave" }] };
+      if (active?.pin === "auth" && active.signIn) return declineSignIn(state, active, table) ?? { state, effects: [{ type: "leave" }] };
       if (state.contexts[state.active]?.canGoBack) return { state, effects: [{ type: "context.back", id: state.active }] };
       return { state, effects: [{ type: "leave" }] };
     }
@@ -320,9 +321,9 @@ function apply(state: CoordinatorState, event: CoordinatorEvent, manifest: Route
  * When that page is the context's start page, or nothing comes before it, the primary context is
  * selected instead. Returns null when the context is the primary one and has nowhere to go.
  */
-function declineSignIn(state: CoordinatorState, context: ContextState, manifest: RouteTable): Result | null {
+function declineSignIn(state: CoordinatorState, context: ContextState, table: RouteTable): Result | null {
   const { index, start } = context.signIn!;
-  const primary = manifest.contexts[0].id;
+  const primary = table.contexts[0].id;
   const next = withContext(state, { ...context, pin: "none", signIn: null });
   if (!start && index > 0) {
     const steps = Math.max(1, context.index - index + 1);
@@ -376,15 +377,15 @@ export function serialize(state: CoordinatorState): SavedSession {
 /**
  * Rebuilds the coordinator from a saved session. Pages, pins and deadlines start over, because
  * the documents report again; leaving the applet clears the pins. Anything that does not fit
- * the manifest, or a session of another version, falls back to `initialState`.
+ * the router table, or a session of another version, falls back to `initialState`.
  */
-export function restore(saved: SavedSession | null, manifest: Pick<RouteTable, "contexts" | "foreground">): CoordinatorState {
-  const initial = initialState(manifest);
+export function restore(saved: SavedSession | null, table: Pick<RouteTable, "contexts" | "screens">): CoordinatorState {
+  const initial = initialState(table);
   if (!saved || saved.version !== COMPAT.sessionState || !isObject(saved.state)) return initial;
   const { active, overlay, contexts } = saved.state;
   const state = { ...initial, contexts: { ...initial.contexts } };
   if (typeof active === "string" && state.contexts[active]) state.active = active;
-  if (Array.isArray(overlay)) state.overlay = overlay.filter((screen): screen is Screen => isScreen(screen, manifest.foreground.screens));
+  if (Array.isArray(overlay)) state.overlay = overlay.filter((screen): screen is Screen => isScreen(screen, table.screens));
   if (isObject(contexts)) {
     for (const id of Object.keys(state.contexts)) {
       const url = isObject(contexts[id]) ? contexts[id].url : undefined;

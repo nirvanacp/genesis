@@ -118,22 +118,20 @@ export type ForegroundMethod =
   | "storage.get" | "storage.list" | "storage.commit"
   | "services.request"
   | "context.navigate" | "context.back" | "context.forward" | "context.reload"
-  | "context.reveal" | "context.cover" | "context.resync"
-  | "context.act" | "context.cancel" | "context.ping"
+  | "context.reveal" | "context.cover"
   | "session.save"
   | "back.handled" | "back.leave"
   | "page.call" | "page.cancel";
-export type ContextMethod = "context.publish" | "context.actionResult" | "page.result" | "page.progress" | "page.emit" | "page.input";
+export type ContextMethod = "page.result" | "page.progress" | "page.emit" | "page.input";
 export type Method = ForegroundMethod | ContextMethod;
 
 export type ForegroundEventName =
   | "resumed" | "suspended" | "storage.changed"
-  | "page" | "patch" | "action.update"
   | "context.navigated" | "context.started" | "context.gone"
   | "user.viewWebsite" | "user.showContext" | "user.done"
   | "back" | "retired"
   | "context.bound" | "page.emit" | "page.progress";
-export type ContextEventName = "resync" | "act" | "cancel" | "ping" | "retired" | "call" | "reset";
+export type ContextEventName = "retired" | "call" | "cancel" | "reset";
 export type EventName = ForegroundEventName | ContextEventName;
 
 /** `push` adds a history entry; `replace` replaces the current one. */
@@ -165,134 +163,8 @@ export interface ViewId {
 }
 
 export type PageStatus = "loading" | "ready" | "error" | "auth" | "unsupported";
-export type RegionStatus = "ready" | "error";
 
-/** One item a region read: JSON only, no nodes, callbacks or HTML. */
-export interface PageRecord {
-  key: string;
-  /** Identity across views and contexts; defaults to `key`. */
-  entity?: string;
-  /** Defaults to the region name. */
-  entityType?: string;
-  data: unknown;
-}
-
-export type Region =
-  | {
-    kind: "collection";
-    status: RegionStatus;
-    error?: { code: ErrorCode; message: string };
-    /** In page order. */
-    items: PageRecord[];
-    /** False while the page offers more items. */
-    complete: boolean;
-    /** Keys repeated in one read, so keys are positions and record actions are unavailable. */
-    ephemeral?: boolean;
-  }
-  | {
-    kind: "single";
-    status: RegionStatus;
-    error?: { code: ErrorCode; message: string };
-    record: PageRecord | null;
-  };
-
-/** A full description of a view, published on every view change, readiness change and resync. */
-export interface Page {
-  view: ViewId;
-  /** Increments with every full page; patches name the epoch they extend. */
-  epoch: number;
-  pageId: string | null;
-  routeId: string | null;
-  params: Record<string, string>;
-  status: PageStatus;
-  error?: { code: ErrorCode; message: string };
-  /** The signed-in account, null when signed out, absent when the page does not show it. */
-  account?: string | null;
-  /** Where the coordinator sends an `auth` page, resolved by the adapter for this URL. */
-  signInUrl?: string | null;
-  regions: Record<string, Region>;
-}
-
-export type RegionPatch =
-  | {
-    kind: "collection";
-    upsert?: PageRecord[];
-    remove?: string[];
-    /** The full key order, present when membership or order changed. */
-    order?: string[];
-    complete?: boolean;
-    status?: RegionStatus;
-    error?: { code: ErrorCode; message: string } | null;
-  }
-  | {
-    kind: "single";
-    record: PageRecord | null;
-    status?: RegionStatus;
-    error?: { code: ErrorCode; message: string } | null;
-  }
-  /** Sent instead of a delta that would exceed `patchMaxBytes`. */
-  | { kind: "replace"; region: Region };
-
-/**
- * The changes of one DOM batch, applied atomically. It applies only on the state it was made
- * from: the same view and epoch, and `base` equal to the last applied `seq` (0 after a page).
- */
-export interface Patch {
-  view: ViewId;
-  epoch: number;
-  base: number;
-  seq: number;
-  account?: string | null;
-  regions: Record<string, RegionPatch>;
-}
-
-/** One driver step. Selectors are CSS selectors; `waitForUrl` is a regular expression tested against `location.href`. */
-export type Step =
-  | { click: string }
-  | { fill: string; value: string }
-  | { submit: string }
-  | { navigate: string }
-  | { waitFor: string; timeoutMs: number }
-  | { waitForUrl: string; timeoutMs: number }
-  | { scroll: { target: string | "window"; to: "end" | number } };
-
-/**
- * What an action function returns for the current page. `D` is the document type, which this
- * package does not know.
- */
-/** Destination pages of a navigating action: `page` counts as success, `notPage` as rejection. */
-export interface ActionExpect {
-  page?: string | string[];
-  notPage?: string | string[];
-}
-
-export type ActionSpec<D = unknown> =
-  | { satisfied: true }
-  | {
-    steps: Step[];
-    /** Evidence that the action took effect in place. */
-    until?: string | ((doc: D) => boolean);
-    /** Implied by a final `navigate` or `submit` step. */
-    navigates?: boolean;
-    /** For navigating actions: the destination pages that count as success or rejection. */
-    expect?: ActionExpect;
-    deadlineMs?: number;
-  };
-
-/** Data of the context event `act`: the action to run on a record, or on the page when `region` is null. */
-export interface ActionRequest {
-  actionId: number;
-  region: string | null;
-  key: string | null;
-  name: string;
-  args: unknown;
-  /**
-   * The view `n` whose records the foreground acted on. The document refuses the action with
-   * `CONTEXT_REPLACED` when its view is another one, when it arrives or when it would run.
-   */
-  view?: number;
-}
-
+/** How an input operation ended. */
 export type ActionOutcome = "observed" | "failed" | "cancelled" | "unknown";
 
 export interface ActionResult {
@@ -307,17 +179,6 @@ export interface ActionResult {
   noop?: boolean;
   /** A load-more action found the end of the collection. */
   exhausted?: boolean;
-}
-
-/** Params of `context.actionResult`, forwarded to the foreground as `action.update`. */
-export interface ActionUpdate {
-  actionId: number;
-  state: "dispatched" | "observed" | "failed" | "cancelled";
-  /** On `dispatched`: the action is leaving the document, so the foreground observes the outcome. */
-  navigating?: boolean;
-  /** On a navigating `dispatched`: the action's `expect`, which the foreground judges the destination by. */
-  expect?: ActionExpect;
-  result?: ActionResult;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -454,7 +315,7 @@ export interface InputOptions {
  * One step of `run`: an input operation written as `{ op, ...args }`, a wait, or a navigation.
  * `navigate` and `submit` may only be the last step.
  */
-export type PageStep =
+export type Step =
   | ({ op: "click"; target: Locator; gesture?: "click" | "tap" | "mouse"; count?: 1 | 2 } & InputOptions)
   | ({ op: "longPress"; target: Locator; ms?: number } & InputOptions)
   | ({ op: "hover"; target: Locator } & InputOptions)

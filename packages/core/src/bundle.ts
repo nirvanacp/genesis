@@ -16,9 +16,22 @@ export interface BundleCompat {
   builtAt: string;
 }
 
+/** Files every bundle has besides `bundle.json`: the UI document and the page script. */
+export const REQUIRED_BUNDLE_FILES = ["index.html", "page.js"] as const;
+
 /**
- * `bundle.json` in the revision directory, beside `index.html`, `foreground.js`,
- * `foreground.css`, `adapter.js` and `assets/**`. `files` hashes every other file.
+ * True for a path the host accepts inside a bundle: relative, at most 256 characters, `/`
+ * between segments, and segments of `A-Z a-z 0-9 . _ -` that are not empty and do not start
+ * with a dot (so no `..`).
+ */
+export function isBundlePath(path: string): boolean {
+  return path.length > 0 && path.length <= 256 && path !== "bundle.json"
+    && path.split("/").every(segment => /^[A-Za-z0-9_-][A-Za-z0-9._-]*$/.test(segment));
+}
+
+/**
+ * `bundle.json` in the revision directory, beside `index.html`, `page.js` and the other files
+ * of the built UI at their relative paths. `files` hashes every other file.
  */
 export interface Bundle {
   format: typeof BUNDLE_FORMAT;

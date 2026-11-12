@@ -127,7 +127,7 @@ export function validateGuards(value: unknown, path = "when"): asserts value is 
 export function matchesGuard(url: string, guards: UrlGuard[]): boolean {
   let origin: string;
   try { origin = new URL(url).origin; } catch { return false; }
-  const routes = guards.map((guard, i) => ({ id: String(i), pattern: guard.pattern, query: guard.query, page: "", screen: "" }));
+  const routes = guards.map((guard, i) => ({ id: String(i), pattern: guard.pattern, query: guard.query, screen: "" }));
   return matchRoute({ origins: [origin], routes }, url).kind === "route";
 }
 
