@@ -502,7 +502,11 @@ impl Host {
                 return error(ErrorCode::PageTooLarge, "The snapshot is too large");
             }
             EmitKind::Patch => {
-                let records = data.get("upsert").and_then(Value::as_array).map_or(0, Vec::len);
+                let records = match data.get("upsert") {
+                    Some(Value::Object(upsert)) => upsert.len(),
+                    Some(Value::Array(upsert)) => upsert.len(),
+                    _ => 0,
+                };
                 if size > self.limits.patch_max_bytes || records > self.limits.patch_records_max {
                     return error(ErrorCode::PatchTooLarge, "The patch is too large");
                 }
