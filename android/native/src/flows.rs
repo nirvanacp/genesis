@@ -821,7 +821,7 @@ impl Host {
         let version = source.version().map(String::from);
         let (_, previous) = self.applets.install(bundle, files, source)?;
         self.clear_update(&id);
-        let was_active = self.contexts.session.as_ref().is_some_and(|s| s.applet_id == id);
+        let was_active = self.is_live(&id);
         self.after_install(&id, previous, was_active);
         if confirm {
             self.show_installed(&bundle.manifest, version, updated);
@@ -847,9 +847,7 @@ impl Host {
     /// Retires the applet and forgets where it was.
     fn retire_active_applet(&mut self, applet_id: &str) {
         self.forget_resume(applet_id);
-        if self.contexts.session.as_ref().is_some_and(|s| s.applet_id == applet_id) {
-            self.retire_active();
-        }
+        self.retire_session(applet_id);
     }
 
     /// Deletes the applet's stored documents and namespace. The install or removal waits for

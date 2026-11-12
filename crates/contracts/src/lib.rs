@@ -199,6 +199,9 @@ pub enum ShellEvent {
     /// A storage worker result, relayed by the shell to the UI thread.
     StorageCompleted { payload: String },
     Tick,
+    /// Android asked the process to free memory (`ComponentCallbacks2` level). At 40
+    /// (`TRIM_MEMORY_BACKGROUND`) or above, the host retires every applet whose window is not resumed.
+    TrimMemory { level: u32 },
     /// The answer to `Fetch`. `status` is 0 when no response arrived and `error` says why. `body` is
     /// the UTF-8 body for an in-memory fetch, `path` the written file for `to_file`. `rate_remaining`
     /// and `rate_reset` (epoch seconds) are GitHub's rate limit headers.

@@ -1,4 +1,4 @@
-//! State of the active applet's contexts: navigation, reveal, actions and the Back slot.
+//! State of the live applets' contexts: navigation, reveal, actions and the Back slot.
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
@@ -53,6 +53,8 @@ pub struct Session {
     pub saved: Option<Value>,
     /// The context an opened link loaded in; the foreground shows it once it binds.
     pub open_context: Option<String>,
+    /// When the applet's window suspended; None while it is resumed.
+    pub suspended_at_ms: Option<u64>,
 }
 
 impl Session {
@@ -70,6 +72,7 @@ impl Session {
             restored,
             saved: None,
             open_context: None,
+            suspended_at_ms: None,
         }
     }
 
@@ -100,8 +103,8 @@ pub struct Resume {
 /// Process-level state.
 #[derive(Default)]
 pub struct Contexts {
-    pub session: Option<Session>,
-    pub suspended_at_ms: Option<u64>,
+    /// The live applets, by applet id: at most `LIVE_APPLETS_MAX`.
+    pub sessions: BTreeMap<String, Session>,
     /// Resume targets of retired applets, by applet id.
     pub resumes: HashMap<String, Resume>,
     /// The `(context, url)` a starting applet window opens with, by applet id; None opens the

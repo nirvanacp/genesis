@@ -48,7 +48,7 @@ fn ok() -> Outcome {
 
 impl Host {
     pub fn document_message(&mut self, view: ViewRef, payload: &str, now: u64) {
-        if self.contexts.session.as_ref().is_none_or(|s| s.applet_id != view.applet_id) {
+        if !self.is_live(&view.applet_id) {
             return;
         }
         let Ok(message) = serde_json::from_str::<DocumentMessage>(payload) else { return };
@@ -74,7 +74,7 @@ impl Host {
     /// Binds a new document. A context document takes the context's next generation and
     /// replaces the context's previous document.
     fn hello(&mut self, view: ViewRef, protocol: u32, url: String) {
-        let Some((revision, manifest)) = self.active_manifest().map(|(r, m)| (r, m.clone())) else { return };
+        let Some((revision, manifest)) = self.active_manifest(&view.applet_id).map(|(r, m)| (r, m.clone())) else { return };
         let context_id = match &view.role {
             Role::Context(id) if manifest.contexts.iter().any(|c| &c.id == id) => Some(id.clone()),
             Role::Context(_) => return,
@@ -85,20 +85,20 @@ impl Host {
             self.post(&view, &HostMessage::Refused { error: ErrorBody::new(ErrorCode::ProtocolMismatch, &message) });
             if let Some(id) = context_id {
                 // Reported gone now, so the unbound-document deadline must not report it again.
-                if let Some(context) = self.context_mut(&id) {
+                if let Some(context) = self.context_mut(&view.applet_id, &id) {
                     context.navigating_since = None;
                 }
-                self.foreground_event("context.gone", json!({ "id": id, "code": ErrorCode::ProtocolMismatch, "message": message }));
+                self.foreground_event(&view.applet_id, "context.gone", json!({ "id": id, "code": ErrorCode::ProtocolMismatch, "message": message }));
             }
             return;
         }
         self.retire_document(&view);
         // When the document's DocumentStarted came first, it is waiting for this hello.
         let started = match &context_id {
-            Some(id) => self.context_mut(id).and_then(|c| c.navigating_since.take()).is_some(),
+            Some(id) => self.context_mut(&view.applet_id, id).and_then(|c| c.navigating_since.take()).is_some(),
             None => true,
         };
-        let Some(session) = self.contexts.session.as_mut() else { return };
+        let Some(session) = self.contexts.sessions.get_mut(&view.applet_id) else { return };
         let saved = match (&context_id, session.restored) {
             (None, true) => {
                 session.restored = false;
@@ -124,9 +124,9 @@ impl Host {
         // An opened link started the applet; the foreground shows that context once bound, and
         // its routes decide between the applet's screen and the website.
         if view.role == Role::Foreground
-            && let Some(id) = self.contexts.session.as_mut().and_then(|s| s.open_context.take())
+            && let Some(id) = self.session_mut(&view.applet_id).and_then(|s| s.open_context.take())
         {
-            self.foreground_event("user.showContext", json!({ "id": id }));
+            self.foreground_event(&view.applet_id, "user.showContext", json!({ "id": id }));
         }
     }
 
@@ -144,11 +144,12 @@ impl Host {
             Ok(call) => call,
             Err(e) => return error(ErrorCode::InvalidArgument, format!("Invalid {method} parameters: {e}")),
         };
-        let Some(manifest) = self.active_manifest().map(|(_, m)| m.clone()) else {
+        let applet_id = view.applet_id.as_str();
+        let Some(manifest) = self.active_manifest(applet_id).map(|(_, m)| m.clone()) else {
             return error(ErrorCode::Retired, "The applet is not active");
         };
         let pending = |host: &Host| {
-            let actions = host.contexts.session.as_ref().map_or(0, |s| {
+            let actions = host.session(applet_id).map_or(0, |s| {
                 s.actions.values().filter(|a| a.foreground_document == document_id).count()
             });
             host.documents.pending_count(document_id) + actions >= host.limits.pending_requests_max
@@ -164,10 +165,9 @@ impl Host {
         };
         match call {
             Call::UiReady {} => {
-                if let Some(session) = self.contexts.session.as_mut().filter(|s| !s.foreground_shown) {
+                if let Some(session) = self.session_mut(applet_id).filter(|s| !s.foreground_shown) {
                     session.foreground_shown = true;
-                    let applet_id = Some(session.applet_id.clone());
-                    self.out.push(ShellCommand::RevealForeground { applet_id });
+                    self.out.push(ShellCommand::RevealForeground { applet_id: Some(applet_id.into()) });
                 }
                 ok()
             }
@@ -221,7 +221,7 @@ impl Host {
                 Outcome::Now(Ok(json!({ "posted": true })))
             }
             Call::ContextNavigate { id, url, mode } => {
-                let Some(target) = self.context_view(&id) else { return unknown_context(&id) };
+                let Some(target) = self.context_view(applet_id, &id) else { return unknown_context(&id) };
                 // Any http or https origin: an undeclared one presents as website.
                 let Some(url) = web_url(&url) else {
                     return error(ErrorCode::InvalidArgument, "context.navigate needs an http or https URL");
@@ -230,32 +230,32 @@ impl Host {
                 ok()
             }
             Call::ContextBack { id, steps } => {
-                let Some(target) = self.context_view(&id) else { return unknown_context(&id) };
+                let Some(target) = self.context_view(applet_id, &id) else { return unknown_context(&id) };
                 let steps = steps.unwrap_or(1).clamp(1, i32::MAX as u32) as i32;
                 self.out.push(ShellCommand::HistoryGo { view: target, delta: -steps });
                 ok()
             }
             Call::ContextForward { id } => {
-                let Some(target) = self.context_view(&id) else { return unknown_context(&id) };
+                let Some(target) = self.context_view(applet_id, &id) else { return unknown_context(&id) };
                 self.out.push(ShellCommand::HistoryGo { view: target, delta: 1 });
                 ok()
             }
             Call::ContextReload { id } => {
-                let Some(target) = self.context_view(&id) else { return unknown_context(&id) };
+                let Some(target) = self.context_view(applet_id, &id) else { return unknown_context(&id) };
                 self.out.push(ShellCommand::Reload { view: target });
                 ok()
             }
             Call::ContextReveal { id } => {
-                let Some(target) = self.context_view(&id) else { return unknown_context(&id) };
+                let Some(target) = self.context_view(applet_id, &id) else { return unknown_context(&id) };
                 self.reveal(&id, target, &manifest.name);
                 ok()
             }
             Call::ContextCover {} => {
-                self.cover();
+                self.cover(applet_id);
                 ok()
             }
             Call::ContextResync { id } => {
-                let Some(target) = self.context_view(&id) else { return unknown_context(&id) };
+                let Some(target) = self.context_view(applet_id, &id) else { return unknown_context(&id) };
                 if self.documents.current(&target).is_none() {
                     return error(ErrorCode::NotReady, "The context has no adapted page");
                 }
@@ -263,7 +263,7 @@ impl Host {
                 ok()
             }
             Call::ContextAct { id, generation, action } => {
-                let Some(target) = self.context_view(&id) else { return unknown_context(&id) };
+                let Some(target) = self.context_view(applet_id, &id) else { return unknown_context(&id) };
                 let Some(document) = self.documents.current(&target) else {
                     return error(ErrorCode::ContextReplaced, "The context has no adapted page");
                 };
@@ -281,7 +281,7 @@ impl Host {
                     navigating: false,
                     deadline_ms: now + self.limits.action_timeout_ms,
                 };
-                let Some(session) = self.contexts.session.as_mut() else {
+                let Some(session) = self.session_mut(applet_id) else {
                     return error(ErrorCode::Retired, "The applet is not active");
                 };
                 let action_id = session.begin_action(handle);
@@ -291,17 +291,17 @@ impl Host {
                 Outcome::Now(Ok(json!({ "actionId": action_id })))
             }
             Call::ContextCancel { action_id } => {
-                let Some(session) = self.contexts.session.as_ref() else {
+                let Some(session) = self.session(applet_id) else {
                     return error(ErrorCode::Retired, "The applet is not active");
                 };
                 let handle = session.actions.get(&action_id).filter(|a| a.foreground_document == document_id && !a.dispatched);
-                if let Some(target) = handle.and_then(|a| self.context_view(&a.context_id)) {
+                if let Some(target) = handle.and_then(|a| self.context_view(applet_id, &a.context_id)) {
                     self.event(&target, "cancel", json!({ "actionId": action_id }));
                 }
                 ok()
             }
             Call::ContextPing { id } => {
-                let Some(target) = self.context_view(&id) else { return unknown_context(&id) };
+                let Some(target) = self.context_view(applet_id, &id) else { return unknown_context(&id) };
                 // The renderer is shared, so a bound document and a live foreground mean a live context.
                 let answer = match self.documents.current(&target) {
                     Some(document) => json!({ "bound": true, "generation": document.generation, "url": document.url }),
@@ -314,18 +314,18 @@ impl Host {
                 if version != compat::SESSION_STATE {
                     return error(ErrorCode::InvalidArgument, format!("session.save version must be {}", compat::SESSION_STATE));
                 }
-                if let Some(session) = self.contexts.session.as_mut() {
+                if let Some(session) = self.session_mut(applet_id) {
                     session.saved = Some(json!({ "version": version, "state": state }));
                 }
                 ok()
             }
             Call::BackHandled { handled } => {
-                self.back_answered(document_id, handled);
+                self.back_answered(applet_id, document_id, handled);
                 ok()
             }
             Call::BackLeave {} => {
                 self.respond(view, document_id, request_id, Ok(json!({})));
-                self.leave_on_back();
+                self.leave_on_back(applet_id);
                 Outcome::Later
             }
             Call::ContextPublish { page, patch } => {
@@ -339,11 +339,11 @@ impl Host {
                 if let Some(failure) = self.publish_too_large(name, &body) {
                     return Outcome::Now(Err(failure));
                 }
-                self.foreground_event(name, json!({ "id": id, "generation": generation, name: body }));
+                self.foreground_event(applet_id, name, json!({ "id": id, "generation": generation, name: body }));
                 ok()
             }
             Call::ContextActionResult { action_id, state, navigating, expect, result } => {
-                let Some(session) = self.contexts.session.as_mut() else {
+                let Some(session) = self.session_mut(applet_id) else {
                     return error(ErrorCode::Retired, "The applet is not active");
                 };
                 let Some(handle) = session.actions.get_mut(&action_id).filter(|a| a.context_document == document_id) else {
@@ -368,7 +368,7 @@ impl Host {
                 if let Some(result) = result {
                     update["result"] = result;
                 }
-                self.action_update(&foreground_document, update);
+                self.action_update(applet_id, &foreground_document, update);
                 ok()
             }
         }
