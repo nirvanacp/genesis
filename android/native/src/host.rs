@@ -82,6 +82,7 @@ impl Host {
             }
             ShellEvent::RendererGone { view } => self.renderer_gone(&view),
             ShellEvent::HistoryUnmoved { view } => self.history_unmoved(&view),
+            ShellEvent::InputDone { view, token, ok, message } => self.input_done(&view, token, ok, message),
             ShellEvent::WindowRequested { view, url } => self.window_requested(view, &url),
             ShellEvent::ImportFound { kind: ImportKind::Bundle, path, payload, release: _ } => self.import_dev(&path, &payload),
             ShellEvent::ImportFound { kind: ImportKind::Bundled, path, payload, release } => {

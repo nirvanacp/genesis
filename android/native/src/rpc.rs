@@ -30,7 +30,9 @@ const FOREGROUND_METHODS: [&str; 20] = [
     "page.call",
     "page.cancel",
 ];
-const CONTEXT_METHODS: [&str; 5] = ["context.publish", "context.actionResult", "page.result", "page.progress", "page.emit"];
+const CONTEXT_METHODS: [&str; 6] = ["context.publish", "context.actionResult", "page.result", "page.progress", "page.emit", "page.input"];
+/// Events in one `page.input`.
+const INPUT_EVENTS_MAX: usize = 64;
 const LIST_LIMIT: usize = 100;
 
 /// What a call produced: an answer now, or one sent later (or already sent) by the call itself.
@@ -379,6 +381,7 @@ impl Host {
             Call::PageEmit { stream, kind, seq, view: page_view, url, data } => {
                 self.page_emit(view, stream, kind, seq, page_view, url, data)
             }
+            Call::PageInput { call_id, events } => self.page_input(view, document_id, request_id, call_id, events),
         }
     }
 
@@ -495,6 +498,42 @@ impl Host {
             self.event(&view, "page.progress", data);
         }
         ok()
+    }
+
+    /// Has the shell dispatch real input to the asking context document's view, for one of its open
+    /// calls. The request stays open until the shell reports `InputDone`, the call's deadline passes
+    /// or the document is retired. A revealed context gets none: the user is looking at it, and
+    /// input from the applet would count as the user's gesture there.
+    fn page_input(&mut self, view: &ViewRef, document_id: &str, request_id: u64, call_id: String, events: Vec<InputEvent>) -> Outcome {
+        if !self.limits.trusted_input {
+            return error(ErrorCode::InputUnavailable, "Trusted input is not available in this Genesis");
+        }
+        if events.is_empty() || events.len() > INPUT_EVENTS_MAX {
+            return error(ErrorCode::InvalidArgument, format!("page.input takes 1 to {INPUT_EVENTS_MAX} events"));
+        }
+        let Role::Context(id) = &view.role else { unreachable!() };
+        let Some(session) = self.contexts.session.as_ref() else {
+            return error(ErrorCode::Retired, "The applet is not active");
+        };
+        let Some(handle) = session.calls.get(&call_id).filter(|c| c.context_document == document_id) else {
+            return error(ErrorCode::NotFound, "page.input needs an open call of this page");
+        };
+        if session.revealed.as_ref() == Some(id) {
+            return error(ErrorCode::InputUnavailable, "Trusted input goes only to a hidden page");
+        }
+        let op = PendingOp { view: view.clone(), document_id: document_id.into(), request_id, deadline_ms: handle.deadline_ms };
+        let token = self.documents.begin_op(op);
+        self.out.push(ShellCommand::Input { view: view.clone(), token, events });
+        Outcome::Later
+    }
+
+    /// The shell's answer to `Input`: ends the `page.input` request it belongs to, if still open.
+    pub fn input_done(&mut self, view: &ViewRef, token: u64, succeeded: bool, message: Option<String>) {
+        let outcome = match succeeded {
+            true => Ok(json!({})),
+            false => Err(ErrorBody::new(ErrorCode::InputUnavailable, message.unwrap_or_else(|| "The input could not be dispatched".into()))),
+        };
+        self.finish_op(token, Some(&view.applet_id), outcome);
     }
 
     /// Forwards one watch message to the foreground, after the size rule for its kind.
