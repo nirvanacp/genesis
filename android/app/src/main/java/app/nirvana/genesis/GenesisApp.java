@@ -17,6 +17,7 @@ public final class GenesisApp extends Application {
     /** The host retires background applets to their resume targets when Android asks for memory. */
     @Override public void onTrimMemory(int level) {
         super.onTrimMemory(level);
+        if (level >= TRIM_MEMORY_BACKGROUND) AppletIcons.trimMemory();
         if (runtime != null) runtime.trimMemory(level);
     }
 }
