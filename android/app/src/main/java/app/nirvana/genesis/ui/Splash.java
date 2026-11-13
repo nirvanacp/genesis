@@ -44,9 +44,9 @@ public final class Splash extends FrameLayout {
         showProgress = () -> progress.setVisibility(View.VISIBLE);
     }
 
-    public void show(String appletName, String accent) {
+    public void show(String appletName, String accent, String iconPath) {
         monogram.removeAllViews();
-        monogram.addView(tokens.tile(appletName, 72, false, false), new FrameLayout.LayoutParams(-1, -1));
+        monogram.addView(tokens.appletTile(appletName, accent, iconPath, 72, false, false), new FrameLayout.LayoutParams(-1, -1));
         name.setText(appletName);
         setContentDescription("Opening " + appletName);
         removeCallbacks(showProgress);

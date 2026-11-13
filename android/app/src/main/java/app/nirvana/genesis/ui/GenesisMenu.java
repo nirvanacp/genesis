@@ -33,7 +33,7 @@ public final class GenesisMenu {
         header.setGravity(Gravity.CENTER_VERTICAL);
         header.setBackgroundColor(t.chrome);
         header.setPadding(t.dp(20), t.dp(20), t.dp(20), t.dp(18));
-        header.addView(t.tile(name, 44, false, false), new LinearLayout.LayoutParams(t.dp(44), t.dp(44)));
+        header.addView(t.appletTile(name, entry == null ? null : Ui.str(entry, "accent"), entry == null ? null : Ui.str(entry, "icon"), 44, false, false), new LinearLayout.LayoutParams(t.dp(44), t.dp(44)));
         LinearLayout text = ui.column();
         String version = entry == null ? null : Ui.str(entry, "version");
         TextView title = t.text(name + (version != null ? "  " + version : ""), Tokens.Type.TITLE_MEDIUM, t.onChrome);
@@ -58,7 +58,7 @@ public final class GenesisMenu {
         header.addView(t.text("GENESIS", Tokens.Type.SECTION, t.onChromeVariant));
         column.addView(header);
 
-        column.addView(row(ui, dialog, listener, R.drawable.ic_home, "Home", null, Action.HOME));
+        column.addView(row(ui, dialog, listener, R.drawable.ic_home, "Open Genesis", null, Action.HOME));
         column.addView(row(ui, dialog, listener, R.drawable.ic_reload, "Reload " + name, null, Action.RELOAD));
         if (websiteRevealed) {
             column.addView(row(ui, dialog, listener, R.drawable.ic_open_in_browser, "Open in browser", null, Action.OPEN_IN_BROWSER));

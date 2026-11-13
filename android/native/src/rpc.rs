@@ -8,12 +8,13 @@ use crate::{
 use genesis_contracts::*;
 use serde_json::{Value, json};
 
-const FOREGROUND_METHODS: [&str; 16] = [
+const FOREGROUND_METHODS: [&str; 17] = [
     "ui.ready",
     "storage.get",
     "storage.list",
     "storage.commit",
     "services.request",
+    "notifications.post",
     "context.navigate",
     "context.back",
     "context.forward",
@@ -51,7 +52,7 @@ fn ok() -> Outcome {
 
 impl Host {
     pub fn document_message(&mut self, view: ViewRef, payload: &str, now: u64) {
-        if self.contexts.session.as_ref().is_none_or(|s| s.applet_id != view.applet_id) {
+        if !self.is_live(&view.applet_id) {
             return;
         }
         let Ok(message) = serde_json::from_str::<DocumentMessage>(payload) else { return };
@@ -77,7 +78,7 @@ impl Host {
     /// Binds a new document. A context document takes the context's next generation and
     /// replaces the context's previous document.
     fn hello(&mut self, view: ViewRef, protocol: u32, url: String) {
-        let Some((revision, manifest)) = self.active_manifest().map(|(r, m)| (r, m.clone())) else { return };
+        let Some((revision, manifest)) = self.active_manifest(&view.applet_id).map(|(r, m)| (r, m.clone())) else { return };
         let context_id = match &view.role {
             Role::Context(id) if manifest.contexts.iter().any(|c| &c.id == id) => Some(id.clone()),
             Role::Context(_) => return,
@@ -88,20 +89,20 @@ impl Host {
             self.post(&view, &HostMessage::Refused { error: ErrorBody::new(ErrorCode::ProtocolMismatch, &message) });
             if let Some(id) = context_id {
                 // Reported gone now, so the unbound-document deadline must not report it again.
-                if let Some(context) = self.context_mut(&id) {
+                if let Some(context) = self.context_mut(&view.applet_id, &id) {
                     context.navigating_since = None;
                 }
-                self.foreground_event("context.gone", json!({ "id": id, "code": ErrorCode::ProtocolMismatch, "message": message }));
+                self.foreground_event(&view.applet_id, "context.gone", json!({ "id": id, "code": ErrorCode::ProtocolMismatch, "message": message }));
             }
             return;
         }
         self.retire_document(&view);
         // When the document's DocumentStarted came first, it is waiting for this hello.
         let started = match &context_id {
-            Some(id) => self.context_mut(id).and_then(|c| c.navigating_since.take()).is_some(),
+            Some(id) => self.context_mut(&view.applet_id, id).and_then(|c| c.navigating_since.take()).is_some(),
             None => true,
         };
-        let Some(session) = self.contexts.session.as_mut() else { return };
+        let Some(session) = self.contexts.sessions.get_mut(&view.applet_id) else { return };
         let saved = match (&context_id, session.restored) {
             (None, true) => {
                 session.restored = false;
@@ -129,17 +130,17 @@ impl Host {
             // The client learns that the context's page agent now accepts calls.
             Role::Context(id) => {
                 let data = json!({ "id": id, "generation": document_generation, "url": url });
-                self.foreground_event("context.bound", data);
+                self.foreground_event(&view.applet_id, "context.bound", data);
             }
             // A new foreground knows none of the old one's watches and calls; the pages drop them.
-            Role::Foreground => self.reset_contexts(),
+            Role::Foreground => self.reset_contexts(&view.applet_id),
         }
         // An opened link started the applet; the foreground shows that context once bound, and
         // its routes decide between the applet's screen and the website.
         if view.role == Role::Foreground
-            && let Some(id) = self.contexts.session.as_mut().and_then(|s| s.open_context.take())
+            && let Some(id) = self.session_mut(&view.applet_id).and_then(|s| s.open_context.take())
         {
-            self.foreground_event("user.showContext", json!({ "id": id }));
+            self.foreground_event(&view.applet_id, "user.showContext", json!({ "id": id }));
         }
     }
 
@@ -157,7 +158,8 @@ impl Host {
             Ok(call) => call,
             Err(e) => return error(ErrorCode::InvalidArgument, format!("Invalid {method} parameters: {e}")),
         };
-        let Some(manifest) = self.active_manifest().map(|(_, m)| m.clone()) else {
+        let applet_id = view.applet_id.as_str();
+        let Some(manifest) = self.active_manifest(applet_id).map(|(_, m)| m.clone()) else {
             return error(ErrorCode::Retired, "The applet is not active");
         };
         let pending = |host: &Host| host.documents.pending_count(document_id) >= host.limits.pending_requests_max;
@@ -172,9 +174,9 @@ impl Host {
         };
         match call {
             Call::UiReady {} => {
-                if let Some(session) = self.contexts.session.as_mut().filter(|s| !s.foreground_shown) {
+                if let Some(session) = self.session_mut(applet_id).filter(|s| !s.foreground_shown) {
                     session.foreground_shown = true;
-                    self.out.push(ShellCommand::RevealForeground);
+                    self.out.push(ShellCommand::RevealForeground { applet_id: Some(applet_id.into()) });
                 }
                 ok()
             }
@@ -215,8 +217,20 @@ impl Host {
                     }
                 }
             }
+            Call::NotificationsPost { id, title, body, url } => {
+                if manifest.capabilities.notifications.is_none() {
+                    return error(ErrorCode::ConfigurationRequired, "Notifications are not declared in applet.json");
+                }
+                if let Err(message) = notification_problem(&manifest, &id, &title, body.as_deref(), url.as_deref()) {
+                    return error(ErrorCode::InvalidArgument, message);
+                }
+                // `posted` means accepted: only the shell knows whether the user turned them on.
+                let applet_id = manifest.id.clone();
+                self.out.push(ShellCommand::PostNotification { applet_id, id, title, body, url });
+                Outcome::Now(Ok(json!({ "posted": true })))
+            }
             Call::ContextNavigate { id, url, mode } => {
-                let Some(target) = self.context_view(&id) else { return unknown_context(&id) };
+                let Some(target) = self.context_view(applet_id, &id) else { return unknown_context(&id) };
                 // Any http or https origin: an undeclared one presents as website.
                 let Some(url) = web_url(&url) else {
                     return error(ErrorCode::InvalidArgument, "context.navigate needs an http or https URL");
@@ -225,55 +239,59 @@ impl Host {
                 ok()
             }
             Call::ContextBack { id, steps } => {
-                let Some(target) = self.context_view(&id) else { return unknown_context(&id) };
+                let Some(target) = self.context_view(applet_id, &id) else { return unknown_context(&id) };
                 let steps = steps.unwrap_or(1).clamp(1, i32::MAX as u32) as i32;
                 self.out.push(ShellCommand::HistoryGo { view: target, delta: -steps });
                 ok()
             }
             Call::ContextForward { id } => {
-                let Some(target) = self.context_view(&id) else { return unknown_context(&id) };
+                let Some(target) = self.context_view(applet_id, &id) else { return unknown_context(&id) };
                 self.out.push(ShellCommand::HistoryGo { view: target, delta: 1 });
                 ok()
             }
             Call::ContextReload { id } => {
-                let Some(target) = self.context_view(&id) else { return unknown_context(&id) };
+                let Some(target) = self.context_view(applet_id, &id) else { return unknown_context(&id) };
                 self.out.push(ShellCommand::Reload { view: target });
                 ok()
             }
             Call::ContextReveal { id } => {
-                let Some(target) = self.context_view(&id) else { return unknown_context(&id) };
+                let Some(target) = self.context_view(applet_id, &id) else { return unknown_context(&id) };
                 self.reveal(&id, target, &manifest.name);
                 ok()
             }
             Call::ContextCover {} => {
-                self.cover();
+                self.cover(applet_id);
                 ok()
             }
             Call::SessionSave { version, state } => {
                 if version != compat::SESSION_STATE {
                     return error(ErrorCode::InvalidArgument, format!("session.save version must be {}", compat::SESSION_STATE));
                 }
-                if let Some(session) = self.contexts.session.as_mut() {
-                    session.saved = Some(json!({ "version": version, "state": state }));
+                let Some(session) = self.session_mut(applet_id) else { return ok() };
+                session.saved = Some(json!({ "version": version, "state": state }));
+                // A suspended applet flushes its last saves after `suspended`, so its Recents card
+                // restores them if the process ends in the background.
+                if session.suspended_at_ms.is_some() {
+                    let resume = Self::resume_of(session);
+                    self.save_resume(applet_id, &resume);
                 }
                 ok()
             }
             Call::BackHandled { handled } => {
-                self.back_answered(document_id, handled);
+                self.back_answered(applet_id, document_id, handled);
                 ok()
             }
             Call::BackLeave {} => {
-                // Answer before Home retires the document.
                 self.respond(view, document_id, request_id, Ok(json!({})));
-                self.home();
+                self.leave_on_back(applet_id);
                 Outcome::Later
             }
             Call::PageCall { context, generation, op, args, timeout_ms } => {
-                self.page_call(document_id, request_id, context, generation, op, args, timeout_ms, now)
+                self.page_call(applet_id, document_id, request_id, context, generation, op, args, timeout_ms, now)
             }
-            Call::PageCancel { context, call_id } => self.page_cancel(document_id, context, call_id),
-            Call::PageResult { call_id, ok, value, error } => self.page_result(document_id, call_id, ok, value, error),
-            Call::PageProgress { call_id, state, completed_steps } => self.page_progress(document_id, call_id, state, completed_steps),
+            Call::PageCancel { context, call_id } => self.page_cancel(applet_id, document_id, context, call_id),
+            Call::PageResult { call_id, ok, value, error } => self.page_result(applet_id, document_id, call_id, ok, value, error),
+            Call::PageProgress { call_id, state, completed_steps } => self.page_progress(applet_id, document_id, call_id, state, completed_steps),
             Call::PageEmit { stream, kind, seq, view: page_view, url, data } => {
                 self.page_emit(view, stream, kind, seq, page_view, url, data)
             }
@@ -284,26 +302,26 @@ impl Host {
     /// Sends `reset` to every bound context document of the session.
     /// Also tells the new foreground which context documents already accept calls, since it
     /// missed their `context.bound`.
-    fn reset_contexts(&mut self) {
-        let Some(session) = self.contexts.session.as_ref() else { return };
+    fn reset_contexts(&mut self, applet_id: &str) {
+        let Some(session) = self.session(applet_id) else { return };
         let ids: Vec<String> = session.contexts.keys().cloned().collect();
         for id in ids {
-            let Some(view) = self.context_view(&id) else { continue };
+            let Some(view) = self.context_view(applet_id, &id) else { continue };
             self.event(&view, "reset", json!({}));
             if let Some(document) = self.documents.current(&view) {
                 let generation = document.generation;
                 let data = json!({ "id": id, "generation": document.generation, "url": document.url });
-                self.foreground_event("context.bound", data);
+                self.foreground_event(applet_id, "context.bound", data);
                 // A new foreground also needs the context's history position, or Back cannot tell
                 // that the website has entries to go back to until the next navigation.
-                if let Some(context) = self.contexts.session.as_ref().and_then(|s| s.contexts.get(&id)) {
+                if let Some(context) = self.session(applet_id).and_then(|s| s.contexts.get(&id)) {
                     let data = json!({
                         "id": id, "url": context.url, "generation": generation,
                         "index": context.index, "size": context.size,
                         "canGoBack": context.can_go_back, "canGoForward": context.can_go_forward,
                         "sameDocument": true, "reload": false,
                     });
-                    self.foreground_event("context.navigated", data);
+                    self.foreground_event(applet_id, "context.navigated", data);
                 }
             }
         }
@@ -311,8 +329,8 @@ impl Host {
 
     /// Starts a page call: checks the context and its document, then hands the operation to the page.
     #[allow(clippy::too_many_arguments)]
-    fn page_call(&mut self, document_id: &str, request_id: u64, context: String, generation: u64, op: String, args: Value, timeout_ms: Option<u64>, now: u64) -> Outcome {
-        let Some(target) = self.context_view(&context) else { return unknown_context(&context) };
+    fn page_call(&mut self, applet_id: &str, document_id: &str, request_id: u64, context: String, generation: u64, op: String, args: Value, timeout_ms: Option<u64>, now: u64) -> Outcome {
+        let Some(target) = self.context_view(applet_id, &context) else { return unknown_context(&context) };
         let Some(document) = self.documents.current(&target) else {
             return error(ErrorCode::NotReady, "The context has no bound page");
         };
@@ -323,7 +341,7 @@ impl Host {
             return error(ErrorCode::NotReady, "The page the call is for has not bound yet");
         }
         let context_document = document.id.clone();
-        let Some(session) = self.contexts.session.as_mut() else {
+        let Some(session) = self.contexts.sessions.get_mut(applet_id) else {
             return error(ErrorCode::Retired, "The applet is not active");
         };
         if session.calls.values().filter(|c| c.context_id == context).count() >= self.limits.pending_requests_max {
@@ -346,9 +364,9 @@ impl Host {
     }
 
     /// Asks the context to cancel the asking document's calls that have not dispatched input.
-    fn page_cancel(&mut self, document_id: &str, context: String, call_id: Option<String>) -> Outcome {
-        let Some(target) = self.context_view(&context) else { return unknown_context(&context) };
-        let Some(session) = self.contexts.session.as_ref() else {
+    fn page_cancel(&mut self, applet_id: &str, document_id: &str, context: String, call_id: Option<String>) -> Outcome {
+        let Some(target) = self.context_view(applet_id, &context) else { return unknown_context(&context) };
+        let Some(session) = self.session(applet_id) else {
             return error(ErrorCode::Retired, "The applet is not active");
         };
         let mine = |id: &String, c: &CallHandle| {
@@ -366,8 +384,8 @@ impl Host {
     }
 
     /// The context's answer to a call. An answer from a document other than the one called is ignored.
-    fn page_result(&mut self, document_id: &str, call_id: String, succeeded: bool, value: Option<Value>, failure: Option<ErrorBody>) -> Outcome {
-        let Some(session) = self.contexts.session.as_mut() else {
+    fn page_result(&mut self, applet_id: &str, document_id: &str, call_id: String, succeeded: bool, value: Option<Value>, failure: Option<ErrorBody>) -> Outcome {
+        let Some(session) = self.contexts.sessions.get_mut(applet_id) else {
             return error(ErrorCode::Retired, "The applet is not active");
         };
         if session.calls.get(&call_id).is_none_or(|c| c.context_document != document_id) {
@@ -378,13 +396,13 @@ impl Host {
             true => Ok(value.unwrap_or(Value::Null)),
             false => Err(failure.unwrap_or_else(|| ErrorBody::new(ErrorCode::InvalidArgument, "page.result failed without an error"))),
         };
-        self.answer_call(&handle, outcome);
+        self.answer_call(applet_id, &handle, outcome);
         ok()
     }
 
     /// Records how far a call got and tells the foreground document that asked.
-    fn page_progress(&mut self, document_id: &str, call_id: String, state: CallState, completed_steps: Option<u64>) -> Outcome {
-        let Some(session) = self.contexts.session.as_mut() else {
+    fn page_progress(&mut self, applet_id: &str, document_id: &str, call_id: String, state: CallState, completed_steps: Option<u64>) -> Outcome {
+        let Some(session) = self.contexts.sessions.get_mut(applet_id) else {
             return error(ErrorCode::Retired, "The applet is not active");
         };
         let Some(handle) = session.calls.get_mut(&call_id).filter(|c| c.context_document == document_id) else {
@@ -402,7 +420,7 @@ impl Host {
         if let Some(steps) = completed_steps {
             data["completedSteps"] = json!(steps);
         }
-        if let Some(view) = self.foreground_view().filter(|v| self.documents.is_current(v, &foreground_document)) {
+        if let Some(view) = self.foreground_view(applet_id).filter(|v| self.documents.is_current(v, &foreground_document)) {
             self.event(&view, "page.progress", data);
         }
         ok()
@@ -424,7 +442,7 @@ impl Host {
             return error(ErrorCode::InvalidArgument, format!("page.input types at most {INPUT_TEXT_MAX} characters"));
         }
         let Role::Context(id) = &view.role else { unreachable!() };
-        let Some(session) = self.contexts.session.as_ref() else {
+        let Some(session) = self.session(&view.applet_id) else {
             return error(ErrorCode::Retired, "The applet is not active");
         };
         // The view already committed another document, which this one's input would reach. The
@@ -479,13 +497,36 @@ impl Host {
             "context": id, "generation": generation, "stream": stream, "kind": kind,
             "seq": seq, "view": page_view, "url": url, "data": data,
         });
-        self.foreground_event("page.emit", message);
+        self.foreground_event(&view.applet_id, "page.emit", message);
         ok()
     }
 }
 
 fn unknown_context(id: &str) -> Outcome {
     error(ErrorCode::NotFound, format!("Unknown context {id}"))
+}
+
+/// Why a notification is refused: an `id` of 1 to 64 `[A-Za-z0-9._-]`, a title of 1 to 120
+/// characters, a body of at most 500, and a `url` that is https on one of the applet's origins.
+fn notification_problem(manifest: &Manifest, id: &str, title: &str, body: Option<&str>, url: Option<&str>) -> Result<(), String> {
+    let id_ok = (1..=64).contains(&id.len()) && id.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'));
+    if !id_ok {
+        return Err("notifications.post needs an id of 1 to 64 letters, digits, '.', '_' or '-'".into());
+    }
+    if title.trim().is_empty() || title.chars().count() > 120 {
+        return Err("notifications.post needs a title of 1 to 120 characters".into());
+    }
+    if body.is_some_and(|b| b.chars().count() > 500) {
+        return Err("notifications.post takes a body of at most 500 characters".into());
+    }
+    if let Some(url) = url {
+        let origin = url::Url::parse(url).ok().filter(|u| u.scheme() == "https").map(|u| u.origin().ascii_serialization());
+        let declared = origin.is_some_and(|o| manifest.origins.iter().any(|d| crate::applets::origin_of(d).as_deref() == Some(o.as_str())));
+        if !declared {
+            return Err("notifications.post takes only an https url on one of the applet's origins".into());
+        }
+    }
+    Ok(())
 }
 
 /// An http or https URL with a host and no credentials.

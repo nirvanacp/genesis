@@ -1,4 +1,5 @@
-//! State of the active applet's contexts: navigation, reveal, page calls and the Back slot.
+//! State of the live applets' contexts: navigation, reveal, page calls and the Back slot.
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap};
 
@@ -66,8 +67,8 @@ pub struct Session {
     pub saved: Option<Value>,
     /// The context an opened link loaded in; the foreground shows it once it binds.
     pub open_context: Option<String>,
-    /// The applet opened a link another app shared; the Back that leaves it returns there.
-    pub return_to_caller: bool,
+    /// When the applet's window suspended; None while it is resumed.
+    pub suspended_at_ms: Option<u64>,
 }
 
 impl Session {
@@ -85,7 +86,7 @@ impl Session {
             restored,
             saved: None,
             open_context: None,
-            return_to_caller: false,
+            suspended_at_ms: None,
         }
     }
 
@@ -103,23 +104,27 @@ impl Session {
     }
 }
 
-/// An applet the host retired without the user leaving it, to recreate where it was.
+/// Where an applet was when the host retired it without the user closing its window: its
+/// window recreates it there when it resumes. Saved as `applets/<id>/resume.json`, so a Recents
+/// card restores the applet after the process ended.
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Resume {
-    pub applet_id: String,
     /// Each context's last committed URL. Recreation loads them, never replaying a POST.
     pub urls: BTreeMap<String, String>,
     pub saved: Option<Value>,
-    /// Recreated on the next resume (background retirement), or only when the user reopens it
-    /// (renderer loss).
-    pub on_resume: bool,
-    /// The applet opened a link another app shared, so its leaving Back still returns there.
-    pub return_to_caller: bool,
 }
 
 /// Process-level state.
 #[derive(Default)]
 pub struct Contexts {
-    pub session: Option<Session>,
-    pub suspended_at_ms: Option<u64>,
-    pub resume: Option<Resume>,
+    /// The live applets, by applet id: at most `LIVE_APPLETS_MAX`.
+    pub sessions: BTreeMap<String, Session>,
+    /// Resume targets of retired applets, by applet id.
+    pub resumes: HashMap<String, Resume>,
+    /// The `(context, url)` a starting applet window opens with, by applet id; None opens the
+    /// applet where it was.
+    pub pending_open: HashMap<String, Option<(String, String)>>,
+    /// The applet window that is resumed, if any.
+    pub resumed_window: Option<String>,
 }

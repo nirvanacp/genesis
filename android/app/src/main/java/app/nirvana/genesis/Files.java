@@ -1,6 +1,6 @@
 package app.nirvana.genesis;
 
-import android.app.Activity;
+import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import java.io.File;
@@ -25,14 +25,14 @@ final class Files {
     static final String BUNDLED_DIRECTORY = "genesis-bundled";
     private static final long IMPORT_MAX_BYTES = 64L * 1024 * 1024;
 
-    private final Activity activity;
+    private final Context context;
     private final File imports;
     private final File bundled;
 
-    Files(Activity activity) {
-        this.activity = activity;
-        imports = new File(activity.getFilesDir(), IMPORT_DIRECTORY);
-        bundled = new File(activity.getFilesDir(), BUNDLED_DIRECTORY);
+    Files(Context context) {
+        this.context = context;
+        imports = new File(context.getFilesDir(), IMPORT_DIRECTORY);
+        bundled = new File(context.getFilesDir(), BUNDLED_DIRECTORY);
     }
 
     File importDirectory() { return imports; }
@@ -85,14 +85,14 @@ final class Files {
      */
     void stageBundledApplets() throws IOException {
         long installed;
-        try { installed = activity.getPackageManager().getPackageInfo(activity.getPackageName(), 0).lastUpdateTime; }
+        try { installed = context.getPackageManager().getPackageInfo(context.getPackageName(), 0).lastUpdateTime; }
         catch (PackageManager.NameNotFoundException error) { throw new IOException(error); }
-        SharedPreferences state = activity.getSharedPreferences("genesis-shell", Activity.MODE_PRIVATE);
+        SharedPreferences state = context.getSharedPreferences("genesis-shell", Context.MODE_PRIVATE);
         if (state.getLong("bundledInstall", 0) == installed) return;
-        String[] names = activity.getAssets().list(BUNDLED_ASSETS);
+        String[] names = context.getAssets().list(BUNDLED_ASSETS);
         for (String name : names == null ? new String[0] : names) {
             if (!isBundle(name) && !(name.startsWith("applet-") && name.endsWith(".release.json"))) continue;
-            try (InputStream input = activity.getAssets().open(BUNDLED_ASSETS + "/" + name)) {
+            try (InputStream input = context.getAssets().open(BUNDLED_ASSETS + "/" + name)) {
                 java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
                 byte[] buffer = new byte[65536];
                 for (int count; (count = input.read(buffer)) != -1; ) bytes.write(buffer, 0, count);
@@ -106,7 +106,7 @@ final class Files {
     List<String> declaredServices(String appletId) {
         List<String> ids = new ArrayList<>();
         try {
-            File root = new File(activity.getFilesDir(), "applets");
+            File root = new File(context.getFilesDir(), "applets");
             JSONArray index = new JSONArray(read(new File(root, "index.json"), 1024 * 1024));
             for (int i = 0; i < index.length(); i++) {
                 JSONObject entry = index.getJSONObject(i);

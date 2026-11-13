@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { build } from 'esbuild';
-import { readApplet, requireValue, toolError } from './manifest.mjs';
+import { containedFile, readApplet, requireValue, toolError } from './manifest.mjs';
 import { requireCompatible, TOOLS_TABLE } from './compat.mjs';
 
 const require = createRequire(import.meta.url);
@@ -104,6 +104,23 @@ async function bundlePageScript(base, page) {
   }
 }
 
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const ICON_MAX_BYTES = 256 * 1024;
+
+/** Checks `shell.icon`: a square PNG of 192 to 1024 px and at most 256 KiB, copied by the build from `assets/`. */
+async function checkIcon(base, icon) {
+  const fail = message => { throw toolError('INVALID_MANIFEST', `/shell/icon: ${message}`); };
+  const file = await containedFile(base, icon).catch(() => fail(`file ${icon} does not exist in the applet`));
+  const bytes = await readFile(file);
+  if (bytes.length > ICON_MAX_BYTES) fail(`${icon} is ${bytes.length} bytes; the limit is ${ICON_MAX_BYTES}`);
+  if (bytes.length < 24 || !bytes.subarray(0, 8).equals(PNG_SIGNATURE) || bytes.toString('latin1', 12, 16) !== 'IHDR') {
+    fail(`${icon} is not a PNG file`);
+  }
+  const width = bytes.readUInt32BE(16), height = bytes.readUInt32BE(20);
+  if (width !== height) fail(`${icon} is ${width}x${height}; it must be square`);
+  if (width < 192 || width > 1024) fail(`${icon} is ${width} px wide; it must be 192 to 1024 px`);
+}
+
 const isAsync = fn => typeof fn === 'function' && fn.constructor?.name === 'AsyncFunction';
 
 /** Reader and command names of a page module, and the readers with an `async` function. */
@@ -158,7 +175,8 @@ async function checkPageModuleFiles(base, files) {
 export async function checkApplet(directory) {
   const compat = await requireCompatible(path.resolve(directory));
   const applet = await readApplet(directory);
-  const { base, build: config } = applet;
+  const { base, manifest, build: config } = applet;
+  if (manifest.shell?.icon !== undefined) await checkIcon(base, manifest.shell.icon);
   typeCheck(base, config.check);
 
   let module = null, warnings = [];

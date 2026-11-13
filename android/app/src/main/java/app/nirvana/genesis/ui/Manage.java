@@ -124,7 +124,7 @@ public final class Manage {
         LinearLayout row = new LinearLayout(ui.activity);
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setPadding(t.dp(20), t.dp(10), t.dp(20), t.dp(10));
-        row.addView(t.tile(entry.optString("name"), 48, false, false), new LinearLayout.LayoutParams(t.dp(48), t.dp(48)));
+        row.addView(t.appletTile(entry.optString("name"), Ui.str(entry, "accent"), Ui.str(entry, "icon"), 48, false, false), new LinearLayout.LayoutParams(t.dp(48), t.dp(48)));
         LinearLayout text = ui.column();
         text.addView(t.text(entry.optString("name"), Tokens.Type.TITLE_MEDIUM, t.onSurface));
         text.addView(t.text(detail, Tokens.Type.BODY_MEDIUM, t.onSurfaceVariant));
@@ -158,7 +158,7 @@ public final class Manage {
         LinearLayout top = new LinearLayout(ui.activity);
         top.setGravity(Gravity.CENTER_VERTICAL);
         top.setPadding(t.dp(20), 0, t.dp(20), 0);
-        top.addView(t.tile(name, 64, dev, incompatible), new LinearLayout.LayoutParams(t.dp(64), t.dp(64)));
+        top.addView(t.appletTile(name, Ui.str(entry, "accent"), Ui.str(entry, "icon"), 64, dev, incompatible), new LinearLayout.LayoutParams(t.dp(64), t.dp(64)));
         LinearLayout text = ui.column();
         text.addView(t.heading(name, Tokens.Type.TITLE_LARGE));
         text.addView(t.text(Home.versionLine(entry), Tokens.Type.BODY_MEDIUM, t.onSurfaceVariant));
@@ -211,6 +211,14 @@ public final class Manage {
             }
         }
 
+        if (entry.optJSONObject("notifications") != null && !"incompatible".equals(entry.optString("status"))) {
+            content.addView(t.section("Notifications"));
+            content.addView(notifications(entry));
+        }
+
+        content.addView(t.section("Privacy"));
+        content.addView(hideInRecents(appletId));
+
         content.addView(t.section("Details"));
         if (Ui.str(entry, "publisher") != null) content.addView(t.pair("Publisher", entry.optString("publisher")));
         content.addView(t.pair("Source", Ui.sourceText(Ui.str(entry, "source"))));
@@ -221,6 +229,10 @@ public final class Manage {
         content.addView(t.pair("Applet id", appletId));
 
         content.addView(t.section("Manage"));
+        if (!"incompatible".equals(entry.optString("status"))) {
+            content.addView(t.row(R.drawable.ic_add_box, "Add to home screen", "An icon that opens " + name + " in its own window", null, false, t.onSurface,
+                () -> ui.actions.addToHomeScreen(appletId)));
+        }
         if ("github".equals(entry.optString("sourceKind"))) {
             content.addView(t.row(R.drawable.ic_branch, "Change version", "Install an earlier or newer release", null, true, t.onSurface, () -> add.changeVersion(entry)));
         }
@@ -253,6 +265,36 @@ public final class Manage {
         });
         return t.row(R.drawable.ic_lock, "Use a separate sign-in", "This applet signs in to its websites on its own. Other applets stay as they are.",
             toggle, false, t.onSurface, null);
+    }
+
+    /** "Notifications", off until the user turns it on. Android may refuse, which turns the switch back off. */
+    private View notifications(JSONObject entry) {
+        Tokens t = ui.tokens;
+        String appletId = entry.optString("appletId"), name = entry.optString("name");
+        JSONObject declaration = entry.optJSONObject("notifications");
+        MaterialSwitch toggle = new MaterialSwitch(ui.activity);
+        toggle.setChecked(ui.actions.notificationsOn(appletId));
+        toggle.setContentDescription("Notifications");
+        toggle.setOnCheckedChangeListener((button, checked) -> {
+            if (checked == ui.actions.notificationsOn(appletId)) return;
+            ui.actions.setNotificationsOn(appletId, checked, on -> { if (toggle.isChecked() != on) toggle.setChecked(on); });
+        });
+        String detail = declaration.has("service")
+            ? name + " can notify you, and checks its service for news about every " + Ui.minutes(declaration.optInt("intervalMinutes", 60)) + "."
+            : name + " can notify you while it runs.";
+        return t.row(R.drawable.ic_notifications, "Notifications", detail, toggle, false, t.onSurface, null);
+    }
+
+    /** "Hide in recent apps": a blank Recents card. Before Android 13 the only way is to block screenshots too. */
+    private View hideInRecents(String appletId) {
+        Tokens t = ui.tokens;
+        MaterialSwitch toggle = new MaterialSwitch(ui.activity);
+        toggle.setChecked(ui.actions.hiddenInRecents(appletId));
+        toggle.setContentDescription("Hide in recent apps");
+        toggle.setOnCheckedChangeListener((button, checked) -> ui.actions.setHiddenInRecents(appletId, checked));
+        String detail = android.os.Build.VERSION.SDK_INT >= 33 ? "Its card in recent apps shows no preview of the screen."
+            : "Its card in recent apps shows no preview of the screen, and screenshots of it are blocked.";
+        return t.row(R.drawable.ic_lock, "Hide in recent apps", detail, toggle, false, t.onSurface, null);
     }
 
     private void confirmClear(JSONObject entry) {

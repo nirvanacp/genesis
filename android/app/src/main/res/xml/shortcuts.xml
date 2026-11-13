@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Dynamic applet shortcuts in this category appear in the share sheet's direct row for text. -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <share-target android:targetClass="app.nirvana.genesis.MainActivity">
+        <data android:mimeType="text/plain" />
+        <category android:name="app.nirvana.genesis.category.SHARE_LINK" />
+    </share-target>
+</shortcuts>

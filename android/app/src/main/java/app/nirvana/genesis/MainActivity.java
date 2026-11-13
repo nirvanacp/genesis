@@ -1,189 +1,35 @@
 package app.nirvana.genesis;
 
-import android.annotation.SuppressLint;
-import android.app.Activity;
 import android.content.ClipData;
 import android.content.ContentResolver;
 import android.content.Intent;
-import android.content.res.Configuration;
+import android.database.Cursor;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
-import android.database.Cursor;
 import android.provider.OpenableColumns;
-import android.webkit.ValueCallback;
-import android.webkit.WebChromeClient;
-import android.window.OnBackInvokedCallback;
-import android.window.OnBackInvokedDispatcher;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.BooleanSupplier;
-import java.util.function.LongConsumer;
-import app.nirvana.genesis.ui.Connections;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-/** Lifecycle, Back, the periodic tick and the import scan. Everything else is the host's commands. */
-public final class MainActivity extends Activity implements NativeBridge.StorageResults, Shell.Owner, Bridge.Task {
-    private static final long TICK_MS = 1000;
+/**
+ * The manager window: the Genesis list, the add, review and update flows, and settings. It also
+ * takes bundles and links other apps share with Genesis. Applets run in their own windows.
+ */
+public final class MainActivity extends WindowActivity {
     private static final long BUNDLE_MAX_BYTES = 64L * 1024 * 1024;
-    private static final long COOKIE_MAX_BYTES = 4L * 1024 * 1024;
-    private static final int REQUEST_PERMISSIONS = 46100;
-    /** Request codes 46100 to 46199 tell one permission request from the one before it. */
-    private static final int PERMISSION_REQUESTS = 100;
     private static final long RELEASE_MAX_BYTES = 1024 * 1024;
     private static final int PICK_APPLET_FILE = 46000;
 
-    private final Handler main = new Handler(Looper.getMainLooper());
-    private final Runnable tick = this::tick;
-    private final Runnable scan = this::scanImports;
-    private FileSelection selection;
-    private Files files;
-    private ServiceClient services;
-    private Fetcher fetcher;
-    private Shell shell;
-    private Bridge bridge;
-    private OnBackInvokedCallback backCallback;
-    private boolean attached, resumed;
-    /** The pending Android permission request: its callback and the permissions already held. */
-    private java.util.function.Consumer<java.util.Set<String>> permissionsWanted;
-    private int permissionsRequest;
-    private java.util.Set<String> permissionsHeld;
+    @Override String window() { return null; }
 
     @Override public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        boolean debuggable = (getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0;
-        // DevTools for debug builds on any device; release builds stay closed.
-        android.webkit.WebView.setWebContentsDebuggingEnabled(debuggable);
-        if (!WebFeatures.supported()) {
-            Shell.unsupported(this);
-            return;
-        }
-        selection = new FileSelection(this);
-        files = new Files(this);
-        shell = new Shell(this, this);
-        services = new ServiceClient(this, files, this::send);
-        fetcher = new Fetcher(this, this::send);
-        bridge = new Bridge(shell, services, fetcher, this);
-        if (Build.VERSION.SDK_INT >= 33) {
-            backCallback = this::back;
-            getOnBackInvokedDispatcher().registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT, backCallback);
-        }
-        try {
-            NativeBridge.attach(this);
-            String storage = NativeBridge.configureStorage(getFilesDir().getAbsolutePath());
-            if (!"ok".equals(storage)) shell.showError("Storage setup failed: " + storage);
-        } catch (RuntimeException | LinkageError error) {
-            shell.showError("Native setup failed: " + error);
-            return;
-        }
-        try {
-            files.stageBundledApplets();
-        } catch (java.io.IOException error) {
-            shell.showError("Bundled applets could not be prepared: " + error.getMessage());
-        }
-        // No flow survives a restart, so nothing in the fetch folder is still needed.
-        File[] stale = fetcher.directory().listFiles();
-        for (File file : stale == null ? new File[0] : stale) if (!file.delete()) file.deleteOnExit();
-        try {
-            attached = true;
-            send(Bridge.event("attach").put("filesDir", getFilesDir().getAbsolutePath()).put("debuggable", debuggable));
-        } catch (JSONException error) {
-            throw new IllegalStateException(error);
-        }
-        main.post(() -> openedFile(getIntent()));
-    }
-
-    @Override public void send(JSONObject event) {
-        if (attached) bridge.send(event);
-    }
-
-    /** Storage worker results, already on the UI thread. */
-    @Override public void receive(String result) {
-        try { send(Bridge.event("storageCompleted").put("payload", result)); }
-        catch (JSONException error) { throw new IllegalStateException(error); }
-    }
-
-    private void back() {
-        if (shell.back()) return;
-        if (!attached) { moveTaskToBack(true); return; }
-        // A revealed context's Back goes to the host too; the WebView never handles Back itself.
-        send(Bridge.event("back"));
-    }
-
-    private void tick() {
-        main.removeCallbacks(tick);
-        if (!resumed) return;
-        if (shell.appletShown()) send(Bridge.event("tick"));
-        main.postDelayed(tick, TICK_MS);
-    }
-
-    @Override public void wake(long delayMs) {
-        main.postDelayed(() -> send(Bridge.event("tick")), Math.max(0, delayMs));
-    }
-
-    @Override public void moveToBack() { moveTaskToBack(true); }
-
-    /** Hands bundles to the host and credential records to the service client. Runs after the current dispatch. */
-    private void scanImports() {
-        if (!attached) return;
-        for (File file : files.serviceImports()) services.importCredential(file);
-        for (File file : files.cookieImports()) importCookies(file);
-        for (File file : files.bundledImports()) importBundle(file, "bundled");
-        for (File file : files.bundleImports()) importBundle(file, "bundle");
-    }
-
-    /** Development cookies from a laptop browser, which only a debug build takes. The file is always deleted. */
-    private void importCookies(File file) {
-        JSONObject receipt;
-        try {
-            if ((getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) == 0) {
-                receipt = new JSONObject().put("ok", false).put("error", "Cookie imports need a debug build");
-            } else {
-                JSONObject payload = new JSONObject(files.read(file, COOKIE_MAX_BYTES));
-                int count = shell.sitesFor(payload.optString("appletId", null)).importCookies(payload);
-                receipt = new JSONObject().put("ok", true).put("count", count);
-            }
-        } catch (java.io.IOException | JSONException | RuntimeException error) {
-            receipt = null;
-            try { receipt = new JSONObject().put("ok", false).put("error", String.valueOf(error.getMessage())); }
-            catch (JSONException ignored) { /* The CLI times out instead. */ }
-        }
-        if (receipt != null) files.receipt(file, receipt);
-        if (file.exists() && !file.delete()) file.deleteOnExit();
-    }
-
-    /** `bundled` is an APK applet with its optional release record; `bundle` is a development import. */
-    private void importBundle(File file, String kind) {
-        File record = Files.releaseRecord(file);
-        try {
-            JSONObject event = Bridge.event("importFound").put("kind", kind).put("path", file.getAbsolutePath())
-                .put("payload", files.read(file, BUNDLE_MAX_BYTES));
-            if (kind.equals("bundled") && record.isFile()) event.put("release", files.read(record, 1024 * 1024));
-            send(event);
-        } catch (java.io.IOException | JSONException error) {
-            if (kind.equals("bundle")) {
-                try { files.receipt(file, new JSONObject().put("ok", false).put("error", String.valueOf(error.getMessage()))); }
-                catch (JSONException ignored) { /* The CLI times out instead. */ }
-            } else {
-                shell.showError("A bundled applet could not be read: " + error.getMessage());
-            }
-        }
-        // The host deletes the bundle; never offer the same file twice.
-        if (file.exists() && !file.delete()) file.deleteOnExit();
-        if (kind.equals("bundled") && record.exists() && !record.delete()) record.deleteOnExit();
-    }
-
-    /** Scans for imports, then lets the host run its automatic update check, which it throttles. */
-    @Override public void launcherShown() {
-        main.post(scan);
-        main.post(() -> {
-            try { send(Bridge.event("checkUpdates").put("appletId", JSONObject.NULL).put("manual", false)); }
-            catch (JSONException error) { throw new IllegalStateException(error); }
-        });
+        if (!createWindow()) return;
+        send(Bridge.event("managerAttached"));
+        runtime.main.post(() -> openedFile(getIntent()));
     }
 
     @Override public void pickAppletFile() {
@@ -195,7 +41,7 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
 
     /** A bundle another app opened or shared with Genesis. The intent is consumed so it runs once. */
     private void openedFile(Intent intent) {
-        if (intent == null || !attached) return;
+        if (intent == null || runtime == null || !runtime.attached()) return;
         List<Uri> uris = new ArrayList<>();
         if (Intent.ACTION_VIEW.equals(intent.getAction()) && intent.getData() != null) uris.add(intent.getData());
         if (Intent.ACTION_SEND.equals(intent.getAction())) {
@@ -203,7 +49,9 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
             if (stream != null) uris.add(stream);
             else if (intent.hasExtra(Intent.EXTRA_TEXT)) {
                 setIntent(new Intent(this, MainActivity.class));
-                sharedText(intent.getCharSequenceExtra(Intent.EXTRA_TEXT));
+                // A direct-share target names the applet; the host still checks that it declares the site.
+                sharedText(intent.getCharSequenceExtra(Intent.EXTRA_TEXT),
+                    Shortcuts.appletId(intent.getStringExtra(androidx.core.content.pm.ShortcutManagerCompat.EXTRA_SHORTCUT_ID)));
                 return;
             }
         }
@@ -213,10 +61,10 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
     }
 
     /** Text shared with Genesis: its first website link opens in the applet that uses that site. */
-    private void sharedText(CharSequence text) {
+    private void sharedText(CharSequence text, String appletId) {
         java.util.regex.Matcher link = java.util.regex.Pattern.compile("https?://\\S+", java.util.regex.Pattern.CASE_INSENSITIVE)
             .matcher(text == null ? "" : text);
-        if (link.find()) shell.openUrl(trimLink(link.group()), null, true);
+        if (link.find()) shell.openUrl(trimLink(link.group()), appletId, true);
         else shell.showInfo("Genesis", "This doesn't contain a website link");
     }
 
@@ -254,9 +102,10 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
      * host to review them. The copy runs on the fetch thread.
      */
     private void reviewFiles(List<Uri> uris) {
+        runtime.router.flowStarted(shell);
         ContentResolver resolver = getContentResolver();
-        File directory = fetcher.directory();
-        fetcher.background(() -> {
+        File directory = runtime.fetcher.directory();
+        runtime.fetcher.background(() -> {
             File bundle = null;
             String release = null, error = null;
             try {
@@ -293,7 +142,7 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
                 bundle = null;
             }
             String path = bundle == null ? null : bundle.getAbsolutePath(), record = release, message = error;
-            fetcher.post(() -> {
+            runtime.fetcher.post(() -> {
                 if (path == null) { shell.showError("Genesis could not read the file: " + message); return; }
                 try { send(Bridge.event("reviewFile").put("path", path).put("release", record == null ? JSONObject.NULL : record)); }
                 catch (JSONException failed) { throw new IllegalStateException(failed); }
@@ -308,125 +157,22 @@ public final class MainActivity extends Activity implements NativeBridge.Storage
         return uri.getLastPathSegment();
     }
 
-    @Override public Connections.Store connections() { return services; }
-
-    /** The bytes under the files folder, which holds every applet's bundles and data. */
-    @Override public void storageSize(LongConsumer result) {
-        fetcher.background(() -> {
-            long bytes = Files.size(getFilesDir());
-            fetcher.post(() -> result.accept(bytes));
-        });
-    }
-
-    @Override public boolean chooseFiles(WebChromeClient.FileChooserParams params, ValueCallback<Uri[]> callback, BooleanSupplier valid) {
-        selection.open(params, callback, valid);
-        return true;
-    }
-
-    @Override public void cancelInvalidFiles() { selection.cancelIfInvalid(); }
-
-    /**
-     * One Android request at a time; a newer one interrupts the older one. Each request has its
-     * own code, so a late result of the older one is ignored. Android answers an interrupted
-     * request with empty results, which is reported as null rather than as a refusal.
-     */
-    @Override public void requestPermissions(String[] permissions, java.util.function.Consumer<java.util.Set<String>> granted) {
-        if (permissionsWanted != null) finishPermissions(new String[0], new int[0]);
-        java.util.Set<String> held = new java.util.LinkedHashSet<>();
-        List<String> needed = new ArrayList<>();
-        for (String permission : permissions) {
-            if (checkSelfPermission(permission) == android.content.pm.PackageManager.PERMISSION_GRANTED) held.add(permission);
-            else needed.add(permission);
-        }
-        if (needed.isEmpty()) { granted.accept(held); return; }
-        permissionsHeld = held;
-        permissionsWanted = granted;
-        permissionsRequest = (permissionsRequest + 1) % PERMISSION_REQUESTS;
-        requestPermissions(needed.toArray(new String[0]), REQUEST_PERMISSIONS + permissionsRequest);
-    }
-
-    @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] results) {
-        int request = requestCode - REQUEST_PERMISSIONS;
-        if (request < 0 || request >= PERMISSION_REQUESTS) super.onRequestPermissionsResult(requestCode, permissions, results);
-        else if (request == permissionsRequest) finishPermissions(permissions, results);
-    }
-
-    private void finishPermissions(String[] permissions, int[] results) {
-        java.util.function.Consumer<java.util.Set<String>> granted = permissionsWanted;
-        java.util.Set<String> held = permissionsHeld;
-        permissionsWanted = null;
-        permissionsHeld = null;
-        if (granted == null) return;
-        if (results.length == 0) { granted.accept(null); return; }
-        for (int i = 0; i < Math.min(permissions.length, results.length); i++) {
-            if (results[i] == android.content.pm.PackageManager.PERMISSION_GRANTED) held.add(permissions[i]);
-        }
-        granted.accept(held);
-    }
-
     @SuppressWarnings("deprecation")
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        if (requestCode == PICK_APPLET_FILE) {
-            if (resultCode != RESULT_OK || data == null) return;
-            List<Uri> uris = new ArrayList<>();
-            ClipData clip = data.getClipData();
-            if (clip != null) for (int i = 0; i < Math.min(clip.getItemCount(), 2); i++) uris.add(clip.getItemAt(i).getUri());
-            else if (data.getData() != null) uris.add(data.getData());
-            if (clip != null && clip.getItemCount() > 2) { shell.showError("Pick an applet bundle, and its release record if you have one."); return; }
-            if (!uris.isEmpty()) reviewFiles(uris);
-            return;
-        }
-        if (selection == null || !selection.result(requestCode, resultCode, data)) super.onActivityResult(requestCode, resultCode, data);
-    }
-
-    @SuppressWarnings("deprecation")
-    @SuppressLint("GestureBackNavigation") // API 33+ uses the callback registered in onCreate.
-    @Override public void onBackPressed() {
-        if (shell == null) super.onBackPressed();
-        else back();
-    }
-
-    @Override protected void onResume() {
-        super.onResume();
-        if (!attached) return;
-        resumed = true;
-        send(Bridge.event("resumed"));
-        main.post(scan);
-        tick();
+        if (requestCode != PICK_APPLET_FILE) { super.onActivityResult(requestCode, resultCode, data); return; }
+        if (resultCode != RESULT_OK || data == null || shell == null) return;
+        List<Uri> uris = new ArrayList<>();
+        ClipData clip = data.getClipData();
+        if (clip != null) for (int i = 0; i < Math.min(clip.getItemCount(), 2); i++) uris.add(clip.getItemAt(i).getUri());
+        else if (data.getData() != null) uris.add(data.getData());
+        if (clip != null && clip.getItemCount() > 2) { shell.showError("Pick an applet bundle, and its release record if you have one."); return; }
+        if (!uris.isEmpty()) reviewFiles(uris);
     }
 
     /** `dev install` starts this activity again; one already in front gets only this call. */
     @Override protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
-        main.post(scan);
-        main.post(() -> openedFile(getIntent()));
-    }
-
-    /** The manifest keeps the activity through rotation and appearance changes, so the applet keeps running. */
-    @Override public void onConfigurationChanged(Configuration configuration) {
-        super.onConfigurationChanged(configuration);
-        if (shell != null) shell.appearanceChanged();
-    }
-
-    @Override protected void onPause() {
-        if (attached) {
-            resumed = false;
-            main.removeCallbacks(tick);
-            send(Bridge.event("suspended"));
-        }
-        super.onPause();
-    }
-
-    @Override protected void onDestroy() {
-        main.removeCallbacksAndMessages(null);
-        attached = false;
-        if (backCallback != null && Build.VERSION.SDK_INT >= 33) getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(backCallback);
-        if (selection != null) selection.cancel();
-        if (services != null) services.close();
-        if (fetcher != null) fetcher.close();
-        if (shell != null) shell.destroy();
-        NativeBridge.detach(this);
-        super.onDestroy();
+        if (runtime != null) runtime.main.post(() -> openedFile(getIntent()));
     }
 }

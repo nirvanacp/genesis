@@ -4,7 +4,7 @@ This kit matches `@genesis/sdk` `0.0.0`, `@genesis/applet-tools` `0.0.0`, manife
 
 | Import | Runs in | Use it for |
 | --- | --- | --- |
-| `@genesis/sdk` | The UI | The client. It connects, drives contexts, watches pages, and gives storage, services and the locator and field builders. It uses no UI framework. |
+| `@genesis/sdk` | The UI | The client. It connects, drives contexts, watches pages, and gives storage, services, notifications and the locator and field builders. It uses no UI framework. |
 | `@genesis/sdk/page` | The website page | The page module with its readers and commands (see [page modules](page-modules.md)). |
 | `@genesis/sdk/router` | The UI | The optional router helper for routes, screens, Back and when the website shows. |
 | `@genesis/sdk/react` | The UI | React bindings over the client and the router. React and React DOM `^19.3.1` are optional peer dependencies, needed only for this entry. |
@@ -25,7 +25,7 @@ Nothing else is public. The page module must not import `@genesis/sdk/react` or 
     { "id": "me", "startUrl": "https://example.com/account" }
   ],
   "capabilities": { "storage": true, "services": [{ "id": "bookmarks", "config": "backend/service.json" }] },
-  "shell": { "accent": "#ff6600" },
+  "shell": { "accent": "#ff6600", "icon": "assets/icon.png" },
   "build": { "foreground": { "entry": "src/main.tsx" }, "page": "src/page.ts" }
 }
 ```
@@ -39,7 +39,9 @@ Nothing else is public. The page module must not import `@genesis/sdk/react` or 
 | `contexts` | One to three website sessions, each `{ id, startUrl }` with `startUrl` on a declared origin. The first context is active at launch. Each context keeps its own history. |
 | `capabilities.storage` | Enables document storage for this applet. |
 | `capabilities.services` | HTTPS backends. `config` points at the service file that the tools use (see [services and data](services-and-data.md)). |
-| `shell.accent` | `#rrggbb` color for the applet name on the launch splash. |
+| `capabilities.notifications` | Optional. `{}` lets the UI notify the user with `genesis.notifications.post`. Adding `service` (a declared service id) and `path` (starting with one `/`) also has the shell ask that service for news in the background, about every `intervalMinutes` (an integer from 15 to 1440, default 60). `service` and `path` go together. See [notifications](services-and-data.md#notifications). |
+| `shell.accent` | `#rrggbb` brand color. The shell fills the applet's home-screen shortcut and Recents icon with it, and draws the first letter of `name` on it when there is no `shell.icon`. |
+| `shell.icon` | Optional. A PNG under `assets/` (`assets/icon.png`), square, 192 to 1024 px on a side and at most 256 KiB. Use original artwork the applet may use, not the website's logo copied from its pages. The launcher, launch splash, home-screen shortcut and Recents card show it; the shell places it inside the adaptive icon's safe zone on the accent color, so keep the art's own background transparent or matching. `check` fails at `/shell/icon` when the file is missing, not a PNG, not square or out of range. |
 | `build.foreground` | `{ entry }`, a source file the tool bundles with esbuild, or `{ command, dir }`, a command that writes the built UI into `dir`. See [frameworks](frameworks.md). |
 | `build.page` | Optional. The page module file, bundled into `page.js` with the page agent. |
 | `build.check` | Optional. A type check command that replaces `tsc -p tsconfig.json --noEmit`. |
@@ -81,6 +83,7 @@ genesis.ready();
 | `saved`, `save({ router?, app? })` | State kept when Genesis recreates the UI. `save` replaces each key given, debounced by 500 ms. |
 | `storage` | Document storage (`Storage`). |
 | `services.request(serviceId, path, { method?, body? })` | Calls a declared backend service. |
+| `notifications.post(input)` | Notifies the user (see [Notifications](#notifications)). |
 | `ready()` | Reports the first layout. The shell then shows the UI. |
 | `onResume`, `onSuspend`, `onRetired` | The applet came back, is going to the background, or this UI was closed. Each returns its unsubscribe function. |
 | `retired` | `true` once the UI was closed. |
@@ -180,6 +183,9 @@ A locator's `options` take the other locator fields `within`, `has`, `nth`, `fra
 | `Services` | `genesis.services`, with `request(serviceId, path, { method?, body? })`. |
 | `ServiceResponse` | `{ status, body }`. HTTP error statuses arrive as responses. |
 | `SavedState` | `{ router?, app? }`, as `genesis.save` takes it. |
+| `Notifications` | `genesis.notifications`, with `post(input: NotificationInput): Promise<NotificationResult>`. |
+| `NotificationInput` | `{ id, title, body?, url? }`. |
+| `NotificationResult` | `{ posted: true }`. |
 
 ### Errors
 
@@ -291,6 +297,7 @@ router.subscribe(() => console.log(router.screen()?.id, router.status().status))
 | `RouterView` | `{ active, screen, revealed, status, presentation, state, navigate, back, select, reload, viewWebsite, done, setLeaveGuard, onConfirmLeave }` | What `useRouter` returns. |
 | `useRecords` | `useRecords(collection, { storage? })` | `{ records, loading, error, put, remove, commit }` over every document of a collection. |
 | `useService` | `useService(serviceId)` | `request(path, { method?, body? })` for a declared service. |
+| `useNotifications` | `useNotifications(): Notifications` | `genesis.notifications`. |
 | `useScrollMemory` | `useScrollMemory()` | A ref callback that keeps a scroll container's position per screen. |
 | `ScrollMemory` | `<ScrollMemory {...divProps}>` | A `div` with `useScrollMemory`. |
 | `useAppResume` | `useAppResume(callback)` | Runs on resume from the background and, with the router, after Done on the website. |
@@ -336,6 +343,14 @@ if (response.status !== 200) throw new Error("The bookmarks service refused the 
 
 The shell adds the credential. A request it could not complete throws `ServiceError`. Show `serviceMessage(error)` for it.
 
+### Notifications
+
+```ts
+await genesis.notifications.post({ id: `reply-${reply.id}`, title: "New reply", body: reply.text, url: `https://example.com/item?id=${reply.id}` });
+```
+
+In React, `useNotifications()` returns the same object. It notifies the user under the applet's name, when the manifest declares `capabilities.notifications`; otherwise it throws `CONFIGURATION_REQUIRED`. `id` is 1 to 64 letters, digits, `.`, `_` or `-`, and a later notification with the same id replaces the earlier one. `title` is 1 to 120 characters and `body` at most 500. `url` is optional, `https` on one of the applet's origins, and opens in the applet when the user taps the notification; without it the tap opens the applet where it was. Anything else throws `INVALID_ARGUMENT`. The result `{ posted: true }` means Genesis accepted the request: it shows only if the user turned the applet's notifications on in Applet info, which is off by default.
+
 ## Errors and limits
 
 `ErrorCode` is one of `RETIRED`, `CONFLICT`, `NOT_FOUND`, `DOCUMENT_TOO_LARGE`, `STORAGE_FAILURE`, `ORIGIN_NOT_DECLARED`, `MESSAGE_TOO_LARGE`, `PAGE_TOO_LARGE`, `PATCH_TOO_LARGE`, `DEADLINE`, `INVALID_STEPS`, `SERVICE_UNREACHABLE`, `SERVICE_FAILURE`, `AUTHENTICATION_FAILED`, `CERTIFICATE_FAILED`, `CONFIGURATION_REQUIRED`, `NOT_READY`, `UNKNOWN_METHOD`, `INVALID_ARGUMENT`, `QUOTA_EXCEEDED`, `PROTOCOL_MISMATCH`, `APPLET_INCOMPATIBLE`, `ENVELOPE_INVALID`, `CONTEXT_REPLACED`, `TARGET_NOT_FOUND`, `PRECONDITION_FAILED`, `ASYNC_READ`, `AUTH_REQUIRED`, `REJECTED`, `NOT_ACTIONABLE`, `AMBIGUOUS_TARGET`, `PROTECTED_FIELD`, `INPUT_UNAVAILABLE` and `UNKNOWN_OPERATION`. Action results carry the same codes in `code`. The [protocol guide](protocol.md) says when each one occurs.
@@ -358,6 +373,8 @@ The shell adds the credential. A request it could not complete throws `ServiceEr
 | Stale copies kept for Back | `historyEntriesMax` | 16 history entries per context |
 | Trusted input | `trustedInput` | `true` where the shell can send real input |
 | Service request or response body | | 256 KiB, with 3 s to connect and 3 s to read |
+| Notification | | `id` 64 characters, `title` 120, `body` 500; at most 5 per background check |
+| Background news check | | Every 15 to 1440 minutes, only with a network and only after the user turns notifications on |
 
 ## Compatibility
 

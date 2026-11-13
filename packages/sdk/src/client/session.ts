@@ -15,6 +15,7 @@ import type { Storage } from "../types.js";
 import { createContext, type ContextHandle, type ContextControl } from "./context.js";
 import { createPresentation, type Website } from "./presentation.js";
 import { createServices, type Services } from "./services.js";
+import { createNotifications, type Notifications } from "./notifications.js";
 import { createSavedState, type SavedState } from "./state.js";
 import { createStorage } from "./storage.js";
 import { webViewTransport, type Transport } from "./transport.js";
@@ -133,7 +134,7 @@ export function openSession(transport: Transport, url: string): Promise<Session>
   });
 }
 
-/** The connected client: the applet's contexts, the website's presentation, Back, saved state, storage and services. */
+/** The connected client: the applet's contexts, the website's presentation, Back, saved state, storage, services and notifications. */
 export interface Genesis {
   readonly appletId: string;
   readonly revision: number;
@@ -157,6 +158,7 @@ export interface Genesis {
   save(value: SavedState): void;
   readonly storage: Storage;
   readonly services: Services;
+  readonly notifications: Notifications;
   /** Reports the first layout; the shell then shows the UI. */
   ready(): void;
   /** The applet came back to the foreground. */
@@ -241,6 +243,7 @@ function createGenesis(session: Session): Genesis {
     save: value => saved.save(value),
     storage: createStorage(session),
     services: createServices(session),
+    notifications: createNotifications(session),
     ready() {
       if (readySent) return;
       readySent = true;

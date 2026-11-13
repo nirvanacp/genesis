@@ -118,7 +118,7 @@ Android Back reaches the UI through `genesis.onBack(handler)`. The newest handle
 2. The top overlay screen closes.
 3. A sign-in that the router opened is left, as described above.
 4. The active context goes back one entry in its history. The previous entry shows its last copy at once, marked `stale`, with its scroll position.
-5. Otherwise Android Back leaves the applet. `back()` does nothing there.
+5. Otherwise Android Back leaves the applet, as Back leaves any Android app: its window moves behind the screen it was opened from, and reopening it from Recents within a short while shows the same screen. `back()` does nothing there.
 
 The UI must answer Back within 300 ms, so keep Back handlers synchronous. A screen that draws its own layer, such as an image viewer, can register a handler with `genesis.onBack` that closes it and returns `true`. Navigating, selecting a tab and opening an overlay screen ask the leave guard first, and any navigation clears it. Set a guard with `setLeaveGuard(message)` while a draft is unsaved; replace the default `confirm()` with `onConfirmLeave` when the product has its own dialog.
 
@@ -146,7 +146,7 @@ A link the user shares with Genesis, or types in Open a link on the Home screen,
 
 ## The Genesis menu
 
-The shell's menu offers Home, Reload applet, View website, Service connections and Applet info. Do not rebuild these in the UI. Reload applet recreates the UI and its contexts at their start pages.
+The shell's menu offers Open Genesis, Reload applet, View website, Service connections and Applet info. Do not rebuild these in the UI. Open Genesis shows the Genesis app and leaves the applet where it is. Reload applet recreates the UI and its contexts at their start pages.
 
 ## Route inventory
 

@@ -118,6 +118,9 @@ fn parse_bundle(envelope: &ImportEnvelope) -> Result<Bundle, ErrorBody> {
     if let Some(context) = contexts.iter().find(|c| !declared(&c.start_url)) {
         return Err(invalid(format!("manifest context {} startUrl is not on a declared origin", context.id)));
     }
+    if let Some(icon) = bundle.manifest.shell.as_ref().and_then(|s| s.icon.as_deref()).filter(|icon| !is_safe_path(icon)) {
+        return Err(invalid(format!("manifest shell.icon {icon} is not a plain relative path in the bundle")));
+    }
     Ok(bundle)
 }
 

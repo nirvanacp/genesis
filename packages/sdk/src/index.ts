@@ -21,6 +21,7 @@ export type { EmitResult, WatchStore, WatchValue } from "./client/watch.js";
 export { css, field, record, role, text } from "./client/locator.js";
 export type { Website, WebsiteState } from "./client/presentation.js";
 export type { Services } from "./client/services.js";
+export type { Notifications } from "./client/notifications.js";
 export type { SavedState } from "./client/state.js";
 export { GenesisError, ServiceError, serviceMessage } from "./types.js";
 export type { ServiceResponse, Storage, StorageBatch, StorageChange, StorageKey, StoredDocument } from "./types.js";
@@ -40,6 +41,8 @@ export type {
   Locator,
   Manifest,
   NavigateMode,
+  NotificationInput,
+  NotificationResult,
   PageInfo,
   PageOp,
   Step,

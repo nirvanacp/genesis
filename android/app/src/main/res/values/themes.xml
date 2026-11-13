@@ -35,4 +35,7 @@
         <item name="android:statusBarColor">@color/genesis_surface</item>
         <item name="android:navigationBarColor">@color/genesis_surface</item>
     </style>
+
+    <!-- Applet windows. Genesis's own splash shows the applet's icon, name and color. -->
+    <style name="Theme.NirvanaGenesis.Applet" parent="Theme.NirvanaGenesis" />
 </resources>

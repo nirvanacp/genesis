@@ -1,6 +1,6 @@
 package app.nirvana.genesis;
 
-import android.app.Activity;
+import android.content.Context;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.os.Handler;
@@ -62,12 +62,12 @@ final class Fetcher {
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private boolean closed;
 
-    Fetcher(Activity activity, Consumer<JSONObject> events) {
+    Fetcher(Context context, Consumer<JSONObject> events) {
         this.events = events;
-        directory = new File(activity.getFilesDir(), FETCH_DIRECTORY);
-        debuggable = (activity.getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0;
+        directory = new File(context.getFilesDir(), FETCH_DIRECTORY);
+        debuggable = (context.getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0;
         String version;
-        try { version = activity.getPackageManager().getPackageInfo(activity.getPackageName(), 0).versionName; }
+        try { version = context.getPackageManager().getPackageInfo(context.getPackageName(), 0).versionName; }
         catch (PackageManager.NameNotFoundException error) { version = "unknown"; }
         userAgent = "Genesis/" + version;
     }

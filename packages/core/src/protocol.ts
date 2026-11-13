@@ -117,6 +117,7 @@ export type ForegroundMethod =
   | "ui.ready"
   | "storage.get" | "storage.list" | "storage.commit"
   | "services.request"
+  | "notifications.post"
   | "context.navigate" | "context.back" | "context.forward" | "context.reload"
   | "context.reveal" | "context.cover"
   | "session.save"
@@ -133,6 +134,23 @@ export type ForegroundEventName =
   | "context.bound" | "page.emit" | "page.progress";
 export type ContextEventName = "retired" | "call" | "cancel" | "reset";
 export type EventName = ForegroundEventName | ContextEventName;
+
+/**
+ * Params of `notifications.post`. `id` is 1 to 64 of `[A-Za-z0-9._-]` and replaces an earlier
+ * notification with the same id; `title` is at most 120 characters and `body` 500; `url` is
+ * https on one of the applet's origins and opens in the applet when the user taps it.
+ */
+export interface NotificationInput {
+  id: string;
+  title: string;
+  body?: string;
+  url?: string;
+}
+
+/** `posted` is true when Genesis accepted it; the user decides in Applet info whether it shows. */
+export interface NotificationResult {
+  posted: boolean;
+}
 
 /** `push` adds a history entry; `replace` replaces the current one. */
 export type NavigateMode = "push" | "replace";

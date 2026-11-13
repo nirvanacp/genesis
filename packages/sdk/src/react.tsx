@@ -333,6 +333,11 @@ export function useService(serviceId: string) {
     genesis.services.request<T>(serviceId, path, options), [genesis, serviceId]);
 }
 
+/** `post(input)` notifies the user; see `Genesis["notifications"]`. */
+export function useNotifications() {
+  return useGenesis().notifications;
+}
+
 /**
  * Restoring waits this long for the content to grow tall enough, since a screen's data can
  * arrive seconds after it shows; it stops earlier once the position is reached or as soon as the

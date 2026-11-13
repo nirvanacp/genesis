@@ -1,6 +1,5 @@
 package app.nirvana.genesis;
 
-import android.app.Activity;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
@@ -51,7 +50,7 @@ final class ServiceClient implements Connections.Store {
         static Outcome failed(String code, String message) { return new Outcome(0, null, code, message); }
     }
 
-    private final Activity activity;
+    private final Context context;
     private final Files files;
     private final Consumer<JSONObject> events;
     private final SharedPreferences settings;
@@ -61,16 +60,16 @@ final class ServiceClient implements Connections.Store {
     /** The last failed request's label per "applet/service", for this session. */
     private final java.util.Map<String, String> failures = new java.util.HashMap<>();
 
-    ServiceClient(Activity activity, Files files, Consumer<JSONObject> events) {
-        this.activity = activity;
+    ServiceClient(Context context, Files files, Consumer<JSONObject> events) {
+        this.context = context;
         this.files = files;
         this.events = events;
-        settings = activity.getSharedPreferences("genesis-services", Context.MODE_PRIVATE);
+        settings = context.getSharedPreferences("genesis-services", Context.MODE_PRIVATE);
     }
 
     private static String setting(String applet, String service) { return applet + "/" + service; }
 
-    private boolean debuggable() { return (activity.getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0; }
+    private boolean debuggable() { return (context.getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0; }
 
     /** Executes a host `serviceRequest` and answers with `serviceResponse` or `serviceFailed`. */
     void request(JSONObject command) {
@@ -83,7 +82,7 @@ final class ServiceClient implements Connections.Store {
         String path = command.optString("path"), method = command.optString("method");
         try {
             worker.execute(() -> {
-                Outcome outcome = execute(origin, sealed, certificate, path, method, body);
+                Outcome outcome = execute(debuggable(), origin, sealed, certificate, path, method, body);
                 main.post(() -> deliver(requestId, id, outcome));
             });
         } catch (java.util.concurrent.RejectedExecutionException error) {
@@ -129,7 +128,7 @@ final class ServiceClient implements Connections.Store {
                 throw new IllegalStateException("Could not save the connection");
             }
             worker.execute(() -> {
-                Outcome health = execute(origin, sealed, certificate, healthPath, "GET", null);
+                Outcome health = execute(debuggable(), origin, sealed, certificate, healthPath, "GET", null);
                 JSONObject body = health.body instanceof JSONObject ? (JSONObject) health.body : null;
                 boolean ready = health.code == null && health.status == 200 && body != null && body.optBoolean("ready");
                 receipt(file, true, ready ? "ready" : "unavailable", null);
@@ -196,8 +195,27 @@ final class ServiceClient implements Connections.Store {
         }
     }
 
-    /** Runs on the worker thread. */
-    private Outcome execute(String origin, String sealed, String certificate, String path, String method, Object body) {
+    /**
+     * A blocking GET for background work, such as notification polling, with the same
+     * credential, certificate and limits as `request`. Returns the JSON body of a 200 answer,
+     * else null. Throws when the service could not be reached, which is worth retrying.
+     */
+    static Object getSync(Context context, String applet, String service, String path) throws java.io.IOException {
+        SharedPreferences settings = context.getSharedPreferences("genesis-services", Context.MODE_PRIVATE);
+        String id = setting(applet, service);
+        boolean debuggable = (context.getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0;
+        Outcome outcome = execute(debuggable, settings.getString(id + "/url", ""), settings.getString(id + "/token", ""),
+            settings.getString(id + "/certificate", ""), path, "GET", null);
+        if ("SERVICE_UNREACHABLE".equals(outcome.code) || "DEADLINE".equals(outcome.code)) throw new java.io.IOException(outcome.message);
+        if (outcome.code != null || outcome.status != 200) {
+            android.util.Log.w("GenesisServices", id + " answered " + (outcome.code != null ? outcome.code : "HTTP " + outcome.status));
+            return null;
+        }
+        return outcome.body;
+    }
+
+    /** Runs on a background thread. */
+    private static Outcome execute(boolean debuggable, String origin, String sealed, String certificate, String path, String method, Object body) {
         if (origin.isEmpty() || sealed.isEmpty()) {
             return Outcome.failed("CONFIGURATION_REQUIRED", "This service is not connected. Set it up in Service connections from the Genesis menu.");
         }
@@ -209,7 +227,7 @@ final class ServiceClient implements Connections.Store {
             }
             connection = (HttpURLConnection) destination.toURL().openConnection();
             connection.setInstanceFollowRedirects(false);
-            if (!certificate.isEmpty() && debuggable()) ((javax.net.ssl.HttpsURLConnection) connection).setSSLSocketFactory(tls(certificate));
+            if (!certificate.isEmpty() && debuggable) ((javax.net.ssl.HttpsURLConnection) connection).setSSLSocketFactory(tls(certificate));
             connection.setConnectTimeout(3000);
             connection.setReadTimeout(3000);
             connection.setRequestMethod(method);

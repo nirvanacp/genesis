@@ -171,6 +171,14 @@ impl Applets {
         }
     }
 
+    /// The absolute path of the current revision's icon, when its manifest names one that exists.
+    pub fn icon(&self, applet_id: &str) -> Option<String> {
+        let (revision, manifest) = self.current(applet_id)?;
+        let relative = manifest.shell.as_ref()?.icon.as_ref()?;
+        let path = self.root.join(applet_id).join(revision.to_string()).join(relative);
+        path.is_file().then(|| path.to_string_lossy().into_owned())
+    }
+
     /// The current applets that declare the website `origin`, in id order.
     pub fn for_origin(&self, origin: &str) -> Vec<String> {
         let declares = |manifest: &Manifest| manifest.origins.iter().any(|o| origin_of(o).as_deref() == Some(origin));
@@ -189,6 +197,7 @@ impl Applets {
     pub fn entry(&self, applet_id: &str) -> Option<LauncherEntry> {
         let installed = self.installed.get(applet_id)?;
         let mut entry = entry(applet_id, installed);
+        entry.icon = self.icon(applet_id);
         entry.installed_at = revision_of(installed).and_then(|revision| self.installed_at(applet_id, revision));
         if let Some(source) = self.sources.get(applet_id) {
             entry.version = source.version().map(String::from);
@@ -344,6 +353,7 @@ fn entry(applet_id: &str, installed: &Installed) -> LauncherEntry {
         applet_id: applet_id.into(),
         name: name.into(),
         accent,
+        icon: None,
         status,
         direction: None,
         mismatches: Vec::new(),
@@ -354,6 +364,7 @@ fn entry(applet_id: &str, installed: &Installed) -> LauncherEntry {
         origins: Vec::new(),
         services: Vec::new(),
         storage: false,
+        notifications: None,
         publisher: None,
         repository: None,
         path: None,
@@ -368,6 +379,7 @@ fn entry(applet_id: &str, installed: &Installed) -> LauncherEntry {
                 origins: manifest.origins.clone(),
                 services: capabilities.services,
                 storage: capabilities.storage,
+                notifications: manifest.capabilities.notifications.clone().map(Box::new),
                 ..blank(&manifest.name, accent, AppletStatus::Current)
             }
         }
