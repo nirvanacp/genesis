@@ -56,7 +56,7 @@ The root repository is public. A checkout can contain nested git repositories: d
 
 A git worktree holds only the files its own repository tracks, so a new worktree starts without the nested repositories. The hook `tools/git-hooks/post-checkout` adds them: after `git worktree add`, it gives the new worktree its own worktree of every nested repository the main checkout has, at the same path and at every depth. Each nested worktree takes the outer worktree's branch name: an existing branch of that name is checked out, otherwise the hook creates it from the nested repository's current commit. When that branch is already checked out elsewhere, or the outer worktree is detached, the nested worktree is detached.
 
-- Install the hook once per clone, from the main checkout: `ln -s ../../tools/git-hooks/post-checkout .git/hooks/post-checkout`. Every worktree of the repository uses it.
+- Install the hooks once per clone, from the main checkout: `sh tools/git-hooks/install.sh`. It links `post-checkout` into the root repository and the branch name hooks (see **Branch names**) into the root and every nested repository. Every worktree of a repository uses that repository's hooks. Run it again after cloning or adding a nested repository.
 - Before working in a worktree, check that it has each nested repository the main checkout has (the first entry of `git worktree list` is the main checkout). If one is missing, because the hook is not installed, the worktree was made with `--no-checkout` or the hook printed a warning, add it with `git -C <main>/<path> worktree add <worktree>/<path> <branch>`. Never symlink or copy a nested repository into a worktree; that shares one working tree between agents or splits its history.
 - In a detached nested worktree, create a branch with `git -C <path> switch -c <branch>` before committing.
 - An applets directory that `genesis.workspace.json` places outside the repository is not nested: `npm run workspace -- sync` links `applets/` in every worktree to that one checkout. For parallel applet work in that layout, make a worktree of the applets repository for each Genesis worktree and point that worktree's uncommitted `genesis.workspace.json` at it.
@@ -146,12 +146,39 @@ Before the first edit of any change task, check the branches. This applies to do
 
    Skip the question when the user has already said which branches to use for this task, in the request or earlier in the conversation. Skip it too when every repository is on the same branch and that branch is neither `main` nor `develop`.
 3. The question names each repository and its branch, says which problem applies, and offers these choices:
-   - **New branch:** the developer types a name, and every repository switches to it.
+   - **New branch:** the developer types a name, and every repository switches to it. Suggest a name that follows **Branch names**.
    - **Root branch name:** every nested repository switches to the root repository's branch. Offer this only when the names differ. When the root repository is itself on `main` or `develop`, say that this choice keeps the work on that integration branch.
    - **Keep as is:** the work continues on the current branches, mismatched or on `main` or `develop`.
 4. To switch a repository, run `git -C <path> switch <branch>` when the branch already exists in it, otherwise `git -C <path> switch -c <branch>`, which creates it from that repository's current commit. Uncommitted changes move with the switch. If git refuses, because the branch is checked out in another worktree or the uncommitted changes conflict, stop, report which repository refused and why, and ask again. Never stash, discard or reset changes to make a switch succeed.
 5. Ask once per task. The answer holds for the rest of the task, including after context compaction, until a repository's branch changes again or the developer asks for a different branch. A delegated agent does not ask: it uses the branches its brief names, and if they do not match the checkout it stops and reports.
 6. Name the branch of each repository next to its commits in the final response.
+
+#### Branch names
+
+Every branch in every repository of the workspace is `main`, `develop` or `<type>/<name>`. Use the same name in every repository of one task.
+
+- `<type>` is one of:
+  - `feat` for new features and capabilities;
+  - `fix` for bug fixes;
+  - `proto` for prototypes and phase work, such as `proto/phase-14` (the developer instructions read the phase from this name);
+  - `chore` for tooling, configuration, guidance and other maintenance;
+  - `docs` for documents and records only;
+  - `backup` for snapshots of another branch, such as `backup/phase-8-3cc5c29`.
+- `<name>` uses lowercase letters, digits, `.`, `_` and `-`, and names the task in a few words, such as `feat/website-bar` or `fix/session-restore`. No further `/`.
+- Branches that start with `sudo/` skip the rule. They are for the developer only: an agent creates one only when the user names that exact branch.
+
+The hooks from `tools/git-hooks/install.sh` enforce the rule in every repository. `reference-transaction` refuses to create a branch with a bad name, through `git branch`, `git switch -c`, `git checkout -b` or `git worktree add -b`. Git does not show the new name of `git branch -m` to that hook, so `pre-push` also refuses to push a new remote branch with a bad name. Branches that already exist are never blocked.
+
+When an agent creates a branch or worktree, it picks the type from the task and a name that follows the rule. When the developer asks for a name that breaks the rule, the agent suggests the closest valid name and asks which one to use. When a hook refuses a name, the agent chooses a valid name; it never bypasses a hook with `--no-verify`, `core.hooksPath` or a `sudo/` name of its own choosing.
+
+#### Protected branches on GitHub
+
+Rulesets on the `genesis` repository protect the integration branches. Only users with the Maintain or Admin role can change them:
+
+- `main` accepts changes only through a pull request merged by a maintainer. Nobody pushes to it directly, and nobody force pushes or deletes it.
+- `develop` takes merged pull requests and direct pushes from maintainers only. Nobody force pushes or deletes it.
+
+These rules bind people. They do not widen what an agent may do: agents still never push to `main` or `develop` and never merge, as **Version control** says.
 
 ### Pushing and pull requests
 
