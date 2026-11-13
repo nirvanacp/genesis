@@ -21,7 +21,13 @@ link() {
 install_tree() {
   link "$1" reference-transaction
   link "$1" pre-push
-  git -C "$1" ls-files --others --directory | while read -r entry; do
+  # Nested repositories are usually ignored, and the untracked listing stops at the
+  # first untracked folder, so read the ignored listing too, as post-checkout does.
+  {
+    git -C "$1" -c core.quotePath=false ls-files --others --directory
+    git -C "$1" -c core.quotePath=false ls-files --others --ignored --exclude-standard --directory
+  } | sort -u | while IFS= read -r entry; do
+    case "$entry" in */) ;; *) continue ;; esac
     entry=${entry%/}
     [ -e "$1/$entry/.git" ] && install_tree "$1/$entry"
   done

@@ -70,7 +70,12 @@ function adbInputText(adbPath, serial, value) {
 async function currentCode(stored) {
   let secret = stored;
   if (stored.startsWith('otpauth://')) {
-    secret = new URL(stored).searchParams.get('secret') || '';
+    // The URI holds the secret, so a parse error must not echo it.
+    try {
+      secret = new URL(stored).searchParams.get('secret') || '';
+    } catch {
+      fail('The TOTP secret is not a valid otpauth:// URI. Ask the operator to check it.');
+    }
   }
   const key = base32(secret);
   if (!key.length) fail('The TOTP secret is not base32. Ask the operator to check it.');
