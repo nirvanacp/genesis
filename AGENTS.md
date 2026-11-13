@@ -127,6 +127,28 @@ Use the `unslop` skill whenever you write an explanation in your response. Prefe
 - You may run existing tests and perform other verification without adding or changing test files.
 - After changing code, run the appropriate linting or verification command for the modified files before finalizing the work. If a required check cannot run, explain why and identify what remains unverified. Each layer's instructions name its checks.
 
+## Devices
+
+Several threads and agents can work at the same time, each on its own applet, feature or worktree. A device holds one Genesis install with its installed applets, signed-in sessions, backend port forwards and screen, so two agents on one device overwrite each other's installs and taps. These rules apply to every task that installs on, drives, reads from or forwards ports to an Android device, in both layers.
+
+### One emulator per thread
+
+- Each thread uses its own emulator for the whole task, and only that one. An emulator is in use when it is booted and not open in your own thread's Device panel. Treat it as another thread's, or the developer's, even when it looks idle. Never install on it, uninstall from it, type into it, take screenshots of it, forward ports to it or close it.
+- To get an emulator, call `device_list`, pick an Android emulator with `booted: false` and `physical: false`, and open it with `device_open`. If your thread already has one open (`open` in `device_list`), or your workspace reference names one, reuse it.
+- When every emulator is in use, create a new one instead of sharing: copy the system image and device profile of `Genesis_Verify_API_37` into a new AVD named `Genesis_Verify_API_37_<n>`, using the next free `<n>`, with `"$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd -n Genesis_Verify_API_37_<n> -k "system-images;android-37.0;google_apis_playstore;arm64-v8a" -d medium_phone`. Then open it with `device_open`. Never delete an AVD you did not create in this task.
+- Find your emulator's adb serial, such as `emulator-5556`, from `adb devices` and `adb -s <serial> emu avd name`. Pass it to every device command: `adb -s <serial>`, `genesis-applet ... --device <serial>`, `enter-secret.mjs --device <serial>`. Never run `adb` without `-s` or rely on a default device. `android/gradlew :app:installDebug` installs on every connected device unless `ANDROID_SERIAL` is set, so run it as `ANDROID_SERIAL=<serial> android/gradlew -p android :app:installDebug`.
+- A new emulator starts empty. Install the Genesis debug build and the applets the task needs, and sign in with the test accounts skill when a journey needs an account. Never copy sessions or data from another thread's emulator.
+- Applet backends run on the computer with ports reserved per applet, so one backend serves every emulator. Agents still start backends only when the user asks. Never stop, restart or reconfigure a backend that another thread may be using; when the task needs that, ask first.
+- Record the AVD name and serial in workspace references and handoffs (see **Worktree handoffs**). Give each delegated agent that drives a device its own emulator, or pass yours only when you will not use it until the agent finishes. Two agents never drive one emulator at the same time.
+- When the task ends, close the emulator with `device_close` unless the user is still using it or asked to keep it open, so another thread can use it.
+
+### The physical phone
+
+- Never use a physical device (`physical: true` in `device_list`, or an `adb devices` serial that does not start with `emulator-`) unless the user explicitly asks in the current task to verify on the phone. A device being connected, an earlier approval, a plan, a record or a delegated brief does not count as that request.
+- When a check seems to need the phone, for example for hardware, a real network or a camera, ask first with the question prompt tool (`AskUserQuestion`, or your environment's equivalent). Say what you would install or do on it and why. Until the user says yes, use an emulator, or report the check as blocked.
+- Permission covers the current task only. With permission, follow the same rules as for an emulator: pass the phone's serial to every command, and change only what the user approved.
+- When no emulator works, report device verification as blocked. Never fall back to the phone.
+
 ## Version control
 
 For every user-requested change, commit the resulting changes as part of the task unless the user explicitly asks you not to commit. This applies to direct change requests and plan implementation, including code, configuration, documentation and agent-instruction changes of any size. A separate request to commit or a written plan is not required.

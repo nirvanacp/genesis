@@ -35,6 +35,8 @@ Before tagging a release, run `npx genesis-applet publish . --verify` and `npx g
 
 ## Device walkthrough
 
+Use a device that only your task drives. When several agents work at the same time, each one uses its own emulator, and every device command names that device's serial. Never use a physical phone unless the user asked for it in the current task: when a check seems to need one, ask first, and until the user agrees, use an emulator or report the check as blocked. A Genesis checkout's root `AGENTS.md` gives the full device rules.
+
 1. Install with `dev install` and confirm the receipt names the new revision with status `current`. `dev status <applet-id> --device <serial>` shows the installed revision, its status and, for an incompatible applet, the direction and mismatches.
 2. Open the applet from the Genesis launcher.
 3. For each affected journey: open the screen, watch its loading state, wait for content, perform the action, see the outcome, press Back, and confirm the previous entry returns at once with its scroll position.
