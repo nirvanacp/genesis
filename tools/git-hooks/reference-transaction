@@ -1,0 +1,20 @@
+#!/bin/sh
+# Refuses to create a local branch whose name breaks the Genesis branch name rule in
+# branch-name.sh. Git runs this hook for every reference update, including `git branch`,
+# `git switch -c`, `git checkout -b` and `git worktree add -b`, so a branch with a bad name
+# is refused before it exists. Updates to existing branches and deletions are never blocked.
+# Git does not report the new name of `git branch -m` to this hook; pre-push catches those.
+# Install with tools/git-hooks/install.sh.
+
+[ "$1" = prepared ] || exit 0
+. "$(dirname "$(realpath "$0")")/branch-name.sh"
+
+zero=$(git hash-object --stdin </dev/null | tr '0-9a-f' '0')
+status=0
+while read -r _old new ref; do
+  case "$ref" in refs/heads/*) ;; *) continue ;; esac
+  [ "$new" = "$zero" ] && continue
+  git show-ref --verify --quiet "$ref" && continue
+  branch_name_allowed "${ref#refs/heads/}" || status=1
+done
+exit $status
