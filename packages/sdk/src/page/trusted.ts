@@ -52,7 +52,12 @@ export async function prepareTrusted(step: Step, context: InputContext, send: Se
       return {
         element,
         run: async () => {
-          if (step.target) (element as HTMLElement).focus({ preventScroll: true });
+          if (step.target) {
+            (element as HTMLElement).focus({ preventScroll: true });
+            // Focusing can move into a protected field, such as through a shadow root that
+            // delegates focus, so the field that now has focus is checked again.
+            refuseProtected(focusedFrom(document.activeElement ?? document.body));
+          }
           await send([{ type: "key", key: step.key, modifiers: step.modifiers ?? [] }]);
         },
       };
