@@ -1,40 +1,54 @@
-export * from "./adapter/index.js";
-export { createForeground } from "./foreground.js";
-export type { ActionCall, CurrentScreen, Foreground, NavigateTarget, PendingAction } from "./foreground.js";
-export { createStore } from "./store.js";
+/**
+ * `@genesis/sdk`: the client a UI document uses to drive an applet's contexts. It depends on no
+ * UI framework; only the default transport needs the WebView bridge.
+ */
+export { connect, openSession } from "./client/session.js";
+export type { ConnectOptions, Genesis, Session } from "./client/session.js";
+export { webViewTransport } from "./client/transport.js";
+export type { Transport } from "./client/transport.js";
 export type {
-  ApplyResult,
-  ContextStore,
-  Navigated,
-  RegionState,
-  RouteInfo,
-  ShownPage,
-  Store,
-  StoreState,
-} from "./store.js";
+  CallOptions,
+  ContextHandle,
+  ContextState,
+  Expect,
+  InputCallOptions,
+  PendingInput,
+  Watch,
+  WatchOptions,
+} from "./client/context.js";
+export { createWatchStore, emptyWatchValue } from "./client/watch.js";
+export type { EmitResult, WatchStore, WatchValue } from "./client/watch.js";
+export { css, field, record, role, text } from "./client/locator.js";
+export type { Website, WebsiteState } from "./client/presentation.js";
+export type { Services } from "./client/services.js";
+export type { Notifications } from "./client/notifications.js";
+export type { SavedState } from "./client/state.js";
 export { GenesisError, ServiceError, serviceMessage } from "./types.js";
-export type {
-  ActionResult,
-  ErrorInfo,
-  PageState,
-  Record,
-  ServiceResponse,
-  Storage,
-  StorageBatch,
-  StorageChange,
-  StorageKey,
-  StoredDocument,
-} from "./types.js";
-export type { Bound, BridgeObject, Connection, Limits } from "./bridge.js";
+export type { ServiceResponse, Storage, StorageBatch, StorageChange, StorageKey, StoredDocument } from "./types.js";
 export type {
   ActionOutcome,
-  ContextState,
-  CoordinatorState,
+  ActionResult,
+  CallDetails,
+  ElementState,
+  ErrorBody,
   ErrorCode,
+  Evidence,
+  Field,
+  Fields,
+  InspectResult,
+  Limits,
+  ListValue,
+  Locator,
   Manifest,
   NavigateMode,
-  PageRecord,
-  PageStatus,
-  Presentation,
-  Screen,
+  NotificationInput,
+  NotificationResult,
+  PageInfo,
+  PageOp,
+  Step,
+  ReadSpec,
+  ScrollPosition,
+  ScrollTo,
+  UrlGuard,
+  ViewId,
 } from "@genesis/core";

@@ -105,31 +105,61 @@ impl TryFrom<String> for Role {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum ShellEvent {
-    /// First event after process start. `files_dir` is the app's private files directory;
-    /// `debuggable` is true on a debug build, the only build that accepts development imports.
+    /// Sent once per process, before any window's events. `files_dir` is the app's private
+    /// files directory; `debuggable` is true on a debug build, the only build that accepts
+    /// development imports.
     Attach {
         files_dir: String,
         #[serde(default)]
         debuggable: bool,
     },
-    Resumed,
-    Suspended,
-    /// Android Back. The WebViews never handle Back themselves.
-    Back,
+    /// The manager window (the Genesis list) was created. It has none of an earlier flow's screens.
+    ManagerAttached,
+    /// A window resumed. `applet_id` names an applet window; None is the manager. An applet
+    /// starts only when its own window resumes.
+    Resumed {
+        #[serde(default)]
+        applet_id: Option<String>,
+    },
+    Suspended {
+        #[serde(default)]
+        applet_id: Option<String>,
+    },
+    /// Android Back in a window. The WebViews never handle Back themselves.
+    Back {
+        #[serde(default)]
+        applet_id: Option<String>,
+    },
     /// The website bar's Done button over a revealed context.
-    WebsiteDone,
+    WebsiteDone {
+        #[serde(default)]
+        applet_id: Option<String>,
+    },
+    /// The manager's list opened an applet: the host starts or brings forward its window.
     OpenApplet { applet_id: String },
+    /// An applet window was created. `restored` is true when Android recreated it from its
+    /// Recents card; a new window forgets where the applet was and starts it fresh.
+    AppletWindowCreated { applet_id: String, restored: bool },
+    /// An applet window was destroyed. `finished` is true when the user closed it, such as by
+    /// swiping its Recents card away; the host then forgets where the applet was.
+    AppletWindowClosed { applet_id: String, finished: bool },
     /// A website link shared to Genesis or typed in "Open a link". `applet_id` is set when the
     /// user picked an applet from `ChooseApplet`. `external` is true for a link another app
-    /// shared, so a Back that leaves the applet returns to that app.
+    /// shared. The link opens in the applet's own window.
     OpenUrl {
         url: String,
         applet_id: Option<String>,
         #[serde(default)]
         external: bool,
     },
+    /// Shows the manager's list.
     Home,
-    Menu { action: MenuAction },
+    /// A Genesis menu choice in an applet window.
+    Menu {
+        #[serde(default)]
+        applet_id: Option<String>,
+        action: MenuAction,
+    },
     /// `onPageStarted`: a new document committed in a view, with its post-redirect URL.
     DocumentStarted { view: ViewRef, url: String },
     /// A string a document posted on `__genesisBridge`, forwarded unparsed.
@@ -169,6 +199,9 @@ pub enum ShellEvent {
     /// A storage worker result, relayed by the shell to the UI thread.
     StorageCompleted { payload: String },
     Tick,
+    /// Android asked the process to free memory (`ComponentCallbacks2` level). At 40
+    /// (`TRIM_MEMORY_BACKGROUND`) or above, the host retires every applet whose window is not resumed.
+    TrimMemory { level: u32 },
     /// The answer to `Fetch`. `status` is 0 when no response arrived and `error` says why. `body` is
     /// the UTF-8 body for an in-memory fetch, `path` the written file for `to_file`. `rate_remaining`
     /// and `rate_reset` (epoch seconds) are GitHub's rate limit headers.
@@ -201,11 +234,21 @@ pub enum ShellEvent {
     ClearData { applet_id: String },
     /// Keeps the installed release the publisher withdrew; later checks stop flagging that tag.
     KeepVersion { applet_id: String },
+    /// The end of an `Input`: `ok` is false, with `message`, when the shell dispatched nothing,
+    /// because the view is gone, is not a hidden context, or cannot take an event.
+    InputDone {
+        view: ViewRef,
+        token: u64,
+        ok: bool,
+        #[serde(default)]
+        message: Option<String>,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum MenuAction {
+    /// "Open Genesis": brings the manager forward and leaves the applet as it is.
     Home,
     Reload,
     ViewWebsite,
@@ -251,24 +294,25 @@ pub enum ShellCommand {
         #[serde(default)]
         updates_checked_at: u64,
     },
-    /// The launcher entries changed while an applet is open, such as after an update of the
-    /// open applet. The shell keeps them for its menu and pages and stays on the applet.
+    /// The launcher entries for applet windows, such as when one is created. Each window
+    /// keeps them for its menu and pages and stays on its applet.
     UpdateApplets {
         applets: Vec<LauncherEntry>,
         #[serde(default)]
         updates_checked_at: u64,
     },
     /// Shows the applet container with the splash until `RevealForeground`.
-    ShowApplet { applet_id: String, name: String, accent: Option<String> },
+    ShowApplet { applet_id: String, name: String, accent: Option<String>, icon: Option<String> },
     CreateView { view: ViewRef, url: String, origins: Vec<String>, start_script: Option<String> },
     DestroyView { view: ViewRef },
     /// `push` is `loadUrl`; `replace` is `location.replace(url)`, with `loadUrl` when the page cannot run script.
     LoadUrl { view: ViewRef, url: String, mode: NavigateMode },
-    RevealForeground,
+    /// Hides the splash of `applet_id`'s window.
+    RevealForeground { applet_id: Option<String> },
     /// Moves the context's WebView above the foreground and shows the website bar.
     RevealContext { view: ViewRef, title: String },
-    /// Moves the revealed context back under the foreground.
-    CoverContext,
+    /// Moves the revealed context of `applet_id`'s window back under the foreground.
+    CoverContext { applet_id: Option<String> },
     /// Page-side `history.go(delta)`, with the native fallback the shell applies.
     HistoryGo { view: ViewRef, delta: i32 },
     Reload { view: ViewRef },
@@ -282,8 +326,19 @@ pub enum ShellCommand {
         method: String,
         body: Option<Value>,
     },
-    ShowError { message: String },
-    ShowInfo { title: String, message: String },
+    /// `applet_id` names the window that shows it; None is the manager, or the most recently
+    /// resumed window when the manager is not attached.
+    ShowError {
+        #[serde(default)]
+        applet_id: Option<String>,
+        message: String,
+    },
+    ShowInfo {
+        #[serde(default)]
+        applet_id: Option<String>,
+        title: String,
+        message: String,
+    },
     /// What to do with an opened link: open it in one of `applets` (the applets that use its
     /// website, possibly none) or create a new applet. The shell answers a pick with `OpenUrl`
     /// carrying its id and `external` unchanged.
@@ -297,10 +352,24 @@ pub enum ShellCommand {
     /// bar's Done to close it. It answers a `WindowRequested` for a site no applet uses.
     ShowWindow { view: ViewRef, url: String },
     /// The status sheet: an incompatible applet, a lost renderer or a received import.
-    ShowStatus { kind: StatusKind, applet: Option<LauncherEntry>, details: String },
+    ShowStatus {
+        #[serde(default)]
+        applet_id: Option<String>,
+        kind: StatusKind,
+        applet: Option<LauncherEntry>,
+        details: String,
+    },
     /// Asks the shell to send `Tick` after `delay_ms`, for deadlines shorter than the periodic tick.
     Wake { delay_ms: u64 },
-    MoveTaskToBack,
+    /// Moves the task of `applet_id`'s window (None: the manager's) behind the previous task.
+    MoveTaskToBack { applet_id: Option<String> },
+    /// Starts or brings forward the applet's window, its own task in Recents. `url` is a link it
+    /// opens; the host keeps the link and loads it when the window resumes.
+    StartAppletWindow { applet_id: String, url: Option<String> },
+    /// Closes the applet's window and removes its Recents card.
+    CloseAppletWindow { applet_id: String },
+    /// Brings the manager window (the Genesis list) forward.
+    OpenManager,
     /// An HTTPS GET for the host. The shell follows redirects only to `hosts`, which must also be
     /// in its own `FETCH_HOSTS`. With `to_file`, the body is written to that path (through
     /// `<to_file>.part`) and refused beyond `max_bytes`.
@@ -352,6 +421,33 @@ pub enum ShellCommand {
     },
     /// The shell deletes the applet's stored service credentials.
     ForgetApplet { applet_id: String },
+    /// The foreground asked to notify the user. The shell posts it only when the user turned
+    /// the applet's notifications on; `url` opens in the applet's window when tapped.
+    PostNotification { applet_id: String, id: String, title: String, body: Option<String>, url: Option<String> },
+    /// Real Android input for a hidden context's WebView, dispatched in order. The shell answers
+    /// with `InputDone` carrying `token`.
+    Input { view: ViewRef, token: u64, events: Vec<InputEvent> },
+}
+
+/// One input event of `Input` or `page.input`. `x` and `y` are CSS pixels of the visual viewport
+/// at scale 1, which the shell multiplies by the display density.
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase")]
+pub enum InputEvent {
+    /// A touch tap: down and up at one point.
+    Tap { x: f64, y: f64 },
+    /// A mouse pointer entering or moving to the point.
+    Hover { x: f64, y: f64 },
+    /// The mouse pointer leaving the view.
+    HoverExit,
+    /// One key by its DOM `key` name, with `Shift`, `Control`, `Alt` or `Meta` held.
+    Key {
+        key: String,
+        #[serde(default)]
+        modifiers: Vec<String>,
+    },
+    /// Text typed into the focused element, as key presses.
+    Text { text: String },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
@@ -367,6 +463,9 @@ pub struct LauncherEntry {
     pub applet_id: String,
     pub name: String,
     pub accent: Option<String>,
+    /// The absolute path of the installed revision's icon file, when the manifest names one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
     pub status: AppletStatus,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub direction: Option<Direction>,
@@ -389,6 +488,9 @@ pub struct LauncherEntry {
     pub services: Vec<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub storage: bool,
+    /// The installed manifest's `capabilities.notifications`, which the shell schedules from.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notifications: Option<Box<NotificationDeclaration>>,
     /// The GitHub owner of a GitHub source.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub publisher: Option<String>,
@@ -546,9 +648,7 @@ pub struct Manifest {
     pub name: String,
     pub origins: Vec<String>,
     pub foreground: Foreground,
-    pub adapter: String,
     pub contexts: Vec<Context>,
-    pub routes: Vec<Route>,
     pub capabilities: Capabilities,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub shell: Option<Shell>,
@@ -557,8 +657,16 @@ pub struct Manifest {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Foreground {
+    pub kind: ForegroundKind,
+    /// The UI's HTML file inside the bundle.
     pub entry: String,
-    pub screens: Vec<String>,
+}
+
+/// How the host creates the applet's UI. A web UI is an HTML document in the foreground WebView.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ForegroundKind {
+    Web,
 }
 
 /// One WebView with its own history. The first context is active at launch.
@@ -569,19 +677,6 @@ pub struct Context {
     pub start_url: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct Route {
-    pub id: String,
-    pub pattern: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub query: Option<Vec<String>>,
-    pub page: String,
-    pub screen: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub context: Option<String>,
-}
-
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Capabilities {
@@ -589,6 +684,21 @@ pub struct Capabilities {
     pub storage: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub services: Option<Vec<ServiceDeclaration>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notifications: Option<NotificationDeclaration>,
+}
+
+/// `capabilities.notifications`: `{}` lets the foreground notify; `service` and `path` add a
+/// background poll of the applet's service every `intervalMinutes` (15 to 1440, default 60).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NotificationDeclaration {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub service: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interval_minutes: Option<u32>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -603,6 +713,9 @@ pub struct ServiceDeclaration {
 pub struct Shell {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub accent: Option<String>,
+    /// A square PNG under `assets/` that the launcher, shortcuts and Recents show.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
 }
 
 /// The versions a bundle was built against, written by the builder.
@@ -788,6 +901,11 @@ pub struct Limits {
     pub action_timeout_ms: u64,
     pub back_answer_ms: u64,
     pub history_entries_max: usize,
+    /// Open watches per context document. The page agent enforces it, not the host.
+    pub watches_max: usize,
+    /// The shell can send real input to a hidden context (`page.input`).
+    #[serde(default)]
+    pub trusted_input: bool,
 }
 
 impl Default for Limits {
@@ -807,6 +925,8 @@ impl Default for Limits {
             action_timeout_ms: 15_000,
             back_answer_ms: 300,
             history_entries_max: 16,
+            watches_max: 32,
+            trusted_input: true,
         }
     }
 }
@@ -844,17 +964,30 @@ pub enum ErrorCode {
     AsyncRead,
     AuthRequired,
     Rejected,
+    NotActionable,
+    AmbiguousTarget,
+    ProtectedField,
+    InputUnavailable,
+    UnknownOperation,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ErrorBody {
     pub code: ErrorCode,
     pub message: String,
+    /// What a failed page call got to before it failed: `dispatched`, `navigating`, `completedSteps`, `reason`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub details: Option<Value>,
 }
 
 impl ErrorBody {
     pub fn new(code: ErrorCode, message: impl Into<String>) -> Self {
-        Self { code, message: message.into() }
+        Self { code, message: message.into(), details: None }
+    }
+
+    pub fn with_details(mut self, details: Value) -> Self {
+        self.details = Some(details);
+        self
     }
 }
 
@@ -881,14 +1014,21 @@ pub enum DocumentMessage {
     },
 }
 
-/// `state` of an action the context reports with `context.actionResult`.
+/// `state` of a page call the context reports with `page.progress`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub enum ActionState {
+pub enum CallState {
     Dispatched,
-    Observed,
-    Failed,
-    Cancelled,
+    Navigating,
+}
+
+/// What a `page.emit` carries: a whole value, a change to the last one, or the stream's status.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum EmitKind {
+    Snapshot,
+    Patch,
+    Status,
 }
 
 /// A request's method and parameters, decoded from `method` and `params` of `DocumentMessage::Request`.
@@ -917,6 +1057,15 @@ pub enum Call {
         #[serde(default)]
         body: Option<Value>,
     },
+    #[serde(rename = "notifications.post")]
+    NotificationsPost {
+        id: String,
+        title: String,
+        #[serde(default)]
+        body: Option<String>,
+        #[serde(default)]
+        url: Option<String>,
+    },
     #[serde(rename = "context.navigate")]
     ContextNavigate {
         id: String,
@@ -939,15 +1088,6 @@ pub enum Call {
     ContextReveal { id: String },
     #[serde(rename = "context.cover")]
     ContextCover {},
-    #[serde(rename = "context.resync")]
-    ContextResync { id: String },
-    /// `action` is `{region, key, name, args}`; the host adds `actionId`.
-    #[serde(rename = "context.act")]
-    ContextAct { id: String, generation: u64, action: Map<String, Value> },
-    #[serde(rename = "context.cancel")]
-    ContextCancel { action_id: u64 },
-    #[serde(rename = "context.ping")]
-    ContextPing { id: String },
     /// The foreground's coordinator state, handed back in `bound.session` after background retirement.
     #[serde(rename = "session.save")]
     SessionSave { version: u32, state: Value },
@@ -956,26 +1096,49 @@ pub enum Call {
     /// Leaves the applet after a Back the foreground handled by asking first, once the user confirms.
     #[serde(rename = "back.leave")]
     BackLeave {},
-    /// Exactly one of `page` and `patch`.
-    #[serde(rename = "context.publish")]
-    ContextPublish {
+    /// Asks the bound document of `context` to run one page operation. The host never reads `op` or `args`.
+    #[serde(rename = "page.call")]
+    PageCall {
+        context: String,
+        generation: u64,
+        op: String,
         #[serde(default)]
-        page: Option<Value>,
+        args: Value,
         #[serde(default)]
-        patch: Option<Value>,
+        timeout_ms: Option<u64>,
     },
-    #[serde(rename = "context.actionResult")]
-    ContextActionResult {
-        action_id: u64,
-        state: ActionState,
+    /// Cancels one call of the asking document in `context`, or all of them when `call_id` is absent.
+    #[serde(rename = "page.cancel")]
+    PageCancel {
+        context: String,
         #[serde(default)]
-        navigating: Option<bool>,
-        /// On a navigating `dispatched`: the destination pages the foreground judges by, passed through.
-        #[serde(default)]
-        expect: Option<Value>,
-        #[serde(default)]
-        result: Option<Value>,
+        call_id: Option<String>,
     },
+    /// The context's answer to a `call`; ends the call.
+    #[serde(rename = "page.result")]
+    PageResult {
+        call_id: String,
+        ok: bool,
+        #[serde(default)]
+        value: Option<Value>,
+        #[serde(default)]
+        error: Option<ErrorBody>,
+    },
+    /// How far a running call got.
+    #[serde(rename = "page.progress")]
+    PageProgress {
+        call_id: String,
+        state: CallState,
+        #[serde(default)]
+        completed_steps: Option<u64>,
+    },
+    /// One message of a watch stream, forwarded to the foreground. The host checks only its size.
+    #[serde(rename = "page.emit")]
+    PageEmit { stream: String, kind: EmitKind, seq: u64, view: Value, url: String, data: Value },
+    /// Real input for an open call of the asking context document: the host has the shell dispatch
+    /// `events` to that document's view and answers once the shell has.
+    #[serde(rename = "page.input")]
+    PageInput { call_id: String, events: Vec<InputEvent> },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]

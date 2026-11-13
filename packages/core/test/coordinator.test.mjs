@@ -3,38 +3,34 @@ import { describe, test } from "node:test";
 import { initialState, presentation, reduce, restore, revealed, serialize } from "../dist/index.js";
 
 const HN = "https://news.ycombinator.com";
-const manifest = {
-  schemaVersion: 6,
-  id: "hn",
-  name: "Hacker News",
+/** A router table as the router helper builds it: the manifest's origins and contexts, and routes and screens from code. */
+const table = {
   origins: [HN],
-  foreground: { entry: "src/main.tsx", screens: ["feed", "item", "user", "post", "me", "saved"] },
-  adapter: "src/adapter.ts",
   contexts: [
     { id: "primary", startUrl: `${HN}/` },
     { id: "post", startUrl: `${HN}/submit` },
     { id: "me", startUrl: `${HN}/news?account=1` },
   ],
   routes: [
-    { id: "home", pattern: "/", page: "feed", screen: "feed", context: "primary" },
-    { id: "item", pattern: "/item", query: ["id"], page: "item", screen: "item" },
-    { id: "user", pattern: "/user", query: ["id"], page: "user", screen: "user" },
-    { id: "submit", pattern: "/submit", page: "submit", screen: "post", context: "post" },
-    { id: "account", pattern: "/news", query: ["account"], page: "account", screen: "me", context: "me" },
-    { id: "news", pattern: "/news", page: "feed", screen: "feed" },
+    { id: "home", pattern: "/", screen: "feed", context: "primary" },
+    { id: "item", pattern: "/item", query: ["id"], screen: "item" },
+    { id: "user", pattern: "/user", query: ["id"], screen: "user" },
+    { id: "submit", pattern: "/submit", screen: "post", context: "post" },
+    { id: "account", pattern: "/news", query: ["account"], screen: "me", context: "me" },
+    { id: "news", pattern: "/news", screen: "feed" },
   ],
-  capabilities: {},
+  screens: ["feed", "item", "user", "post", "me", "saved"],
 };
 
 /** Drives the reducer and remembers the state, the last effects and each context's generation and history. */
-function session(state = initialState(manifest)) {
+function session(state = initialState(table)) {
   const generations = {};
   const histories = {};
   const self = {
     state,
     effects: [],
     send(event) {
-      const result = reduce(self.state, event, manifest);
+      const result = reduce(self.state, event, table);
       self.state = result.state;
       self.effects = result.effects;
       return result.effects;
@@ -58,7 +54,7 @@ function session(state = initialState(manifest)) {
     },
     /** What the user sees: the overlay, or the active context's presentation. */
     shown() {
-      return self.state.overlay.length > 0 ? "overlay" : presentation(self.state.contexts[self.state.active], manifest);
+      return self.state.overlay.length > 0 ? "overlay" : presentation(self.state.contexts[self.state.active], table);
     },
     context(id = self.state.active) {
       return self.state.contexts[id];
@@ -217,7 +213,7 @@ describe("section 5.5 scenarios", () => {
     s.send({ type: "navigate.screen", screen: { key: "saved-1", id: "saved", params: {} }, mode: "push" });
     const saved = JSON.parse(JSON.stringify(serialize(s.state)));
 
-    const reopened = session(restore(saved, manifest));
+    const reopened = session(restore(saved, table));
     assert.equal(reopened.shown(), "overlay");
     assert.equal(reopened.context("primary").url, `${HN}/item?id=3`);
     assert.deepEqual(reopened.send({ type: "back" }), []);
@@ -384,7 +380,7 @@ describe("races and rules", () => {
     const s = session();
     s.commit("primary", "/changepw");
     s.page("primary", "/changepw", "unsupported");
-    assert.equal(revealed(s.state, manifest), "primary");
+    assert.equal(revealed(s.state, table), "primary");
     assert.deepEqual(s.send({ type: "navigate.screen", screen: { key: "s", id: "saved", params: {} }, mode: "push" }), [{ type: "cover" }]);
     assert.deepEqual(s.send({ type: "back" }), [{ type: "reveal", id: "primary" }]);
   });
@@ -414,9 +410,9 @@ describe("races and rules", () => {
     assert.deepEqual(s.send({ type: "select", id: "primary" }), []);
   });
 
-  test("restore ignores another session version and screens the manifest does not declare", () => {
-    assert.deepEqual(restore({ version: 99, state: {} }, manifest), initialState(manifest));
-    const state = restore({ version: 1, state: { active: "gone", overlay: [{ key: "x", id: "nope", params: {} }], contexts: {} } }, manifest);
+  test("restore ignores another session version and screens the table does not declare", () => {
+    assert.deepEqual(restore({ version: 99, state: {} }, table), initialState(table));
+    const state = restore({ version: 1, state: { active: "gone", overlay: [{ key: "x", id: "nope", params: {} }], contexts: {} } }, table);
     assert.equal(state.active, "primary");
     assert.deepEqual(state.overlay, []);
   });

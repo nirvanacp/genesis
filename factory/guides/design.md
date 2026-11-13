@@ -10,7 +10,7 @@ Use the product's native mobile app as the reference when one exists, translated
 
 The shell draws a floating 44 dp Genesis menu button in the top-right corner, 8 dp from the edges, over every screen and over the website. Keep the first row of every screen clear of that corner, for example with a 44 px right float at the top of the scroll container. Do not draw a menu of your own, a back arrow or the applet's name in a bar. Use one bottom tab bar for the main sections. Keep content tabs, filters and contextual actions inside the screen. Do not copy the website's header, footer or sidebar.
 
-When a context shows the website, the shell puts a website bar above it, at least 64 dp tall and taller with larger text, with the page title, the host and Done; the menu button stays on top at its right. The foreground does not draw this bar and cannot restyle it. Screens shown next to the website, such as overlay screens, should not imitate it.
+When a context shows the website, the shell puts a website bar above it, at least 64 dp tall and taller with larger text, with the page title, the host and Done; the menu button stays on top at its right. The applet's UI does not draw this bar and cannot restyle it. Screens shown next to the website, such as overlay screens, should not imitate it.
 
 The launcher marks an applet that this Genesis cannot run with a status line: "Needs update" when the applet was built for an older SDK, "Needs a newer Genesis" when it was built for a newer one. Opening it shows the reason instead of the applet. Rebuild the applet with the current SDK to clear "Needs update".
 
@@ -24,11 +24,11 @@ Define a small set of tokens in `src/theme.css` and use them everywhere, includi
 - Controls: icon family and weight, button shapes, inputs, tab indicators, menus, sheets, pressed, focus and disabled states.
 - Motion: easing curves, three durations and the pressed state layer. See [motion](motion.md#tokens).
 
-Set `shell.accent` in the manifest to the brand color; the shell uses it for the applet name on the launch splash.
+Set `shell.accent` in the manifest to the brand color, and give the applet a `shell.icon` (a square PNG under `assets/`, see the [SDK reference](sdk-reference.md#manifest-appletjson)). The shell shows the icon in the launcher, on the launch splash, on home-screen shortcuts and in Recents, on the accent color. Without an icon it draws the first letter of the applet's name on the accent color.
 
 ## Building screens
 
-Write semantic React from the adapter's models. The reference is a design input: do not copy its DOM or stylesheets, and never render its HTML. Show active states (voted, followed, saved) only when the page or the store confirmed them, or while a pending action requests them (see [interactions](interactions.md#optimistic-display-with-usepending)). Unknown counts and missing images get a neutral fallback, not a zero.
+Write semantic markup, in whichever UI framework the applet uses, from the records its watches return. The reference is a design input: do not copy its DOM or stylesheets, and never render its HTML. Show active states (voted, followed, saved) only when the page or the store confirmed them, or while a pending input requests them (see [interactions](interactions.md)). Unknown counts and missing images get a neutral fallback, not a zero.
 
 ## Accessibility
 
@@ -65,7 +65,7 @@ Keep existing content visible during refresh and show placeholders only where co
 
 ## Sheets and the keyboard
 
-Sheets and dialogs are opaque, scroll their body, and keep Close, Cancel and the confirming action reachable with the keyboard open and on short screens. Keep a warning beside the control it warns about. Back closes the sheet first (see [navigation](navigation.md#back)).
+Sheets and dialogs are opaque, scroll their body, and keep Close, Cancel and the confirming action reachable with the keyboard open and on short screens. Keep a warning beside the control it warns about. Back closes the sheet first (see [navigation](navigation.md)).
 
 ## Checking the design
 

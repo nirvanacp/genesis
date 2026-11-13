@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { access, copyFile, mkdir, readFile, rm } from "node:fs/promises";
+import { access, copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -20,7 +20,7 @@ function run(executable, args, env = {}, capture = false) {
 const options = new Map();
 for (let i = 2; i < process.argv.length; i += 2) {
   const key = process.argv[i];
-  if (!["--stage", "--variant", "--cargo", "--sdk"].includes(key) || process.argv[i + 1] === undefined) {
+  if (!["--stage", "--variant", "--cargo", "--sdk", "--manifest"].includes(key) || process.argv[i + 1] === undefined) {
     throw new Error(`Unknown or incomplete build option: ${key}`);
   }
   options.set(key, process.argv[i + 1]);
@@ -34,6 +34,8 @@ const cargo = options.get("--cargo") || "cargo";
 const sdk = options.get("--sdk") || process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT;
 const generated = path.join(root, "android/app/build/generated/genesis", variant);
 const intermediates = path.join(root, "target/genesis", variant);
+// The manifest overlay with the drawer aliases; Gradle passes the location AGP chose.
+const manifestOverlay = path.resolve(options.get("--manifest") ?? path.join(generated, "manifest", "AndroidManifest.xml"));
 const env = { CARGO_TARGET_DIR: path.join(intermediates, "cargo") };
 
 async function requireFile(filename, message) {
@@ -82,7 +84,9 @@ async function assets() {
   const output = path.join(generated, "assets");
   await rm(output, { recursive: true, force: true });
   await mkdir(path.join(output, "bundles"), { recursive: true });
-  for (const { base, manifest } of await readPackages()) {
+  const packages = await readPackages();
+  await drawerEntries(packages);
+  for (const { base, manifest } of packages) {
     if (variant === "release") {
       const published = await publishedRelease(base, manifest.id);
       if (published.record) {
@@ -98,6 +102,62 @@ async function assets() {
     console.log(`${manifest.id}: built from source`);
   }
   console.log(`Generated applet bundles: ${path.join(output, "bundles")}`);
+}
+
+const escapeXml = text => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+// Android string resources also treat quotes, backslashes and a leading @ or ? specially.
+const androidString = text => escapeXml(text.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/"/g, '\\"')).replace(/^([@?])/, "\\$1");
+
+// Each selected applet with `drawer: true` gets an app drawer entry: an `activity-alias` of
+// AppletEntryActivity whose meta-data names the applet, with the applet's name and an adaptive
+// icon made from `shell.icon` over its accent color. The shell enables each alias only while its
+// applet is installed and can run. Gradle adds `res/` and the manifest overlay to the variant.
+async function drawerEntries(packages) {
+  const res = path.join(generated, "res");
+  const overlay = manifestOverlay;
+  await rm(res, { recursive: true, force: true });
+  for (const folder of ["values", "drawable", "drawable-nodpi", "mipmap-anydpi-v26"]) await mkdir(path.join(res, folder), { recursive: true });
+  await mkdir(path.dirname(overlay), { recursive: true });
+  const { containedFile } = await import("../packages/applet-tools/src/manifest.mjs");
+  const values = [], aliases = [];
+  for (const { base, manifest } of packages.filter(p => p.drawer)) {
+    if (!manifest.shell?.icon) {
+      console.warn(`Warning: ${manifest.id}: no shell.icon, so no app drawer entry; a drawer entry needs the applet's own artwork.`);
+      continue;
+    }
+    const name = `applet_${manifest.id.replace(/-/g, "_")}`;
+    await copyFile(await containedFile(base, manifest.shell.icon), path.join(res, "drawable-nodpi", `${name}_fg.png`));
+    // The inset keeps the whole icon inside the adaptive icon's safe zone.
+    await writeFile(path.join(res, "drawable", `${name}_inset.xml`),
+      `<inset xmlns:android="http://schemas.android.com/apk/res/android" android:drawable="@drawable/${name}_fg" android:inset="21%" />\n`);
+    await writeFile(path.join(res, "mipmap-anydpi-v26", `${name}.xml`), [
+      `<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">`,
+      `    <background android:drawable="@color/${name}_bg" />`,
+      `    <foreground android:drawable="@drawable/${name}_inset" />`,
+      `</adaptive-icon>`, ""].join("\n"));
+    values.push(`    <string name="${name}_label">${androidString(manifest.name)}</string>`,
+      `    <color name="${name}_bg">${manifest.shell.accent ?? "#5F6368"}</color>`);
+    aliases.push([
+      `        <activity-alias`,
+      `            android:name="app.nirvana.genesis.alias.${name}"`,
+      `            android:enabled="true"`,
+      `            android:exported="true"`,
+      `            android:icon="@mipmap/${name}"`,
+      `            android:label="@string/${name}_label"`,
+      `            android:targetActivity="app.nirvana.genesis.AppletEntryActivity">`,
+      `            <intent-filter>`,
+      `                <action android:name="android.intent.action.MAIN" />`,
+      `                <category android:name="android.intent.category.LAUNCHER" />`,
+      `            </intent-filter>`,
+      `            <meta-data android:name="app.nirvana.genesis.APPLET_ID" android:value="${escapeXml(manifest.id)}" />`,
+      `        </activity-alias>`].join("\n"));
+    console.log(`${manifest.id}: app drawer entry`);
+  }
+  await writeFile(path.join(res, "values", "applet_aliases.xml"), ["<resources>", ...values, "</resources>", ""].join("\n"));
+  await writeFile(overlay, [
+    `<manifest xmlns:android="http://schemas.android.com/apk/res/android">`,
+    `    <application>`, ...aliases, `    </application>`,
+    `</manifest>`, ""].join("\n"));
 }
 
 async function native() {

@@ -12,7 +12,7 @@ By default every applet shares one website sign-in with the others: signing in t
 | --- | --- |
 | Data on this device only: categories, notes, read state, preferences | Document storage (`capabilities.storage: true`) |
 | Data shared across devices or with other tools, or computed on a server | A declared service |
-| Data the website already keeps (its bookmarks, votes, follows) | The website, through adapter regions and actions |
+| Data the website already keeps (its bookmarks, votes, follows) | The website, through watches, page inputs and page module commands |
 
 Do not copy website data into a store as a second source of truth. When a feature joins applet records with website data (categories over the website's bookmarks), store only what the applet owns, keyed by the website's stable ids, and read the rest from the page. Do not invent synchronization or migrations the user did not ask for.
 
@@ -65,7 +65,7 @@ await commit({
 
 The backend is a Node HTTPS server. It requires `Authorization: Bearer <token>` on every request, answers `GET <healthPath>` with status 200 and `{ "ready": true }`, accepts and returns JSON bodies up to 256 KiB, and does not redirect. The `environment` map names the variables through which it receives its token, database path, port and TLS certificate and key.
 
-The foreground calls it with `useService("bookmarks")` and a path. The shell adds the credential, which it keeps in the Android Keystore; the foreground and the bundle never see it. Tokens, certificates and server addresses never go into the applet's files, records or bundle.
+The UI calls it with `genesis.services.request("bookmarks", path, { method, body })`, or `useService("bookmarks")` in React. The shell adds the credential, which it keeps in the Android Keystore; the UI and the bundle never see it. Tokens, certificates and server addresses never go into the applet's files, records or bundle.
 
 ## Handling service failures
 
@@ -73,7 +73,43 @@ The foreground calls it with `useService("bookmarks")` and a path. The shell add
 - `ServiceError` means the shell could not complete the request. `CONFIGURATION_REQUIRED` means the user has not connected the service yet; tell them to use Service connections in the Genesis menu. Use `serviceMessage(error)` for the others.
 - After `DEADLINE` or `SERVICE_UNREACHABLE` on a write, the write may have happened. Reread before offering to retry, or make the write idempotent with a client-generated id.
 - A failed read is not an empty collection. Keep showing the last good data with a failure notice.
-- Reread service data in `useAppResume`.
+- Reread service data when the app resumes (`useAppResume` in React).
+
+## Notifications
+
+An applet notifies only after the user turns on Notifications in its Applet info; it is off by default, and Android 13 and later also ask the user. Each applet's notifications appear under its own name in Android's settings, and tapping one opens the applet.
+
+- **While the applet runs**, the foreground posts with `useNotifications()` (see the [SDK reference](sdk-reference.md#usenotifications)). Declare `"notifications": {}` under `capabilities`.
+- **In the background**, the shell asks a declared service for news. Declare the service and a path:
+
+```json
+"capabilities": {
+  "services": [{ "id": "bookmarks", "config": "backend/service.json" }],
+  "notifications": { "service": "bookmarks", "path": "/v1/notifications", "intervalMinutes": 60 }
+}
+```
+
+Android runs the check about every `intervalMinutes` (15 to 1440, default 60) when the phone has a network, possibly later to save battery. The shell sends `GET <path>?since=<cursor>` with the service's credential and expects status 200 with:
+
+```json
+{ "cursor": "2026-11-12T10:00:00Z", "notifications": [{ "id": "reply-881", "title": "New reply", "body": "…", "url": "https://example.com/item?id=881" }] }
+```
+
+- The backend owns deduplication. `since` is empty on the first check, then the `cursor` from the previous answer; the shell keeps it, at most 256 characters, and sends it back unchanged. Return the notifications that are new after `since`, and a cursor that marks the newest one.
+- Each notification follows the `useNotifications()` rules. The shell shows at most 5 per check and skips invalid ones, so put the most important first.
+- Any status other than 200, or a body without a string `cursor` and a `notifications` array, shows nothing and keeps the old cursor; the next check tries again. Only an unreachable service is retried sooner.
+- The check runs without the applet, its adapter or its websites, so the backend has to know on its own what is new for the user.
+
+A route for it in the backend's request handler, where `db` is its SQLite database (`node:sqlite`) and `json(response, status, value)` writes a JSON answer:
+
+```js
+if (request.method === "GET" && url.pathname === "/v1/notifications") {
+  const since = url.searchParams.get("since") ?? "";
+  const items = db.prepare("SELECT id, title, body, url, created_at FROM notices WHERE created_at > ? ORDER BY created_at LIMIT 5").all(since);
+  const cursor = items.length ? items[items.length - 1].created_at : since;
+  return json(response, 200, { cursor, notifications: items.map(({ id, title, body, url }) => ({ id, title, body, url })) });
+}
+```
 
 ## Local startup and ports
 

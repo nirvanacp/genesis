@@ -1,0 +1,17 @@
+#!/bin/sh
+# Refuses to push a new remote branch whose name breaks the Genesis branch name rule in
+# branch-name.sh. It catches branches that reference-transaction could not see, such as the
+# new name of `git branch -m`. Pushes to branches the remote already has are never blocked.
+# Install with tools/git-hooks/install.sh.
+
+. "$(dirname "$(realpath "$0")")/branch-name.sh"
+
+zero=$(git hash-object --stdin </dev/null | tr '0-9a-f' '0')
+status=0
+while read -r _local local_oid remote remote_oid; do
+  case "$remote" in refs/heads/*) ;; *) continue ;; esac
+  [ "$local_oid" = "$zero" ] && continue
+  [ "$remote_oid" = "$zero" ] || continue
+  branch_name_allowed "${remote#refs/heads/}" || status=1
+done
+exit $status

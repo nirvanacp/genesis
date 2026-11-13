@@ -1,6 +1,9 @@
 {
   "schemaVersion": 1,
   "applets": [
-    "hn-bookmarks"
+    {
+      "id": "hn-bookmarks",
+      "drawer": true
+    }
   ]
 }

@@ -7,8 +7,9 @@ use genesis_contracts::{
 };
 use std::collections::{HashMap, HashSet};
 
-/// Files every current bundle contains besides `bundle.json`.
-const REQUIRED_FILES: [&str; 3] = ["index.html", "foreground.js", "adapter.js"];
+/// Files every current bundle contains besides `bundle.json` and the UI document that
+/// `foreground.entry` names, which is checked with them.
+const REQUIRED_FILES: [&str; 1] = ["page.js"];
 
 /// A verified bundle's files, decoded, in `bundle.files` order.
 pub struct VerifiedFiles(pub Vec<(String, Vec<u8>)>);
@@ -46,7 +47,7 @@ pub fn verify(payload: &str) -> Result<Verified, ErrorBody> {
         Compatibility::Current => {
             let bundle = parse_bundle(&envelope)?;
             let has = |path: &str| files.0.iter().any(|(p, _)| p == path);
-            if let Some(missing) = REQUIRED_FILES.iter().find(|path| !has(path)) {
+            if let Some(missing) = REQUIRED_FILES.iter().copied().chain([bundle.manifest.foreground.entry.as_str()]).find(|path| !has(path)) {
                 return Err(ErrorBody::new(ErrorCode::InvalidArgument, format!("{missing} is missing")));
             }
             Ok(Verified::Current { bundle: Box::new(bundle), files })
@@ -118,6 +119,9 @@ fn parse_bundle(envelope: &ImportEnvelope) -> Result<Bundle, ErrorBody> {
     if let Some(context) = contexts.iter().find(|c| !declared(&c.start_url)) {
         return Err(invalid(format!("manifest context {} startUrl is not on a declared origin", context.id)));
     }
+    if let Some(icon) = bundle.manifest.shell.as_ref().and_then(|s| s.icon.as_deref()).filter(|icon| !is_safe_path(icon)) {
+        return Err(invalid(format!("manifest shell.icon {icon} is not a plain relative path in the bundle")));
+    }
     Ok(bundle)
 }
 
@@ -132,15 +136,15 @@ pub fn is_id(value: &str) -> bool {
         && value.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
 }
 
-/// Relative path of plain segments. `bundle.json` is reserved for the host's copy of the metadata.
+/// Relative path of plain segments: no empty or dot-leading segment, and only `A-Z a-z 0-9 . _ -`.
+/// `bundle.json` is reserved for the host's copy of the metadata.
 fn is_safe_path(path: &str) -> bool {
     path.len() <= 256
         && path != "bundle.json"
         && path.split('/').all(|segment| {
             !segment.is_empty()
-                && segment != "."
-                && segment != ".."
-                && segment.bytes().all(|b| b.is_ascii_alphanumeric() || b"._@-".contains(&b))
+                && !segment.starts_with('.')
+                && segment.bytes().all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
         })
 }
 

@@ -115,6 +115,8 @@ final class Views {
         boolean capturing;
         /** Downloads this document started; a second one asks first. */
         int downloads;
+        /** `SystemClock.uptimeMillis()` of the last trusted input dispatched here; 0 for none. */
+        long trustedInputAt;
 
         /** The profile the page's cookies and permission answers belong to. */
         final SiteData site;
@@ -265,7 +267,7 @@ final class Views {
             if (web) return false;
             // Only the revealed page may hand a link to another app, and only from a tap. A server
             // redirect from a tapped link to mailto: arrives without a gesture and is blocked too.
-            if (!SitePolicy.mayHandOff(page, request.hasGesture())) return true;
+            if (!SitePolicy.mayHandOff(page, SitePolicy.usersGesture(page, request.hasGesture()))) return true;
             android.content.Intent intent = Handoff.intent(url);
             if (intent == null) return true;
             if (listener.handOff(intent)) return true;
@@ -346,22 +348,35 @@ final class Views {
 
         Chrome(Page page) { this.page = page; }
 
-        /** Camera and microphone, only for the shown website; protected media and MIDI are always refused. */
+        /**
+         * Website pages get protected media (EME, such as Widevine) without asking, shown or hidden,
+         * like a browser's default. Camera and microphone only for the shown website, after the user
+         * allows them. The applet's own page and MIDI are always refused.
+         */
         @Override public void onPermissionRequest(PermissionRequest request) {
+            boolean website = page.isContext() || page.opener != null;
+            String media = null;
             Map<String, String> wanted = new LinkedHashMap<>();
             for (String resource : request.getResources()) {
-                if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource)) wanted.put(SiteGrants.CAMERA, resource);
+                if (PermissionRequest.RESOURCE_PROTECTED_MEDIA_ID.equals(resource)) { if (website) media = resource; }
+                else if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource)) wanted.put(SiteGrants.CAMERA, resource);
                 else if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)) wanted.put(SiteGrants.MICROPHONE, resource);
             }
-            if (wanted.isEmpty() || !SitePolicy.mayShowUi(page)) { request.deny(); return; }
+            if (wanted.isEmpty() || !SitePolicy.mayShowUi(page)) {
+                if (media != null) request.grant(new String[] {media});
+                else request.deny();
+                return;
+            }
+            String protectedMedia = media;
             asking = request;
             listener.askSite(page, origin(request.getOrigin().toString()), new java.util.ArrayList<>(wanted.keySet()), allowed -> {
                 if (withdrawn == request) return;
                 if (asking == request) asking = null;
                 List<String> grant = new java.util.ArrayList<>();
                 for (Map.Entry<String, String> entry : wanted.entrySet()) if (allowed.contains(entry.getKey())) grant.add(entry.getValue());
+                if (!grant.isEmpty()) page.capturing = true;
+                if (protectedMedia != null) grant.add(protectedMedia);
                 if (grant.isEmpty()) { request.deny(); return; }
-                page.capturing = true;
                 request.grant(grant.toArray(new String[0]));
             });
         }
@@ -413,7 +428,7 @@ final class Views {
          * it keeps `window.opener`.
          */
         @Override public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture, android.os.Message resultMsg) {
-            if (page.opener != null || !isUserGesture || !SitePolicy.mayShowUi(page)) return false;
+            if (page.opener != null || !SitePolicy.usersGesture(page, isUserGesture) || !SitePolicy.mayShowUi(page)) return false;
             WebView.HitTestResult hit = view.getHitTestResult();
             String link = hit == null || hit.getType() != WebView.HitTestResult.SRC_ANCHOR_TYPE ? null : hit.getExtra();
             if (link != null && (link.startsWith("https:") || link.startsWith("http:"))) {

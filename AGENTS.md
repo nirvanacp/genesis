@@ -2,7 +2,7 @@
 
 ## What Genesis is
 
-Genesis is an Android app that runs user-built applets. An applet is a native-feeling React UI over one or more live website sessions. Genesis keeps the websites' sessions, history and behavior; the applet owns the screens, data and rules the user asked for, and pages the applet does not customize appear as the website itself in the same session.
+Genesis is an Android app that runs user-built applets. An applet is a native-feeling web UI, built with any web framework, over one or more live website sessions. Genesis keeps the websites' sessions, history and behavior; the applet owns the screens, data and rules the user asked for, and pages the applet does not customize appear as the website itself in the same session.
 
 ## Instruction sets
 
@@ -28,8 +28,8 @@ Do not edit any `AGENTS.md` file unless the user explicitly asks you to update i
 | `android/app/` | Java shell: activity, launcher, context WebViews, website bar, native Genesis menu, service HTTPS client | Platform |
 | `android/native/` | Rust host crate `genesis-host`: applets, contexts, documents, RPC, storage, services, compatibility, imports (JNI library `libgenesis_host.so`) | Platform |
 | `crates/contracts/` | `genesis-contracts`: shell events and commands, document messages, manifest and bundle types, limits, error codes | Platform |
-| `packages/core/` | `@genesis/core`: manifest validation, route matching, presentation coordinator, compatibility table, protocol types, bundle format, error codes (TypeScript, no DOM) | Platform |
-| `packages/sdk/` | `@genesis/sdk`: bridge, foreground runtime, record store and React hooks, adapter runtime | Platform |
+| `packages/core/` | `@genesis/core`: manifest validation, route matching, presentation coordinator, compatibility table, protocol types including page control (locators, read specifications, operations), bundle format, error codes (TypeScript, no DOM) | Platform |
+| `packages/sdk/` | `@genesis/sdk`: the framework-free client (`connect`, contexts, watches, storage, services), the page agent and page modules (`/page`), the router helper (`/router`) and React bindings (`/react`) | Platform |
 | `packages/applet-tools/` | `genesis-applet` CLI: create, check (including compatibility), build, device install, services, kit export | Platform |
 | `tools/` | APK asset and native build pipeline, package index check, service helpers, git hooks | Platform |
 | `factory/` | Applet-builder instructions, guides, skills and templates | Platform (shared guidance) |
@@ -56,11 +56,21 @@ The root repository is public. A checkout can contain nested git repositories: d
 
 A git worktree holds only the files its own repository tracks, so a new worktree starts without the nested repositories. The hook `tools/git-hooks/post-checkout` adds them: after `git worktree add`, it gives the new worktree its own worktree of every nested repository the main checkout has, at the same path and at every depth. Each nested worktree takes the outer worktree's branch name: an existing branch of that name is checked out, otherwise the hook creates it from the nested repository's current commit. When that branch is already checked out elsewhere, or the outer worktree is detached, the nested worktree is detached.
 
-- Install the hook once per clone, from the main checkout: `ln -s ../../tools/git-hooks/post-checkout .git/hooks/post-checkout`. Every worktree of the repository uses it.
+- Install the hooks once per clone, from the main checkout: `sh tools/git-hooks/install.sh`. It links `post-checkout` into the root repository and the branch name hooks (see **Branch names**) into the root and every nested repository. Every worktree of a repository uses that repository's hooks. Run it again after cloning or adding a nested repository.
 - Before working in a worktree, check that it has each nested repository the main checkout has (the first entry of `git worktree list` is the main checkout). If one is missing, because the hook is not installed, the worktree was made with `--no-checkout` or the hook printed a warning, add it with `git -C <main>/<path> worktree add <worktree>/<path> <branch>`. Never symlink or copy a nested repository into a worktree; that shares one working tree between agents or splits its history.
 - In a detached nested worktree, create a branch with `git -C <path> switch -c <branch>` before committing.
 - An applets directory that `genesis.workspace.json` places outside the repository is not nested: `npm run workspace -- sync` links `applets/` in every worktree to that one checkout. For parallel applet work in that layout, make a worktree of the applets repository for each Genesis worktree and point that worktree's uncommitted `genesis.workspace.json` at it.
 - `git worktree remove` deletes nested worktrees without checking them for changes. Commit the nested work first, remove the nested worktrees innermost first with `git -C <main>/<path> worktree remove <worktree>/<path>`, which refuses while changes are uncommitted, then remove the outer worktree. When a nested worktree was already deleted, run `git -C <main>/<path> worktree prune`.
+
+### Worktree handoffs
+
+- Carry a workspace reference alongside the problem identity from **Thread titles** when handing related work to another thread or agent. Include it near the top of newly created problem-specific documents that depend on a checkout, and refresh it when handing work back. A problem can span several worktrees; its spirit animal stays the same. Workspace details belong in the handoff, not the thread title. Do not assume another thread receives this conversation or can read a referenced file; include the reference in its opening message or task brief.
+- For each repository needed by the next task, record its repository identity, machine, absolute checkout path, branch or detached HEAD, full handoff commit SHA, and working-tree state. Include nested repositories and an externally configured applets checkout when relevant; each has independent state. For a review, also specify the base commit and intended scope. State whether required commits are local-only or available from a remote branch. If work is uncommitted, list the affected tracked and untracked paths and explain how the receiving agent can access it; a commit SHA alone does not include it.
+- Treat the reference as a snapshot. Before reviewing, editing, or resuming after compaction, verify the actual repository and checkout with `git worktree list`, `git -C <path> branch --show-current`, `git -C <path> rev-parse HEAD` and `git -C <path> status --short`, and read its applicable instructions. Confirm the handoff commit exists there. If HEAD or local changes differ, establish whether the task targets the recorded snapshot or the newer work before making dependent changes. A matching animal, branch name or current directory alone does not identify the right checkout.
+- If the checkout is missing, inspect the repository's worktree list and the supplied references. Paths on another machine are location hints, not accessible checkouts. If the required commits or uncommitted changes remain unavailable, report what is missing and ask for access or an updated handoff; do not silently review or change another checkout. Do not push unpublished work merely to transfer context.
+- Reuse the referenced worktree for fixes only when no other agent is writing there. Concurrent writers use separate worktrees based on the required handoff commit, following **Worktrees**, **Branches** and **Branch names**, including the nested repository setup. If a thread cannot change its bound workspace, use the appropriate workspace mechanism or hand back the required location; do not claim the thread moved. Never stash, discard or reset someone else's work to reuse a checkout.
+- Keep machine names, absolute paths and private repository details in conversation handoffs or documents whose audience permits them. Public documents use portable repository, branch and commit references for public work only; supply local and private checkout details separately in the handoff. Follow the existing layer-specific document locations. Do not create a registry or extra document solely for workspace metadata, or retrofit historical documents unless requested.
+- At completion or handoff, identify the checkout and resulting commits per repository, remaining uncommitted work, and whether another agent is still writing there or that state is unknown. Update the workspace reference when work moves or its branch changes, and preserve the problem identity.
 
 ## Questions and change requests
 
@@ -92,8 +102,14 @@ Prioritize code that is easy to read, understand, and maintain:
 
 ### Thread titles
 
-- Write a 3 to 5 word title naming the problem, prefixed by one status emoji, and update it as work progresses: 🟡 investigating; 🟣 bug identified or plan, report or review complete, not yet implementing; 🔴 implementing a fix in an existing conversation; 🔵 fix implemented, needs verification (also the first title of a conversation that starts with an implementation request); 🟢 implemented and verified.
-- Regenerate the title after context compaction and in each new fork.
+- Format titles as `{animal emoji} {Activity} {specific problem description}`. Aim for at most 40 visible characters and never exceed 50, including spaces and the emoji. Use one animal emoji at the beginning; do not add status emojis.
+- Choose the activity from the current request: `Plan` for creating or revising plans; `Implement` for changing code, configuration or instructions; `Review` for evaluating plans, implementations or documents; `Research` for gathering information or exploring approaches; `Analysis` for explanations, diagnosis and reports. Keep the description concise and recognizable across related threads.
+- A **spirit animal** identifies a problem, not a thread or activity. Maintain a stable `Problem ID` (a short descriptive identifier), `Problem` description and `Spirit animal` (emoji and animal name). Reuse the same identity across related threads, agents, documents and handoffs.
+- Recover identity from the user's explicit assignment first, then a directly referenced source document or source thread when accessible, then the current conversation's established identity. Do not assume other threads or document contents are automatically in context. If sources disagree and the user has not resolved the conflict, ask which identity to preserve. Quoted examples are not assignments to the current problem.
+- For a new problem with no existing assignment, choose an animal at random and state its identity once in the conversation. Avoid animals assigned to distinct problems in the available context; do not claim global uniqueness without a shared registry. An animal chosen by automatic title generation is provisional until the working agent checks for an existing assignment.
+- Preserve the animal through activity changes, related follow-up questions, context compaction and forks. When an unrelated problem becomes the thread's primary task, recover its identity or assign a new one with a different animal. Do not relabel historical documents for the old problem.
+- Include the identity near the top of newly created problem-specific plans, research briefs, reviews, analyses and change records, and in handoff messages for related threads. Use a compact block such as `Problem ID: session-recovery`, `Problem: Recover expired website sessions`, `Spirit animal: 🦦 Otter`. Follow the applicable document locations, filenames and public/private boundaries. Do not create a document or registry solely to store identity, or rewrite existing documents solely to add metadata, unless requested.
+- Use available thread-renaming tools to align the title after recovering identity, when the activity or primary problem changes, and after context compaction or a fork. Preserve the established animal when regenerating a title for the same problem. If renaming tools are unavailable, provide the intended title without claiming it was applied. When starting a related thread, include its identity in the opening message so title generation can reuse it before reading files.
 
 ## Skills
 
@@ -110,6 +126,28 @@ Use the `unslop` skill whenever you write an explanation in your response. Prefe
 - Do not create test files or modify existing tests unless the user explicitly asks for test coverage.
 - You may run existing tests and perform other verification without adding or changing test files.
 - After changing code, run the appropriate linting or verification command for the modified files before finalizing the work. If a required check cannot run, explain why and identify what remains unverified. Each layer's instructions name its checks.
+
+## Devices
+
+Several threads and agents can work at the same time, each on its own applet, feature or worktree. A device holds one Genesis install with its installed applets, signed-in sessions, backend port forwards and screen, so two agents on one device overwrite each other's installs and taps. These rules apply to every task that installs on, drives, reads from or forwards ports to an Android device, in both layers.
+
+### One emulator per thread
+
+- Each thread uses its own emulator for the whole task, and only that one. An emulator is in use when it is booted and not open in your own thread's Device panel. Treat it as another thread's, or the developer's, even when it looks idle. Never install on it, uninstall from it, type into it, take screenshots of it, forward ports to it or close it.
+- To get an emulator, call `device_list`, pick an Android emulator with `booted: false` and `physical: false`, and open it with `device_open`. If your thread already has one open (`open` in `device_list`), or your workspace reference names one, reuse it.
+- When every emulator is in use, create a new one instead of sharing: copy the system image and device profile of `Genesis_Verify_API_37` into a new AVD named `Genesis_Verify_API_37_<n>`, using the next free `<n>`, with `"$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd -n Genesis_Verify_API_37_<n> -k "system-images;android-37.0;google_apis_playstore;arm64-v8a" -d medium_phone`. Then open it with `device_open`. Never delete an AVD you did not create in this task.
+- Find your emulator's adb serial, such as `emulator-5556`, from `adb devices` and `adb -s <serial> emu avd name`. Pass it to every device command: `adb -s <serial>`, `genesis-applet ... --device <serial>`, `enter-secret.mjs --device <serial>`. Never run `adb` without `-s` or rely on a default device. `android/gradlew :app:installDebug` installs on every connected device unless `ANDROID_SERIAL` is set, so run it as `ANDROID_SERIAL=<serial> android/gradlew -p android :app:installDebug`.
+- A new emulator starts empty. Install the Genesis debug build and the applets the task needs, and sign in with the test accounts skill when a journey needs an account. Never copy sessions or data from another thread's emulator.
+- Applet backends run on the computer with ports reserved per applet, so one backend serves every emulator. Agents still start backends only when the user asks. Never stop, restart or reconfigure a backend that another thread may be using; when the task needs that, ask first.
+- Record the AVD name and serial in workspace references and handoffs (see **Worktree handoffs**). Give each delegated agent that drives a device its own emulator, or pass yours only when you will not use it until the agent finishes. Two agents never drive one emulator at the same time.
+- When the task ends, close the emulator with `device_close` unless the user is still using it or asked to keep it open, so another thread can use it.
+
+### The physical phone
+
+- Never use a physical device (`physical: true` in `device_list`, or an `adb devices` serial that does not start with `emulator-`) unless the user explicitly asks in the current task to verify on the phone. A device being connected, an earlier approval, a plan, a record or a delegated brief does not count as that request.
+- When a check seems to need the phone, for example for hardware, a real network or a camera, ask first with the question prompt tool (`AskUserQuestion`, or your environment's equivalent). Say what you would install or do on it and why. Until the user says yes, use an emulator, or report the check as blocked.
+- Permission covers the current task only. With permission, follow the same rules as for an emulator: pass the phone's serial to every command, and change only what the user approved.
+- When no emulator works, report device verification as blocked. Never fall back to the phone.
 
 ## Version control
 
@@ -140,22 +178,49 @@ Before the first edit of any change task, check the branches. This applies to do
 
    Skip the question when the user has already said which branches to use for this task, in the request or earlier in the conversation. Skip it too when every repository is on the same branch and that branch is neither `main` nor `develop`.
 3. The question names each repository and its branch, says which problem applies, and offers these choices:
-   - **New branch:** the developer types a name, and every repository switches to it.
+   - **New branch:** the developer types a name, and every repository switches to it. Suggest a name that follows **Branch names**.
    - **Root branch name:** every nested repository switches to the root repository's branch. Offer this only when the names differ. When the root repository is itself on `main` or `develop`, say that this choice keeps the work on that integration branch.
    - **Keep as is:** the work continues on the current branches, mismatched or on `main` or `develop`.
 4. To switch a repository, run `git -C <path> switch <branch>` when the branch already exists in it, otherwise `git -C <path> switch -c <branch>`, which creates it from that repository's current commit. Uncommitted changes move with the switch. If git refuses, because the branch is checked out in another worktree or the uncommitted changes conflict, stop, report which repository refused and why, and ask again. Never stash, discard or reset changes to make a switch succeed.
 5. Ask once per task. The answer holds for the rest of the task, including after context compaction, until a repository's branch changes again or the developer asks for a different branch. A delegated agent does not ask: it uses the branches its brief names, and if they do not match the checkout it stops and reports.
 6. Name the branch of each repository next to its commits in the final response.
 
+#### Branch names
+
+Every branch in every repository of the workspace is `main`, `develop` or `<type>/<name>`. Use the same name in every repository of one task.
+
+- `<type>` is one of:
+  - `feat` for new features and capabilities;
+  - `fix` for bug fixes;
+  - `proto` for prototypes and phase work, such as `proto/phase-14` (the developer instructions read the phase from this name);
+  - `chore` for tooling, configuration, guidance and other maintenance;
+  - `docs` for documents and records only;
+  - `backup` for snapshots of another branch, such as `backup/phase-8-3cc5c29`.
+- `<name>` uses lowercase letters, digits, `.`, `_` and `-`, and names the task in a few words, such as `feat/website-bar` or `fix/session-restore`. No further `/`.
+- Branches that start with `sudo/` skip the rule. They are for the developer only: an agent creates one only when the user names that exact branch.
+
+The hooks from `tools/git-hooks/install.sh` enforce the rule in every repository. `reference-transaction` refuses to create a branch with a bad name, through `git branch`, `git switch -c`, `git checkout -b` or `git worktree add -b`. Git does not show the new name of `git branch -m` to that hook, so `pre-push` also refuses to push a new remote branch with a bad name. Branches that already exist are never blocked.
+
+When an agent creates a branch or worktree, it picks the type from the task and a name that follows the rule. When the developer asks for a name that breaks the rule, the agent suggests the closest valid name and asks which one to use. When a hook refuses a name, the agent chooses a valid name; it never bypasses a hook with `--no-verify`, `core.hooksPath` or a `sudo/` name of its own choosing.
+
+#### Protected branches on GitHub
+
+Rulesets on the `genesis` repository protect the integration branches. Only users with the Maintain or Admin role can change them:
+
+- `main` accepts changes only through a pull request merged by a maintainer. Nobody pushes to it directly, and nobody force pushes or deletes it.
+- `develop` takes merged pull requests and direct pushes from maintainers only. Nobody force pushes or deletes it.
+
+These rules bind people. They do not widen what an agent may do: agents still never push to `main` or `develop` and never merge, as **Version control** says.
+
 ### Pushing and pull requests
 
 Follow these steps only when the user asks you to push or to open pull requests. Every repository in the workspace has its own remote, so each one needs its own push and its own pull request. A request for "a pull request" or "the PR" means one for every repository that has work to publish, not only the repository the conversation started in.
 
-1. Find the repositories that have work to publish. For the root and each nested repository, run `git fetch origin` and `git log --oneline origin/main..HEAD` (with `git -C <path>` for a nested one). A repository whose current branch has no commits beyond `origin/main` gets no push and no pull request. Name every repository and its commit count in a progress update before pushing.
+1. Find the repositories that have work to publish. For the root and each nested repository, run `git fetch origin` and `git log --oneline origin/develop..HEAD` (with `git -C <path>` for a nested one). A repository whose current branch has no commits beyond `origin/develop` gets no push and no pull request. Name every repository and its commit count in a progress update before pushing.
 2. Finish each layer's steps that must come before a pull request, such as the applet version raise and `genesis-applet publish` in [factory/AGENTS.md](factory/AGENTS.md). These steps can change other repositories: `npm version` also updates the root `package-lock.json`, and `publish` refuses a dirty Genesis checkout. Commit each change in the repository that owns the file. `publish` records the Genesis commit and warns until that commit is on a remote branch, so push the root repository first and refresh its remote-tracking branch before publishing. If a step is blocked in one repository, report the blocker and continue with the repositories it does not affect.
-3. For each repository with commits, work on its own branch (never `main`), push that branch to its own `origin`, and open a pull request against that repository's `main`. When several repositories have commits, open all their pull requests in the same task, in this order: the outer repository before the ones nested in it, a repository before the ones that depend on it, and a private record repository last, so it can name the public pull requests. A pull request that needs another repository's pull request says so in its description, for example "Needs nirvanacp/genesis#9".
+3. For each repository with commits, work on its own branch (never `main` or `develop`), push that branch to its own `origin`, and open a pull request against that repository's `develop`, its default branch. When several repositories have commits, open all their pull requests in the same task, in this order: the outer repository before the ones nested in it, a repository before the ones that depend on it, and a private record repository last, so it can name the public pull requests. A pull request that needs another repository's pull request says so in its description, for example "Needs nirvanacp/genesis#9".
 4. If `git push` over SSH fails with `Permission denied (publickey)` while `gh auth status` shows a signed-in account, push over HTTPS with `gh`'s token for that one command: `git -c credential.helper= -c 'credential.helper=!gh auth git-credential' push https://github.com/<owner>/<repo>.git <branch>`. Do not pass `-u` with a URL and do not change git config. A push to a URL leaves `origin/<branch>` stale, so fetch it back the same way into `refs/remotes/origin/<branch>`.
-5. `gh` picks the GitHub repository from the directory it runs in. Run every `gh` command for a nested repository from inside that directory (`cd <path> && gh pr create --base main ...`), or pass `--repo` with the repository named by `git -C <path> remote get-url origin`. A `gh pr create` run from the workspace root always targets the root repository.
+5. `gh` picks the GitHub repository from the directory it runs in. Run every `gh` command for a nested repository from inside that directory (`cd <path> && gh pr create --base develop ...`), or pass `--repo` with the repository named by `git -C <path> remote get-url origin`. A `gh pr create` run from the workspace root always targets the root repository.
 6. If a pull request is already open for the branch, push to update it instead of opening another one.
 7. A public repository's pull request, its description, and every comment or reply the agent posts on it must not mention or link a private repository. A private repository's pull request may name the public pull requests it records.
 8. In the final response, give the pull request URL for each repository, or say that a repository had nothing to publish. If a push or pull request fails in one repository, report which one failed and why, and do not claim the others cover it.

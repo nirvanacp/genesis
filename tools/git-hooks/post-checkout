@@ -2,8 +2,8 @@
 # Gives a new worktree its own worktree of every nested repository that the
 # main checkout contains, at the same path and on a branch of the same name.
 #
-# Install once per clone, from the main checkout:
-#   ln -s ../../tools/git-hooks/post-checkout .git/hooks/post-checkout
+# Install once per clone, from the main checkout, with the other Genesis hooks:
+#   sh tools/git-hooks/install.sh
 #
 # Git runs this hook after every checkout. Only `git worktree add` passes an
 # all-zero previous commit, so ordinary branch switches exit immediately.

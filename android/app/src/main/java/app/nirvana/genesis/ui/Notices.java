@@ -50,7 +50,7 @@ public final class Notices {
             ui.actions.openApplet(entry.optString("appletId"));
         });
         MaterialButton home = t.outlinedButton("Go to Home");
-        home.setOnClickListener(v -> ui.pages.remove(STOPPED));
+        home.setOnClickListener(v -> { ui.pages.remove(STOPPED); ui.actions.goHome(); });
         return ui.page(header, content, ui.footer(reload, home));
     }
 
@@ -96,7 +96,7 @@ public final class Notices {
             other.setOnClickListener(v -> add.changeVersion(entry));
         }
         MaterialButton home = t.outlinedButton("Go to Home");
-        home.setOnClickListener(v -> ui.pages.remove(CANT_RUN + id));
+        home.setOnClickListener(v -> { ui.pages.remove(CANT_RUN + id); ui.actions.goHome(); });
         return ui.page(t.header("Can't run", false, () -> ui.pages.remove(CANT_RUN + id)), content, ui.footer(check, other, github ? null : home));
     }
 

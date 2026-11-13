@@ -75,8 +75,9 @@ pub struct Applets {
 }
 
 impl Applets {
-    /// Reads the index and classifies every installed revision. An entry whose `bundle.json`
-    /// cannot be read is dropped from the launcher.
+    /// Reads the index and classifies every installed revision. An entry whose `bundle.json` is
+    /// missing or has no readable header is dropped from the launcher; one whose manifest no
+    /// longer parses stays as outdated.
     pub fn load(files_dir: &Path) -> Self {
         let root = files_dir.join("applets");
         let entries: Vec<IndexEntry> = fs::read(root.join("index.json"))
@@ -171,6 +172,14 @@ impl Applets {
         }
     }
 
+    /// The absolute path of the current revision's icon, when its manifest names one that exists.
+    pub fn icon(&self, applet_id: &str) -> Option<String> {
+        let (revision, manifest) = self.current(applet_id)?;
+        let relative = manifest.shell.as_ref()?.icon.as_ref()?;
+        let path = self.root.join(applet_id).join(revision.to_string()).join(relative);
+        path.is_file().then(|| path.to_string_lossy().into_owned())
+    }
+
     /// The current applets that declare the website `origin`, in id order.
     pub fn for_origin(&self, origin: &str) -> Vec<String> {
         let declares = |manifest: &Manifest| manifest.origins.iter().any(|o| origin_of(o).as_deref() == Some(origin));
@@ -189,6 +198,7 @@ impl Applets {
     pub fn entry(&self, applet_id: &str) -> Option<LauncherEntry> {
         let installed = self.installed.get(applet_id)?;
         let mut entry = entry(applet_id, installed);
+        entry.icon = self.icon(applet_id);
         entry.installed_at = revision_of(installed).and_then(|revision| self.installed_at(applet_id, revision));
         if let Some(source) = self.sources.get(applet_id) {
             entry.version = source.version().map(String::from);
@@ -210,8 +220,8 @@ impl Applets {
         modified.duration_since(UNIX_EPOCH).ok().map(|d| d.as_millis() as u64)
     }
 
-    pub fn foreground_url(&self, applet_id: &str, revision: u64) -> String {
-        format!("{FOREGROUND_ORIGIN}/genesis/{applet_id}/{revision}/index.html")
+    pub fn foreground_url(&self, applet_id: &str, revision: u64, entry: &str) -> String {
+        format!("{FOREGROUND_ORIGIN}/genesis/{applet_id}/{revision}/{entry}")
     }
 
     pub fn read_text(&self, applet_id: &str, revision: u64, path: &str) -> Result<String, String> {
@@ -324,10 +334,16 @@ fn classify(directory: &Path, revision: u64) -> Option<Installed> {
     };
     match compat::evaluate(&header) {
         Compatibility::Incompatible { direction, mismatches } => Some(incompatible(direction, mismatches)),
-        Compatibility::Current => match serde_json::from_slice::<Bundle>(&bytes) {
-            Ok(bundle) => Some(Installed::Current { revision, manifest: Box::new(bundle.manifest) }),
-            Err(_) => None,
-        },
+        Compatibility::Current => Some(match serde_json::from_slice::<Bundle>(&bytes) {
+            Ok(bundle) => Installed::Current { revision, manifest: Box::new(bundle.manifest) },
+            // A manifest in an older shape under the same version numbers stays listed as outdated,
+            // with its source, so the user can update or remove it.
+            Err(_) => incompatible(Direction::Outdated, vec![Mismatch {
+                field: "manifest".into(),
+                applet: "older format".into(),
+                host: "current format".into(),
+            }]),
+        }),
     }
 }
 
@@ -344,6 +360,7 @@ fn entry(applet_id: &str, installed: &Installed) -> LauncherEntry {
         applet_id: applet_id.into(),
         name: name.into(),
         accent,
+        icon: None,
         status,
         direction: None,
         mismatches: Vec::new(),
@@ -354,6 +371,7 @@ fn entry(applet_id: &str, installed: &Installed) -> LauncherEntry {
         origins: Vec::new(),
         services: Vec::new(),
         storage: false,
+        notifications: None,
         publisher: None,
         repository: None,
         path: None,
@@ -368,6 +386,7 @@ fn entry(applet_id: &str, installed: &Installed) -> LauncherEntry {
                 origins: manifest.origins.clone(),
                 services: capabilities.services,
                 storage: capabilities.storage,
+                notifications: manifest.capabilities.notifications.clone().map(Box::new),
                 ..blank(&manifest.name, accent, AppletStatus::Current)
             }
         }

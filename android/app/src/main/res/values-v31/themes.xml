@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android 12+ shows a system splash on every cold window start. An applet window hides its
+         icon, so the system splash is the plain background and Genesis's own splash shows the applet. -->
+    <style name="Theme.NirvanaGenesis.Applet" parent="Theme.NirvanaGenesis">
+        <item name="android:windowSplashScreenAnimatedIcon">@android:color/transparent</item>
+        <item name="android:windowSplashScreenBackground">@color/genesis_surface</item>
+    </style>
+</resources>

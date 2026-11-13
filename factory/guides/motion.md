@@ -1,6 +1,6 @@
 # Motion and feedback
 
-Genesis swaps the foreground's screen at once when the page changes, and the shell does not animate anything inside the applet. Motion, loaders and the feedback after a tap are the foreground's job. Build them into every new applet from the start, with the same care as the layout: a screen that changes without direction, a tap that shows nothing, or a list that jumps when it loads makes a correct applet feel broken.
+The router helper swaps the UI's screen at once when the page changes, and the shell does not animate anything inside the applet. Motion, loaders and the feedback after a tap are the UI's job. Build them into every new applet from the start, with the same care as the layout: a screen that changes without direction, a tap that shows nothing, or a list that jumps when it loads makes a correct applet feel broken.
 
 Read this with [presentation](presentation.md) for which state to show, [design](design.md) for tokens, and [interactions](interactions.md) for action outcomes. The sections below are defaults (see [default-motion-and-feedback](defaults.md)); a user's own motion choices override them.
 
@@ -8,7 +8,7 @@ Read this with [presentation](presentation.md) for which state to show, [design]
 
 - **Motion explains a change.** It shows where a screen came from, which control did something and what happened. Do not add motion that explains nothing, such as a bounce on every row.
 - **Motion never blocks.** The new screen is live from its first frame. Taps, records, Back and the 300 ms Back deadline never wait for an animation. Animate a copy of what left, never hold the real screen back.
-- **Every tap answers within about 100 ms.** It shows a pressed state at once. A change the page will confirm shows the requested state at once (see [optimistic display](interactions.md#optimistic-display-with-usepending)). Work that takes longer shows progress.
+- **Every tap answers within about 100 ms.** It shows a pressed state at once. A change the page will confirm shows the requested state at once (see [optimistic display](interactions.md)). Work that takes longer shows progress.
 - **Reduced motion gets the same information without the movement.** Under `prefers-reduced-motion: reduce`, swap at once, keep state changes and progress, and drop slides, scales, shimmer and spins.
 
 ## Tokens
@@ -50,7 +50,7 @@ Under right-to-left layouts, mirror the horizontal directions.
 
 ### Where a screen sits
 
-`useNavigation().screen.key` is `${contextId}:${index}` for a context screen; a higher index is forward. Overlay screens have no index, so carry the last context index you saw and use the overlay count as depth. Mark tab roots and the drawer yourself. A screen whose content depends on a view inside the page (a list and its search mode, for example) can add that view to its identity so the switch animates.
+With the router helper, `useRouter().screen.key` is `${contextId}:${index}` for a context screen; a higher index is forward. Overlay screens have no index, so carry the last context index you saw and use the overlay count as depth. Mark tab roots and the drawer yourself. A screen whose content depends on a view inside the page (a list and its search mode, for example) can add that view to its identity so the switch animates.
 
 ```tsx
 interface Place { id: string; index: number; depth: number; tab: boolean; drawer: boolean }
@@ -67,7 +67,7 @@ function motionBetween(from: Place | null, to: Place): Motion {
 
 ### The stage and the ghost layer
 
-The foreground has no outgoing screen to animate: Genesis has already moved to the next page, and the previous screen's component unmounts. Animate a copy instead. A `Stage` wraps the screen slot and, during the render where its `id` changes, clones the outgoing DOM while it still exists. After commit it puts the clone in a ghost layer, inert and hidden from accessibility, plays the clone's exit and the live screen's entrance with the Web Animations API, and removes the clone when its animation finishes.
+The UI has no outgoing screen to animate: the router has already moved to the next page, and the previous screen's component unmounts. Animate a copy instead. A `Stage` wraps the screen slot and, during the render where its `id` changes, clones the outgoing DOM while it still exists. After commit it puts the clone in a ghost layer, inert and hidden from accessibility, plays the clone's exit and the live screen's entrance with the Web Animations API, and removes the clone when its animation finishes.
 
 ```tsx
 const SETTLE_MS = 90; // the key and the page can change in quick turns; treat them as one change
@@ -124,7 +124,7 @@ Wire it in the screen switch. The stage itself is not keyed, so it survives the 
 
 ```tsx
 export function App() {
-  const { screen } = useNavigation();
+  const { screen } = useRouter();
   const layer = useRef<HTMLDivElement>(null);
   const place = placeOf(screen);         // index, depth, tab and drawer, as above
   const motion = usePlaceMotion(place);  // remembers the previous place
@@ -156,7 +156,7 @@ Sheets also follow a drag on their handle: translate the sheet with the finger, 
 
 ## Feedback after an action
 
-Every action ends in a visible outcome. Use the [action outcomes](interactions.md#outcomes) to choose it:
+Every action ends in a visible outcome. Use the [input outcomes](interactions.md) to choose it:
 
 | Situation | Feedback |
 | --- | --- |

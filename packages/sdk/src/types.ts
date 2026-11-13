@@ -1,30 +1,9 @@
-import type { ErrorCode, PageRecord, PageStatus } from "@genesis/core";
+import type { ErrorCode } from "@genesis/core";
 import { GenesisError } from "./bridge.js";
 
 export { GenesisError };
 
 export type { ActionResult } from "@genesis/core";
-
-export interface ErrorInfo {
-  code: string;
-  message: string;
-}
-
-/** One record of a region as a screen sees it: the published record with its data typed. */
-export interface Record<T = unknown> extends Omit<PageRecord, "data"> {
-  data: T;
-}
-
-/** The page a screen shows, apart from its regions. `stale` marks records kept while the page reloads. */
-export interface PageState {
-  pageId: string | null;
-  status: PageStatus;
-  stale: boolean;
-  generation: number | null;
-  params: { [name: string]: string };
-  error: ErrorInfo | null;
-  account: string | null;
-}
 
 export interface StoredDocument<T = unknown> {
   key: string;

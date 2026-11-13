@@ -57,35 +57,49 @@ export async function checkFrameworkVersions(framework) {
 }
 
 /**
- * The selected applet directories from `genesis.packages.json`, resolved inside the applets
- * directory that `genesis.workspace.json` names.
+ * One `genesis.packages.json` entry: an applet directory name, or `{ id, drawer }` where `id` is
+ * the directory name and `drawer: true` gives the bundled applet an app drawer entry.
+ */
+function selectionEntry(entry) {
+  if (typeof entry === 'string') return { directory: entry, drawer: false };
+  requireValue(entry && typeof entry === 'object' && !Array.isArray(entry) && typeof entry.id === 'string'
+    && Object.keys(entry).every(key => key === 'id' || key === 'drawer')
+    && (entry.drawer === undefined || typeof entry.drawer === 'boolean'), 'Invalid bundle selection entry');
+  return { directory: entry.id, drawer: entry.drawer === true };
+}
+
+/**
+ * The selected applets from `genesis.packages.json`: each directory resolved inside the applets
+ * directory that `genesis.workspace.json` names, and whether it has a drawer entry.
  */
 async function readSelection(packagesIndex) {
   const selection = JSON.parse(await readFile(path.join(root, 'genesis.packages.json'), 'utf8'));
-  requireValue(selection.schemaVersion === packagesIndex && Array.isArray(selection.applets) && new Set(selection.applets).size === selection.applets.length, 'Invalid bundle selection');
+  requireValue(selection.schemaVersion === packagesIndex && Array.isArray(selection.applets), 'Invalid bundle selection');
+  const entries = selection.applets.map(selectionEntry);
+  requireValue(new Set(entries.map(e => e.directory)).size === entries.length, 'Invalid bundle selection');
   const { appletsDirectory } = readWorkspace();
   let applets;
   try { applets = await realpath(appletsDirectory); }
   catch { throw new Error(`Missing applets directory ${appletsDirectory}. Run npm run workspace -- setup, then npm install.`); }
-  const bases = [];
-  for (const directory of selection.applets) {
+  const selected = [];
+  for (const { directory, drawer } of entries) {
     requireValue(safePath(directory), 'Invalid selected directory');
     let base;
     try { base = await realpath(path.join(applets, directory)); }
     catch { throw new Error(`Selected applet ${directory} is missing from ${applets}`); }
     requireValue(base.startsWith(applets + path.sep), 'Selected applet escapes the applets directory');
-    bases.push(base);
+    selected.push({ base, drawer });
   }
-  return bases;
+  return selected;
 }
 
-/** Every selected applet, read and validated. Fails on the first invalid one. */
+/** Every selected applet, read and validated, with its `drawer` choice. Fails on the first invalid one. */
 export async function readPackages() {
   const { table } = await typescriptTable();
   const packages = [], ids = new Set();
-  for (const base of await readSelection(table.packagesIndex)) {
+  for (const { base, drawer } of await readSelection(table.packagesIndex)) {
     const applet = await readApplet(base);
-    requireValue(!ids.has(applet.manifest.id), 'Duplicate selected applet ID'); ids.add(applet.manifest.id); packages.push(applet);
+    requireValue(!ids.has(applet.manifest.id), 'Duplicate selected applet ID'); ids.add(applet.manifest.id); packages.push({ ...applet, drawer });
   }
   return packages;
 }
@@ -100,7 +114,7 @@ async function checkWorkspace() {
   const { table, framework } = await checkCompatMirror();
   await checkFrameworkVersions(framework);
   const passed = [], incompatible = [], ids = new Set();
-  for (const base of await readSelection(table.packagesIndex)) {
+  for (const { base } of await readSelection(table.packagesIndex)) {
     const compat = await appletCompat(base);
     if (compat.mismatches.length > 0) { incompatible.push(`${base} (${compat.id}):\n${formatMismatches(compat.mismatches)}`); continue; }
     const { manifest } = await readApplet(base);

@@ -1,4 +1,4 @@
-import { COMPAT, type Bound, type ErrorCode, type Hello, type Method } from "@genesis/core";
+import { COMPAT, type Bound, type CallDetails, type ErrorCode, type Hello, type Method } from "@genesis/core";
 
 export type { Bound, Limits } from "@genesis/core";
 
@@ -11,10 +11,13 @@ export interface BridgeObject {
 /** An error the host or the SDK reports, with one of the shared error codes. */
 export class GenesisError extends Error {
   readonly code: ErrorCode;
-  constructor(code: ErrorCode, message: string) {
+  /** For a page call: how far the call got before it failed. */
+  readonly details?: CallDetails;
+  constructor(code: ErrorCode, message: string, details?: CallDetails) {
     super(message);
     this.name = "GenesisError";
     this.code = code;
+    if (details) this.details = details;
   }
 }
 
@@ -111,7 +114,7 @@ export function connect(bridge: BridgeObject, url: string): Promise<Connection> 
         if (!entry) return;
         pending.delete(message.requestId);
         clearTimeout(entry.timer);
-        if (message.error) entry.reject(new GenesisError(message.error.code, message.error.message));
+        if (message.error) entry.reject(new GenesisError(message.error.code, message.error.message, message.error.details));
         else entry.resolve(message.result ?? null);
       } else if (message.type === "event") {
         if (message.name === "retired") {

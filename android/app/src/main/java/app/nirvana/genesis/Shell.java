@@ -8,6 +8,7 @@ import android.net.ConnectivityManager;
 import android.net.NetworkCapabilities;
 import android.net.Uri;
 import android.os.Build;
+import android.os.SystemClock;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -44,7 +45,8 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 /**
- * The view tree: Home, the applet container (hidden contexts, foreground, splash, the revealed
+ * One window's view tree. The manager window (`window` null) shows Home and the Genesis pages;
+ * an applet window shows the applet container (hidden contexts, foreground, splash, the revealed
  * context with its website bar, Genesis button) and the Genesis pages above both. It executes
  * commands and reports user input; it holds no applet policy.
  */
@@ -55,6 +57,8 @@ final class Shell implements Views.Listener, Ui.Actions {
         void launcherShown();
         boolean chooseFiles(WebChromeClient.FileChooserParams params, ValueCallback<Uri[]> callback, java.util.function.BooleanSupplier valid);
         void cancelInvalidFiles();
+        /** The applet's "Hide in recent apps" choice changed; its window applies it. */
+        void privacyChanged(String appletId);
         /** Opens the system picker for a bundle file, with its release record if the user picks one. */
         void pickAppletFile();
         Connections.Store connections();
@@ -71,6 +75,8 @@ final class Shell implements Views.Listener, Ui.Actions {
 
     private final Activity activity;
     private final Owner owner;
+    /** The applet this window belongs to, or null for the manager. */
+    private final String window;
     /** The shared sign-in, and the profiles of applets that keep their own, by applet id. */
     private final SiteData sites;
     private final Map<String, SiteData> profiles = new HashMap<>();
@@ -111,11 +117,12 @@ final class Shell implements Views.Listener, Ui.Actions {
     private androidx.appcompat.app.AlertDialog progress;
     private TextView progressText;
 
-    Shell(Activity activity, Owner owner) {
+    Shell(Activity activity, Owner owner, String window) {
         this.activity = activity;
         this.owner = owner;
+        this.window = window;
         sites = SiteData.defaultProfile(activity);
-        state = activity.getSharedPreferences("genesis-shell", Activity.MODE_PRIVATE);
+        state = state(activity);
         views = new Views(activity, this);
         tokens = new Tokens(activity);
         ui = new Ui(activity, tokens, this);
@@ -159,7 +166,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         // A revealed context sits below the website bar, which grows with the font size; the Genesis button stays on top of both.
         LinearLayout website = new LinearLayout(activity);
         website.setOrientation(LinearLayout.VERTICAL);
-        bar = new WebsiteBar(activity, tokens, () -> { if (!closePopup()) owner.send(Bridge.event("websiteDone")); });
+        bar = new WebsiteBar(activity, tokens, () -> { if (!closePopup()) owner.send(GenesisRuntime.windowEvent("websiteDone", window)); });
         bar.setOnUpdate(manage::updates);
         bar.setVisibility(View.GONE);
         website.addView(bar, new LinearLayout.LayoutParams(-1, -2));
@@ -174,7 +181,8 @@ final class Shell implements Views.Listener, Ui.Actions {
         applet.addView(website, new FrameLayout.LayoutParams(-1, -1));
         menu = GenesisMenu.button(tokens, this::openMenu);
         applet.addView(menu, menuLayout());
-        applet.setVisibility(View.GONE);
+        // An applet window shows its container from the start, under the splash, until the applet starts.
+        applet.setVisibility(window == null ? View.GONE : View.VISIBLE);
         root.addView(applet, new FrameLayout.LayoutParams(-1, -1));
         root.addView(ui.root(), new FrameLayout.LayoutParams(-1, -1));
 
@@ -193,6 +201,11 @@ final class Shell implements Views.Listener, Ui.Actions {
         activity.setContentView(root);
         tokens.applySystemBars(activity);
     }
+
+    /** The applet this window belongs to, or null for the manager. */
+    String window() { return window; }
+
+    Activity activity() { return activity; }
 
     // -----------------------------------------------------------------------------------------
     // Commands
@@ -227,14 +240,15 @@ final class Shell implements Views.Listener, Ui.Actions {
         return urls;
     }
 
-    void showApplet(String id, String name, String accent) {
+    void showApplet(String id, String name, String accent, String icon) {
         destroyAll();
         ui.pages.clear();
         appletId = id;
         appletName = name;
         home.root.setVisibility(View.GONE);
         applet.setVisibility(View.VISIBLE);
-        splash.show(name, accent);
+        splash.show(name, accent, icon);
+        if (activity instanceof AppletActivity) ((AppletActivity) activity).describeTask(name, accent, icon);
     }
 
     void createView(JSONObject ref, String url, JSONArray origins, String startScript) throws JSONException {
@@ -361,6 +375,32 @@ final class Shell implements Views.Listener, Ui.Actions {
         if (page != null) page.post(payload);
     }
 
+    /**
+     * Dispatches the page agent's trusted input to a hidden context, then reports `inputDone`.
+     * A revealed context gets none, since input there would count as the user's own gesture.
+     */
+    void input(JSONObject ref, long token, JSONArray events) {
+        Views.Page page = pages.get(key(ref));
+        String refusal = null;
+        if (page == null || !page.isContext()) refusal = "The page is gone";
+        else if (page.isRevealed()) refusal = "Trusted input goes only to a hidden page";
+        else {
+            try {
+                Input.dispatch(page.web, events);
+                page.trustedInputAt = SystemClock.uptimeMillis();
+            }
+            catch (Input.Refused refused) { refusal = refused.getMessage(); }
+        }
+        String message = refusal;
+        // Answered after this command batch, since the host is still handling the event that sent it.
+        bar.post(() -> {
+            try {
+                owner.send(Bridge.event("inputDone").put("view", ref).put("token", token)
+                    .put("ok", message == null).put("message", message == null ? JSONObject.NULL : message));
+            } catch (JSONException ignored) { /* Unreachable for these values. */ }
+        });
+    }
+
     /** Shows the foreground once its first frame with applet content is ready to draw. */
     void revealForeground() {
         Views.Page page = foregroundPage();
@@ -373,8 +413,6 @@ final class Shell implements Views.Listener, Ui.Actions {
             }
         });
     }
-
-    boolean appletShown() { return appletId != null; }
 
     /** A running flow's message; null ends it. The add flow shows its own pages; others get a dialog. */
     void showProgress(String message) {
@@ -431,7 +469,20 @@ final class Shell implements Views.Listener, Ui.Actions {
     void showError(String message) {
         dismissProgress();
         if (addFlow.error(message)) return;
-        new MaterialAlertDialogBuilder(activity).setTitle("Genesis").setMessage(message).setPositiveButton("Close", null).show();
+        new MaterialAlertDialogBuilder(activity).setTitle("Genesis").setMessage(message).setPositiveButton("Close", null)
+            .setOnDismissListener(d -> leaveIfEmpty()).show();
+    }
+
+    /** An applet window whose applet did not start has nothing to show after its message: Genesis opens instead. */
+    private void leaveIfEmpty() {
+        if (window != null && appletId == null && ui.pages.top() == null) goHome();
+    }
+
+    /** "Go to Home" in an applet window opens the Genesis list; the manager already shows it. */
+    @Override public void goHome() {
+        if (window == null) return;
+        try { activity.startActivity(new Intent(activity, MainActivity.class)); }
+        catch (RuntimeException error) { activity.moveTaskToBack(true); }
     }
 
     /** Update checks from the Updates page answer with a short toast; anything else gets a dialog. */
@@ -965,15 +1016,21 @@ final class Shell implements Views.Listener, Ui.Actions {
         return value.matches("(?i)https?://\\S+") ? value : null;
     }
 
+    /** Sends an event that starts or continues a repository flow, whose pages come back here. */
+    private void flowEvent(JSONObject event) {
+        GenesisApp.runtime(activity).router.flowStarted(this);
+        owner.send(event);
+    }
+
     @Override public void addFromRepository(String input) {
-        try { owner.send(Bridge.event("addFromRepository").put("input", input)); }
+        try { flowEvent(Bridge.event("addFromRepository").put("input", input)); }
         catch (JSONException ignored) { /* Unreachable for string values. */ }
     }
 
     @Override public void pickFile() { owner.pickAppletFile(); }
 
     @Override public void chooseCandidate(String id, String version) {
-        try { owner.send(Bridge.event("chooseCandidate").put("appletId", id).put("version", version == null ? JSONObject.NULL : version)); }
+        try { flowEvent(Bridge.event("chooseCandidate").put("appletId", id).put("version", version == null ? JSONObject.NULL : version)); }
         catch (JSONException ignored) { /* Unreachable for string values. */ }
     }
 
@@ -981,13 +1038,17 @@ final class Shell implements Views.Listener, Ui.Actions {
 
     @Override public void reviewDecision(String reviewId, boolean accept, String replace) {
         try {
-            owner.send(Bridge.event("reviewDecision").put("reviewId", reviewId).put("accept", accept)
+            flowEvent(Bridge.event("reviewDecision").put("reviewId", reviewId).put("accept", accept)
                 .put("replace", replace == null ? JSONObject.NULL : replace));
         } catch (JSONException ignored) { /* Unreachable for these values. */ }
     }
 
     @Override public void checkUpdates(String id, boolean manual) {
-        try { owner.send(Bridge.event("checkUpdates").put("appletId", id == null ? JSONObject.NULL : id).put("manual", manual)); }
+        try {
+            JSONObject event = Bridge.event("checkUpdates").put("appletId", id == null ? JSONObject.NULL : id).put("manual", manual);
+            if (manual) flowEvent(event);
+            else owner.send(event);
+        }
         catch (JSONException ignored) { /* Unreachable for these values. */ }
     }
 
@@ -998,7 +1059,7 @@ final class Shell implements Views.Listener, Ui.Actions {
     @Override public void keepVersion(String id) { appletEvent("keepVersion", id); }
 
     @Override public void menu(String action) {
-        try { owner.send(Bridge.event("menu").put("action", action)); }
+        try { owner.send(GenesisRuntime.windowEvent("menu", window).put("action", action)); }
         catch (JSONException ignored) { /* Unreachable for string values. */ }
     }
 
@@ -1015,13 +1076,79 @@ final class Shell implements Views.Listener, Ui.Actions {
 
     private static String profileNameKey(String appletId) { return "profileName:" + appletId; }
 
+    private static android.content.SharedPreferences state(android.content.Context context) {
+        return context.getSharedPreferences("genesis-shell", android.content.Context.MODE_PRIVATE);
+    }
+
     /** Each time the switch turns on the applet gets a new profile, so an old one that is still being deleted is never reused. */
-    private String profileName(String appletId) { return state.getString(profileNameKey(appletId), "applet-" + appletId); }
+    private static String profileName(android.content.SharedPreferences state, String appletId) {
+        return state.getString(profileNameKey(appletId), "applet-" + appletId);
+    }
+
+    private String profileName(String appletId) { return profileName(state, appletId); }
 
     /** The applet's own profile when it keeps a separate sign-in, otherwise the shared one. */
     @Override public SiteData sitesFor(String appletId) {
         if (appletId == null || !separateSignIn(appletId)) return sites;
-        return profiles.computeIfAbsent(appletId, id -> SiteData.profile(activity, profileName(id)));
+        // Another window may have switched the applet to a new profile, so the cached one must match.
+        String name = profileName(appletId);
+        SiteData cached = profiles.get(appletId);
+        if (cached == null || !name.equals(cached.profile)) {
+            cached = SiteData.profile(activity, name);
+            profiles.put(appletId, cached);
+        }
+        return cached;
+    }
+
+    /** The same, for work outside a window, such as a cookie import. */
+    static SiteData sitesFor(android.content.Context context, String appletId) {
+        android.content.SharedPreferences state = state(context);
+        if (appletId == null || !SiteData.profilesSupported() || !state.getBoolean(profileKey(appletId), false)) return SiteData.defaultProfile(context);
+        return SiteData.profile(context, profileName(state, appletId));
+    }
+
+    @Override public void addToHomeScreen(String appletId) {
+        GenesisApp.runtime(activity).shortcuts.pin(activity, ui.entry(appletId),
+            () -> showInfo("Add to home screen", "Your launcher can't add icons. Open the applet from Genesis."));
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Notifications
+
+    @Override public boolean notificationsOn(String appletId) { return GenesisApp.runtime(activity).notifications.on(appletId); }
+
+    /**
+     * Android 13+ asks the user first. When Android refuses for good, or notifications are off
+     * for all of Genesis, Genesis points to Android's notification settings.
+     */
+    @Override public void setNotificationsOn(String appletId, boolean on, java.util.function.Consumer<Boolean> result) {
+        Notifications notifications = GenesisApp.runtime(activity).notifications;
+        JSONObject entry = ui.entry(appletId);
+        if (!on || entry == null) { notifications.turnOff(appletId); result.accept(false); return; }
+        if (Build.VERSION.SDK_INT < 33) { turnOnNotifications(entry, result); return; }
+        String permission = android.Manifest.permission.POST_NOTIFICATIONS;
+        owner.requestPermissions(new String[] { permission }, granted -> {
+            if (granted != null && granted.contains(permission)) { turnOnNotifications(entry, result); return; }
+            result.accept(false);
+            if (granted != null && !activity.shouldShowRequestPermissionRationale(permission)) showNotificationSettings(entry.optString("name"));
+        });
+    }
+
+    private void turnOnNotifications(JSONObject entry, java.util.function.Consumer<Boolean> result) {
+        GenesisApp.runtime(activity).notifications.turnOn(entry);
+        result.accept(true);
+        if (!androidx.core.app.NotificationManagerCompat.from(activity).areNotificationsEnabled()) showNotificationSettings(entry.optString("name"));
+    }
+
+    private void showNotificationSettings(String name) {
+        new MaterialAlertDialogBuilder(activity)
+            .setTitle("Android blocks notifications from Genesis")
+            .setMessage("Allow them for Genesis in Android's settings, so " + name + " can notify you.")
+            .setPositiveButton("Open settings", (d, w) -> activity.startActivity(
+                new android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                    .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, activity.getPackageName())))
+            .setNegativeButton("Not now", null)
+            .show();
     }
 
     @Override public boolean separateSignInAvailable() { return SiteData.profilesSupported(); }
@@ -1045,17 +1172,58 @@ final class Shell implements Views.Listener, Ui.Actions {
             state.edit().remove(profileKey(appletId)).remove(profileNameKey(appletId)).putStringSet(DELETE_PROFILES, pending).apply();
         }
         profiles.remove(appletId);
-        if (appletId.equals(this.appletId)) openApplet(appletId);
+        // The applet restarts in its new sign-in wherever it runs; the host ignores this for an applet that is not running.
+        try { owner.send(GenesisRuntime.windowEvent("menu", appletId).put("action", "reload")); }
+        catch (JSONException ignored) { /* Unreachable for string values. */ }
         ui.pages.refresh();
     }
 
-    /** A removed or erased applet's separate sign-in goes with it. */
+    // -----------------------------------------------------------------------------------------
+    // Hide in recent apps
+
+    private static String privacyKey(String appletId) { return "applet-privacy/" + appletId; }
+
+    static boolean hiddenInRecents(android.content.Context context, String appletId) {
+        return state(context).getBoolean(privacyKey(appletId), false);
+    }
+
+    @Override public boolean hiddenInRecents(String appletId) { return state.getBoolean(privacyKey(appletId), false); }
+
+    @Override public void setHiddenInRecents(String appletId, boolean on) {
+        if (on) state.edit().putBoolean(privacyKey(appletId), true).apply();
+        else state.edit().remove(privacyKey(appletId)).apply();
+        owner.privacyChanged(appletId);
+    }
+
+    /**
+     * Android 13+ can leave the Recents card blank on its own. Earlier versions only offer
+     * FLAG_SECURE, which also blocks screenshots and screen recording of the window.
+     */
+    static void applyPrivacy(Activity activity, String appletId) {
+        boolean hidden = hiddenInRecents(activity, appletId);
+        if (Build.VERSION.SDK_INT >= 33) activity.setRecentsScreenshotEnabled(!hidden);
+        else if (hidden) activity.getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
+        else activity.getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
+    }
+
+    /** This window lets go of a removed or erased applet's profile. */
     void forgetProfile(String appletId) {
+        profiles.remove(appletId);
+    }
+
+    /** A removed or erased applet's separate sign-in goes with it. */
+    static void forgetProfile(android.content.Context context, String appletId) {
+        android.content.SharedPreferences state = state(context);
         if (!state.getBoolean(profileKey(appletId), false)) return;
         Set<String> pending = new LinkedHashSet<>(state.getStringSet(DELETE_PROFILES, Set.of()));
-        pending.add(profileName(appletId));
+        pending.add(profileName(state, appletId));
         state.edit().remove(profileKey(appletId)).remove(profileNameKey(appletId)).putStringSet(DELETE_PROFILES, pending).apply();
-        profiles.remove(appletId);
+    }
+
+    /** A removed or erased applet's Genesis choices go with it. */
+    static void forgetApplet(android.content.Context context, String appletId) {
+        forgetProfile(context, appletId);
+        state(context).edit().remove(privacyKey(appletId)).apply();
     }
 
     /** Deletes the profiles waiting for deletion; one a WebView still holds waits for the next launcher. */
