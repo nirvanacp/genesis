@@ -348,22 +348,35 @@ final class Views {
 
         Chrome(Page page) { this.page = page; }
 
-        /** Camera and microphone, only for the shown website; protected media and MIDI are always refused. */
+        /**
+         * Website pages get protected media (EME, such as Widevine) without asking, shown or hidden,
+         * like a browser's default. Camera and microphone only for the shown website, after the user
+         * allows them. The applet's own page and MIDI are always refused.
+         */
         @Override public void onPermissionRequest(PermissionRequest request) {
+            boolean website = page.isContext() || page.opener != null;
+            String media = null;
             Map<String, String> wanted = new LinkedHashMap<>();
             for (String resource : request.getResources()) {
-                if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource)) wanted.put(SiteGrants.CAMERA, resource);
+                if (PermissionRequest.RESOURCE_PROTECTED_MEDIA_ID.equals(resource)) { if (website) media = resource; }
+                else if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource)) wanted.put(SiteGrants.CAMERA, resource);
                 else if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)) wanted.put(SiteGrants.MICROPHONE, resource);
             }
-            if (wanted.isEmpty() || !SitePolicy.mayShowUi(page)) { request.deny(); return; }
+            if (wanted.isEmpty() || !SitePolicy.mayShowUi(page)) {
+                if (media != null) request.grant(new String[] {media});
+                else request.deny();
+                return;
+            }
+            String protectedMedia = media;
             asking = request;
             listener.askSite(page, origin(request.getOrigin().toString()), new java.util.ArrayList<>(wanted.keySet()), allowed -> {
                 if (withdrawn == request) return;
                 if (asking == request) asking = null;
                 List<String> grant = new java.util.ArrayList<>();
                 for (Map.Entry<String, String> entry : wanted.entrySet()) if (allowed.contains(entry.getKey())) grant.add(entry.getValue());
+                if (!grant.isEmpty()) page.capturing = true;
+                if (protectedMedia != null) grant.add(protectedMedia);
                 if (grant.isEmpty()) { request.deny(); return; }
-                page.capturing = true;
                 request.grant(grant.toArray(new String[0]));
             });
         }
