@@ -75,8 +75,9 @@ pub struct Applets {
 }
 
 impl Applets {
-    /// Reads the index and classifies every installed revision. An entry whose `bundle.json`
-    /// cannot be read is dropped from the launcher.
+    /// Reads the index and classifies every installed revision. An entry whose `bundle.json` is
+    /// missing or has no readable header is dropped from the launcher; one whose manifest no
+    /// longer parses stays as outdated.
     pub fn load(files_dir: &Path) -> Self {
         let root = files_dir.join("applets");
         let entries: Vec<IndexEntry> = fs::read(root.join("index.json"))
@@ -333,10 +334,16 @@ fn classify(directory: &Path, revision: u64) -> Option<Installed> {
     };
     match compat::evaluate(&header) {
         Compatibility::Incompatible { direction, mismatches } => Some(incompatible(direction, mismatches)),
-        Compatibility::Current => match serde_json::from_slice::<Bundle>(&bytes) {
-            Ok(bundle) => Some(Installed::Current { revision, manifest: Box::new(bundle.manifest) }),
-            Err(_) => None,
-        },
+        Compatibility::Current => Some(match serde_json::from_slice::<Bundle>(&bytes) {
+            Ok(bundle) => Installed::Current { revision, manifest: Box::new(bundle.manifest) },
+            // A manifest in an older shape under the same version numbers stays listed as outdated,
+            // with its source, so the user can update or remove it.
+            Err(_) => incompatible(Direction::Outdated, vec![Mismatch {
+                field: "manifest".into(),
+                applet: "older format".into(),
+                host: "current format".into(),
+            }]),
+        }),
     }
 }
 
