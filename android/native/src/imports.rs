@@ -7,8 +7,9 @@ use genesis_contracts::{
 };
 use std::collections::{HashMap, HashSet};
 
-/// Files every current bundle contains besides `bundle.json`: the UI document and the page script.
-const REQUIRED_FILES: [&str; 2] = ["index.html", "page.js"];
+/// Files every current bundle contains besides `bundle.json` and the UI document that
+/// `foreground.entry` names, which is checked with them.
+const REQUIRED_FILES: [&str; 1] = ["page.js"];
 
 /// A verified bundle's files, decoded, in `bundle.files` order.
 pub struct VerifiedFiles(pub Vec<(String, Vec<u8>)>);

@@ -53,7 +53,7 @@ Pick an output directory other than `dist/`. `genesis-applet build` writes its o
 | File names | Every path segment uses only `A-Z a-z 0-9 . _ -`, does not start with a dot, and is at most 256 characters. A build that writes `.vite/` or other dot directories into the output fails. |
 | No symlinks | The output directory may not contain symbolic links. |
 | Reserved names | The UI may not write `page.js` or `bundle.json`, and no two files may share a path. |
-| Required files | The bundle must contain `index.html`, the HTML file that `foreground.entry` names, and `page.js`. |
+| Required files | The bundle must contain the HTML file that `foreground.entry` names (usually `index.html`) and `page.js`. |
 | Size | The import file that `dev install` and the APK carry must stay under 64 MiB, with binary files encoded as base64. |
 
 Run `npx genesis-applet build .` and read `dist/revision/` to see exactly what Genesis will load.

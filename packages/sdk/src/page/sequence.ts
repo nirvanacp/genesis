@@ -63,6 +63,8 @@ export async function runSequence(sequence: Sequence, context: SequenceContext):
   let dispatched = false;
   let navigating = false;
   let effects = 0;
+  // The view when the first effect went out; a same-document navigation during the steps changes it.
+  let dispatchedView = 0;
   const stop = () => context.stop() || (!dispatched && context.cancelled());
   const result = (outcome: ActionResult["outcome"], code?: ErrorCode, message?: string, reason?: string): ActionResult => {
     const value: ActionResult = { outcome };
@@ -109,6 +111,7 @@ export async function runSequence(sequence: Sequence, context: SequenceContext):
       if (!dispatched && context.cancelled()) return result("cancelled");
       if (!dispatched) {
         dispatched = true;
+        dispatchedView = context.view();
         if (navigates) {
           navigating = true;
           await context.progress("navigating", completed);
@@ -136,13 +139,13 @@ export async function runSequence(sequence: Sequence, context: SequenceContext):
   if (navigates) {
     // A cross-document navigation ends the document and the host answers the call. Here the
     // document lives on: a same-document navigation, or none yet. Evidence decides; without
-    // it the client judges the destination.
-    const view = context.view();
+    // it the client judges the destination. The view is compared with the one at dispatch, since
+    // a fast same-document navigation can finish while the steps are still running.
     if (until !== undefined) {
       const ok = await waitUntil(() => holds(until, context), deadline - Date.now(), context.stop);
       return ok ? result("observed") : result("unknown", "DEADLINE", "The page did not show the effect in time");
     }
-    await waitUntil(() => context.view() !== view, deadline - Date.now(), context.stop);
+    await waitUntil(() => context.view() !== dispatchedView, deadline - Date.now(), context.stop);
     return result("unknown");
   }
   if (until !== undefined) {

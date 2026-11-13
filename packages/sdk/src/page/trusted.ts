@@ -46,12 +46,18 @@ export async function prepareTrusted(step: Step, context: InputContext, send: Se
     }
     case "press": {
       const element = step.target ? await target(step.target, step) : (document.activeElement ?? document.body);
-      // A key goes to whatever has focus, so a protected field is refused with or without a target.
-      refuseProtected(element);
+      // A key goes to whatever has focus, so a protected field is refused with or without a target,
+      // including one focused inside a shadow root or a frame.
+      refuseProtected(focusedFrom(element));
       return {
         element,
         run: async () => {
-          if (step.target) (element as HTMLElement).focus({ preventScroll: true });
+          if (step.target) {
+            (element as HTMLElement).focus({ preventScroll: true });
+            // Focusing can move into a protected field, such as through a shadow root that
+            // delegates focus, so the field that now has focus is checked again.
+            refuseProtected(focusedFrom(document.activeElement ?? document.body));
+          }
           await send([{ type: "key", key: step.key, modifiers: step.modifiers ?? [] }]);
         },
       };
@@ -87,4 +93,29 @@ function point(element: Element): { x: number; y: number } {
 /** The iframe that holds a document; null for the top page's document. */
 function frameOf(doc: Document): Element | null {
   return doc === document ? null : doc.defaultView?.frameElement ?? null;
+}
+
+/**
+ * The element a key sent to `start` reaches: the deepest focused element through open shadow roots
+ * and same-origin frames. A frame Genesis cannot read, such as another website's, could hold a
+ * protected field, so it is refused.
+ */
+function focusedFrom(start: Element): Element {
+  let element = start;
+  for (;;) {
+    const inShadow = element.shadowRoot?.activeElement;
+    if (inShadow) {
+      element = inShadow;
+      continue;
+    }
+    if (element.tagName === "IFRAME" || element.tagName === "FRAME") {
+      const inner = (element as HTMLIFrameElement).contentDocument;
+      if (!inner) throw new PageError("PROTECTED_FIELD", "Genesis cannot check the focused field inside another website's frame, so it does not send the key");
+      const focused = inner.activeElement ?? inner.body;
+      if (!focused || focused === element) return element;
+      element = focused;
+      continue;
+    }
+    return element;
+  }
 }

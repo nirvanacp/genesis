@@ -225,7 +225,7 @@ Events a context document receives:
 { "type": "response", "documentId": "d4", "requestId": 20, "result": { "outcome": "observed", "completedSteps": 1, "partial": false } }
 ```
 
-Read operations (`info`, `read`, `inspect`, `watch.*`, `wait`) run as soon as they arrive. Input operations, `run` and `invoke` run one at a time, in arrival order. An operation name the agent does not know answers `UNKNOWN_OPERATION`.
+Read operations (`info`, `read`, `inspect`, `watch.*`, `wait`) run as soon as they arrive. Input operations, `run` and `invoke` run one at a time, in arrival order. One that waited in that order while an earlier input changed the view (a same-document navigation) dispatches nothing and answers `failed` with `PRECONDITION_FAILED`, since the client chose it for the view it saw; `scroll` is exempt. An operation name the agent does not know answers `UNKNOWN_OPERATION`.
 
 ### Action results
 
@@ -500,7 +500,7 @@ The agent never reads or writes the value of a password field, a hidden input, o
 | `ENVELOPE_INVALID` | An import file's envelope is invalid. |
 | `CONTEXT_REPLACED` | The document a call was for has been replaced. |
 | `TARGET_NOT_FOUND` | A record's element is not on the page. |
-| `PRECONDITION_FAILED` | Reserved. Nothing returns it now. |
+| `PRECONDITION_FAILED` | A queued input did not run because an earlier input changed the view first. |
 | `ASYNC_READ` | A reader returned a promise. |
 | `AUTH_REQUIRED` | Reserved. Nothing returns it now; the router reports a signed-out page as a route status instead. |
 | `REJECTED` | The website refused the input: the destination matched `expect.notUrl`. |

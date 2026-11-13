@@ -16,8 +16,8 @@ export interface BundleCompat {
   builtAt: string;
 }
 
-/** Files every bundle has besides `bundle.json`: the UI document and the page script. */
-export const REQUIRED_BUNDLE_FILES = ["index.html", "page.js"] as const;
+/** Files every bundle has besides `bundle.json` and the UI document that `foreground.entry` names. */
+export const REQUIRED_BUNDLE_FILES = ["page.js"] as const;
 
 /**
  * True for a path the host accepts inside a bundle: relative, at most 256 characters, `/`

@@ -67,6 +67,8 @@ interface Session {
 interface Call {
   event: PageCallEvent;
   arrived: number;
+  /** The view's `n` when the call arrived; an input queued behind a navigation is refused. */
+  view: number;
   cancelled: boolean;
   /** The document is retiring; stop without answering. */
   stopped: boolean;
@@ -99,7 +101,7 @@ function serve(connection: Connection, module: PageModule | undefined, view: Vie
     const message = `This applet's page script uses adapter API ${COMPAT.adapterApi}; this Genesis uses ${compat.adapterApi}`;
     console.error(`Genesis: ${message}`);
     connection.on("call", (event: PageCallEvent) => {
-      calls.set(event.callId, { event, arrived: Date.now(), cancelled: false, stopped: false });
+      calls.set(event.callId, { event, arrived: Date.now(), view: view.current().n, cancelled: false, stopped: false });
       answer(event.callId, { ok: false, error: { code: "PROTOCOL_MISMATCH", message } });
     });
     return { viewChanged() {}, stop() {} };
@@ -278,7 +280,7 @@ function serve(connection: Connection, module: PageModule | undefined, view: Vie
   // ---- Calls ------------------------------------------------------------------------------------
 
   function handle(event: PageCallEvent) {
-    const call: Call = { event, arrived: Date.now(), cancelled: false, stopped: false };
+    const call: Call = { event, arrived: Date.now(), view: view.current().n, cancelled: false, stopped: false };
     calls.set(event.callId, call);
     const settle = (run: () => Promise<unknown>) => run().then(
       value => { if (!call.stopped) answer(event.callId, { ok: true, value: value === undefined ? null : value }); },
@@ -293,6 +295,12 @@ function serve(connection: Connection, module: PageModule | undefined, view: Vie
       queue = queue.then(() => {
         if (call.stopped) return;
         if (call.cancelled) return answer(event.callId, { ok: true, value: { outcome: "cancelled" } satisfies ActionResult });
+        // The client chose this input for the view it saw. An earlier input that changed the view
+        // (a same-document navigation) leaves it aimed at the wrong screen, so nothing is dispatched.
+        if (event.op !== "scroll" && view.current().n !== call.view) {
+          const outcome: ActionResult = { outcome: "failed", code: "PRECONDITION_FAILED", message: "The page changed view before this input ran" };
+          return answer(event.callId, { ok: true, value: outcome });
+        }
         return settle(() => input(call));
       });
       return;

@@ -66,15 +66,21 @@ function escapeHtml(value) {
   return value.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 }
 
-/** The UI document of the zero-configuration build: the bundled entry, its CSS and the accent. */
+/**
+ * The UI document of the zero-configuration build: the bundled entry, its CSS and the accent.
+ * The bundled files sit at the bundle root, so a nested `foreground.entry` links them by a
+ * path relative to its own folder.
+ */
 function indexHtml(manifest, hasCss) {
   const accent = manifest.shell?.accent;
+  const from = path.posix.dirname(manifest.foreground.entry);
+  const link = name => path.posix.relative(from, name);
   return '<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'
     + '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">\n'
     + `<title>${escapeHtml(manifest.name)}</title>\n`
     + (accent ? `<style>:root{--genesis-accent:${accent}}</style>\n` : '')
-    + (hasCss ? '<link rel="stylesheet" href="foreground.css">\n' : '')
-    + '</head>\n<body>\n<div id="root"></div>\n<script src="foreground.js"></script>\n</body>\n</html>\n';
+    + (hasCss ? `<link rel="stylesheet" href="${link('foreground.css')}">\n` : '')
+    + `</head>\n<body>\n<div id="root"></div>\n<script src="${link('foreground.js')}"></script>\n</body>\n</html>\n`;
 }
 
 /**
