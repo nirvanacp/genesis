@@ -143,7 +143,14 @@ public final class MainActivity extends WindowActivity {
             }
             String path = bundle == null ? null : bundle.getAbsolutePath(), record = release, message = error;
             runtime.fetcher.post(() -> {
-                if (path == null) { shell.showError("Genesis could not read the file: " + message); return; }
+                if (path == null) {
+                    runtime.router.flowRefused();
+                    // The window may have closed during the copy; the message then goes to the one in front.
+                    String text = "Genesis could not read the file: " + message;
+                    if (isDestroyed()) runtime.router.showError(null, text);
+                    else shell.showError(text);
+                    return;
+                }
                 try { send(Bridge.event("reviewFile").put("path", path).put("release", record == null ? JSONObject.NULL : record)); }
                 catch (JSONException failed) { throw new IllegalStateException(failed); }
             });
