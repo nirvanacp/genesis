@@ -61,7 +61,7 @@ function signIn(account) {
   const providerHost = hostOf(oauth.prefix);
   if (!account.fields.has('OAUTH_ACCOUNT')) return { text: `${button}; no OAUTH_ACCOUNT key names the ${providerHost} account to use` };
   const match = findProviderAccount(entries, oauth.prefix, account.fields.get('OAUTH_ACCOUNT'));
-  if (!match) return { text: `${button}; OAUTH_ACCOUNT matches no ${providerHost} USERNAME or EMAIL in the file` };
+  if (!match) return { text: `${button}; OAUTH_ACCOUNT names no ${providerHost} account in the file (by number, USERNAME or EMAIL)` };
   return { text: `${button}, as ${accountName(oauth.prefix, match.number)}`, provider: accountId(oauth.prefix, match.number) };
 }
 

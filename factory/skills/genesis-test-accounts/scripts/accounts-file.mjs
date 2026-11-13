@@ -44,7 +44,7 @@ export function accountPrefix(hostOrUrl) {
 }
 
 // Field names with an underscore must be listed here so the key splits at the right place.
-export const FIELDS = ['AUTH_METHOD', 'OAUTH_ACCOUNT', 'USERNAME', 'EMAIL', 'PASSWORD', 'PHONE'];
+export const FIELDS = ['AUTH_METHOD', 'OAUTH_ACCOUNT', 'TOTP_SECRET', 'USERNAME', 'EMAIL', 'PASSWORD', 'PHONE'];
 
 /**
  * Splits `X_COM_PASSWORD` into prefix `X_COM` and field `PASSWORD`, and
@@ -80,14 +80,17 @@ export function oauthProvider(method) {
 }
 
 /**
- * The provider account whose USERNAME or EMAIL equals `value`: `{ number }`, with
- * `number` undefined for an unnumbered account, or null when none matches.
+ * The provider account an OAUTH_ACCOUNT value names: `{ number }`, with `number`
+ * undefined for an unnumbered account, or null when none matches. The value is the
+ * account number, such as `0`, or the account's USERNAME or EMAIL.
  */
 export function findProviderAccount(entries, providerPrefix, value) {
   if (!value) return null;
+  const byNumber = /^\d+$/.test(value);
   for (const [key, candidate] of entries) {
     const { prefix, field, number } = parseKey(key);
-    if (prefix === providerPrefix && (field === 'USERNAME' || field === 'EMAIL') && candidate === value) return { number };
+    if (prefix !== providerPrefix) continue;
+    if (byNumber ? number === value : (field === 'USERNAME' || field === 'EMAIL') && candidate === value) return { number };
   }
   return null;
 }
