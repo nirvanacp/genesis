@@ -26,10 +26,17 @@ public final class AppletIcons {
     private static final int TASK_PX = 192;
     /** Material neutral, for applets without an accent. */
     private static final int NEUTRAL = 0xff5f6368;
+    /** Decoded icons kept at most, in bytes: a dozen or so at full size. */
+    private static final int DECODED_MAX_BYTES = 8 * 1024 * 1024;
     /** Icon paths include the revision, so a path always names the same picture. */
-    private static final LruCache<String, Bitmap> DECODED = new LruCache<>(24);
+    private static final LruCache<String, Bitmap> DECODED = new LruCache<>(DECODED_MAX_BYTES) {
+        @Override protected int sizeOf(String path, Bitmap bitmap) { return bitmap.getAllocationByteCount(); }
+    };
 
     private AppletIcons() {}
+
+    /** Drops the decoded icons when Android asks the process to give memory back. */
+    public static void trimMemory() { DECODED.evictAll(); }
 
     /**
      * The decoded icon file, or null when there is none or it does not decode. An imported

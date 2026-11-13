@@ -33,6 +33,8 @@ final class Router {
     private Shell recent;
     /** The window whose Add, update or version page started the repository flow under way. */
     private Shell flowWindow;
+    /** True once the flow under way showed a page; until then a message means the host refused it. */
+    private boolean flowShown;
     /** The host's latest launcher entries, which a new window starts with. */
     private JSONArray entries = new JSONArray();
     private long updatesCheckedAt;
@@ -64,7 +66,24 @@ final class Router {
      * window. The host runs one flow at a time and refuses another while one runs, so the window
      * that started the running flow keeps it until the host ends it.
      */
-    void flowStarted(Shell shell) { if (flowWindow == null) flowWindow = shell; }
+    void flowStarted(Shell shell) {
+        if (flowWindow != null) return;
+        flowWindow = shell;
+        flowShown = false;
+    }
+
+    /**
+     * A Genesis message (one with no applet) arrived for the flow `flowStarted` named. Before the flow shows any page, a message is
+     * the host refusing it (nothing installed from GitHub, a file outside Genesis's folder) or the
+     * shell failing to hand it over, so no flow runs and the next one picks its own window.
+     */
+    void flowRefused() { if (!flowShown) flowWindow = null; }
+
+    /** The flow's next page goes to its window. */
+    private Shell flowPage() {
+        flowShown = true;
+        return flowWindow();
+    }
 
     /** The flow's pages go back to the window that started it, else to the window in front. */
     private Shell flowWindow() { return flowWindow != null ? flowWindow : messageWindow(null); }
@@ -123,8 +142,8 @@ final class Router {
             case "revealForeground": { Shell shell = named(command, type); if (shell != null) shell.revealForeground(); break; }
             case "coverContext": { Shell shell = named(command, type); if (shell != null) shell.coverContext(); break; }
             case "moveTaskToBack": { Shell shell = named(command, type); if (shell != null) shell.activity().moveTaskToBack(true); break; }
-            case "showError": showError(appletIdOf(command), command.getString("message")); break;
-            case "showInfo": { Shell shell = messageWindow(appletIdOf(command)); if (shell != null) shell.showInfo(command.getString("title"), command.getString("message")); break; }
+            case "showError": if (appletIdOf(command) == null) flowRefused(); showError(appletIdOf(command), command.getString("message")); break;
+            case "showInfo": { if (appletIdOf(command) == null) flowRefused(); Shell shell = messageWindow(appletIdOf(command)); if (shell != null) shell.showInfo(command.getString("title"), command.getString("message")); break; }
             case "showStatus": {
                 Shell shell = messageWindow(appletIdOf(command));
                 if (shell != null) shell.showStatus(command.getString("kind"), command.optJSONObject("applet"), command.getString("details"));
@@ -139,16 +158,19 @@ final class Router {
             // Update review, version change and import pages belong to the window the user started
             // them from: an applet's own Applet info page, or the manager's Add page.
             case "showProgress": {
-                Shell shell = flowWindow();
                 String message = command.isNull("message") ? null : command.optString("message", null);
+                Shell shell = message == null ? flowWindow() : flowPage();
                 if (shell != null) shell.showProgress(message);
                 // Every flow that shows pages ends with an empty progress.
-                if (message == null) flowWindow = null;
+                if (message == null) {
+                    flowWindow = null;
+                    flowShown = false;
+                }
                 break;
             }
-            case "showRepositoryApplets": { Shell shell = flowWindow(); if (shell != null) shell.showRepositoryApplets(command); break; }
-            case "showImportReview": { Shell shell = flowWindow(); if (shell != null) shell.showImportReview(command); break; }
-            case "showInstalled": { Shell shell = flowWindow(); if (shell != null) shell.showInstalled(command); break; }
+            case "showRepositoryApplets": { Shell shell = flowPage(); if (shell != null) shell.showRepositoryApplets(command); break; }
+            case "showImportReview": { Shell shell = flowPage(); if (shell != null) shell.showImportReview(command); break; }
+            case "showInstalled": { Shell shell = flowPage(); if (shell != null) shell.showInstalled(command); break; }
             case "serviceRequest": runtime.services.request(command); break;
             case "fetch": runtime.fetcher.fetch(command); break;
             case "wake": runtime.wake(command.getLong("delayMs")); break;
