@@ -455,7 +455,7 @@ final class WebViewPage implements WebsitePage {
             // WebView ignores an exit inside this call, which would leave the page in fullscreen; exit after it.
             if (!SitePolicy.mayUse(page, SitePolicy.FULLSCREEN)) { web.post(callback::onCustomViewHidden); return; }
             listener.useGrant(page);
-            listener.showFullScreen(new Requests.FullScreen(view, callback::onCustomViewHidden));
+            listener.showFullScreen(new Requests.FullScreen(page, view, callback::onCustomViewHidden));
         }
 
         @Override public void onHideCustomView() { listener.hideFullScreen(); }

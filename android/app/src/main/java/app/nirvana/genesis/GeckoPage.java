@@ -444,7 +444,7 @@ final class GeckoPage implements WebsitePage {
             fullParams = view.getLayoutParams();
             fullParent.removeView(view);
             page.fullScreen = true;
-            listener.showFullScreen(new Requests.FullScreen(view, () -> {
+            listener.showFullScreen(new Requests.FullScreen(page, view, () -> {
                 restoreView();
                 if (!destroyed) session.exitFullScreen();
             }));
@@ -463,7 +463,9 @@ final class GeckoPage implements WebsitePage {
                 listener.download(page, response.uri, GeckoSession.getDefaultUserAgent(), disposition, type);
                 return;
             }
-            listener.downloadResponse(page, response.uri, response.body, disposition, type, length(header(response.headers, "Content-Length")));
+            // The body arrives decoded, so a `Content-Length` of an encoded response is not its size.
+            long length = header(response.headers, "Content-Encoding") != null ? -1 : length(header(response.headers, "Content-Length"));
+            listener.downloadResponse(page, response.uri, response.body, disposition, type, length);
         }
     }
 
@@ -672,7 +674,12 @@ final class GeckoPage implements WebsitePage {
         if (multiple) {
             builder.setNegativeButton(android.R.string.cancel, null).setPositiveButton(android.R.string.ok, (d, w) -> {
                 List<GeckoSession.PromptDelegate.ChoicePrompt.Choice> chosen = new ArrayList<>();
-                for (int i = 0; i < rows.size(); i++) if (list.isItemChecked(i)) chosen.add(rows.get(i));
+                // A disabled option the website selected stays selected; the user cannot change it.
+                for (int i = 0; i < rows.size(); i++) {
+                    GeckoSession.PromptDelegate.ChoicePrompt.Choice row = rows.get(i);
+                    boolean kept = enabled.get(i) ? list.isItemChecked(i) : row.items == null && row.selected;
+                    if (kept) chosen.add(row);
+                }
                 asking.answer(prompt.confirm(chosen.toArray(new GeckoSession.PromptDelegate.ChoicePrompt.Choice[0])));
             });
         }
@@ -896,9 +903,16 @@ final class GeckoPage implements WebsitePage {
                     if (!SitePolicy.mayUse(page, SitePolicy.LOCATION)) return GeckoResult.fromValue(ContentPermission.VALUE_PROMPT);
                     listener.useGrant(page);
                     GeckoResult<Integer> result = new GeckoResult<>();
-                    listener.askSite(page, Views.origin(permission.uri), List.of(SiteGrants.LOCATION), allowed -> {
-                        if (!destroyed) answers.add(permission);
-                        result.complete(allowed.contains(SiteGrants.LOCATION) ? ContentPermission.VALUE_ALLOW : ContentPermission.VALUE_DENY);
+                    String origin = Views.origin(permission.uri);
+                    listener.askSite(page, origin, List.of(SiteGrants.LOCATION), allowed -> {
+                        // Only the user's own Allow or Don't allow is an answer Gecko keeps, until
+                        // `destroy` resets it. A cancelled or interrupted question asks again.
+                        int answer = allowed.contains(SiteGrants.LOCATION) ? ContentPermission.VALUE_ALLOW
+                            : Boolean.FALSE.equals(page.site.grants().get(origin, SiteGrants.LOCATION)) ? ContentPermission.VALUE_DENY
+                            : ContentPermission.VALUE_PROMPT;
+                        if (destroyed) answer = ContentPermission.VALUE_PROMPT;
+                        if (answer != ContentPermission.VALUE_PROMPT) answers.add(permission);
+                        result.complete(answer);
                     });
                     return result;
                 }

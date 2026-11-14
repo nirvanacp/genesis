@@ -86,7 +86,10 @@ final class Views {
         android.webkit.WebResourceResponse pickedFile(String id);
     }
 
-    /** The container a revealed context is reparented into, above the foreground. */
+    /**
+     * The container a revealed context is reparented into, above the foreground, and the one a
+     * website's full screen shows in. A finger lifted on it is the user's own touch.
+     */
     static final class Revealed extends android.widget.FrameLayout {
         /** Runs when the user lifts a finger on the revealed context, or null. */
         Runnable touched;

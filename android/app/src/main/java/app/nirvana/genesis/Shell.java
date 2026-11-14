@@ -116,6 +116,8 @@ final class Shell implements Views.Listener, Ui.Actions {
     /** The user chose View website, so the next revealed context is their choice, not the applet's. */
     private boolean websiteChosen;
     private Requests.FullScreen customView;
+    /** The container `customView` shows in, which records the user's touches on it, or null. */
+    private Views.Revealed customFrame;
     private int visualState;
     /** Dialogs `destroy` closes: messages, choosers and settings prompts. */
     private final List<android.app.Dialog> dialogsShown = new ArrayList<>();
@@ -748,8 +750,7 @@ final class Shell implements Views.Listener, Ui.Actions {
     boolean closeCustomView() {
         if (customView == null) return false;
         Requests.FullScreen screen = customView;
-        customView = null;
-        root.removeView(screen.view);
+        removeCustomView();
         screen.exit();
         return true;
     }
@@ -839,12 +840,23 @@ final class Shell implements Views.Listener, Ui.Actions {
         closeCustomView();
         customView = screen;
         screen.view.setBackgroundColor(Color.BLACK);
-        root.addView(screen.view, new FrameLayout.LayoutParams(-1, -1));
+        // The page's view leaves the revealed container, so this one records a real touch on the
+        // full-screen website, which lets its own Share button share once.
+        customFrame = new Views.Revealed(activity);
+        customFrame.touched = () -> screen.page.touchedAt = SystemClock.uptimeMillis();
+        customFrame.addView(screen.view, new FrameLayout.LayoutParams(-1, -1));
+        root.addView(customFrame, new FrameLayout.LayoutParams(-1, -1));
     }
 
     @Override public void hideFullScreen() {
         if (customView == null) return;
-        root.removeView(customView.view);
+        removeCustomView();
+    }
+
+    private void removeCustomView() {
+        customFrame.removeView(customView.view);
+        root.removeView(customFrame);
+        customFrame = null;
         customView = null;
     }
 
