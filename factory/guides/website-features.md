@@ -139,7 +139,7 @@ export function ComposeScreen() {
 - Wait for the site's own evidence. Here `composer.text` and `composer.uploaded` are page module `value` readers: the editor holds the text, and the site shows a finished thumbnail for each file. A site that uploads while you wait may keep Post disabled; the click's `timeoutMs` waits for it, up to 15 seconds.
 - Show `posting` while the inputs run. Keep the text and files after `failed` and `unknown`, and never post again on your own: an `unknown` post may have gone through. Read the site's error text with a reader and show it when it has one.
 
-To check the composer without posting, attach a file, confirm the site's thumbnail appears, then discard the draft on the site ([verification](verification.md#device-walkthrough)).
+To check the composer without posting, keep the text and attach steps in their own function (here everything in `post()` before the click) and verify with a local build whose Post tap runs only that function and then calls `viewWebsite()`. The site's own composer then shows the text and thumbnails; check them, discard the draft on the site, and never commit that build ([verification](verification.md#device-walkthrough)). When the site is signed out, the composer journey is blocked: report it as blocked and list the steps to run once the user signs in.
 
 ## Attach a file elsewhere
 
