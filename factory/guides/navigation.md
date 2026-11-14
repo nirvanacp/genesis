@@ -79,7 +79,7 @@ navigate({ screen: "saved", mode: "root" });                          // an over
 
 | Target | What happens |
 | --- | --- |
-| `{ url, context?, mode? }` | Loads the URL in a context and makes that context active. The routes decide what shows: a route renders its screen, anything else shows the website. Relative URLs resolve against the active context's page. `mode` is `push` (default) or `replace`. It closes the overlay screens. |
+| `{ url, context?, mode? }` | Loads the URL in a context and makes that context active. With `push`, when the page shows a link to the URL and the website handles that link in the page, as a single-page website does, the page moves without a reload, so state such as playing audio stays. Otherwise the URL loads as a new page. The routes decide what shows: a route renders its screen, anything else shows the website. Relative URLs resolve against the active context's page. `mode` is `push` (default) or `replace`. It closes the overlay screens. |
 | `{ screen, params?, mode? }` | Opens an overlay screen named in the router's `screens`. `push` (default) adds it, `replace` swaps the top one, `root` makes it the only one. |
 
 Use `{ url }` for every link that came from the website, so the routes decide where it goes. Navigating to the URL a context already shows switches to that context instead of adding an entry. Navigating to the same URL does not reload it; use `reload()`.

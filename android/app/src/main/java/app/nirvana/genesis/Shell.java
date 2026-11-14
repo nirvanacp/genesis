@@ -72,6 +72,43 @@ final class Shell implements Views.Listener, Ui.Actions {
 
     /** How long history.go() may take to start moving before the native fallback runs. */
     private static final long HISTORY_FALLBACK_MS = 1000;
+    /** How long a page that took a link click has to start moving before the shell loads the URL itself. */
+    private static final long LINK_FALLBACK_MS = 1000;
+
+    /**
+     * Offers a navigation to the page as a click on its own link to the URL. A single-page website
+     * takes the click and routes inside the document, so its state, such as playing audio, stays.
+     * Answers true when the page's script prevented the click's default, or stopped the click before
+     * the window, which leaves the page to route or follow the link itself. Otherwise the click is
+     * cancelled before the link moves, and the shell loads the URL itself.
+     */
+    private static final String FOLLOW_LINK = """
+        (function (target) {
+          try {
+            var url = new URL(target);
+            if (url.origin !== location.origin) return false;
+            var link = Array.prototype.find.call(document.querySelectorAll("a[href]"), function (a) {
+              return a.href === url.href && (!a.target || a.target === "_self") && !a.hasAttribute("download");
+            });
+            if (!link) return false;
+            var taken = false;
+            var reached = false;
+            var last = function (event) {
+              reached = true;
+              taken = event.defaultPrevented;
+              if (!taken) event.preventDefault();
+            };
+            addEventListener("click", last);
+            try {
+              link.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window, button: 0 }));
+            } finally {
+              removeEventListener("click", last);
+            }
+            return !reached || taken;
+          } catch (error) {
+            return false;
+          }
+        })""";
 
     private final Activity activity;
     private final Owner owner;
@@ -273,14 +310,37 @@ final class Shell implements Views.Listener, Ui.Actions {
         page.destroy();
     }
 
-    /** `replace` swaps the current history entry through the page, falling back to a push when it cannot run script. */
+    /**
+     * `push` first lets the page follow its own link to the URL, and loads the URL when the page
+     * shows no such link or does not take the click. `replace` swaps the current history entry
+     * through the page, falling back to a push when it cannot run script.
+     */
     void loadUrl(JSONObject ref, String url, String mode) {
         Views.Page page = pages.get(key(ref));
         if (page == null) return;
-        if (!"replace".equals(mode)) { page.web.loadUrl(url); return; }
+        if ("replace".equals(mode)) replaceUrl(ref, page, url);
+        else followLink(ref, page, url);
+    }
+
+    private void replaceUrl(JSONObject ref, Views.Page page, String url) {
         String script = "(location.replace(" + JSONObject.quote(url) + "), true)";
         page.web.evaluateJavascript(script, result -> {
             if (pages.get(key(ref)) == page && !"true".equals(result)) page.web.loadUrl(url);
+        });
+    }
+
+    /**
+     * When the page takes the click and starts no navigation within LINK_FALLBACK_MS of the script's
+     * callback, the URL loads as before. The time counts from the callback, as in historyGo.
+     */
+    private void followLink(JSONObject ref, Views.Page page, String url) {
+        int moves = page.moves;
+        page.web.evaluateJavascript(FOLLOW_LINK + "(" + JSONObject.quote(url) + ")", result -> {
+            if (pages.get(key(ref)) != page) return;
+            if (!"true".equals(result)) { page.web.loadUrl(url); return; }
+            page.web.postDelayed(() -> {
+                if (pages.get(key(ref)) == page && page.moves == moves) page.web.loadUrl(url);
+            }, LINK_FALLBACK_MS);
         });
     }
 
