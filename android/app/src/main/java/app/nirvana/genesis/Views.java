@@ -495,8 +495,8 @@ final class Views {
         }
 
         /**
-         * A hidden context's dialog goes to the host, which hands it to the applet or reveals the
-         * website for it. The shown website, its popup and the applet's own page keep WebView's dialogs.
+         * A hidden context's dialog shows as Genesis's own dialog over the applet UI, and the website
+         * stays hidden. The shown website, its popup and the applet's own page keep WebView's dialogs.
          */
         private boolean hiddenDialog(String kind, String message, String defaultValue, JsResult result) {
             if (!page.isContext() || page.isRevealed()) return false;

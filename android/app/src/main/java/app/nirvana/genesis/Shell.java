@@ -646,7 +646,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         final Views.Page page;
         final String kind, message, defaultValue;
         final JsResult result;
-        /** The dialog the shell shows over the website after `showDialog`, or null. */
+        /** Genesis's dialog that shows it over the applet UI. */
         android.app.Dialog shown;
 
         PendingDialog(Views.Page page, String kind, String message, String defaultValue, JsResult result) {
@@ -665,19 +665,8 @@ final class Shell implements Views.Listener, Ui.Actions {
         }
     }
 
-    /** The applet's answer to a hidden page's dialog. */
-    void answerDialog(long token, boolean accept, String value) {
-        PendingDialog dialog = dialogs.remove(token);
-        if (dialog != null) dialog.answer(accept, value);
-    }
-
-    /**
-     * The applet did not take a hidden page's dialog, and the host revealed the website: the shell
-     * shows it there, titled with the page's origin, and reports `jsDialogClosed` once answered.
-     */
-    void showDialog(long token) {
-        PendingDialog dialog = dialogs.get(token);
-        if (dialog == null || dialog.shown != null) return;
+    /** Shows dialog `token` over the applet UI, titled with the page's origin; the website stays hidden. */
+    private void showDialog(long token, PendingDialog dialog) {
         android.widget.EditText field = null;
         MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(activity)
             .setTitle(Views.origin(String.valueOf(dialog.page.web.getUrl())))
@@ -697,7 +686,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         dialog.shown = builder.show();
     }
 
-    /** Ends dialog `token` in the shell and tells the host, which no longer waits for the applet. */
+    /** Ends dialog `token` with the user's answer, or cancels it, and tells the host its calls' deadlines run again. */
     private void closeDialog(long token, boolean accept, String value) {
         PendingDialog dialog = dialogs.remove(token);
         if (dialog == null) return;
@@ -1213,16 +1202,18 @@ final class Shell implements Views.Listener, Ui.Actions {
         if (cancel != null) cancel.run();
     }
 
-    /** A hidden page's JavaScript dialog goes to the host, which answers it or asks to show it. */
+    /**
+     * A hidden page's JavaScript dialog shows at once as Genesis's own dialog over the applet UI.
+     * The host only learns that it is open, so the page's calls stop using up their budget.
+     */
     @Override public void jsDialog(Views.Page page, String kind, String message, String defaultValue, JsResult result) {
         if (pages.get(key(page.ref)) != page) { result.cancel(); return; }
         long token = ++nextDialog;
-        dialogs.put(token, new PendingDialog(page, kind, message, defaultValue, result));
-        String url = page.web.getUrl();
-        try {
-            owner.send(Bridge.event("jsDialog").put("view", page.ref).put("token", token).put("kind", kind).put("message", message)
-                .put("defaultValue", defaultValue == null ? JSONObject.NULL : defaultValue).put("url", url == null ? "" : url));
-        } catch (JSONException ignored) { /* Unreachable for these values. */ }
+        PendingDialog dialog = new PendingDialog(page, kind, message, defaultValue, result);
+        dialogs.put(token, dialog);
+        try { owner.send(Bridge.event("jsDialog").put("view", page.ref).put("token", token)); }
+        catch (JSONException ignored) { /* Unreachable for these values. */ }
+        showDialog(token, dialog);
     }
 
     /** A server's own sign-in prompt. Genesis passes the answer on and saves nothing. */

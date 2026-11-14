@@ -137,8 +137,6 @@ final class Router {
             case "historyGo": { Shell shell = view(command, type); if (shell != null) shell.historyGo(command.getJSONObject("view"), command.getInt("delta")); break; }
             case "reload": { Shell shell = view(command, type); if (shell != null) shell.reload(command.getJSONObject("view")); break; }
             case "postMessage": { Shell shell = view(command, type); if (shell != null) shell.postMessage(command.getJSONObject("view"), command.getString("payload")); break; }
-            case "answerDialog": { Shell shell = view(command, type); if (shell != null) shell.answerDialog(command.getLong("token"), command.getBoolean("accept"), command.isNull("value") ? null : command.optString("value", null)); break; }
-            case "showDialog": { Shell shell = view(command, type); if (shell != null) shell.showDialog(command.getLong("token")); break; }
             case "input": { Shell shell = view(command, type); if (shell != null) shell.input(command.getJSONObject("view"), command.getLong("token"), command.getJSONArray("events")); break; }
             case "userAction": {
                 Shell shell = applet(command.getString("appletId"), type);
