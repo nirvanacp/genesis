@@ -11,6 +11,7 @@ import {
   type Manifest,
   type Method,
   type PageEmitEvent,
+  type ShareInput,
 } from "@genesis/core";
 import { GenesisError } from "../bridge.js";
 import type { Storage } from "../types.js";
@@ -18,6 +19,7 @@ import { createContext, type ContextHandle, type ContextControl } from "./contex
 import { createPresentation, type Website } from "./presentation.js";
 import { createServices, type Services } from "./services.js";
 import { createNotifications, type Notifications } from "./notifications.js";
+import { createUserActions, type Downloads, type Files, type Links } from "./actions.js";
 import { createSavedState, type SavedState } from "./state.js";
 import { createStorage } from "./storage.js";
 import { webViewTransport, type Transport } from "./transport.js";
@@ -136,7 +138,7 @@ export function openSession(transport: Transport, url: string): Promise<Session>
   });
 }
 
-/** The connected client: the applet's contexts, the website's presentation, Back, saved state, storage, services and notifications. */
+/** The connected client: the applet's contexts, the website's presentation, Back, saved state, storage, services, notifications and user actions. */
 export interface Genesis {
   readonly appletId: string;
   readonly revision: number;
@@ -161,6 +163,17 @@ export interface Genesis {
   readonly storage: Storage;
   readonly services: Services;
   readonly notifications: Notifications;
+  /**
+   * Picked files. Opening the picker is a user action: it runs only within 3 seconds of a tap on
+   * the applet UI, so call it straight from the tap's handler, or it rejects with `USER_ACTION_REQUIRED`.
+   */
+  readonly files: Files;
+  /** Saves to Downloads; a user action. */
+  readonly downloads: Downloads;
+  /** Opens Android's share sheet; a user action. */
+  share(input: ShareInput): Promise<void>;
+  /** Opens links in other apps; a user action. */
+  readonly links: Links;
   /** Reports the first layout; the shell then shows the UI. */
   ready(): void;
   /** The applet came back to the foreground. */
@@ -248,6 +261,7 @@ function createGenesis(session: Session): Genesis {
     storage: createStorage(session),
     services: createServices(session),
     notifications: createNotifications(session),
+    ...createUserActions(session),
     ready() {
       if (readySent) return;
       readySent = true;

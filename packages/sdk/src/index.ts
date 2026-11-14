@@ -23,20 +23,26 @@ export { css, field, record, role, text } from "./client/locator.js";
 export type { Website, WebsiteState } from "./client/presentation.js";
 export type { Services } from "./client/services.js";
 export type { Notifications } from "./client/notifications.js";
+export { previewUrl } from "./client/actions.js";
+export type { Downloads, Files, Links, PickedFile } from "./client/actions.js";
 export type { SavedState } from "./client/state.js";
 export { GenesisError, ServiceError, serviceMessage } from "./types.js";
 export type { ServiceResponse, Storage, StorageBatch, StorageChange, StorageKey, StoredDocument } from "./types.js";
 export type {
   ActionOutcome,
   ActionResult,
+  AttachVia,
   CallDetails,
+  DownloadSave,
   DialogKind,
   ElementState,
   ErrorBody,
   ErrorCode,
   Evidence,
   Field,
+  FileHandle,
   Fields,
+  FilesPick,
   InspectResult,
   Limits,
   ListValue,
@@ -51,6 +57,7 @@ export type {
   ReadSpec,
   ScrollPosition,
   ScrollTo,
+  ShareInput,
   UrlGuard,
   ViewId,
 } from "@genesis/core";
