@@ -36,7 +36,7 @@ const FOREGROUND_METHODS: [&str; 26] = [
     "links.openExternal",
     "notifications.enable",
 ];
-const CONTEXT_METHODS: [&str; 5] = ["page.result", "page.progress", "page.emit", "page.input", "page.files"];
+const CONTEXT_METHODS: [&str; 6] = ["page.result", "page.progress", "page.emit", "page.input", "page.files", "page.share"];
 /// Events in one `page.input`.
 const INPUT_EVENTS_MAX: usize = 64;
 /// Characters of `text` in one `page.input`, all its text events together. The shell types each
@@ -347,6 +347,15 @@ impl Host {
                 Ok(()) => Outcome::Later,
                 Err(failure) => Outcome::Now(Err(failure)),
             },
+            Call::PageShare { title, text, url, active } => {
+                // The user tapped the website itself, so only a revealed page with user activation shares.
+                let Role::Context(id) = &view.role else { return error(ErrorCode::InvalidArgument, "page.share is for context documents") };
+                let revealed = self.session(applet_id).is_some_and(|s| s.revealed.as_deref() == Some(id.as_str()));
+                if !revealed || !active {
+                    return error(ErrorCode::UserActionRequired, "The website can share only from the user's tap while it is shown");
+                }
+                self.user_action(view, document_id, request_id, Some(view.clone()), UserAction::Share { title, text, url }, now)
+            }
         }
     }
 
