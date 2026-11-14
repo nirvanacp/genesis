@@ -32,9 +32,22 @@ final class FileSelection {
         if (mode != WebChromeClient.FileChooserParams.MODE_OPEN && mode != WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE) {
             result.onReceiveValue(null); return;
         }
-        callback = result; valid = current; multiple = mode == WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE;
+        start(params.getAcceptTypes(), mode == WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE, result, current);
+    }
+
+    /**
+     * The picker for the applet UI's `files.pick`: `accept` holds MIME types or `.ext` suffixes.
+     * `result` gets the picked `content:` URIs, or null when the user cancelled.
+     */
+    void openForApplet(String[] accept, boolean multiple, ValueCallback<Uri[]> result, BooleanSupplier current) {
+        cancel();
+        start(accept, multiple, result, current);
+    }
+
+    private void start(String[] accept, boolean multiple, ValueCallback<Uri[]> result, BooleanSupplier current) {
+        callback = result; valid = current; this.multiple = multiple;
         List<String> accepted = new ArrayList<>();
-        for (String value : params.getAcceptTypes()) {
+        for (String value : accept) {
             for (String part : value.split(",")) {
                 String mime = part.trim().toLowerCase(java.util.Locale.ROOT);
                 if (mime.startsWith(".")) mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(mime.substring(1));

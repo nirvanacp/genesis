@@ -41,6 +41,8 @@ import org.json.JSONObject;
 final class Views {
     static final String FOREGROUND_ORIGIN = "https://appassets.androidplatform.net";
     static final String BRIDGE = "__genesisBridge";
+    /** Where the applet UI previews picked files, on `FOREGROUND_ORIGIN`. */
+    static final String PICKED_FILES = "/genesis-files/";
 
     /** What a view reports back to the shell. */
     interface Listener {
@@ -75,6 +77,11 @@ final class Views {
          * `beforeunload`) and waits until `result` is answered. `defaultValue` is a prompt's, else null.
          */
         void jsDialog(Page page, String kind, String message, String defaultValue, JsResult result);
+        /**
+         * The applet UI loads a picked file from `/genesis-files/<id>`. Called on WebView's request
+         * thread; unknown ids answer 404.
+         */
+        WebResourceResponse pickedFile(String id);
     }
 
     /** The container a revealed context is reparented into, above the foreground. */
@@ -285,7 +292,13 @@ final class Views {
         }
 
         @Override public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
-            return page.isForeground() ? assets.shouldInterceptRequest(request.getUrl()) : null;
+            if (!page.isForeground()) return null;
+            Uri url = request.getUrl();
+            String path = url.getPath();
+            if (FOREGROUND_ORIGIN.equals(origin(url.toString())) && path != null && path.startsWith(PICKED_FILES)) {
+                return listener.pickedFile(path.substring(PICKED_FILES.length()));
+            }
+            return assets.shouldInterceptRequest(url);
         }
 
         // onPageStarted fires at commit, once per cross-document navigation, with the final URL.

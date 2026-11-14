@@ -1,0 +1,329 @@
+package app.nirvana.genesis;
+
+import android.app.Activity;
+import android.content.ContentResolver;
+import android.content.ContentValues;
+import android.content.Intent;
+import android.database.Cursor;
+import android.net.Uri;
+import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.SystemClock;
+import android.provider.MediaStore;
+import android.provider.OpenableColumns;
+import android.util.Base64;
+import android.webkit.MimeTypeMap;
+import android.webkit.URLUtil;
+import android.webkit.WebResourceResponse;
+import android.widget.Toast;
+import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
+import java.security.SecureRandom;
+import java.util.Collections;
+import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
+/**
+ * What the applet UI may start only from the user's tap: picking files, saving, sharing, opening
+ * another app and turning on notifications. Each action needs a fresh tap on the applet UI and
+ * uses it up. Picked files stay `content:` URIs in the shell, under random ids; the applet holds
+ * only the ids, and nothing is copied into applet storage.
+ */
+final class UserActions {
+    /** How long a picked file stays usable, in ms. */
+    private static final long FILE_LIFETIME_MS = 30 * 60 * 1000;
+    /** The largest picked file, in bytes; larger files are left out of a pick. */
+    private static final long FILE_BYTES_MAX = 64L * 1024 * 1024;
+    /** Reads picked files off the UI thread. */
+    static final ExecutorService IO = Executors.newSingleThreadExecutor();
+    private static final SecureRandom RANDOM = new SecureRandom();
+
+    /** One picked file. */
+    static final class PickedFile {
+        final Uri uri;
+        final String name, mime;
+        final long size, expiresAt;
+
+        PickedFile(Uri uri, String name, String mime, long size) {
+            this.uri = uri;
+            this.name = name;
+            this.mime = mime;
+            this.size = size;
+            this.expiresAt = SystemClock.uptimeMillis() + FILE_LIFETIME_MS;
+        }
+    }
+
+    private final Activity activity;
+    private final Shell shell;
+    private final Shell.Owner owner;
+    private final Handler main = new Handler(Looper.getMainLooper());
+    /** Read from WebView's request threads for previews, so it is concurrent. */
+    private final Map<String, PickedFile> files = new ConcurrentHashMap<>();
+    private long lastTapAt;
+    private boolean tapUsed = true;
+
+    UserActions(Activity activity, Shell shell, Shell.Owner owner) {
+        this.activity = activity;
+        this.shell = shell;
+        this.owner = owner;
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // The tap gate
+
+    /** The user lifted a finger on the applet UI. */
+    void tapped() {
+        lastTapAt = SystemClock.uptimeMillis();
+        tapUsed = false;
+    }
+
+    /** True once per tap, within `SitePolicy.USER_ACTION_MS` of it. Trusted input to a page never counts. */
+    private boolean consumeTap() {
+        if (tapUsed || SystemClock.uptimeMillis() - lastTapAt > SitePolicy.USER_ACTION_MS) return false;
+        tapUsed = true;
+        return true;
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Actions
+
+    /** Carries out `action` for the applet and answers `userActionDone` after the command batch. */
+    void run(String appletId, long token, JSONObject view, JSONObject action) {
+        String kind = action.optString("kind");
+        // Grants arrive with one-time website features; until then nothing asks for one.
+        if ("grant".equals(kind)) { answer(done(token, "UNKNOWN_METHOD", "Grants are not available in this Genesis", null)); return; }
+        if (!consumeTap()) { answer(done(token, "USER_ACTION_REQUIRED", "The action needs a fresh tap on the applet", null)); return; }
+        switch (kind) {
+            case "pickFiles": pick(token, strings(action.optJSONArray("accept")), action.optBoolean("multiple")); break;
+            case "save": save(token, view, action.optString("url"), action.isNull("filename") ? null : action.optString("filename", null)); break;
+            case "share": share(token, text(action, "title"), text(action, "text"), text(action, "url")); break;
+            case "openExternal": openExternal(token, action.optString("url")); break;
+            case "enableNotifications":
+                shell.setNotificationsOn(appletId, true, on -> answer(done(token, null, null, object("enabled", on))));
+                break;
+            default: answer(done(token, "INVALID_ARGUMENT", "Unknown action " + kind, null)); break;
+        }
+    }
+
+    private void pick(long token, String[] accept, boolean multiple) {
+        owner.chooseAppletFiles(accept, multiple, uris -> IO.execute(() -> {
+            JSONArray picked = new JSONArray();
+            if (uris != null) {
+                for (Uri uri : uris) {
+                    PickedFile file = describe(uri);
+                    if (file == null) continue;
+                    String id = newId();
+                    files.put(id, file);
+                    try { picked.put(new JSONObject().put("id", id).put("name", file.name).put("type", file.mime).put("size", file.size)); }
+                    catch (JSONException ignored) { /* Unreachable for these values. */ }
+                }
+            }
+            answer(done(token, null, null, object("files", picked)));
+        }), shell::hasForeground);
+    }
+
+    /** The file's name, type and size, or null when it cannot be read or is too large. */
+    private PickedFile describe(Uri uri) {
+        ContentResolver resolver = activity.getContentResolver();
+        String name = null;
+        long size = -1;
+        try (Cursor cursor = resolver.query(uri, new String[] { OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE }, null, null, null)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                if (!cursor.isNull(0)) name = cursor.getString(0);
+                if (!cursor.isNull(1)) size = cursor.getLong(1);
+            }
+            if (size < 0) {
+                try (android.content.res.AssetFileDescriptor descriptor = resolver.openAssetFileDescriptor(uri, "r")) {
+                    if (descriptor != null) size = descriptor.getLength();
+                }
+            }
+        } catch (IOException | RuntimeException error) {
+            return null;
+        }
+        if (size < 0 || size > FILE_BYTES_MAX) return null;
+        String mime = resolver.getType(uri);
+        return new PickedFile(uri, name == null || name.isEmpty() ? "file" : name, mime == null ? "application/octet-stream" : mime, size);
+    }
+
+    /** An `https` URL downloads with the context's cookies; a `data:` URL is written here. */
+    private void save(long token, JSONObject view, String url, String filename) {
+        if (url.regionMatches(true, 0, "data:", 0, 5)) {
+            IO.execute(() -> saveData(token, url, filename));
+            return;
+        }
+        Views.Page page = view == null ? null : shell.page(view);
+        if (page == null) { answer(done(token, "NOT_FOUND", "The website is gone", null)); return; }
+        String name = filename != null ? filename : URLUtil.guessFileName(url, null, null);
+        String mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(MimeTypeMap.getFileExtensionFromUrl(name));
+        if (!shell.startDownload(page, url, page.web.getSettings().getUserAgentString(), mime, name)) {
+            answer(done(token, "NOT_FOUND", "The download couldn't start", null));
+            return;
+        }
+        answer(done(token, null, null, object("started", true)));
+    }
+
+    private void saveData(long token, String url, String filename) {
+        int comma = url.indexOf(',');
+        if (comma < 0) { answer(done(token, "INVALID_ARGUMENT", "The data: URL has no data", null)); return; }
+        String meta = url.substring(5, comma);
+        boolean base64 = meta.toLowerCase(Locale.ROOT).endsWith(";base64");
+        String mime = meta.split(";", 2)[0].trim().toLowerCase(Locale.ROOT);
+        if (mime.isEmpty()) mime = "text/plain";
+        byte[] bytes;
+        try {
+            String data = url.substring(comma + 1);
+            bytes = base64 ? Base64.decode(data, Base64.DEFAULT) : Uri.decode(data).getBytes(StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException error) {
+            answer(done(token, "INVALID_ARGUMENT", "The data: URL is not valid base64", null));
+            return;
+        }
+        String extension = MimeTypeMap.getSingleton().getExtensionFromMimeType(mime);
+        String name = filename != null ? filename : "download" + (extension == null ? "" : "." + extension);
+        try {
+            write(name, mime, bytes);
+        } catch (IOException | RuntimeException error) {
+            answer(done(token, "STORAGE_FAILURE", "The file couldn't be saved: " + error.getMessage(), null));
+            return;
+        }
+        main.post(() -> Toast.makeText(activity, "Saved " + name + " to Downloads", Toast.LENGTH_SHORT).show());
+        answer(done(token, null, null, object("started", true)));
+    }
+
+    /** Android 10+ writes to the public Downloads folder; 8 and 9 to Genesis's own, as `startDownload` does. */
+    private void write(String name, String mime, byte[] bytes) throws IOException {
+        if (Build.VERSION.SDK_INT >= 29) {
+            ContentResolver resolver = activity.getContentResolver();
+            ContentValues values = new ContentValues();
+            values.put(MediaStore.Downloads.DISPLAY_NAME, name);
+            values.put(MediaStore.Downloads.MIME_TYPE, mime);
+            values.put(MediaStore.Downloads.IS_PENDING, 1);
+            Uri item = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+            if (item == null) throw new IOException("Downloads is not available");
+            try (OutputStream out = resolver.openOutputStream(item)) {
+                if (out == null) throw new IOException("Downloads is not available");
+                out.write(bytes);
+            } catch (IOException | RuntimeException error) {
+                resolver.delete(item, null, null);
+                throw error;
+            }
+            values.clear();
+            values.put(MediaStore.Downloads.IS_PENDING, 0);
+            resolver.update(item, values, null, null);
+            return;
+        }
+        File folder = activity.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS);
+        if (folder == null || (!folder.isDirectory() && !folder.mkdirs())) throw new IOException("Downloads is not available");
+        try (OutputStream out = new FileOutputStream(new File(folder, name))) { out.write(bytes); }
+    }
+
+    private void share(long token, String title, String text, String url) {
+        String body = text == null ? url : url == null ? text : text + "\n" + url;
+        Intent send = new Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, body == null ? title : body);
+        if (title != null) send.putExtra(Intent.EXTRA_TITLE, title).putExtra(Intent.EXTRA_SUBJECT, title);
+        if (!shell.handOff(Intent.createChooser(send, null))) { answer(done(token, "NOT_FOUND", "No app can share this", null)); return; }
+        answer(done(token, null, null, object("shown", true)));
+    }
+
+    /**
+     * App links open in their app. An `https` URL opens only in an app that is not a browser, since a
+     * browser would only show the website again; Android 10 and earlier cannot tell, so it answers NOT_FOUND.
+     */
+    private void openExternal(long token, String url) {
+        Intent intent;
+        if ("https".equalsIgnoreCase(Uri.parse(url).getScheme())) {
+            intent = Build.VERSION.SDK_INT >= 30
+                ? new Intent(Intent.ACTION_VIEW, Uri.parse(url)).addCategory(Intent.CATEGORY_BROWSABLE)
+                    .addFlags(Intent.FLAG_ACTIVITY_REQUIRE_NON_BROWSER)
+                : null;
+        } else {
+            intent = Handoff.intent(url);
+        }
+        if (intent == null || !shell.handOff(intent)) { answer(done(token, "NOT_FOUND", "No app can open " + url, null)); return; }
+        answer(done(token, null, null, object("opened", true)));
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Picked files
+
+    /** A picked file that is still usable, or null. Safe on any thread. */
+    PickedFile file(String id) {
+        PickedFile file = files.get(id);
+        if (file == null) return null;
+        if (SystemClock.uptimeMillis() < file.expiresAt) return file;
+        files.remove(id);
+        return null;
+    }
+
+    void release(JSONArray ids) {
+        for (int i = 0; i < ids.length(); i++) files.remove(ids.optString(i));
+    }
+
+    /** The applet UI is gone: its picked files go with it. */
+    void clear() { files.clear(); }
+
+    /** Streams a picked file to the applet UI for `<img>` or `<video>`; unknown ids answer 404. Runs on WebView's request thread. */
+    WebResourceResponse preview(String id) {
+        PickedFile file = file(id);
+        InputStream in = null;
+        if (file != null) {
+            try { in = activity.getContentResolver().openInputStream(file.uri); }
+            catch (IOException | RuntimeException error) { in = null; }
+        }
+        if (in == null) return new WebResourceResponse("text/plain", "utf-8", 404, "Not Found", Collections.emptyMap(), new ByteArrayInputStream(new byte[0]));
+        return new WebResourceResponse(file.mime, null, 200, "OK", Collections.singletonMap("Cache-Control", "no-store"), in);
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Answers
+
+    /** A `userActionDone` event: `result` when `code` is null, otherwise the error. */
+    static JSONObject done(long token, String code, String message, JSONObject result) {
+        try {
+            JSONObject event = Bridge.event("userActionDone").put("token", token).put("ok", code == null);
+            if (code != null) event.put("code", code).put("message", message);
+            else event.put("result", result == null ? new JSONObject() : result);
+            return event;
+        } catch (JSONException error) {
+            throw new IllegalStateException(error);
+        }
+    }
+
+    /** Sent after the command batch under way, since the host is still handling the event that sent it. */
+    private void answer(JSONObject event) { main.post(() -> owner.send(event)); }
+
+    private static JSONObject object(String key, Object value) {
+        try { return new JSONObject().put(key, value); }
+        catch (JSONException error) { throw new IllegalStateException(error); }
+    }
+
+    private static String newId() {
+        byte[] bytes = new byte[16];
+        RANDOM.nextBytes(bytes);
+        StringBuilder id = new StringBuilder(32);
+        for (byte b : bytes) id.append(String.format(Locale.ROOT, "%02x", b));
+        return id.toString();
+    }
+
+    private static String[] strings(JSONArray values) {
+        if (values == null) return new String[0];
+        String[] result = new String[values.length()];
+        for (int i = 0; i < result.length; i++) result[i] = values.optString(i);
+        return result;
+    }
+
+    private static String text(JSONObject object, String key) {
+        return object.isNull(key) ? null : object.optString(key, null);
+    }
+}

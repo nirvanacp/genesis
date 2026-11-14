@@ -140,6 +140,13 @@ final class Router {
             case "answerDialog": { Shell shell = view(command, type); if (shell != null) shell.answerDialog(command.getLong("token"), command.getBoolean("accept"), command.isNull("value") ? null : command.optString("value", null)); break; }
             case "showDialog": { Shell shell = view(command, type); if (shell != null) shell.showDialog(command.getLong("token")); break; }
             case "input": { Shell shell = view(command, type); if (shell != null) shell.input(command.getJSONObject("view"), command.getLong("token"), command.getJSONArray("events")); break; }
+            case "userAction": {
+                Shell shell = applet(command.getString("appletId"), type);
+                if (shell != null) shell.userAction(command.getLong("token"), command.optJSONObject("view"), command.getJSONObject("action"));
+                else later(UserActions.done(command.getLong("token"), "NOT_FOUND", "The applet's window is closed", null));
+                break;
+            }
+            case "releaseFiles": { Shell shell = applets.get(command.getString("appletId")); if (shell != null) shell.releaseFiles(command.getJSONArray("ids")); break; }
             case "showWindow": { Shell shell = view(command, type); if (shell != null) shell.showWindow(command.getJSONObject("view"), command.getString("url")); break; }
             case "revealForeground": { Shell shell = named(command, type); if (shell != null) shell.revealForeground(); break; }
             case "coverContext": { Shell shell = named(command, type); if (shell != null) shell.coverContext(); break; }
@@ -251,6 +258,11 @@ final class Router {
 
     private static String appletText(JSONObject command, String key) {
         return command.isNull(key) ? null : command.optString(key, null);
+    }
+
+    /** Sends `event` to the host after the command batch under way. */
+    private void later(JSONObject event) {
+        new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> runtime.send(event));
     }
 
     private Map<String, Shell> applets() { return new HashMap<>(applets); }

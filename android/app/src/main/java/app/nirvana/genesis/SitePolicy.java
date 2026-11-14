@@ -16,6 +16,9 @@ final class SitePolicy {
      */
     static final long INPUT_ACTIVATION_MS = 5000;
 
+    /** How long after a tap on the applet UI the applet may start one user action, in ms. */
+    static final long USER_ACTION_MS = 3000;
+
     /**
      * Whether a gesture WebView reports is the user's. WebView reads the page's activation when the
      * page asks, so for a few seconds after the page agent's trusted input it may be that input's.

@@ -93,6 +93,10 @@ abstract class WindowActivity extends Activity implements Shell.Owner {
         return true;
     }
 
+    @Override public void chooseAppletFiles(String[] accept, boolean multiple, ValueCallback<Uri[]> callback, BooleanSupplier valid) {
+        selection.openForApplet(accept, multiple, callback, valid);
+    }
+
     @Override public void cancelInvalidFiles() { if (selection != null) selection.cancelIfInvalid(); }
 
     /**

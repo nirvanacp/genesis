@@ -59,6 +59,8 @@ final class Shell implements Views.Listener, Ui.Actions {
         void launcherShown();
         boolean chooseFiles(WebChromeClient.FileChooserParams params, ValueCallback<Uri[]> callback, java.util.function.BooleanSupplier valid);
         void cancelInvalidFiles();
+        /** Opens the system picker for the applet UI's `files.pick`; `callback` gets null when nothing usable was picked. */
+        void chooseAppletFiles(String[] accept, boolean multiple, ValueCallback<Uri[]> callback, java.util.function.BooleanSupplier valid);
         /** The applet's "Hide in recent apps" choice changed; its window applies it. */
         void privacyChanged(String appletId);
         /** Opens the system picker for a bundle file, with its release record if the user picks one. */
@@ -139,6 +141,8 @@ final class Shell implements Views.Listener, Ui.Actions {
     private final Notices notices;
     private final Settings settings;
     private final Map<String, Views.Page> pages = new HashMap<>();
+    /** The applet UI's user actions, the tap that allows them, and its picked files. */
+    private final UserActions actions;
     /** Hidden pages' open JavaScript dialogs by token, until answered or closed. */
     private final Map<Long, PendingDialog> dialogs = new HashMap<>();
     private static long nextDialog;
@@ -166,6 +170,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         sites = SiteData.defaultProfile(activity);
         state = state(activity);
         views = new Views(activity, this);
+        actions = new UserActions(activity, this, owner);
         tokens = new Tokens(activity);
         ui = new Ui(activity, tokens, this);
         addFlow = new AddFlow(ui);
@@ -201,7 +206,14 @@ final class Shell implements Views.Listener, Ui.Actions {
         barrier.setBackgroundColor(tokens.surface);
         barrier.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         applet.addView(barrier, new FrameLayout.LayoutParams(-1, -1));
-        foreground = new FrameLayout(activity);
+        // A finger lifted on the applet UI allows one user action. The website bar, the revealed
+        // website and its popups sit above this container and keep their touches.
+        foreground = new FrameLayout(activity) {
+            @Override public boolean dispatchTouchEvent(android.view.MotionEvent event) {
+                if (event.getActionMasked() == android.view.MotionEvent.ACTION_UP) actions.tapped();
+                return super.dispatchTouchEvent(event);
+            }
+        };
         applet.addView(foreground, new FrameLayout.LayoutParams(-1, -1));
         splash = new Splash(activity, tokens);
         applet.addView(splash, new FrameLayout.LayoutParams(-1, -1));
@@ -313,6 +325,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         if (page == null) return;
         closeDialogs(page);
         if (page == revealedPage) dropRevealed();
+        if (page.isForeground()) actions.clear();
         page.destroy();
     }
 
@@ -466,6 +479,21 @@ final class Shell implements Views.Listener, Ui.Actions {
             } catch (JSONException ignored) { /* Unreachable for these values. */ }
         });
     }
+
+    /** Carries out a user action for the applet UI, after checking its tap. `view` is the context it concerns, or null. */
+    void userAction(long token, JSONObject view, JSONObject action) {
+        if (appletId == null) {
+            JSONObject refusal = UserActions.done(token, "NOT_FOUND", "The applet is not open", null);
+            bar.post(() -> owner.send(refusal));
+            return;
+        }
+        actions.run(appletId, token, view, action);
+    }
+
+    /** The applet let go of these picked files. */
+    void releaseFiles(JSONArray ids) { actions.release(ids); }
+
+    @Override public android.webkit.WebResourceResponse pickedFile(String id) { return actions.preview(id); }
 
     /** A hidden page's JavaScript dialog: the page waits until `result` is answered. */
     private static final class PendingDialog {
@@ -684,7 +712,7 @@ final class Shell implements Views.Listener, Ui.Actions {
      * DownloadManager sends the Cookie header to every host a redirect reaches. Fetching the file in
      * the shell would scope cookies per host; until then this is a known limit.
      */
-    private void startDownload(Views.Page page, String url, String userAgent, String mimeType, String name) {
+    boolean startDownload(Views.Page page, String url, String userAgent, String mimeType, String name) {
         android.app.DownloadManager.Request request = new android.app.DownloadManager.Request(Uri.parse(url))
             .setMimeType(mimeType)
             .setTitle(name)
@@ -697,8 +725,10 @@ final class Shell implements Views.Listener, Ui.Actions {
         try {
             ((android.app.DownloadManager) activity.getSystemService(android.content.Context.DOWNLOAD_SERVICE)).enqueue(request);
             Toast.makeText(activity, "Downloading " + name, Toast.LENGTH_SHORT).show();
+            return true;
         } catch (RuntimeException error) {
             showError("The download couldn't start: " + error.getMessage());
+            return false;
         }
     }
 
@@ -764,6 +794,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         cancelPrompts();
         dropRevealed();
         owner.cancelInvalidFiles();
+        actions.clear();
         for (Views.Page page : pages.values()) closeDialogs(page);
         for (Views.Page page : pages.values()) page.destroy();
         pages.clear();
@@ -1451,6 +1482,11 @@ final class Shell implements Views.Listener, Ui.Actions {
         for (Views.Page page : pages.values()) if (page.isForeground()) return page;
         return null;
     }
+
+    boolean hasForeground() { return foregroundPage() != null; }
+
+    /** The page `ref` names, or null. */
+    Views.Page page(JSONObject ref) { return pages.get(key(ref)); }
 
     private static String key(JSONObject ref) { return ref.optString("appletId") + "\n" + ref.optString("role"); }
 
