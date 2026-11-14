@@ -15,6 +15,8 @@ import org.json.JSONObject;
 
 /** Updates (S13), Applet info (S14) and removing an applet (S16). */
 public final class Manage {
+    private static final String WEBVIEW = "webview", GECKO = "gecko";
+
     static final String UPDATES = "updates", INFO = "info:";
 
     private final Ui ui;
@@ -196,7 +198,9 @@ public final class Manage {
             boolean separate = ui.actions.separateSignIn(appletId);
             String use = separate ? "Uses its own sign-in on this site" : "Uses your sign-in on this site";
             for (String origin : origins) content.addView(t.row(R.drawable.ic_website, Ui.host(origin), use, null, false, t.onSurface, null));
-            if (ui.actions.separateSignInAvailable()) content.addView(separateSignIn(entry, separate));
+            // GeckoView keeps a separate sign-in on every phone; WebView only where it supports profiles.
+            if (ui.actions.separateSignInAvailable() || GECKO.equals(ui.actions.engine(appletId))) content.addView(separateSignIn(entry, separate));
+            content.addView(websiteEngine(entry));
         }
         List<String> services = Ui.strings(entry.optJSONArray("services"));
         if (!services.isEmpty()) {
@@ -265,6 +269,69 @@ public final class Manage {
         });
         return t.row(R.drawable.ic_lock, "Use a separate sign-in", "This applet signs in to its websites on its own. Other applets stay as they are.",
             toggle, false, t.onSurface, null);
+    }
+
+    /** "Website engine": where the applet's websites run. Its own screens stay in Android WebView. */
+    private View websiteEngine(JSONObject entry) {
+        Tokens t = ui.tokens;
+        String appletId = entry.optString("appletId");
+        String current = ui.actions.engine(appletId);
+        return t.row(R.drawable.ic_tune, "Website engine", engineName(current), null, true, t.onSurface, () -> chooseEngine(entry));
+    }
+
+    private static String engineName(String engine) { return GECKO.equals(engine) ? "GeckoView" : "Android WebView (default)"; }
+
+    /** A single choice between the two engines; picking the other one asks before the applet reopens. */
+    private void chooseEngine(JSONObject entry) {
+        String current = GECKO.equals(ui.actions.engine(entry.optString("appletId"))) ? GECKO : WEBVIEW;
+        LinearLayout list = ui.column();
+        list.setPadding(0, ui.tokens.dp(8), 0, 0);
+        androidx.appcompat.app.AlertDialog dialog = new MaterialAlertDialogBuilder(ui.activity)
+            .setTitle("Website engine")
+            .setView(list)
+            .setNegativeButton("Cancel", null)
+            .create();
+        list.addView(engineChoice(WEBVIEW, "Built into Android", current, dialog, entry));
+        list.addView(engineChoice(GECKO, "Firefox's engine, included in Genesis", current, dialog, entry));
+        dialog.show();
+    }
+
+    private View engineChoice(String engine, String detail, String current, android.content.DialogInterface dialog, JSONObject entry) {
+        Tokens t = ui.tokens;
+        boolean checked = engine.equals(current);
+        LinearLayout row = new LinearLayout(ui.activity);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(t.dp(12), t.dp(8), t.dp(24), t.dp(8));
+        android.widget.RadioButton radio = new android.widget.RadioButton(ui.activity);
+        radio.setChecked(checked);
+        radio.setClickable(false);
+        radio.setFocusable(false);
+        radio.setButtonTintList(android.content.res.ColorStateList.valueOf(checked ? t.primary : t.outline));
+        row.addView(radio, new LinearLayout.LayoutParams(t.dp(48), t.dp(48)));
+        LinearLayout text = ui.column();
+        text.addView(t.text(engineName(engine), Tokens.Type.TITLE_MEDIUM, t.onSurface));
+        text.addView(t.text(detail, Tokens.Type.BODY_MEDIUM, t.onSurfaceVariant));
+        row.addView(text, new LinearLayout.LayoutParams(0, -2, 1));
+        row.setBackground(t.pressable(android.graphics.Color.TRANSPARENT, 0, 0));
+        row.setClickable(true);
+        row.setContentDescription(engineName(engine) + ". " + detail + (checked ? ", selected" : ""));
+        row.setOnClickListener(v -> {
+            dialog.dismiss();
+            if (!checked) confirmEngine(entry, engine);
+        });
+        return row;
+    }
+
+    private void confirmEngine(JSONObject entry, String engine) {
+        String appletId = entry.optString("appletId"), name = entry.optString("name");
+        String to = GECKO.equals(engine) ? "GeckoView" : "Android WebView";
+        String from = GECKO.equals(engine) ? "WebView" : "GeckoView";
+        new MaterialAlertDialogBuilder(ui.activity)
+            .setTitle("Switch " + name + " to " + to + "?")
+            .setMessage(name + " reloads, and you'll sign in to its websites again in " + to + ". Your sign-ins in " + from + " stay.")
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Switch", (dialog, which) -> ui.actions.setEngine(appletId, engine))
+            .show();
     }
 
     /** "Notifications", off until the user turns it on. Android may refuse, which turns the switch back off. */

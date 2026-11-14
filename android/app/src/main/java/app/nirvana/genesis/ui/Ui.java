@@ -58,6 +58,10 @@ public final class Ui {
         boolean separateSignInAvailable();
         boolean separateSignIn(String appletId);
         void setSeparateSignIn(String appletId, boolean on);
+        /** The engine the applet's websites run in: "webview" (the default) or "gecko". */
+        String engine(String appletId);
+        /** Moves the applet's websites to the engine; an open applet reopens on it. */
+        void setEngine(String appletId, String engine);
         /** Whether the applet's Recents card hides its screen. */
         boolean hiddenInRecents(String appletId);
         void setHiddenInRecents(String appletId, boolean on);

@@ -1127,19 +1127,24 @@ final class Shell implements Views.Listener, Ui.Actions {
         return state.getString(engineKey(appletId), WebViewSites.ENGINE);
     }
 
+    /** Set once the applet first runs in GeckoView, so removing it also deletes its GeckoView sign-in. */
+    private static String geckoUsedKey(String appletId) { return "engineUsed:" + appletId + ":gecko"; }
+
+    @Override public String engine(String appletId) { return engine(state, appletId); }
+
     /**
-     * Development only, until Applet info offers the choice: `adb shell am start -n
-     * <package>/app.nirvana.genesis.MainActivity --es engine gecko --es engineApplet <id>` sets an
-     * applet's engine; `--es engine webview` sets it back.
+     * Moves the applet's websites to the other engine. Each engine keeps its own sign-ins, so the
+     * applet starts signed out there and finds its old sign-ins again when it comes back. An open
+     * applet reopens, as it does when its sign-in changes.
      */
-    static void forceEngine(android.content.Context context, android.content.Intent intent) {
-        if ((context.getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) == 0) return;
-        String engine = intent.getStringExtra("engine");
-        String appletId = intent.getStringExtra("engineApplet");
-        if (engine == null || appletId == null) return;
-        if (GeckoEngine.ID.equals(engine)) state(context).edit().putString(engineKey(appletId), engine).apply();
-        else state(context).edit().remove(engineKey(appletId)).apply();
-        android.util.Log.i("Genesis", "Engine for " + appletId + ": " + engine);
+    @Override public void setEngine(String appletId, String engine) {
+        if (engine.equals(engine(appletId))) return;
+        if (GeckoEngine.ID.equals(engine)) state.edit().putString(engineKey(appletId), engine).putBoolean(geckoUsedKey(appletId), true).apply();
+        else state.edit().remove(engineKey(appletId)).apply();
+        forgetProfile(appletId);
+        try { owner.send(GenesisRuntime.windowEvent("menu", appletId).put("action", "reload")); }
+        catch (JSONException ignored) { /* Unreachable for string values. */ }
+        ui.pages.refresh();
     }
 
     @Override public void addToHomeScreen(String appletId) {
@@ -1203,7 +1208,7 @@ final class Shell implements Views.Listener, Ui.Actions {
             String name = "applet-" + appletId + "-" + Long.toString(System.currentTimeMillis(), 36);
             state.edit().putBoolean(profileKey(appletId), true).putString(profileNameKey(appletId), name).apply();
         } else {
-            pending.add(deletionEntry(engine(state, appletId), profileName(appletId)));
+            queueDeletion(state, appletId, pending);
             state.edit().remove(profileKey(appletId)).remove(profileNameKey(appletId)).putStringSet(DELETE_PROFILES, pending).apply();
         }
         forgetProfile(appletId);
@@ -1252,14 +1257,24 @@ final class Shell implements Views.Listener, Ui.Actions {
         android.content.SharedPreferences state = state(context);
         if (!state.getBoolean(profileKey(appletId), false)) return;
         Set<String> pending = new LinkedHashSet<>(state.getStringSet(DELETE_PROFILES, Set.of()));
-        pending.add(deletionEntry(engine(state, appletId), profileName(state, appletId)));
+        queueDeletion(state, appletId, pending);
         state.edit().remove(profileKey(appletId)).remove(profileNameKey(appletId)).putStringSet(DELETE_PROFILES, pending).apply();
     }
 
     /** A removed or erased applet's Genesis choices go with it. */
     static void forgetApplet(android.content.Context context, String appletId) {
         forgetProfile(context, appletId);
-        state(context).edit().remove(privacyKey(appletId)).remove(engineKey(appletId)).apply();
+        state(context).edit().remove(privacyKey(appletId)).remove(engineKey(appletId)).remove(geckoUsedKey(appletId)).apply();
+    }
+
+    /**
+     * Queues the applet's separate sign-in for deletion in each engine it ran in. GeckoView's is
+     * queued only when the applet ever used GeckoView, so deleting it never starts GeckoView for nothing.
+     */
+    private static void queueDeletion(android.content.SharedPreferences state, String appletId, Set<String> pending) {
+        String name = profileName(state, appletId);
+        pending.add(deletionEntry(WebViewSites.ENGINE, name));
+        if (state.getBoolean(geckoUsedKey(appletId), false)) pending.add(deletionEntry(GeckoEngine.ID, name));
     }
 
     /**

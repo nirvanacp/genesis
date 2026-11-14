@@ -26,7 +26,6 @@ public final class MainActivity extends WindowActivity {
     @Override String window() { return null; }
 
     @Override public void onCreate(Bundle savedInstanceState) {
-        Shell.forceEngine(this, getIntent());
         super.onCreate(savedInstanceState);
         if (!createWindow()) return;
         send(Bridge.event("managerAttached"));
@@ -181,7 +180,6 @@ public final class MainActivity extends WindowActivity {
     @Override protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
-        Shell.forceEngine(this, intent);
         if (runtime != null) runtime.main.post(() -> openedFile(getIntent()));
     }
 }
