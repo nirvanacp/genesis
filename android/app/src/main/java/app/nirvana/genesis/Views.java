@@ -25,6 +25,7 @@ import androidx.webkit.JavaScriptReplyProxy;
 import androidx.webkit.Navigation;
 import androidx.webkit.NavigationListener;
 import androidx.webkit.ScriptHandler;
+import androidx.webkit.WebMessageCompat;
 import androidx.webkit.WebViewAssetLoader;
 import androidx.webkit.WebViewCompat;
 import androidx.webkit.WebViewFeature;
@@ -43,11 +44,19 @@ final class Views {
     static final String BRIDGE = "__genesisBridge";
     /** Where the applet UI previews picked files, on `FOREGROUND_ORIGIN`. */
     static final String PICKED_FILES = "/genesis-files/";
+    /** The start of the page agent's blob download messages, which stay in the shell. */
+    static final String BLOB_MESSAGE = "{\"type\":\"genesis.blob";
 
     /** What a view reports back to the shell. */
     interface Listener {
         void documentStarted(Page page, String url);
         void documentMessage(Page page, String payload);
+
+        /** A `genesis.blob` text message: the page agent's answer to the shell's blob download request. */
+        void blobMessage(Page page, String payload);
+
+        /** An `ArrayBuffer` from the page agent: the bytes of the blob download it announced. */
+        void blobBytes(Page page, byte[] bytes);
         void contextNavigated(Page page, Committed committed);
         /** Starts another app for a tapped link. Returns false when no app can handle it. */
         boolean handOff(android.content.Intent intent);
@@ -216,10 +225,17 @@ final class Views {
         Page page = new Page(ref, web, site);
         page.origins.addAll(origins);
         WebViewCompat.addWebMessageListener(page.web, BRIDGE, page.origins, (view, message, sourceOrigin, isMainFrame, reply) -> {
+            if (!isMainFrame) return;
+            // Only the page agent posts bytes, and only for a download the shell asked it to read.
+            if (message.getType() == WebMessageCompat.TYPE_ARRAY_BUFFER) {
+                if (page.reply == reply) listener.blobBytes(page, message.getArrayBuffer());
+                return;
+            }
             String data = message.getData();
-            if (!isMainFrame || data == null) return;
+            if (data == null) return;
             page.reply = reply;
-            listener.documentMessage(page, data);
+            if (data.startsWith(BLOB_MESSAGE)) listener.blobMessage(page, data);
+            else listener.documentMessage(page, data);
         });
         if (startScript != null) page.script = WebViewCompat.addDocumentStartJavaScript(page.web, startScript, page.origins);
         page.web.setWebViewClient(new Client(page));

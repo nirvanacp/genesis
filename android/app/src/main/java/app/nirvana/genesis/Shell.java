@@ -145,6 +145,9 @@ final class Shell implements Views.Listener, Ui.Actions {
     private final UserActions actions;
     /** Hidden pages' open JavaScript dialogs by token, until answered or closed. */
     private final Map<Long, PendingDialog> dialogs = new HashMap<>();
+    /** The `blob:` download each page's agent is reading for the shell. */
+    private final Map<Views.Page, PendingBlob> blobs = new HashMap<>();
+    private long blobTokens;
     private static long nextDialog;
     private Views.Page revealedPage;
     /** The one window the revealed context opened, or null. */
@@ -325,6 +328,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         if (page == null) return;
         closeDialogs(page);
         endGrant(page, false);
+        blobs.remove(page);
         if (page == revealedPage) dropRevealed();
         else if (popup != null && popup.opener == page) closePopup();
         if (page.isForeground()) actions.clear();
@@ -494,6 +498,93 @@ final class Shell implements Views.Listener, Ui.Actions {
             return;
         }
         actions.run(appletId, token, view, action);
+    }
+
+    /** A `blob:` download the page agent is reading: its header, then its bytes. */
+    private static final class PendingBlob {
+        final long token;
+        /** From the Content-Disposition, or null. */
+        final String name;
+        String mime;
+        long size = -1;
+        /** Base64 chunks the header announced; -1 for one ArrayBuffer. */
+        int chunks = -1;
+        int received;
+        java.io.ByteArrayOutputStream bytes;
+        Runnable timeout;
+
+        PendingBlob(long token, String name, String mime) {
+            this.token = token;
+            this.name = name;
+            this.mime = mime;
+        }
+    }
+
+    /** The most bytes a page agent may hand over for one download (the SDK's `BLOB_DOWNLOAD_LIMIT`). */
+    private static final long BLOB_LIMIT = 128L * 1024 * 1024;
+    /** How long the agent has to hand over a blob download. */
+    private static final long BLOB_TIMEOUT_MS = 60_000;
+
+    /** Asks the page agent for the bytes of `url`; a new download replaces one still under way. */
+    private void requestBlob(Views.Page page, String url, String name, String mime) {
+        PendingBlob blob = new PendingBlob(++blobTokens, name, mime);
+        blobs.put(page, blob);
+        blob.timeout = () -> { if (blobs.get(page) == blob) failBlob(page); };
+        bar.postDelayed(blob.timeout, BLOB_TIMEOUT_MS);
+        try {
+            page.post(new JSONObject().put("type", "genesis.blob").put("token", blob.token).put("url", url)
+                .put("buffers", WebFeatures.has(androidx.webkit.WebViewFeature.WEB_MESSAGE_ARRAY_BUFFER)).toString());
+        } catch (JSONException ignored) { /* Unreachable for these values. */ }
+    }
+
+    @Override public void blobMessage(Views.Page page, String payload) {
+        PendingBlob blob = blobs.get(page);
+        if (blob == null) return;
+        JSONObject message;
+        try { message = new JSONObject(payload); } catch (JSONException error) { failBlob(page); return; }
+        if (message.optLong("token", -1) != blob.token) return;
+        if ("genesis.blob".equals(message.optString("type"))) {
+            long size = message.optLong("size", -1);
+            if (message.has("error") || blob.bytes != null || size < 0 || size > BLOB_LIMIT) { failBlob(page); return; }
+            String mime = message.optString("mime", "").split(";", 2)[0].trim();
+            if (!mime.isEmpty()) blob.mime = mime;
+            blob.size = size;
+            blob.chunks = message.optInt("chunks", -1);
+            blob.bytes = new java.io.ByteArrayOutputStream((int) size);
+            if (blob.chunks == 0) finishBlob(page, blob);
+        } else if ("genesis.blobChunk".equals(message.optString("type"))) {
+            if (blob.bytes == null || blob.chunks < 0 || message.optInt("seq", -1) != blob.received) { failBlob(page); return; }
+            byte[] piece;
+            try { piece = android.util.Base64.decode(message.optString("data"), android.util.Base64.DEFAULT); }
+            catch (IllegalArgumentException error) { failBlob(page); return; }
+            blob.bytes.write(piece, 0, piece.length);
+            if (blob.bytes.size() > blob.size) { failBlob(page); return; }
+            if (++blob.received == blob.chunks) finishBlob(page, blob);
+        }
+    }
+
+    @Override public void blobBytes(Views.Page page, byte[] bytes) {
+        PendingBlob blob = blobs.get(page);
+        if (blob == null || blob.bytes == null || blob.chunks != -1 || blob.bytes.size() > 0) return;
+        blob.bytes.write(bytes, 0, bytes.length);
+        finishBlob(page, blob);
+    }
+
+    private void finishBlob(Views.Page page, PendingBlob blob) {
+        if (blob.bytes.size() != blob.size) { failBlob(page); return; }
+        blobs.remove(page);
+        bar.removeCallbacks(blob.timeout);
+        String mime = blob.mime == null || blob.mime.isEmpty() ? "application/octet-stream" : blob.mime;
+        String name = blob.name != null ? blob.name : UserActions.defaultName(mime);
+        byte[] bytes = blob.bytes.toByteArray();
+        UserActions.IO.execute(() -> actions.saveBytes(name, mime, bytes));
+    }
+
+    private void failBlob(Views.Page page) {
+        PendingBlob blob = blobs.remove(page);
+        if (blob == null) return;
+        bar.removeCallbacks(blob.timeout);
+        Toast.makeText(activity, "The download couldn't be read", Toast.LENGTH_SHORT).show();
     }
 
     /**
@@ -749,13 +840,17 @@ final class Shell implements Views.Listener, Ui.Actions {
         if (page == popup && page.web.copyBackForwardList().getSize() == 0) bar.post(() -> { if (page == popup) closePopup(); });
         String scheme = Uri.parse(url).getScheme();
         boolean web = "https".equalsIgnoreCase(scheme) || "http".equalsIgnoreCase(scheme);
-        if (!web && !"data".equalsIgnoreCase(scheme)) {
+        boolean blob = "blob".equalsIgnoreCase(scheme);
+        // Only the page agent can read a blob: URL, and it runs on declared origins only.
+        if ((!web && !blob && !"data".equalsIgnoreCase(scheme)) || (blob && page.reply == null)) {
             Toast.makeText(activity, "This download isn't supported in Genesis", Toast.LENGTH_SHORT).show();
             return;
         }
-        // A data: URL names no file; only a Content-Disposition can.
+        // A data: or blob: URL names no file; only a Content-Disposition can.
         String name = web || disposition != null ? android.webkit.URLUtil.guessFileName(web ? url : "", disposition, mimeType) : null;
-        Runnable start = web ? () -> startDownload(page, url, userAgent, mimeType, name) : () -> actions.saveDownload(url, name);
+        Runnable start = web ? () -> startDownload(page, url, userAgent, mimeType, name)
+            : blob ? () -> requestBlob(page, url, name, mimeType)
+            : () -> actions.saveDownload(url, name);
         // A popup counts against the page that opened it, since each download can open a new one.
         Views.Page counted = page.opener != null ? page.opener : page;
         if (counted.downloads++ == 0) { start.run(); return; }
@@ -853,6 +948,7 @@ final class Shell implements Views.Listener, Ui.Actions {
 
     private void destroyAll() {
         endGrants();
+        blobs.clear();
         closeCustomView();
         cancelPrompts();
         dropRevealed();
@@ -899,6 +995,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         pages.remove(key(page.ref));
         closeDialogs(page);
         endGrant(page, false);
+        blobs.remove(page);
         if (page == revealedPage) dropRevealed();
         else if (popup != null && popup.opener == page) closePopup();
         page.destroy();
