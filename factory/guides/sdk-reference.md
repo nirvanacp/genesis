@@ -125,7 +125,7 @@ genesis.ready();
 
 A closed watch keeps its copies: the context keeps up to 32 closed watches, dropping the one closed longest ago. Opening the same id with the same specification again shows the kept data at once, marked `stale` with `status: "loading"`, until the page sends a snapshot.
 
-Inputs resolve to an `ActionResult` and never reject for a page failure. Reads reject with a `GenesisError`. Only `click` (a single tap), `hover`, `unhover`, `type` and `press` take `input: "trusted"`. It needs `limits.trustedInput`, and a context whose website is shown refuses it with `INPUT_UNAVAILABLE`.
+Inputs resolve to an `ActionResult` and never reject for a page failure. Reads reject with a `GenesisError`. Only `click` (a single tap), `hover`, `unhover`, `type` and `press` take `input: "trusted"`. It needs `limits.trustedInput`, and a context whose website is shown refuses it with `INPUT_UNAVAILABLE`. Input calls spend the context's input budget (`limits.inputBurst`, `limits.inputRefillMs`); one over it is `failed` with `RATE_LIMITED` and never reaches the page.
 
 ```ts
 import { connect, css, field } from "@genesis/sdk";
@@ -410,7 +410,7 @@ return <>
 
 ## Errors and limits
 
-`ErrorCode` is one of `RETIRED`, `CONFLICT`, `NOT_FOUND`, `DOCUMENT_TOO_LARGE`, `STORAGE_FAILURE`, `ORIGIN_NOT_DECLARED`, `MESSAGE_TOO_LARGE`, `PAGE_TOO_LARGE`, `PATCH_TOO_LARGE`, `DEADLINE`, `INVALID_STEPS`, `SERVICE_UNREACHABLE`, `SERVICE_FAILURE`, `AUTHENTICATION_FAILED`, `CERTIFICATE_FAILED`, `CONFIGURATION_REQUIRED`, `NOT_READY`, `UNKNOWN_METHOD`, `INVALID_ARGUMENT`, `QUOTA_EXCEEDED`, `PROTOCOL_MISMATCH`, `APPLET_INCOMPATIBLE`, `ENVELOPE_INVALID`, `CONTEXT_REPLACED`, `TARGET_NOT_FOUND`, `PRECONDITION_FAILED`, `ASYNC_READ`, `AUTH_REQUIRED`, `REJECTED`, `NOT_ACTIONABLE`, `AMBIGUOUS_TARGET`, `PROTECTED_FIELD`, `INPUT_UNAVAILABLE`, `UNKNOWN_OPERATION`, `USER_ACTION_REQUIRED` and `FILE_UNAVAILABLE`. Action results carry the same codes in `code`. The [protocol guide](protocol.md) says when each one occurs.
+`ErrorCode` is one of `RETIRED`, `CONFLICT`, `NOT_FOUND`, `DOCUMENT_TOO_LARGE`, `STORAGE_FAILURE`, `ORIGIN_NOT_DECLARED`, `MESSAGE_TOO_LARGE`, `PAGE_TOO_LARGE`, `PATCH_TOO_LARGE`, `DEADLINE`, `INVALID_STEPS`, `SERVICE_UNREACHABLE`, `SERVICE_FAILURE`, `AUTHENTICATION_FAILED`, `CERTIFICATE_FAILED`, `CONFIGURATION_REQUIRED`, `NOT_READY`, `UNKNOWN_METHOD`, `INVALID_ARGUMENT`, `QUOTA_EXCEEDED`, `PROTOCOL_MISMATCH`, `APPLET_INCOMPATIBLE`, `ENVELOPE_INVALID`, `CONTEXT_REPLACED`, `TARGET_NOT_FOUND`, `PRECONDITION_FAILED`, `ASYNC_READ`, `AUTH_REQUIRED`, `REJECTED`, `NOT_ACTIONABLE`, `AMBIGUOUS_TARGET`, `PROTECTED_FIELD`, `INPUT_UNAVAILABLE`, `UNKNOWN_OPERATION`, `USER_ACTION_REQUIRED`, `FILE_UNAVAILABLE` and `RATE_LIMITED`. Action results carry the same codes in `code`. The [protocol guide](protocol.md) says when each one occurs.
 
 `genesis.limits` holds most of the values below at run time. Read them from there rather than copying the numbers.
 
@@ -428,6 +428,7 @@ return <>
 | Route ready deadline | `documentReadyMs` | 15 s, after which the router shows the website for a page still loading |
 | Back answer | `backAnswerMs` | 300 ms, after which the shell leaves the applet |
 | Stale copies kept for Back | `historyEntriesMax` | 16 history entries per context |
+| Input calls per context | `inputBurst`, `inputRefillMs` | 20 at once, then one more per second; over it an input is `failed` with `RATE_LIMITED` |
 | Trusted input | `trustedInput` | `true` where the shell can send real input |
 | Website dialogs | `dialogs` | `true` where hidden pages' dialogs reach the applet; 1 s to claim one, text cut to 2000 characters |
 | One-time grants | `grants` | `true` where `context.allow` works; a grant lasts 5 s and is used once |

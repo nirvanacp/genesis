@@ -174,6 +174,8 @@ Do not keep a separate optimistic copy in React state that can disagree with the
 
 Genesis never retries an input, and the applet should not either. A retry after `unknown` can vote twice or post twice. After `failed`, let the user try again with the control. Desired-state commands make the user's second tap safe: if the first one took effect, the second is `satisfied`.
 
+Inputs follow the user's pace: one tap, one write (see [User-paced writes](rules.md#user-paced-writes)). Each context takes `limits.inputBurst` input calls at once and then one more each `limits.inputRefillMs`; reads, watches, waits, scrolling, focus and hover are free. An input over the budget is `failed` with `RATE_LIMITED`, and nothing reached the page. Show it like any failure and let the user tap again; never queue or retry it on a timer.
+
 ## Loading more
 
 ```ts
