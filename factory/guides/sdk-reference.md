@@ -84,6 +84,11 @@ genesis.ready();
 | `storage` | Document storage (`Storage`). |
 | `services.request(serviceId, path, { method?, body? })` | Calls a declared backend service. |
 | `notifications.post(input)` | Notifies the user (see [Notifications](#notifications)). |
+| `notifications.enable()` | Turns the applet's notifications on after a tap; resolves with whether they are on (see [User actions](#user-actions)). |
+| `files.pick(options?)`, `files.release(ids)` | Lets the user pick files, and lets go of them (see [User actions](#user-actions)). |
+| `downloads.save({ context, url, filename? })` | Saves a file to Downloads after a tap. |
+| `share({ title?, text?, url? })` | Opens Android's share sheet after a tap. |
+| `links.openExternal(url)` | Opens a link in another app after a tap. |
 | `ready()` | Reports the first layout. The shell then shows the UI. |
 | `onResume`, `onSuspend`, `onRetired` | The applet came back, is going to the background, or this UI was closed. Each returns its unsubscribe function. |
 | `retired` | `true` once the UI was closed. |
@@ -108,7 +113,7 @@ genesis.ready();
 | State | `id`, `state`, `subscribe(listener)`, `navigation`, `onNavigated(listener)` |
 | Navigation | `navigate(url, { mode? })`, `back(steps?)`, `forward()`, `reload()` |
 | Reads | `info()`, `read(spec)`, `inspect(target)`, `wait(condition, timeoutMs)`, `scroll(to, { target? })` |
-| Inputs | `click(target, { gesture?, count? })`, `longPress(target, { ms? })`, `hover(target)`, `unhover()`, `focus(target)`, `blur(target)`, `fill(target, value)`, `type(target, text)`, `press(key, { target?, modifiers? })`, `select(target, { values?, labels? })`, `check(target, checked)`, `submit(target)` |
+| Inputs | `click(target, { gesture?, count? })`, `longPress(target, { ms? })`, `hover(target)`, `unhover()`, `focus(target)`, `blur(target)`, `fill(target, value)`, `type(target, text)`, `press(key, { target?, modifiers? })`, `select(target, { values?, labels? })`, `check(target, checked)`, `submit(target)`, `attachFiles(target, files, { via? })` |
 | Sequences | `run(steps, { until?, navigates?, expect?, deadlineMs? })`, `invoke(command, args?, { target?, expect?, navigates?, timeoutMs? })` |
 | Pending | `pending(target?)`, `subscribePending(listener)`, `cancel()` |
 | Watches | `watch(id, spec, { when? })`, `resync()`, `forget({ current?, keepInputs? })` |
@@ -187,6 +192,16 @@ A locator's `options` take the other locator fields `within`, `has`, `nth`, `fra
 | `Notifications` | `genesis.notifications`, with `post(input: NotificationInput): Promise<NotificationResult>`. |
 | `NotificationInput` | `{ id, title, body?, url? }`. |
 | `NotificationResult` | `{ posted: true }`. |
+| `Files` | `genesis.files`, with `pick(options?: FilesPick): Promise<PickedFile[]>` and `release(ids): Promise<void>`. |
+| `FilesPick` | `{ accept?, multiple? }`. |
+| `FileHandle` | `{ id, name, type, size }` of a picked file. |
+| `PickedFile` | `FileHandle & { previewUrl }`. |
+| `previewUrl` | `previewUrl(id): string`, the URL the applet UI shows a picked file at. |
+| `Downloads` | `genesis.downloads`, with `save(input: DownloadSave): Promise<void>`. |
+| `DownloadSave` | `{ context, url, filename? }`. |
+| `ShareInput` | `{ title?, text?, url? }`, as `genesis.share` takes it. |
+| `Links` | `genesis.links`, with `openExternal(url): Promise<void>`. |
+| `AttachVia` | `"input" \| "drop" \| "paste"`, how `attachFiles` hands files to the page. |
 
 ### Errors
 
@@ -299,6 +314,7 @@ router.subscribe(() => console.log(router.screen()?.id, router.status().status))
 | `useRecords` | `useRecords(collection, { storage? })` | `{ records, loading, error, put, remove, commit }` over every document of a collection. |
 | `useService` | `useService(serviceId)` | `request(path, { method?, body? })` for a declared service. |
 | `useNotifications` | `useNotifications(): Notifications` | `genesis.notifications`. |
+| `useFilePicker` | `useFilePicker(): { files, pick, remove, clear }` | Picked files held while the component is mounted, released when it unmounts. `pick(options?)` adds to `files` with `multiple` and replaces them without. |
 | `useDialog` | `useDialog(contextId?): Dialog \| null` | The open dialog of a hidden context's page, the active context by default. Using it claims the context's dialogs. |
 | `WebsiteDialog` | `<WebsiteDialog dialog {...divProps}>` | An unstyled, accessible `alertdialog` that answers a `Dialog` with the user's choice. |
 | `useScrollMemory` | `useScrollMemory()` | A ref callback that keeps a scroll container's position per screen. |
@@ -365,9 +381,33 @@ A hidden context's page can open a JavaScript `alert`, `confirm` or `prompt`, or
 
 `WebsiteDialog` renders a plain, unstyled `alertdialog` with the origin, the exact message, a field for a prompt, Cancel (not for an alert) and OK. Style it through `className` and the other props, or build the applet's own sheet from `useDialog`. An applet that claims no dialog within about a second sees the website revealed with the dialog over it, followed by `user.showContext`; the user answers it there.
 
+### User actions
+
+```tsx
+const { files, pick, clear } = useFilePicker();
+const context = useGenesis().context("primary");
+return <>
+  <button type="button" onClick={() => void pick({ accept: ["image/*"], multiple: true })}>Add photos</button>
+  {files.map(file => <img key={file.id} src={file.previewUrl} alt={file.name} />)}
+  <button type="button" onClick={async () => {
+    const result = await context.attachFiles(css("input[type=file]"), files);
+    if (result.outcome !== "failed") clear();
+  }}>Attach</button>
+</>;
+```
+
+`files.pick`, `downloads.save`, `share`, `links.openExternal` and `notifications.enable` are things only the user may start. Each runs only within 3 seconds of a tap on the applet UI, once per tap, so call it straight from the tap's handler. Otherwise it rejects with `USER_ACTION_REQUIRED`; ask the user to tap again. They need `limits.userActions`, and reject with `UNKNOWN_METHOD` without it. Each waits as long as the user stays in a picker or prompt, up to 10 minutes.
+
+- `files.pick({ accept?, multiple? })` opens Android's photo picker for image and video types and the document picker for others. `accept` holds up to 16 MIME types (`image/*`) or `.ext` suffixes. It resolves with up to 16 files of at most 64 MiB each, or none when the user cancels. A file's `id` stays valid until `files.release(ids)`, until the UI is retired or the applet's window closes, or for 30 minutes. `previewUrl` shows the file in the applet UI, for example as an `<img>` or `<video>` source; website pages cannot load it. The bytes stay with Genesis: never put an `id` in storage. An `<input type="file">` in the applet UI opens no picker, and `genesis-applet build` warns about one.
+- `context.attachFiles(target, files, { via? })` gives picked files, by id or as `PickedFile`s, to a hidden page (see the [page control guide](page-control.md#attaching-files)).
+- `downloads.save({ context, url, filename? })` saves an https URL with the cookies of the context's website, or a `data:` URL up to 2 MiB, to Downloads.
+- `share({ title?, text?, url? })` opens Android's share sheet.
+- `links.openExternal(url)` opens a `mailto`, `tel`, `sms`, `smsto`, `geo`, `intent` or `https` URL in another app. An `https` URL opens only in an app that is not a browser, and rejects with `NOT_FOUND` when none takes it.
+- `notifications.enable()` asks Android for permission to notify when needed and turns the applet's notifications on; it resolves with whether they are on.
+
 ## Errors and limits
 
-`ErrorCode` is one of `RETIRED`, `CONFLICT`, `NOT_FOUND`, `DOCUMENT_TOO_LARGE`, `STORAGE_FAILURE`, `ORIGIN_NOT_DECLARED`, `MESSAGE_TOO_LARGE`, `PAGE_TOO_LARGE`, `PATCH_TOO_LARGE`, `DEADLINE`, `INVALID_STEPS`, `SERVICE_UNREACHABLE`, `SERVICE_FAILURE`, `AUTHENTICATION_FAILED`, `CERTIFICATE_FAILED`, `CONFIGURATION_REQUIRED`, `NOT_READY`, `UNKNOWN_METHOD`, `INVALID_ARGUMENT`, `QUOTA_EXCEEDED`, `PROTOCOL_MISMATCH`, `APPLET_INCOMPATIBLE`, `ENVELOPE_INVALID`, `CONTEXT_REPLACED`, `TARGET_NOT_FOUND`, `PRECONDITION_FAILED`, `ASYNC_READ`, `AUTH_REQUIRED`, `REJECTED`, `NOT_ACTIONABLE`, `AMBIGUOUS_TARGET`, `PROTECTED_FIELD`, `INPUT_UNAVAILABLE` and `UNKNOWN_OPERATION`. Action results carry the same codes in `code`. The [protocol guide](protocol.md) says when each one occurs.
+`ErrorCode` is one of `RETIRED`, `CONFLICT`, `NOT_FOUND`, `DOCUMENT_TOO_LARGE`, `STORAGE_FAILURE`, `ORIGIN_NOT_DECLARED`, `MESSAGE_TOO_LARGE`, `PAGE_TOO_LARGE`, `PATCH_TOO_LARGE`, `DEADLINE`, `INVALID_STEPS`, `SERVICE_UNREACHABLE`, `SERVICE_FAILURE`, `AUTHENTICATION_FAILED`, `CERTIFICATE_FAILED`, `CONFIGURATION_REQUIRED`, `NOT_READY`, `UNKNOWN_METHOD`, `INVALID_ARGUMENT`, `QUOTA_EXCEEDED`, `PROTOCOL_MISMATCH`, `APPLET_INCOMPATIBLE`, `ENVELOPE_INVALID`, `CONTEXT_REPLACED`, `TARGET_NOT_FOUND`, `PRECONDITION_FAILED`, `ASYNC_READ`, `AUTH_REQUIRED`, `REJECTED`, `NOT_ACTIONABLE`, `AMBIGUOUS_TARGET`, `PROTECTED_FIELD`, `INPUT_UNAVAILABLE`, `UNKNOWN_OPERATION`, `USER_ACTION_REQUIRED` and `FILE_UNAVAILABLE`. Action results carry the same codes in `code`. The [protocol guide](protocol.md) says when each one occurs.
 
 `genesis.limits` holds most of the values below at run time. Read them from there rather than copying the numbers.
 
@@ -387,6 +427,8 @@ A hidden context's page can open a JavaScript `alert`, `confirm` or `prompt`, or
 | Stale copies kept for Back | `historyEntriesMax` | 16 history entries per context |
 | Trusted input | `trustedInput` | `true` where the shell can send real input |
 | Website dialogs | `dialogs` | `true` where hidden pages' dialogs reach the applet; 1 s to claim one, text cut to 2000 characters |
+| User actions | `userActions` | `true` where the applet UI can pick files, save, share, open links and enable notifications, and `attachFiles` works |
+| Picked files | | 16 per pick of at most 64 MiB each, 128 MiB per `attachFiles`; held for at most 30 minutes |
 | Service request or response body | | 256 KiB, with 3 s to connect and 3 s to read |
 | Notification | | `id` 64 characters, `title` 120, `body` 500; at most 5 per background check |
 | Background news check | | Every 15 to 1440 minutes, only with a network and only after the user turns notifications on |

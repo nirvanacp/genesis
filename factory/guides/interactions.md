@@ -12,6 +12,8 @@ A control in the UI performs a real action on the website, in the applet's own d
 | Sign-in, sign-up, password, payment, account settings, CAPTCHA or other challenge | The website: `requiresAccount` on the route, or View website from an explicit control |
 | Writing a post, comment or message | The website by default. Rebuild the form only when the user asks and it is plain fields and one submit button. |
 | Applet data (categories, notes, saved lists) | `useRecords` or the applet's service |
+| Attaching a photo or file to a post, message or profile | `genesis.files.pick` from a tap in the UI, then `attachFiles` on the website's file input |
+| Saving, sharing or opening something in another app | `genesis.downloads.save`, `genesis.share` or `genesis.links.openExternal`, from a tap in the UI |
 
 Applet code never fills credentials, never solves challenges, and never submits anything the user did not explicitly request in that moment. The page agent refuses to `fill`, `type` or `press` into password, one-time code and card fields with `PROTECTED_FIELD`. During development checks you sign in to test accounts yourself on the website's own form, as the [test accounts skill](../skills/genesis-test-accounts/SKILL.md) describes; that never becomes applet behavior.
 
@@ -23,7 +25,11 @@ Some website features work only while the user is looking at the website, becaus
 - Camera, microphone and location prompts appear only on the revealed website, and only after the user allows them in Genesis and in Android. Covering the website reloads a page that was using the camera or microphone, which stops them.
 - Windows, file pickers, `mailto:` and app links, server sign-in prompts and client certificates appear only on the revealed website.
 
-A hidden context gets a refusal for each of these. When a journey needs one, send the user to the website with an explicit control, such as "Download in *website*", that calls `viewWebsite()` from `useRouter`.
+A hidden context gets a refusal for each of these. When a journey needs one, send the user to the website with an explicit control, such as "Download in *website*", that calls `viewWebsite()` from `useRouter`. For files, downloads, sharing and links, the applet UI can also act itself; see [User actions](#user-actions).
+
+## User actions
+
+Picking files, saving to Downloads, sharing, opening another app and turning notifications on are things only the user starts. Call `genesis.files.pick`, `downloads.save`, `share`, `links.openExternal` or `notifications.enable` straight from the handler of a tap on the applet UI: each runs only within 3 seconds of that tap, once per tap, and otherwise rejects with `USER_ACTION_REQUIRED`. Do not call them after a slow await, from a timer or from a page event; when one rejects that way, ask the user to tap again. An `<input type="file">` in the applet UI opens no picker. Show picked files with their `previewUrl` and give them to the website with `attachFiles`; keep the ids in memory only, as `useFilePicker` does, and never store them. See [User actions](sdk-reference.md#user-actions).
 
 ## Website dialogs
 
@@ -86,6 +92,7 @@ Steps are page operations, written as `{ op, ...args }`. The same operations are
 | `check` | Sets a checkbox or radio to `checked`. |
 | `scroll` | Scrolls `target`, or the page, to `"start"`, `"end"`, `"intoView"`, `{ x, y }` or `{ by: { x, y } }`. |
 | `submit` | Submits the form that is or contains the target. Target the form, or its submit button to use that button. Last step only. |
+| `attachFiles` | Gives picked `files` to the target: a file input (default), or a drop zone or editor with `via: "drop"` or `"paste"`. |
 | `wait` | Waits up to `timeoutMs` for an element state, a URL guard or a truthy read. |
 | `navigate` | Loads `url` in the context. Last step only. |
 

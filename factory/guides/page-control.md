@@ -177,6 +177,7 @@ Input operations act on the page as a user would. Each answers an `ActionResult`
 | `select(target, { values, labels })` | Chooses options of a `select` by value or label, with `input` and `change`. `values` and `labels` are arrays of strings. A value matches exactly; a label matches an option's label or text, ignoring white space at the ends. |
 | `check(target, checked)` | Clicks the control when its checked state (or `aria-checked`) differs, then waits until it holds. |
 | `submit(target)` | Submits the form. |
+| `attachFiles(target, files, { via })` | Gives files the user picked with `genesis.files.pick` to the page (see [Attaching files](#attaching-files)). |
 | `scroll(to, { target })` | Scrolls the page or the target: `"start"`, `"end"`, `"intoView"`, `{ x, y }` or `{ by: { x, y } }`. Answers the scroll position with `atEnd`. |
 
 ```ts
@@ -207,6 +208,21 @@ await hn.run(
 
 A step can also wait: `{ op: "wait", for: { target, state }, timeoutMs }`, with `for` also accepting `{ url }` or `{ read }`.
 
+### Attaching files
+
+`attachFiles(target, files, { via })` hands 1 to 16 picked files to the page, 128 MiB at most. `files` holds ids from `genesis.files.pick`, or the picked files themselves. Only the user picks files, so the UI calls `files.pick` from a tap and passes the result here; a page module cannot pick. The shell posts the bytes straight to the page; they never pass the host.
+
+```ts
+const [photo] = await genesis.files.pick({ accept: ["image/*"] });
+if (photo) await site.attachFiles(css("input[type=file][name=avatar]"), [photo], { expect: { read: { exists: css(".avatar-preview") } } });
+```
+
+- `via: "input"` (default) sets the files on an `<input type="file">` and fires `input` and `change`. The input may be hidden, as most sites hide theirs behind a styled button, so the target is not checked for visibility or cover. Anything else fails with `NOT_ACTIONABLE` and the reason `not-a-file-input`; a disabled input with `disabled`; several files on an input without `multiple` with `INVALID_ARGUMENT`; and a file the input's `accept` does not take with the reason `type-not-accepted`.
+- `via: "drop"` drops the files on the target, with `dragenter`, `dragover` and `drop`, for a drop zone.
+- `via: "paste"` pastes them into the target, for an editor that takes pasted images.
+
+The files reach the page before anything is dispatched, so a file that expired or was released fails the input with `FILE_UNAVAILABLE` and nothing happens on the page. Without `limits.userActions` the input fails with `INPUT_UNAVAILABLE`. The site may still refuse a file, for example for its size; judge the result with `until` or `expect` as for any input.
+
 ## Actionability
 
 Before an input, the agent checks that the target can take it, and polls every 50 ms until it can or `timeoutMs` (default 0) runs out. The check scrolls the target into the middle of the view first.
@@ -220,7 +236,7 @@ Before an input, the agent checks that the target can take it, and polls every 5
 
 A failed check answers `failed` with `NOT_ACTIONABLE` and the reason in `reason`. Give `timeoutMs` when the target appears after an animation or a load. `force: true` skips the check; use it only for an element the website hides on purpose but still handles.
 
-Other `NOT_ACTIONABLE` reasons come from the operation itself: `not-a-text-field` (`fill`), `not-editable` (`type`), `not-a-select` (`select`), and `editor-needs-trusted-input` (`type` into a rich text editor that ignores the editing command). A `check` whose control does not reach the wanted state answers `DEADLINE` with the reason `state-unchanged`.
+Other `NOT_ACTIONABLE` reasons come from the operation itself: `not-a-text-field` (`fill`), `not-editable` (`type`), `not-a-select` (`select`), `not-a-file-input` and `type-not-accepted` (`attachFiles`), and `editor-needs-trusted-input` (`type` into a rich text editor that ignores the editing command). A `check` whose control does not reach the wanted state answers `DEADLINE` with the reason `state-unchanged`.
 
 ## Fidelity
 
