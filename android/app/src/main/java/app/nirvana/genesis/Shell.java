@@ -1082,24 +1082,64 @@ final class Shell implements Views.Listener, Ui.Actions {
 
     private String profileName(String appletId) { return profileName(state, appletId); }
 
-    /** The applet's own profile when it keeps a separate sign-in, otherwise the shared one. */
+    /**
+     * The applet's own profile when it keeps a separate sign-in, otherwise the shared one, in the
+     * engine the applet runs its websites in.
+     */
     @Override public SiteData sitesFor(String appletId) {
-        if (appletId == null || !separateSignIn(appletId)) return sites;
-        // Another window may have switched the applet to a new profile, so the cached one must match.
-        String name = profileName(appletId);
-        SiteData cached = profiles.get(appletId);
-        if (cached == null || !name.equals(cached.profile)) {
-            cached = WebViewSites.profile(activity, name);
-            profiles.put(appletId, cached);
+        if (appletId == null) return sites;
+        boolean gecko = GeckoEngine.ID.equals(engine(state, appletId));
+        boolean separate = separateSignIn(appletId);
+        if (!gecko && !separate) return sites;
+        // Another window may have switched the applet to a new profile or engine, so the cached one must match.
+        String name = separate ? profileName(appletId) : null;
+        String key = (gecko ? GeckoEngine.ID : WebViewSites.ENGINE) + ":" + appletId;
+        SiteData cached = profiles.get(key);
+        if (cached == null || name != null && !name.equals(cached.profile) || name == null && !cached.isDefault()) {
+            cached = sites(activity, gecko, name);
+            profiles.put(key, cached);
         }
         return cached;
     }
 
     /** The same, for work outside a window, such as a cookie import. */
     static SiteData sitesFor(android.content.Context context, String appletId) {
+        if (appletId == null) return WebViewSites.defaultProfile(context);
         android.content.SharedPreferences state = state(context);
-        if (appletId == null || !WebViewSites.profilesSupported() || !state.getBoolean(profileKey(appletId), false)) return WebViewSites.defaultProfile(context);
-        return WebViewSites.profile(context, profileName(state, appletId));
+        boolean gecko = GeckoEngine.ID.equals(engine(state, appletId));
+        boolean separate = (gecko || WebViewSites.profilesSupported()) && state.getBoolean(profileKey(appletId), false);
+        return sites(context, gecko, separate ? profileName(state, appletId) : null);
+    }
+
+    /** A profile of either engine; a null name is the engine's shared one. */
+    private static SiteData sites(android.content.Context context, boolean gecko, String name) {
+        if (gecko) return name == null ? GeckoSites.defaultProfile(context) : GeckoSites.profile(context, name);
+        return name == null ? WebViewSites.defaultProfile(context) : WebViewSites.profile(context, name);
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Website engine
+
+    private static String engineKey(String appletId) { return "engine:" + appletId; }
+
+    /** The engine an applet's website contexts run in: `webview` unless the applet was set to `gecko`. */
+    private static String engine(android.content.SharedPreferences state, String appletId) {
+        return state.getString(engineKey(appletId), WebViewSites.ENGINE);
+    }
+
+    /**
+     * Development only, until Applet info offers the choice: `adb shell am start -n
+     * <package>/app.nirvana.genesis.MainActivity --es engine gecko --es engineApplet <id>` sets an
+     * applet's engine; `--es engine webview` sets it back.
+     */
+    static void forceEngine(android.content.Context context, android.content.Intent intent) {
+        if ((context.getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) == 0) return;
+        String engine = intent.getStringExtra("engine");
+        String appletId = intent.getStringExtra("engineApplet");
+        if (engine == null || appletId == null) return;
+        if (GeckoEngine.ID.equals(engine)) state(context).edit().putString(engineKey(appletId), engine).apply();
+        else state(context).edit().remove(engineKey(appletId)).apply();
+        android.util.Log.i("Genesis", "Engine for " + appletId + ": " + engine);
     }
 
     @Override public void addToHomeScreen(String appletId) {
@@ -1149,7 +1189,7 @@ final class Shell implements Views.Listener, Ui.Actions {
     @Override public boolean separateSignInAvailable() { return WebViewSites.profilesSupported(); }
 
     @Override public boolean separateSignIn(String appletId) {
-        return WebViewSites.profilesSupported() && state.getBoolean(profileKey(appletId), false);
+        return (WebViewSites.profilesSupported() || GeckoEngine.ID.equals(engine(state, appletId))) && state.getBoolean(profileKey(appletId), false);
     }
 
     /**
@@ -1163,10 +1203,10 @@ final class Shell implements Views.Listener, Ui.Actions {
             String name = "applet-" + appletId + "-" + Long.toString(System.currentTimeMillis(), 36);
             state.edit().putBoolean(profileKey(appletId), true).putString(profileNameKey(appletId), name).apply();
         } else {
-            pending.add(deletionEntry(profileName(appletId)));
+            pending.add(deletionEntry(engine(state, appletId), profileName(appletId)));
             state.edit().remove(profileKey(appletId)).remove(profileNameKey(appletId)).putStringSet(DELETE_PROFILES, pending).apply();
         }
-        profiles.remove(appletId);
+        forgetProfile(appletId);
         // The applet restarts in its new sign-in wherever it runs; the host ignores this for an applet that is not running.
         try { owner.send(GenesisRuntime.windowEvent("menu", appletId).put("action", "reload")); }
         catch (JSONException ignored) { /* Unreachable for string values. */ }
@@ -1203,7 +1243,8 @@ final class Shell implements Views.Listener, Ui.Actions {
 
     /** This window lets go of a removed or erased applet's profile. */
     void forgetProfile(String appletId) {
-        profiles.remove(appletId);
+        profiles.remove(WebViewSites.ENGINE + ":" + appletId);
+        profiles.remove(GeckoEngine.ID + ":" + appletId);
     }
 
     /** A removed or erased applet's separate sign-in goes with it. */
@@ -1211,21 +1252,21 @@ final class Shell implements Views.Listener, Ui.Actions {
         android.content.SharedPreferences state = state(context);
         if (!state.getBoolean(profileKey(appletId), false)) return;
         Set<String> pending = new LinkedHashSet<>(state.getStringSet(DELETE_PROFILES, Set.of()));
-        pending.add(deletionEntry(profileName(state, appletId)));
+        pending.add(deletionEntry(engine(state, appletId), profileName(state, appletId)));
         state.edit().remove(profileKey(appletId)).remove(profileNameKey(appletId)).putStringSet(DELETE_PROFILES, pending).apply();
     }
 
     /** A removed or erased applet's Genesis choices go with it. */
     static void forgetApplet(android.content.Context context, String appletId) {
         forgetProfile(context, appletId);
-        state(context).edit().remove(privacyKey(appletId)).apply();
+        state(context).edit().remove(privacyKey(appletId)).remove(engineKey(appletId)).apply();
     }
 
     /**
      * A profile waiting for deletion is stored as `<engine>:<name>`, so each engine deletes its
      * own. An entry without a prefix was written before engines existed and is a WebView profile.
      */
-    private static String deletionEntry(String profile) { return WebViewSites.ENGINE + ":" + profile; }
+    private static String deletionEntry(String engine, String profile) { return engine + ":" + profile; }
 
     /** Deletes the profiles waiting for deletion; one a page still holds waits for the next launcher. */
     private void deleteProfiles() {
@@ -1239,6 +1280,8 @@ final class Shell implements Views.Listener, Ui.Actions {
     private boolean deleteProfile(String entry) {
         String prefix = WebViewSites.ENGINE + ":";
         if (entry.startsWith(prefix)) return WebViewSites.delete(activity, entry.substring(prefix.length()));
+        String gecko = GeckoEngine.ID + ":";
+        if (entry.startsWith(gecko)) return GeckoSites.delete(activity, entry.substring(gecko.length()));
         if (entry.matches("[a-z]+:.*")) return false;
         return WebViewSites.delete(activity, entry);
     }

@@ -142,7 +142,9 @@ final class Views {
     Page document(JSONObject ref, Set<String> origins, String startScript, SiteData site) {
         Page page = new Page(ref, site);
         page.origins.addAll(origins);
-        page.tab = WebViewPage.document(activity, listener, assets, page, startScript);
+        page.tab = site instanceof GeckoSites
+            ? GeckoPage.document(activity, listener, page, startScript)
+            : WebViewPage.document(activity, listener, assets, page, startScript);
         return page;
     }
 
