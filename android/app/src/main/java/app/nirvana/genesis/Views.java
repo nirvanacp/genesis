@@ -13,7 +13,7 @@ import org.json.JSONObject;
 
 /**
  * The shell's record of each applet document and the listener its pages report to. The pages
- * themselves are `WebsitePage`s; `WebViewPage` runs them in Android WebView.
+ * themselves are `WebsitePage`s; `WebViewPage` runs them in Android WebView, `GeckoPage` in GeckoView.
  */
 final class Views {
     static final String FOREGROUND_ORIGIN = "https://appassets.androidplatform.net";
@@ -149,12 +149,15 @@ final class Views {
     }
 
     /**
-     * A window the revealed context opened. It shares the opener's site data and has no bridge or
-     * start script. Its own windows load in place, so there is never more than one popup.
+     * A window the revealed context opened, in the opener's engine. It shares the opener's site data
+     * and has no bridge or start script. Its own windows load in place, so there is never more than
+     * one popup.
      */
     Page popup(Page opener) {
         Page page = new Page(opener.ref, "popup", opener, opener.site);
-        page.tab = WebViewPage.popup(activity, listener, page);
+        page.tab = opener.site instanceof GeckoSites
+            ? GeckoPage.popup(activity, listener, page)
+            : WebViewPage.popup(activity, listener, page);
         return page;
     }
 }

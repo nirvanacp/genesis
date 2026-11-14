@@ -66,5 +66,32 @@
     }
   }
 
+  // A tapped link that opens a new window goes to the shell instead, which decides where it opens,
+  // as WebView's hit test does. Only the user's own click, after the website's handlers let it go.
+  window.addEventListener("click", event => {
+    if (event.defaultPrevented || !event.isTrusted || event.button !== 0) return;
+    if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    const link = event.target instanceof Element ? event.target.closest("a[href], area[href]") : null;
+    if (!link || link.hasAttribute("download") || typeof link.href !== "string") return;
+    const base = document.querySelector("base[target]");
+    const target = (link.getAttribute("target") ?? (base ? base.getAttribute("target") : "") ?? "").toLowerCase();
+    if (!opensWindow(target)) return;
+    let url;
+    try { url = new URL(link.href); } catch (error) { return; }
+    if (url.protocol !== "https:" && url.protocol !== "http:") return;
+    event.preventDefault();
+    port.postMessage({ type: "windowLink", url: url.href });
+  });
+
+  // A target names a new window unless it is this window, its parent or top, or one of its frames.
+  function opensWindow(target) {
+    if (!target || target === "_self" || target === "_parent" || target === "_top") return false;
+    if (target === "_blank") return true;
+    for (let i = 0; i < window.frames.length; i++) {
+      try { if (window.frames[i].name === target) return false; } catch (error) { /* Another origin's frame. */ }
+    }
+    return true;
+  }
+
   port.postMessage({ type: "hello" });
 })();

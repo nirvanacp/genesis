@@ -1,12 +1,22 @@
 package app.nirvana.genesis;
 
+import android.Manifest;
 import android.app.Activity;
+import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.View;
+import android.view.ViewGroup;
+import app.nirvana.genesis.ui.Ui;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -22,11 +32,16 @@ import org.mozilla.geckoview.WebExtension;
  * native port from each top-level document; on the context's declared origins the page sends the
  * start script through it, and the port carries the page agent's messages both ways, as WebView's
  * message listener does. Navigation reports match `WebViewPage`'s: `documentStarted` for a new
- * document, then `contextNavigated` with the session history's index and size.
+ * document, then `contextNavigated` with the session history's index and size. A popup is a page
+ * of its own session, which GeckoView opens, so the website keeps `window.opener`.
  */
 final class GeckoPage implements WebsitePage {
     /** How long a page that took a link click has to start moving before the URL loads anyway. */
     private static final long LINK_FALLBACK_MS = 1000;
+    /** The cache folder chosen files are copied into for upload. */
+    private static final String UPLOADS = "gecko-uploads";
+    private static final java.util.concurrent.ExecutorService UPLOAD_WORKER = java.util.concurrent.Executors.newSingleThreadExecutor();
+    private static boolean uploadsCleared;
 
     private final Activity activity;
     private final Views.Listener listener;
@@ -57,8 +72,15 @@ final class GeckoPage implements WebsitePage {
     private Consumer<Boolean> following;
     private boolean canGoBack;
     private boolean destroyed;
+    /** The website's own dialog (alert, confirm, prompt) on screen; null when none. */
+    private android.app.Dialog dialog;
+    /** Where the view sat before the website took the full screen; null when not full screen. */
+    private ViewGroup fullParent;
+    private int fullIndex;
+    private ViewGroup.LayoutParams fullParams;
 
-    private GeckoPage(Activity activity, Views.Listener listener, Views.Page page, String startScript) {
+    /** A popup's session stays closed until it loads, or until GeckoView opens it for the opener's window. */
+    private GeckoPage(Activity activity, Views.Listener listener, Views.Page page, String startScript, boolean open) {
         this.activity = activity;
         this.listener = listener;
         this.page = page;
@@ -72,9 +94,13 @@ final class GeckoPage implements WebsitePage {
         session.setProgressDelegate(new Progress());
         session.setHistoryDelegate(new HistoryWatch());
         session.setContentDelegate(new Content());
+        session.setPromptDelegate(new Prompts());
+        session.setPermissionDelegate(new Permissions());
         view = new GeckoView(activity);
-        session.open(GeckoEngine.runtime(activity));
+        if (open) session.open(GeckoEngine.runtime(activity));
         view.setSession(session);
+        // GeckoView's page tree ignores the view's accessibility importance; only a shown page has one.
+        session.getAccessibility().setView(null);
         // Hidden contexts keep running, as they do in WebView; only the revealed one has focus.
         session.setActive(true);
         session.setFocused(false);
@@ -89,16 +115,24 @@ final class GeckoPage implements WebsitePage {
 
     /** A context view. Its bridge and start script apply on the page's declared origins only. */
     static GeckoPage document(Activity activity, Views.Listener listener, Views.Page page, String startScript) {
-        GeckoPage tab = new GeckoPage(activity, listener, page, startScript);
+        GeckoPage tab = new GeckoPage(activity, listener, page, startScript, true);
         tab.view.setFocusable(false);
         tab.view.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
         return tab;
     }
 
+    /** A window the revealed context opened, in the opener's profile; no bridge or start script. */
+    static GeckoPage popup(Activity activity, Views.Listener listener, Views.Page page) {
+        return new GeckoPage(activity, listener, page, null, false);
+    }
+
     /** Runs a load now, or once the bridge extension is ready. */
     private void whenReady(Runnable load) {
         if (waiting != null) waiting.add(load);
-        else if (!destroyed) load.run();
+        else if (!destroyed) {
+            if (!session.isOpen()) session.open(GeckoEngine.runtime(activity));
+            load.run();
+        }
     }
 
     @Override public View view() { return view; }
@@ -158,7 +192,13 @@ final class GeckoPage implements WebsitePage {
 
     @Override public void input(JSONArray events) throws Input.Refused { Input.dispatch(view, events); }
 
-    @Override public void setRevealed(boolean revealed) { session.setFocused(revealed); }
+    /** A hidden page loses focus, its page tree for accessibility services and its open dialog. */
+    @Override public void setRevealed(boolean revealed) {
+        if (!revealed) view.clearFocus();
+        session.setFocused(revealed);
+        session.getAccessibility().setView(revealed ? view : null);
+        if (!revealed) closeDialog();
+    }
 
     /** The runtime follows Android's font size and appearance for every page. */
     @Override public void configurationChanged() {}
@@ -167,6 +207,11 @@ final class GeckoPage implements WebsitePage {
         destroyed = true;
         main.removeCallbacksAndMessages(null);
         port = null;
+        closeDialog();
+        if (fullParent != null) {
+            fullParent = null;
+            listener.hideFullScreen();
+        }
         if (view.getParent() instanceof android.view.ViewGroup) ((android.view.ViewGroup) view.getParent()).removeView(view);
         view.releaseSession();
         session.close();
@@ -198,7 +243,8 @@ final class GeckoPage implements WebsitePage {
         committed.index = history.index();
         committed.size = history.size();
         lastUrl = committed.url;
-        listener.contextNavigated(page, committed);
+        if (page.opener != null) listener.popupNavigated(page, committed.url);
+        else listener.contextNavigated(page, committed);
     }
 
     private final class Bridge implements WebExtension.MessageDelegate {
@@ -232,6 +278,7 @@ final class GeckoPage implements WebsitePage {
             case "message" -> {
                 if (bound && message.has("data")) listener.documentMessage(page, message.optString("data"));
             }
+            case "windowLink" -> windowLink(message.optString("url"));
             case "followed" -> {
                 if (message.optInt("id") != followed || following == null) return;
                 Consumer<Boolean> result = following;
@@ -240,6 +287,18 @@ final class GeckoPage implements WebsitePage {
             }
             default -> { /* An older content script's message; nothing to do. */ }
         }
+    }
+
+    /**
+     * A tapped link that opens a new window, which the bridge stopped. The revealed context hands it
+     * to the host, as WebView's hit test does; a popup's own windows load in place.
+     */
+    private void windowLink(String link) {
+        String scheme = Uri.parse(link).getScheme();
+        if (!"https".equals(scheme) && !"http".equals(scheme)) return;
+        if (page.opener != null) { load(link); return; }
+        if (!SitePolicy.usersGesture(page, true) || !SitePolicy.mayShowUi(page)) return;
+        listener.windowRequested(page, link);
     }
 
     /** Reports a new document once, whether its bridge or its commit arrives first. */
@@ -254,16 +313,23 @@ final class GeckoPage implements WebsitePage {
     private final class Navigation implements GeckoSession.NavigationDelegate {
         /**
          * A context browses any http(s) website. Another scheme is a link for another app: only the
-         * revealed page may hand it over, and only from a tap, as in WebView. New windows open in
-         * place until popups have their own sheet.
+         * revealed page may hand it over, and only from a tap, as in WebView. A new window opens
+         * from the revealed context only, from a tap, and `onNewSession` puts it in the popup
+         * sheet; a popup's own windows load in place.
          */
         @Override public GeckoResult<AllowOrDeny> onLoadRequest(GeckoSession s, LoadRequest request) {
-            String scheme = android.net.Uri.parse(request.uri).getScheme();
-            if ("https".equals(scheme) || "http".equals(scheme)) {
-                if (request.target == TARGET_WINDOW_NEW) return GeckoResult.fromValue(AllowOrDeny.DENY);
-                return GeckoResult.fromValue(AllowOrDeny.ALLOW);
+            String scheme = Uri.parse(request.uri).getScheme();
+            boolean web = "https".equals(scheme) || "http".equals(scheme);
+            boolean local = "about".equals(scheme) || "data".equals(scheme) || "blob".equals(scheme);
+            if (request.target == TARGET_WINDOW_NEW && (web || local)) {
+                if (page.opener != null) {
+                    if (web) session.loadUri(request.uri);
+                    return GeckoResult.fromValue(AllowOrDeny.DENY);
+                }
+                boolean opens = SitePolicy.usersGesture(page, request.hasUserGesture) && SitePolicy.mayShowUi(page);
+                return GeckoResult.fromValue(opens ? AllowOrDeny.ALLOW : AllowOrDeny.DENY);
             }
-            if ("about".equals(scheme) || "data".equals(scheme) || "blob".equals(scheme)) return GeckoResult.fromValue(AllowOrDeny.ALLOW);
+            if (web || local) return GeckoResult.fromValue(AllowOrDeny.ALLOW);
             if (!SitePolicy.mayHandOff(page, SitePolicy.usersGesture(page, request.hasUserGesture))) return GeckoResult.fromValue(AllowOrDeny.DENY);
             android.content.Intent intent = Handoff.intent(request.uri);
             if (intent == null || listener.handOff(intent)) return GeckoResult.fromValue(AllowOrDeny.DENY);
@@ -288,6 +354,15 @@ final class GeckoPage implements WebsitePage {
         }
 
         @Override public void onCanGoBack(GeckoSession s, boolean can) { canGoBack = can; }
+
+        /** The window `onLoadRequest` allowed. GeckoView opens the popup's session itself. */
+        @Override public GeckoResult<GeckoSession> onNewSession(GeckoSession s, String uri) {
+            if (page.opener != null || !SitePolicy.mayShowUi(page)) return null;
+            Views.Page popup = listener.openWindow(page);
+            if (popup == null) return null;
+            // A Gecko opener's popup is always a Gecko page (Views.popup follows the opener's engine).
+            return GeckoResult.fromValue(((GeckoPage) popup.tab).session);
+        }
     }
 
     private final class Progress implements GeckoSession.ProgressDelegate {
@@ -325,6 +400,299 @@ final class GeckoPage implements WebsitePage {
         @Override public void onCrash(GeckoSession s) { listener.rendererGone(page); }
 
         @Override public void onKill(GeckoSession s) { listener.rendererGone(page); }
+
+        @Override public void onCloseRequest(GeckoSession s) { if (page.opener != null) listener.closeWindow(page); }
+
+        /**
+         * The website's element fills the page's own view, so the view itself goes full screen and
+         * returns to its container afterwards. Only the shown website goes full screen.
+         */
+        @Override public void onFullScreen(GeckoSession s, boolean full) {
+            if (!full) { leaveFullScreen(); return; }
+            if (fullParent != null) return;
+            if (!SitePolicy.mayShowUi(page) || !(view.getParent() instanceof ViewGroup)) { session.exitFullScreen(); return; }
+            fullParent = (ViewGroup) view.getParent();
+            fullIndex = fullParent.indexOfChild(view);
+            fullParams = view.getLayoutParams();
+            fullParent.removeView(view);
+            listener.showFullScreen(new Requests.FullScreen(view, () -> {
+                restoreView();
+                if (!destroyed) session.exitFullScreen();
+            }));
+        }
+
+        /**
+         * A response GeckoView does not show, such as an attachment, goes to the shell's download.
+         * GeckoView has no cookie read yet, so the download goes without the site's cookies.
+         */
+        @Override public void onExternalResponse(GeckoSession s, org.mozilla.geckoview.WebResponse response) {
+            if (response.body != null) {
+                try { response.body.close(); } catch (java.io.IOException ignored) { /* The shell fetches the URL again. */ }
+            }
+            String type = header(response.headers, "Content-Type");
+            if (type != null && type.contains(";")) type = type.substring(0, type.indexOf(';')).trim();
+            listener.download(page, response.uri, GeckoSession.getDefaultUserAgent(), header(response.headers, "Content-Disposition"), type);
+        }
+    }
+
+    private static String header(Map<String, String> headers, String name) {
+        if (headers == null) return null;
+        for (Map.Entry<String, String> entry : headers.entrySet()) if (name.equalsIgnoreCase(entry.getKey())) return entry.getValue();
+        return null;
+    }
+
+    /**
+     * GeckoView reads chosen files from paths, and can't resolve a document provider's `content:`
+     * URIs, so each file is copied into the cache first, off the main thread. `done` runs on the main
+     * thread with the copies' `file:` URIs, or null when one couldn't be read. A process's first
+     * copy clears the copies of the one before, whose pages are gone.
+     */
+    private void copyForUpload(Uri[] files, Consumer<Uri[]> done) {
+        android.content.ContentResolver resolver = activity.getContentResolver();
+        java.io.File root = new java.io.File(activity.getCacheDir(), UPLOADS);
+        UPLOAD_WORKER.execute(() -> {
+            if (!uploadsCleared) { deleteTree(root); uploadsCleared = true; }
+            java.io.File folder = new java.io.File(root, java.util.UUID.randomUUID().toString());
+            Uri[] copies = new Uri[files.length];
+            try {
+                if (!folder.mkdirs()) throw new java.io.IOException("No upload folder");
+                for (int i = 0; i < files.length; i++) {
+                    java.io.File copy = new java.io.File(new java.io.File(folder, String.valueOf(i)), uploadName(resolver, files[i]));
+                    if (!copy.getParentFile().mkdirs()) throw new java.io.IOException("No upload folder");
+                    try (java.io.InputStream in = resolver.openInputStream(files[i]);
+                         java.io.OutputStream out = new java.io.FileOutputStream(copy)) {
+                        if (in == null) throw new java.io.IOException("Unreadable file");
+                        byte[] buffer = new byte[64 * 1024];
+                        for (int read; (read = in.read(buffer)) != -1; ) out.write(buffer, 0, read);
+                    }
+                    copies[i] = Uri.fromFile(copy);
+                }
+            } catch (java.io.IOException | RuntimeException error) {
+                deleteTree(folder);
+                copies = null;
+            }
+            Uri[] result = copies;
+            main.post(() -> done.accept(result));
+        });
+    }
+
+    /** The file's own name, so the page sees it; path separators and an empty name become safe ones. */
+    private static String uploadName(android.content.ContentResolver resolver, Uri uri) {
+        String name = null;
+        try (android.database.Cursor cursor = resolver.query(uri, new String[] {android.provider.OpenableColumns.DISPLAY_NAME}, null, null, null)) {
+            if (cursor != null && cursor.moveToFirst() && !cursor.isNull(0)) name = cursor.getString(0);
+        } catch (RuntimeException ignored) { /* Falls back to a generic name. */ }
+        if (name != null) name = name.replace('/', '_').replace('\0', '_').trim();
+        return name == null || name.isEmpty() || name.equals(".") || name.equals("..") ? "file" : name;
+    }
+
+    private static void deleteTree(java.io.File file) {
+        java.io.File[] children = file.listFiles();
+        if (children != null) for (java.io.File child : children) deleteTree(child);
+        file.delete();
+    }
+
+    private void leaveFullScreen() {
+        if (fullParent == null) return;
+        listener.hideFullScreen();
+        restoreView();
+    }
+
+    /** Puts the view back where it was before the full screen. */
+    private void restoreView() {
+        ViewGroup parent = fullParent;
+        fullParent = null;
+        if (parent == null || destroyed) return;
+        if (view.getParent() instanceof ViewGroup) ((ViewGroup) view.getParent()).removeView(view);
+        view.setBackground(null);
+        parent.addView(view, Math.min(fullIndex, parent.getChildCount()), fullParams);
+    }
+
+    private void closeDialog() {
+        android.app.Dialog shown = dialog;
+        dialog = null;
+        if (shown != null) shown.dismiss();
+    }
+
+    /**
+     * One website dialog, shown only while the page is; a hidden page's dialog is dismissed, as
+     * the page's own navigation dismisses an open one. `field` is the text field's start value,
+     * or null for none; `ok` turns the field's text into the answer.
+     */
+    private GeckoResult<GeckoSession.PromptDelegate.PromptResponse> showDialog(GeckoSession.PromptDelegate.BasePrompt prompt,
+            String message, String field, boolean cancel, Function<String, GeckoSession.PromptDelegate.PromptResponse> ok) {
+        if (!SitePolicy.mayShowUi(page)) return GeckoResult.fromValue(prompt.dismiss());
+        closeDialog();
+        GeckoResult<GeckoSession.PromptDelegate.PromptResponse> result = new GeckoResult<>();
+        android.widget.EditText input = null;
+        if (field != null) {
+            input = new android.widget.EditText(activity);
+            input.setSingleLine(true);
+            input.setText(field);
+        }
+        android.widget.EditText text = input;
+        boolean[] answered = { false };
+        MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(activity)
+            .setTitle(Ui.host(Views.origin(url == null ? "" : url)) + " says")
+            .setMessage(message)
+            .setPositiveButton(android.R.string.ok, (d, w) -> {
+                if (answered[0]) return;
+                answered[0] = true;
+                result.complete(ok.apply(text == null ? null : text.getText().toString()));
+            });
+        if (cancel) builder.setNegativeButton(android.R.string.cancel, null);
+        if (text != null) {
+            android.widget.FrameLayout frame = new android.widget.FrameLayout(activity);
+            int pad = Math.round(20 * activity.getResources().getDisplayMetrics().density);
+            frame.setPadding(pad, 0, pad, 0);
+            frame.addView(text);
+            builder.setView(frame);
+        }
+        android.app.Dialog shown = builder.create();
+        shown.setOnDismissListener(d -> {
+            if (dialog == shown) dialog = null;
+            if (answered[0]) return;
+            answered[0] = true;
+            result.complete(prompt.dismiss());
+        });
+        prompt.setDelegate(new GeckoSession.PromptDelegate.PromptInstanceDelegate() {
+            @Override public void onPromptDismiss(GeckoSession.PromptDelegate.BasePrompt dismissed) {
+                answered[0] = true;
+                shown.dismiss();
+            }
+        });
+        dialog = shown;
+        shown.show();
+        return result;
+    }
+
+    private final class Prompts implements GeckoSession.PromptDelegate {
+        @Override public GeckoResult<PromptResponse> onAlertPrompt(GeckoSession s, AlertPrompt prompt) {
+            return showDialog(prompt, prompt.message, null, false, text -> prompt.dismiss());
+        }
+
+        @Override public GeckoResult<PromptResponse> onButtonPrompt(GeckoSession s, ButtonPrompt prompt) {
+            return showDialog(prompt, prompt.message, null, true, text -> prompt.confirm(ButtonPrompt.Type.POSITIVE));
+        }
+
+        @Override public GeckoResult<PromptResponse> onTextPrompt(GeckoSession s, TextPrompt prompt) {
+            return showDialog(prompt, prompt.message, prompt.defaultValue == null ? "" : prompt.defaultValue, true, prompt::confirm);
+        }
+
+        /** The same file selection as WebView's chooser; a hidden page gets none. */
+        @Override public GeckoResult<PromptResponse> onFilePrompt(GeckoSession s, FilePrompt prompt) {
+            if (!SitePolicy.mayShowUi(page)) return GeckoResult.fromValue(prompt.dismiss());
+            GeckoResult<PromptResponse> result = new GeckoResult<>();
+            Requests.FileRequest request = new Requests.FileRequest(prompt.mimeTypes, prompt.type == FilePrompt.Type.MULTIPLE,
+                prompt.type != FilePrompt.Type.FOLDER, files -> {
+                    if (prompt.isComplete()) return;
+                    if (files == null || files.length == 0) { result.complete(prompt.dismiss()); return; }
+                    copyForUpload(files, copies -> {
+                        if (prompt.isComplete()) return;
+                        result.complete(destroyed || copies == null ? prompt.dismiss() : prompt.confirm(activity, copies));
+                    });
+                });
+            if (!listener.chooseFiles(page, request)) request.cancel();
+            return result;
+        }
+
+        /** A hidden page can't ask; its server's error page shows, as in WebView. */
+        @Override public GeckoResult<PromptResponse> onAuthPrompt(GeckoSession s, AuthPrompt prompt) {
+            if (!SitePolicy.mayShowUi(page)) return GeckoResult.fromValue(prompt.dismiss());
+            GeckoResult<PromptResponse> result = new GeckoResult<>();
+            boolean onlyPassword = (prompt.authOptions.flags & AuthPrompt.AuthOptions.Flags.ONLY_PASSWORD) != 0;
+            String host = Uri.parse(prompt.authOptions.uri == null ? "" : prompt.authOptions.uri).getHost();
+            listener.httpAuth(page, new Requests.AuthRequest() {
+                @Override public void proceed(String user, String password) {
+                    if (!prompt.isComplete()) result.complete(onlyPassword ? prompt.confirm(password) : prompt.confirm(user, password));
+                }
+
+                @Override public void cancel() { if (!prompt.isComplete()) result.complete(prompt.dismiss()); }
+            }, host == null ? "" : host, null);
+            return result;
+        }
+    }
+
+    /**
+     * Permissions follow WebView's: website pages get protected media (EME) without asking, shown
+     * or hidden; location, camera and microphone only for the shown website, through `SiteGrants`.
+     * Everything else is refused.
+     */
+    private final class Permissions implements GeckoSession.PermissionDelegate {
+        @Override public GeckoResult<Integer> onContentPermissionRequest(GeckoSession s, ContentPermission permission) {
+            switch (permission.permission) {
+                case PERMISSION_MEDIA_KEY_SYSTEM_ACCESS:
+                case PERMISSION_AUTOPLAY_INAUDIBLE:
+                    return GeckoResult.fromValue(ContentPermission.VALUE_ALLOW);
+                case PERMISSION_GEOLOCATION: {
+                    if (!SitePolicy.mayShowUi(page)) return GeckoResult.fromValue(ContentPermission.VALUE_DENY);
+                    GeckoResult<Integer> result = new GeckoResult<>();
+                    listener.askSite(page, Views.origin(permission.uri), List.of(SiteGrants.LOCATION), allowed ->
+                        result.complete(allowed.contains(SiteGrants.LOCATION) ? ContentPermission.VALUE_ALLOW : ContentPermission.VALUE_DENY));
+                    return result;
+                }
+                default:
+                    return GeckoResult.fromValue(ContentPermission.VALUE_DENY);
+            }
+        }
+
+        /**
+         * GeckoView asks for Android's permission before the website's own question. One Genesis
+         * already holds is granted; otherwise the shown website asks through `SiteGrants`, whose
+         * question includes Android's request, and a hidden page is refused.
+         */
+        @Override public void onAndroidPermissionsRequest(GeckoSession s, String[] permissions, Callback callback) {
+            if (permissions == null || permissions.length == 0 || held(permissions)) { callback.grant(); return; }
+            Set<String> wanted = new LinkedHashSet<>();
+            for (String name : permissions) {
+                String grant = siteGrant(name);
+                if (grant == null) { callback.reject(); return; }
+                wanted.add(grant);
+            }
+            if (!SitePolicy.mayShowUi(page)) { callback.reject(); return; }
+            listener.askSite(page, Views.origin(url == null ? "" : url), new ArrayList<>(wanted), allowed -> {
+                if (allowed.containsAll(wanted)) callback.grant();
+                else callback.reject();
+            });
+        }
+
+        @Override public void onMediaPermissionRequest(GeckoSession s, String uri, MediaSource[] video, MediaSource[] audio, MediaCallback callback) {
+            MediaSource camera = first(video, MediaSource.SOURCE_CAMERA);
+            MediaSource microphone = first(audio, MediaSource.SOURCE_MICROPHONE);
+            if (camera == null && microphone == null || !SitePolicy.mayShowUi(page)) { callback.reject(); return; }
+            List<String> wanted = new ArrayList<>();
+            if (camera != null) wanted.add(SiteGrants.CAMERA);
+            if (microphone != null) wanted.add(SiteGrants.MICROPHONE);
+            listener.askSite(page, Views.origin(uri), wanted, allowed -> {
+                MediaSource grantVideo = allowed.contains(SiteGrants.CAMERA) ? camera : null;
+                MediaSource grantAudio = allowed.contains(SiteGrants.MICROPHONE) ? microphone : null;
+                if (grantVideo == null && grantAudio == null) { callback.reject(); return; }
+                page.capturing = true;
+                callback.grant(grantVideo, grantAudio);
+            });
+        }
+    }
+
+    private boolean held(String[] permissions) {
+        for (String name : permissions) if (activity.checkSelfPermission(name) != PackageManager.PERMISSION_GRANTED) return false;
+        return true;
+    }
+
+    /** The `SiteGrants` permission an Android permission GeckoView asks for belongs to; null for others. */
+    private static String siteGrant(String android) {
+        switch (android) {
+            case Manifest.permission.CAMERA: return SiteGrants.CAMERA;
+            case Manifest.permission.RECORD_AUDIO: return SiteGrants.MICROPHONE;
+            case Manifest.permission.ACCESS_FINE_LOCATION:
+            case Manifest.permission.ACCESS_COARSE_LOCATION: return SiteGrants.LOCATION;
+            default: return null;
+        }
+    }
+
+    private static GeckoSession.PermissionDelegate.MediaSource first(GeckoSession.PermissionDelegate.MediaSource[] sources, int kind) {
+        if (sources == null) return null;
+        for (GeckoSession.PermissionDelegate.MediaSource source : sources) if (source.source == kind) return source;
+        return null;
     }
 
 }
