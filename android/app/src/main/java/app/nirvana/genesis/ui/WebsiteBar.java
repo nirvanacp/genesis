@@ -114,15 +114,19 @@ public final class WebsiteBar extends LinearLayout {
         LinearLayout banner = new LinearLayout(getContext());
         banner.setGravity(Gravity.CENTER_VERTICAL);
         banner.setPadding(t.dp(16), t.dp(8), t.dp(8), t.dp(8));
-        int background = chosen ? t.secondaryContainer : t.warningContainer, foreground = chosen ? t.onSecondaryContainer : t.onWarningContainer;
+        // Sign-in pages and other website pages are ordinary steps, so only an available update,
+        // which may add the missing screen, gets the warning.
+        boolean offer = !chosen && update && onUpdate != null;
+        int background = offer ? t.warningContainer : t.secondaryContainer, foreground = offer ? t.onWarningContainer : t.onSecondaryContainer;
         banner.setBackgroundColor(background);
-        banner.addView(t.icon(chosen ? R.drawable.ic_info : R.drawable.ic_warning, foreground), new LayoutParams(t.dp(18), t.dp(18)));
+        banner.addView(t.icon(offer ? R.drawable.ic_warning : R.drawable.ic_info, foreground), new LayoutParams(t.dp(18), t.dp(18)));
         TextView message = t.text(chosen ? "The real website. Done takes you back to " + applet + "."
-            : applet + " doesn't have a screen for this page, so here's the website.", Tokens.Type.BODY_SMALL, foreground);
+            : offer ? applet + " doesn't have a screen for this page yet, so here's the website."
+            : "This page opens on the website. Done takes you back to " + applet + ".", Tokens.Type.BODY_SMALL, foreground);
         LayoutParams messageLayout = new LayoutParams(0, -2, 1);
         messageLayout.setMarginStart(t.dp(10));
         banner.addView(message, messageLayout);
-        if (!chosen && update && onUpdate != null) {
+        if (offer) {
             MaterialButton action = t.linkButton("Update");
             action.setTextColor(foreground);
             action.setOnClickListener(v -> onUpdate.run());
