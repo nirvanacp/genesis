@@ -19,6 +19,8 @@ import org.json.JSONObject;
 /** Settings (S24), Sites & sign-ins (S25, S25b), how Genesis keeps you in control, and About. */
 public final class Settings {
     static final String SETTINGS = "settings", SITES = "sites", CONTROL = "control", ABOUT = "about";
+    /** The engine id `Ui.Actions.engine` reports for GeckoView. */
+    private static final String GECKO = "gecko";
 
     private final Ui ui;
     private final Runnable updates;
@@ -74,29 +76,53 @@ public final class Settings {
 
     /** One profile and the hosts its applets use, each with the names of the applets that use it. */
     private static final class Group {
-        /** Null for the shared sign-in. */
-        final String title;
+        /** Null for the shared sign-in of the only engine in use. */
+        String title;
         final SiteData site;
         final Map<String, List<String>> origins = new LinkedHashMap<>();
 
         Group(String title, SiteData site) { this.title = title; this.site = site; }
     }
 
-    /** The shared sign-in first, then each applet that keeps a separate one. */
+    /**
+     * The shared sign-in of each engine first, then each applet that keeps a separate one. An
+     * applet on GeckoView also shows under WebView's shared sign-in where it is still signed in
+     * there. GeckoView's group exists only when an applet runs on GeckoView, so drawing Settings
+     * never starts GeckoView.
+     */
     private List<Group> groups() {
         Group shared = new Group(null, ui.actions.sites());
+        Group geckoShared = null;
         List<Group> result = new ArrayList<>(List.of(shared));
         for (JSONObject entry : ui.entries()) {
             String appletId = entry.optString("appletId"), name = entry.optString("name");
+            List<String> origins = Ui.strings(entry.optJSONArray("origins"));
             Group group = shared;
             if (ui.actions.separateSignIn(appletId)) {
                 group = new Group(name + "'s separate sign-in", ui.actions.sitesFor(appletId));
                 result.add(group);
+            } else if (GECKO.equals(ui.actions.engine(appletId))) {
+                if (geckoShared == null) {
+                    geckoShared = new Group(null, ui.actions.sitesFor(appletId));
+                    result.add(1, geckoShared);
+                }
+                group = geckoShared;
+                for (String origin : origins) if (shared.site.hasCookies(origin)) add(shared, origin, name);
             }
-            for (String origin : Ui.strings(entry.optJSONArray("origins"))) group.origins.computeIfAbsent(origin, key -> new ArrayList<>()).add(name);
+            for (String origin : origins) add(group, origin, name);
         }
+        if (geckoShared != null && geckoShared.origins.isEmpty()) result.remove(geckoShared);
         if (shared.origins.isEmpty() && result.size() > 1) result.remove(shared);
+        if (geckoShared != null && result.contains(geckoShared)) {
+            if (result.contains(shared)) shared.title = "Shared sign-in in Android WebView";
+            geckoShared.title = result.contains(shared) ? "Shared sign-in in GeckoView" : null;
+        }
         return result;
+    }
+
+    private static void add(Group group, String origin, String name) {
+        List<String> names = group.origins.computeIfAbsent(origin, key -> new ArrayList<>());
+        if (!names.contains(name)) names.add(name);
     }
 
     private View sitesPage() {
@@ -112,14 +138,17 @@ public final class Settings {
             if (group.origins.isEmpty()) continue;
             content.addView(t.section(group.title != null ? group.title : groups.size() > 1 ? "Shared sign-in" : "Websites"));
             List<String> in = new ArrayList<>();
+            // GeckoView can't say whether a site is signed in, so each of its sites offers sign-out.
+            boolean known = group.site.readsCookies();
             for (Map.Entry<String, List<String>> site : group.origins.entrySet()) {
-                boolean signedIn = group.site.hasCookies(site.getKey());
-                if (signedIn) in.add(site.getKey());
+                boolean signedIn = known && group.site.hasCookies(site.getKey());
+                boolean mayHold = signedIn || !known;
+                if (mayHold) in.add(site.getKey());
                 String granted = group.site.grants().describe(site.getKey());
-                TextView chip = signedIn ? t.chip("Signed in", Tokens.Chip.SUCCESS) : t.chip("Signed out", Tokens.Chip.NEUTRAL);
+                TextView chip = !known ? null : signedIn ? t.chip("Signed in", Tokens.Chip.SUCCESS) : t.chip("Signed out", Tokens.Chip.NEUTRAL);
                 String detail = "Used by " + Ui.and(site.getValue()) + (granted == null ? "" : " · " + granted);
-                content.addView(t.row(R.drawable.ic_website, Ui.host(site.getKey()), detail, chip, signedIn || granted != null, t.onSurface,
-                    signedIn ? () -> signOut(List.of(group), List.of(site.getKey()), false) : granted != null ? () -> resetPermissions(group.site, site.getKey()) : null));
+                content.addView(t.row(R.drawable.ic_website, Ui.host(site.getKey()), detail, chip, mayHold || granted != null, t.onSurface,
+                    mayHold ? () -> signOut(List.of(group), List.of(site.getKey()), false) : granted != null ? () -> resetPermissions(group.site, site.getKey()) : null));
             }
             if (!in.isEmpty()) signed.add(group);
         }
@@ -152,7 +181,8 @@ public final class Settings {
         MaterialButton out = t.dangerButton("Sign out");
         out.setOnClickListener(v -> {
             dialog[0].dismiss();
-            Runnable done = () -> ui.pages.refresh();
+            // GeckoView answers later; a Settings page that closed meanwhile has nothing to redraw.
+            Runnable done = () -> { if (ui.pages.has(SITES)) ui.pages.refresh(); };
             if (all) {
                 // Every group clears on its own; the page refreshes once the last one is done.
                 int[] left = { groups.size() };
