@@ -110,6 +110,14 @@ final class UserActions {
     /** Carries out `action` for the applet and answers `userActionDone` after the command batch. */
     void run(String appletId, long token, JSONObject view, JSONObject action) {
         String kind = action.optString("kind");
+        if (kind.equals("share") && view != null) {
+            // The website's own Share button: the host checked the page's user activation; the
+            // shell checks that the user still sees that website.
+            Views.Page page = shell.page(view);
+            if (page == null || !page.isRevealed()) { answer(done(token, "USER_ACTION_REQUIRED", "The website shares only while it is shown", null)); return; }
+            share(token, text(action, "title"), text(action, "text"), text(action, "url"));
+            return;
+        }
         if (!consumeTap()) { answer(done(token, "USER_ACTION_REQUIRED", "The action needs a fresh tap on the applet", null)); return; }
         switch (kind) {
             case "pickFiles": pick(token, strings(action.optJSONArray("accept")), action.optBoolean("multiple")); break;
