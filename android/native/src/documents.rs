@@ -112,6 +112,10 @@ impl Documents {
         self.ops.values().filter(|op| op.document_id == document_id).count()
     }
 
+    pub fn has_op(&self, op_id: u64) -> bool {
+        self.ops.contains_key(&op_id)
+    }
+
     pub fn begin_op(&mut self, op: PendingOp) -> u64 {
         let op_id = next_op_id();
         self.ops.insert(op_id, op);

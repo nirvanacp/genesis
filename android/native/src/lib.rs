@@ -4,6 +4,7 @@ mod contexts;
 mod dialogs;
 mod documents;
 mod fetch;
+mod files;
 mod flows;
 mod github;
 mod host;

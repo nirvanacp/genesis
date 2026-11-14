@@ -8,7 +8,7 @@ use crate::{
 use genesis_contracts::*;
 use serde_json::{Value, json};
 
-const FOREGROUND_METHODS: [&str; 19] = [
+const FOREGROUND_METHODS: [&str; 25] = [
     "ui.ready",
     "storage.get",
     "storage.list",
@@ -28,8 +28,14 @@ const FOREGROUND_METHODS: [&str; 19] = [
     "page.cancel",
     "context.dialog.claim",
     "context.dialog.answer",
+    "files.pick",
+    "files.release",
+    "downloads.save",
+    "share.open",
+    "links.openExternal",
+    "notifications.enable",
 ];
-const CONTEXT_METHODS: [&str; 4] = ["page.result", "page.progress", "page.emit", "page.input"];
+const CONTEXT_METHODS: [&str; 5] = ["page.result", "page.progress", "page.emit", "page.input", "page.files"];
 /// Events in one `page.input`.
 const INPUT_EVENTS_MAX: usize = 64;
 /// Characters of `text` in one `page.input`, all its text events together. The shell types each
@@ -305,6 +311,37 @@ impl Host {
             Call::DialogAnswer { id, dialog_id, accept, value } => {
                 Outcome::Now(self.answer_dialog(applet_id, &id, dialog_id, accept, value, now))
             }
+            Call::FilesPick { accept, multiple } => {
+                let accept = accept.into_iter().map(|a| a.trim().to_ascii_lowercase()).collect();
+                self.user_action(view, document_id, request_id, None, UserAction::PickFiles { accept, multiple }, now)
+            }
+            Call::FilesRelease { ids } => {
+                self.release_files(applet_id, ids);
+                ok()
+            }
+            Call::DownloadsSave { context, url, filename } => {
+                let Some(target) = self.context_view(applet_id, &context) else { return unknown_context(&context) };
+                self.user_action(view, document_id, request_id, Some(target), UserAction::Save { url, filename }, now)
+            }
+            Call::ShareOpen { title, text, url } => self.user_action(view, document_id, request_id, None, UserAction::Share { title, text, url }, now),
+            Call::LinksOpenExternal { url } => self.user_action(view, document_id, request_id, None, UserAction::OpenExternal { url }, now),
+            Call::NotificationsEnable {} => {
+                if manifest.capabilities.notifications.is_none() {
+                    return error(ErrorCode::ConfigurationRequired, "Notifications are not declared in applet.json");
+                }
+                self.user_action(view, document_id, request_id, None, UserAction::EnableNotifications, now)
+            }
+            Call::PageFiles { call_id, ids } => match self.page_files(view, document_id, request_id, call_id, ids) {
+                Ok(()) => Outcome::Later,
+                Err(failure) => Outcome::Now(Err(failure)),
+            },
+        }
+    }
+
+    fn user_action(&mut self, view: &ViewRef, document_id: &str, request_id: u64, context: Option<ViewRef>, action: UserAction, now: u64) -> Outcome {
+        match self.begin_user_action(view, document_id, request_id, context, action, now) {
+            Ok(()) => Outcome::Later,
+            Err(failure) => Outcome::Now(Err(failure)),
         }
     }
 
