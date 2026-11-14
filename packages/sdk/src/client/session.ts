@@ -25,6 +25,8 @@ import { webViewTransport, type Transport } from "./transport.js";
 
 /** Time the client waits past a request's own deadline before it gives up on the answer itself. */
 const DEADLINE_GRACE_MS = 2000;
+/** How late a timer may fire before the client counts its page as having been frozen. */
+const STALL_MS = 1000;
 
 /** The client stopped waiting for an answer; the host may still have acted on the request. */
 export class AnswerTimeout extends GenesisError {
@@ -70,11 +72,20 @@ export function openSession(transport: Transport, url: string): Promise<Session>
         const requestId = nextRequestId++;
         const timeoutMs = (options.timeoutMs ?? bound!.limits.rpcDeadlineMs) + DEADLINE_GRACE_MS;
         return new Promise<T>((resolve, reject) => {
-          const timer = setTimeout(() => {
-            pending.delete(requestId);
-            reject(new AnswerTimeout(method));
-          }, timeoutMs);
-          pending.set(requestId, { resolve: resolve as (value: unknown) => void, reject, timer });
+          const entry: Pending = { resolve: resolve as (value: unknown) => void, reject, timer: undefined! };
+          const wait = (ms: number) => {
+            const due = Date.now() + ms;
+            entry.timer = setTimeout(() => {
+              // A timer that fires late means this page was frozen, for example while a hidden
+              // page's dialog was open, and the host paused the call's deadline meanwhile. Wait
+              // the grace time again, awake, for the answer already on its way.
+              if (Date.now() - due > STALL_MS) { wait(DEADLINE_GRACE_MS); return; }
+              pending.delete(requestId);
+              reject(new AnswerTimeout(method));
+            }, ms);
+          };
+          wait(timeoutMs);
+          pending.set(requestId, entry);
           transport.send(JSON.stringify({ type: "request", documentId: bound!.documentId, requestId, method, params }));
         });
       },
