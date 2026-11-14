@@ -10,20 +10,57 @@ A control in the UI performs a real action on the website, in the applet's own d
 | A search or filter that is a website URL | `navigate({ url })` to the results URL |
 | Loading the next page of a list | A command that clicks the site's "more" link or scrolls |
 | Sign-in, sign-up, password, payment, account settings, CAPTCHA or other challenge | The website: `requiresAccount` on the route, or View website from an explicit control |
-| Writing a post, comment or message | The website by default. Rebuild the form only when the user asks and it is plain fields and one submit button. |
+| Writing a post, comment or message | The website by default. When the user asks for a composer, rebuild it in the applet: its fields, attachments through `attachFiles`, and a click on the site's Post button with evidence ([recipe](website-features.md#post-with-photos-or-video)). |
 | Applet data (categories, notes, saved lists) | `useRecords` or the applet's service |
+| Attaching a photo, video or file to a post, message or profile | `genesis.files.pick` from a tap in the UI, then `attachFiles` on the website's file input ([recipe](website-features.md#post-with-photos-or-video)) |
+| Saving an image, video or file | `genesis.downloads.save` with the media URL, or `allow("download")` and a trusted click on the site's button ([recipe](website-features.md#save-an-image-or-video)) |
+| Sharing a post or page | `genesis.share` with the page's canonical URL ([recipe](website-features.md#share)) |
+| Opening a link in another app | `genesis.links.openExternal`, or `allow("handoff")` and a trusted click ([recipe](website-features.md#open-in-another-app)) |
+| Playing a video fullscreen | `allow("fullscreen")` and a trusted click on the site's player ([recipe](website-features.md#play-a-video-fullscreen)) |
+| A "Sign in with ..." button on an applet screen | `allow("window")` and a trusted click; the window shows in a sheet over the applet ([recipe](website-features.md#sign-in-with-another-provider)) |
+| A website `confirm`, `alert`, `prompt` or leave question | Nothing: Genesis shows it over the applet ([Website dialogs](#website-dialogs)) |
+| Using the location | `allow("location")` and a trusted click on the site's control ([recipe](website-features.md#location)) |
+| Recording with the camera or microphone | The website, from an explicit control such as "Record in *website*" |
 
 Applet code never fills credentials, never solves challenges, and never submits anything the user did not explicitly request in that moment. The page agent refuses to `fill`, `type` or `press` into password, one-time code and card fields with `PROTECTED_FIELD`. During development checks you sign in to test accounts yourself on the website's own form, as the [test accounts skill](../skills/genesis-test-accounts/SKILL.md) describes; that never becomes applet behavior.
 
-## Website features on the revealed website
+## Website features
 
-Some website features work only while the user is looking at the website, because Android or the user must see them:
+Files, downloads, sharing, links to other apps, fullscreen, windows, location prompts and dialogs stay in the applet. A hidden page cannot show them, so the applet UI either asks Genesis itself from the user's tap ([User actions](#user-actions)) or lets the hidden page use the feature once ([One-time grants](#one-time-grants)). [Website features](website-features.md) has a recipe for each. Read it before you show the website for any of them.
 
-- Downloads start only from the revealed website, and the second download from one page asks the user first. A download carries the website's sign-in. `blob:` and `data:` downloads are not saved.
-- Camera, microphone and location prompts appear only on the revealed website, and only after the user allows them in Genesis and in Android. Covering the website reloads a page that was using the camera or microphone, which stops them.
-- Windows, file pickers, `mailto:` and app links, server sign-in prompts and client certificates appear only on the revealed website.
+Only these need the revealed website:
 
-A hidden context gets a refusal for each of these. When a journey needs one, send the user to the website with an explicit control, such as "Download in *website*", that calls `viewWebsite()` from `useRouter`.
+- Camera and microphone. Their prompts appear only on the revealed website, after the user allows them in Genesis and in Android. Covering the website reloads a page that was using them, which stops them.
+- Server sign-in prompts and client certificates.
+- Sign-in forms, protected fields, payments and challenges, as the table above says.
+
+On the revealed website these features work as in a browser. Downloads carry the website's sign-in, and the second download from one page asks the user first. `data:` downloads are saved, and so are `blob:` downloads on the manifest's origins, where the page agent reads them; other `blob:` downloads are not. Windows open in a sheet, and `mailto:` and app links open their apps from a tap.
+
+When the running Genesis lacks the flag a recipe needs (`limits.userActions`, `limits.grants`, or `limits.trustedInput`), show the website instead, from an explicit control such as "Download in *website*" that calls `viewWebsite()` from `useRouter`.
+
+## One-time grants
+
+`context.allow(grant)` lets a hidden page use one of these features once, within 5 seconds: `fullscreen`, `download`, `window`, `handoff` (a link that opens another app) or `location`. It is a user action, so call it straight from the handler of a tap on the applet control that asks for the feature, then drive the page to it, usually with a trusted click:
+
+```tsx
+<button onClick={async () => {
+  await video.allow("fullscreen");
+  await video.click(css("button.fullscreen"), { input: "trusted" });
+}}>Full screen</button>
+```
+
+- Fullscreen shows over the applet while the context stays hidden; Back or the page's own exit returns to the applet. A window opens in a sheet over the applet, under the website bar; closing it returns to the applet. A download goes to Downloads, and the location prompt shows over the applet.
+- A grant ends when the page uses it, after 5 seconds, and when the page navigates, the context is revealed or covered, or a window opens. A new grant replaces an unused one. `onGrantEnded` and `useGrant` report the end, with `used`.
+- A revealed context needs no grant: `allow` resolves with `expiresInMs: 0`.
+- Ask only for the feature the user's control names, never ahead of time. Without a fresh tap `allow` rejects with `USER_ACTION_REQUIRED`; it needs `limits.grants`.
+
+## User actions
+
+Picking files, saving to Downloads, sharing, opening another app and turning notifications on are things only the user starts. Call `genesis.files.pick`, `downloads.save`, `share`, `links.openExternal` or `notifications.enable` straight from the handler of a tap on the applet UI: each runs only within 3 seconds of that tap, once per tap, and otherwise rejects with `USER_ACTION_REQUIRED`. Do not call them after a slow await, from a timer or from a page event; when one rejects that way, ask the user to tap again. An `<input type="file">` in the applet UI opens no picker. Show picked files with their `previewUrl` and give them to the website with `attachFiles`; keep the ids in memory only, as `useFilePicker` does, and never store them. One tap starts one user action: never chain two in one handler ([user tap actions](rules.md#user-tap-actions)). See [User actions](sdk-reference.md#user-actions), and [website features](website-features.md) for a recipe per feature.
+
+## Website dialogs
+
+A website can ask with `confirm`, `alert`, `prompt` or a "leave this page?" question, often before it deletes, discards or leaves something. In a hidden context Genesis shows it at once as its own dialog over the applet, titled with the site's origin and with its exact text, and the website stays hidden. The user answers it there and the page continues. The applet renders nothing for it and never answers, suppresses or replaces a dialog in code ([website dialogs rule](rules.md#website-dialogs)). See [Website dialogs](sdk-reference.md#website-dialogs).
 
 ## Commands describe the desired state
 
@@ -82,6 +119,7 @@ Steps are page operations, written as `{ op, ...args }`. The same operations are
 | `check` | Sets a checkbox or radio to `checked`. |
 | `scroll` | Scrolls `target`, or the page, to `"start"`, `"end"`, `"intoView"`, `{ x, y }` or `{ by: { x, y } }`. |
 | `submit` | Submits the form that is or contains the target. Target the form, or its submit button to use that button. Last step only. |
+| `attachFiles` | Gives picked `files` to the target: a file input (default), or a drop zone or editor with `via: "drop"` or `"paste"`. |
 | `wait` | Waits up to `timeoutMs` for an element state, a URL guard or a truthy read. |
 | `navigate` | Loads `url` in the context. Last step only. |
 
@@ -146,6 +184,8 @@ Do not keep a separate optimistic copy in React state that can disagree with the
 ## No retries
 
 Genesis never retries an input, and the applet should not either. A retry after `unknown` can vote twice or post twice. After `failed`, let the user try again with the control. Desired-state commands make the user's second tap safe: if the first one took effect, the second is `satisfied`.
+
+Inputs follow the user's pace: one tap, one write (see [User-paced writes](rules.md#user-paced-writes)). Each context takes `limits.inputBurst` input calls at once and then one more each `limits.inputRefillMs`; reads, watches, waits, scrolling, focus and hover are free. An input over the budget is `failed` with `RATE_LIMITED`, and nothing reached the page. Show it like any failure and let the user tap again; never queue or retry it on a timer.
 
 ## Loading more
 

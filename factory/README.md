@@ -23,6 +23,7 @@ Example request to an agent:
 | Implement a client in another language from the message format | [Protocol](guides/protocol.md) |
 | Move between screens, tabs and the website | [Navigation](guides/navigation.md) |
 | Make buttons perform website actions | [Interactions](guides/interactions.md) |
+| Post with photos, save, share, play fullscreen, open apps, answer website dialogs, all inside the applet | [Website features](guides/website-features.md) |
 | Show loading, stale and error states, and the switch to the website | [Presentation](guides/presentation.md) |
 | Animate screen changes, loaders and the feedback after each tap | [Motion](guides/motion.md) |
 | Lay out an applet's code and screens | [Patterns](guides/patterns.md) |

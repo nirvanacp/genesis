@@ -177,6 +177,7 @@ Input operations act on the page as a user would. Each answers an `ActionResult`
 | `select(target, { values, labels })` | Chooses options of a `select` by value or label, with `input` and `change`. `values` and `labels` are arrays of strings. A value matches exactly; a label matches an option's label or text, ignoring white space at the ends. |
 | `check(target, checked)` | Clicks the control when its checked state (or `aria-checked`) differs, then waits until it holds. |
 | `submit(target)` | Submits the form. |
+| `attachFiles(target, files, { via })` | Gives files the user picked with `genesis.files.pick` to the page (see [Attaching files](#attaching-files)). |
 | `scroll(to, { target })` | Scrolls the page or the target: `"start"`, `"end"`, `"intoView"`, `{ x, y }` or `{ by: { x, y } }`. Answers the scroll position with `atEnd`. |
 
 ```ts
@@ -207,6 +208,21 @@ await hn.run(
 
 A step can also wait: `{ op: "wait", for: { target, state }, timeoutMs }`, with `for` also accepting `{ url }` or `{ read }`.
 
+### Attaching files
+
+`attachFiles(target, files, { via })` hands 1 to 16 picked files to the page, 128 MiB at most. `files` holds ids from `genesis.files.pick`, or the picked files themselves. Only the user picks files, so the UI calls `files.pick` from a tap and passes the result here; a page module cannot pick. The shell posts the bytes straight to the page; they never pass the host.
+
+```ts
+const [photo] = await genesis.files.pick({ accept: ["image/*"] });
+if (photo) await site.attachFiles(css("input[type=file][name=avatar]"), [photo], { until: { target: css(".avatar-preview"), state: "visible" } });
+```
+
+- `via: "input"` (default) sets the files on an `<input type="file">` and fires `input` and `change`. The input may be hidden, as most sites hide theirs behind a styled button, so the target is not checked for visibility or cover. Anything else fails with `NOT_ACTIONABLE` and the reason `not-a-file-input`; a disabled input with `disabled`; several files on an input without `multiple` with `INVALID_ARGUMENT`; and a file the input's `accept` does not take with the reason `type-not-accepted`.
+- `via: "drop"` drops the files on the target, with `dragenter`, `dragover` and `drop`, for a drop zone.
+- `via: "paste"` pastes them into the target, for an editor that takes pasted images.
+
+The files reach the page before anything is dispatched, so a file that expired or was released fails the input with `FILE_UNAVAILABLE` and nothing happens on the page. Without `limits.userActions` the input fails with `INPUT_UNAVAILABLE`. The site may still refuse a file, for example for its size; judge the result with `until` or `expect` as for any input. [Website features](website-features.md#post-with-photos-or-video) shows a whole composer with previews.
+
 ## Actionability
 
 Before an input, the agent checks that the target can take it, and polls every 50 ms until it can or `timeoutMs` (default 0) runs out. The check scrolls the target into the middle of the view first.
@@ -220,7 +236,7 @@ Before an input, the agent checks that the target can take it, and polls every 5
 
 A failed check answers `failed` with `NOT_ACTIONABLE` and the reason in `reason`. Give `timeoutMs` when the target appears after an animation or a load. `force: true` skips the check; use it only for an element the website hides on purpose but still handles.
 
-Other `NOT_ACTIONABLE` reasons come from the operation itself: `not-a-text-field` (`fill`), `not-editable` (`type`), `not-a-select` (`select`), and `editor-needs-trusted-input` (`type` into a rich text editor that ignores the editing command). A `check` whose control does not reach the wanted state answers `DEADLINE` with the reason `state-unchanged`.
+Other `NOT_ACTIONABLE` reasons come from the operation itself: `not-a-text-field` (`fill`), `not-editable` (`type`), `not-a-select` (`select`), `not-a-file-input` and `type-not-accepted` (`attachFiles`), and `editor-needs-trusted-input` (`type` into a rich text editor that ignores the editing command). A `check` whose control does not reach the wanted state answers `DEADLINE` with the reason `state-unchanged`.
 
 ## Fidelity
 
@@ -251,7 +267,16 @@ Trusted input has more limits:
 - One trusted `type` takes at most 2000 characters; a longer text fails with `INVALID_ARGUMENT`.
 - Once another document has started loading in the context, the shell refuses trusted input with `CONTEXT_REPLACED`, so it never reaches the next page. The outcome is `unknown` with that code, like other input cut short by a navigation.
 - An element inside a same-origin frame is tapped at its point on the top page, measured through every frame that contains it.
-- For 5 seconds after trusted input, the page may not open a window or hand a link to another app, even when the user reveals it and taps.
+- For 5 seconds after trusted input, the page may not open a window or hand a link to another app, even when the user reveals it and taps. A `window` or `handoff` grant lifts this block for one request.
+
+A trusted tap gives the page user activation, but a hidden page still may not go fullscreen, download, open a window, hand a link to another app or ask for the location. When the user taps a control in the applet for one of these, ask for a one-time grant from that tap's handler, then make the page do it:
+
+```ts
+await hn.allow("fullscreen");
+await hn.click(css("button.fullscreen"), { input: "trusted" });
+```
+
+The page has 5 seconds to use the grant, once; see [One-time grants](interactions.md#one-time-grants) and the recipes in [website features](website-features.md).
 
 ## Evidence and outcomes
 
@@ -321,5 +346,9 @@ The client waits up to `limits.actionTimeoutMs` for the destination to bind. A d
 | The content is in a cross-origin iframe or a closed shadow root | It cannot be read or targeted; `frame` reports `cross-origin-frame`. |
 | A rich text editor ignores typing | `type` fails with `editor-needs-trusted-input`; use `input: "trusted"`. |
 | A menu opens only on CSS `:hover` | Use `hover` with `input: "trusted"`. |
+| An input makes the page open `alert`, `confirm`, `prompt` or a leave question | The page waits for the answer. The host does not count the time the dialog is open against the call, but the evidence still has its own clock, so a long dialog can end the input as `unknown` with `DEADLINE`. Genesis shows the dialog over the applet at once and the website stays hidden. See [Website dialogs](interactions.md#website-dialogs). |
+| Too many inputs at once on one context | `failed` with `RATE_LIMITED`; nothing reached the page. Let the user tap again; never retry on a timer. |
+| A picked file expired, was released or cannot be read | `attachFiles` fails with `FILE_UNAVAILABLE` before anything is dispatched. Ask the user to pick the file again. |
+| The website refuses an attached file | The site's own error shows on the page; `until` does not hold, so the result is `unknown` with `DEADLINE`. Read the site's message and show it. |
 | The website's scripts try to call Genesis | The agent removes the bridge before any website script runs, and the host checks every message's size and role. |
 | The page's renderer stops | Genesis closes the whole applet and shows the launcher; Reload opens it again where it was. |

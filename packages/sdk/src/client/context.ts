@@ -3,12 +3,16 @@ import {
   validateGuards,
   validateReadSpec,
   type ActionResult,
+  type AttachVia,
   type ContextBound,
   type ContextNavigated,
   type ElementState,
   type ErrorBody,
   type ErrorCode,
   type Evidence,
+  type GrantEnded,
+  type GrantKind,
+  type GrantResult,
   type InputOptions,
   type InspectResult,
   type Locator,
@@ -129,6 +133,12 @@ export interface ContextHandle {
   select(target: Locator, choice: { values?: string[]; labels?: string[] }, options?: InputCallOptions): Promise<ActionResult>;
   check(target: Locator, checked: boolean, options?: InputCallOptions): Promise<ActionResult>;
   submit(target: Locator, options?: Omit<InputCallOptions, "navigates">): Promise<ActionResult>;
+  /**
+   * Hands files from `genesis.files.pick` to the website: sets an `<input type="file">`'s files
+   * (`via: "input"`, the default) or drops or pastes them on the target. The bytes go from Genesis
+   * straight to the page. Needs `limits.userActions`.
+   */
+  attachFiles(target: Locator, files: ReadonlyArray<string | { id: string }>, options?: InputCallOptions & { via?: AttachVia }): Promise<ActionResult>;
   /** Steps in order inside the page; `navigate` and `submit` may only be last. */
   run(steps: Step[], options?: { until?: Evidence; navigates?: boolean; expect?: Expect; deadlineMs?: number; timeoutMs?: number }): Promise<ActionResult>;
   /** A page module command. A command that returns a value answers `observed` with `value`. */
@@ -139,6 +149,18 @@ export interface ContextHandle {
   subscribePending(listener: () => void): () => void;
   /** Cancels the inputs that have not reached the page yet. */
   cancel(): void;
+
+  /**
+   * Lets this hidden page use one website feature once within `GRANT_MS` (5 s): enter fullscreen,
+   * start a download, open a window, hand a link to another app or ask for the location. Call it
+   * from the user's tap, then make the page do it, for example
+   * `await ctx.allow("fullscreen"); await ctx.click(playButton, { input: "trusted" })`. A revealed
+   * context needs no grant and answers `expiresInMs: 0`. Rejects with `USER_ACTION_REQUIRED`
+   * without a fresh tap. Needs `limits.grants`.
+   */
+  allow(grant: GrantKind): Promise<GrantResult>;
+  /** Runs when a grant of this context ends: `used`, or expired or cleared unused. */
+  onGrantEnded(listener: (ended: GrantEnded) => void): () => void;
 
   /**
    * Opens a watch. The same `id` with an equal specification returns the same watch; another
@@ -164,6 +186,7 @@ export interface ContextControl {
   started(url: string): void;
   gone(data: { code?: string; message?: string }): void;
   emit(data: PageEmitEvent): void;
+  grantEnded(data: GrantEnded): void;
   resumed(): void;
   retired(): void;
 }
@@ -218,7 +241,7 @@ export function createContext(id: string, startUrl: string, session: Session): C
   /** Clears `loading` when a started navigation never commits, such as a download or a cancelled load. */
   let loadingTimer: ReturnType<typeof setTimeout> | null = null;
   const navigationListeners = new Set<(navigation: ContextNavigated) => void>();
-
+  const grantListeners = new Set<(ended: GrantEnded) => void>();
   function set(patch: Partial<ContextState>) {
     const next = { ...state, ...patch };
     if ((Object.keys(patch) as (keyof ContextState)[]).every(key => next[key] === state[key])) return;
@@ -571,6 +594,11 @@ export function createContext(id: string, startUrl: string, session: Session): C
     select: (target, choice, options) => run("select", target, defined({ values: choice.values, labels: choice.labels }), options),
     check: (target, checked, options) => run("check", target, { checked }, options),
     submit: (target, options) => run("submit", target, {}, options),
+    attachFiles: (target, files, options = {}) => {
+      const { via, ...rest } = options;
+      const ids = files.map(file => typeof file === "string" ? file : file.id);
+      return run("attachFiles", target, defined({ files: ids, via }), rest);
+    },
     run: (steps, options = {}) => {
       const { expect, navigates, timeoutMs, until: evidence, deadlineMs } = options;
       return input("run", defined({ steps, until: evidence, navigates, deadlineMs }), { expect, navigates, timeoutMs });
@@ -587,6 +615,12 @@ export function createContext(id: string, startUrl: string, session: Session): C
     },
     cancel() {
       session.request("page.cancel", { context: id }).catch(fail("page.cancel"));
+    },
+
+    allow: grant => session.request("context.grant", { id, grant }) as Promise<GrantResult>,
+    onGrantEnded(listener) {
+      grantListeners.add(listener);
+      return () => { grantListeners.delete(listener); };
     },
 
     watch: watch as ContextHandle["watch"],
@@ -640,6 +674,12 @@ export function createContext(id: string, startUrl: string, session: Session): C
       const entry = watches.get(data.stream);
       if (!entry || entry.openIn !== data.generation) return;
       if (entry.store.emit(data) === "resync") resyncWatch(entry);
+    },
+    grantEnded(data) {
+      if (data.id !== id) return;
+      for (const listener of [...grantListeners]) {
+        try { listener(data); } catch (error) { console.error("Genesis grantEnded listener failed", error); }
+      }
     },
     resumed: resyncAll,
     retired() {

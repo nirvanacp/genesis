@@ -128,6 +128,13 @@ Params and results use the field names shown.
 | `back.leave` | `{}` | `{}`. Leaves the applet. |
 | `page.call` | `{ context, generation, op, args, timeoutMs? }` | The operation's value (see [Page operations](#page-operations)). |
 | `page.cancel` | `{ context, callId? }` | `{}` |
+| `context.grant` | `{ id, grant }` | `{ granted: true, expiresInMs }`. Lets a hidden context's page use one website feature once (see [Grants](#grants)). |
+| `files.pick` | `{ accept?, multiple? }` | `{ files: [{ id, name, type, size }] }`, empty when the user cancels (see [User actions](#user-actions)). |
+| `files.release` | `{ ids }` | `{}`. Lets go of picked files. |
+| `downloads.save` | `{ context, url, filename? }` | `{ started: true }` |
+| `share.open` | `{ title?, text?, url? }` | `{ shown: true }` |
+| `links.openExternal` | `{ url }` | `{ opened: true }`; `NOT_FOUND` when no app takes it. |
+| `notifications.enable` | `{}` | `{ enabled }` |
 
 Rules the host applies:
 
@@ -139,7 +146,7 @@ Rules the host applies:
 
 ## Context methods
 
-Only a context document sends these, and only about calls the host gave it.
+Only a context document sends these. All but `page.share` are about calls the host gave it.
 
 | Method | Params | Result |
 | --- | --- | --- |
@@ -147,6 +154,8 @@ Only a context document sends these, and only about calls the host gave it.
 | `page.progress` | `{ callId, state, completedSteps? }` | `{}`. `state` is `dispatched` or `navigating`. |
 | `page.emit` | `{ stream, kind, seq, view, url, data }` | `{}`. One message of a watch stream. |
 | `page.input` | `{ callId, events }` | `{}` once the shell dispatched the events. |
+| `page.files` | `{ callId, ids }` | `{ count }` once the shell posted the files to the page (see [User actions](#user-actions)). |
+| `page.share` | `{ title?, text?, url?, active }` | `{ shown: true }`. The website's own `navigator.share` (see [User actions](#user-actions)). |
 
 - `page.result` and `page.progress` about a call that is not this document's, or that has already ended, are accepted and ignored. `page.result` with `ok: false` and no `error` ends the call with `INVALID_ARGUMENT`. The page agent checks a value before it answers: a value that is not JSON data (a BigInt, a cycle) answers `INVALID_ARGUMENT`, and one over `limits.pageMaxBytes` answers `PAGE_TOO_LARGE`.
 - `page.progress` marks the call `dispatched`, and `navigating` when that is the state. The host forwards it to the foreground as the event `page.progress`.
@@ -169,6 +178,7 @@ Events the foreground receives:
 | `user.viewWebsite` | `{ id }`. The user chose View website in the Genesis menu. `id` is the revealed context, or null when none is revealed (the foreground then picks its active context). |
 | `user.done` | `{ id }`. The user tapped Done on the website bar. `id` is the revealed context or null. |
 | `user.showContext` | `{ id }`. A link opened the applet in this context; show it. |
+| `context.grantEnded` | `{ id, grant, used }`. A grant from `context.grant` was used, or ended unused (see [Grants](#grants)). |
 | `back` | `{}`. The user pressed Back; answer with `back.handled` or `back.leave`. |
 | `retired` | `{}`. The document will get no more answers. |
 | `page.emit` | `{ context, generation, stream, kind, seq, view, url, data }` |
@@ -210,6 +220,7 @@ Events a context document receives:
 | `press` | `{ key, modifiers?, target?, ...options }` | `ActionResult` |
 | `select` | `{ target, values?, labels?, ...options }` | `ActionResult` |
 | `check` | `{ target, checked, ...options }` | `ActionResult` |
+| `attachFiles` | `{ target, files, via?, ...options }` | `ActionResult`. `files` holds 1 to 16 ids from `files.pick`. `via` is `input` (default: the target is an `<input type="file">`), `drop` or `paste`. Needs `limits.userActions`. |
 | `scroll` | `{ to, target? }` | `{ x, y, maxX, maxY, atEnd }`. `to` is `start`, `end`, `intoView` (needs `target`), `{ x?, y? }` or `{ by: { x?, y? } }`. |
 | `submit` | `{ target, ...options }` | `ActionResult` |
 | `run` | `{ steps, until?, navigates?, deadlineMs? }` | `ActionResult` |
@@ -235,7 +246,7 @@ Inputs, `run` and `invoke` with steps never fail with an error response for a pr
 | --- | --- |
 | `outcome` | `observed`: the input ran and its evidence held (or it had no evidence). `failed`: nothing took effect. `unknown`: input reached the page, but whether it took effect is not known. `cancelled`: the call was cancelled before any input. |
 | `code`, `message` | Why, when the outcome is not `observed`, or why an `unknown` stayed unknown. |
-| `reason` | A short word for `NOT_ACTIONABLE` and similar codes: `detached`, `hidden`, `disabled`, `covered`, `not-a-text-field`, `not-editable`, `not-a-select`, `editor-needs-trusted-input`, or `state-unchanged` (with `DEADLINE`). |
+| `reason` | A short word for `NOT_ACTIONABLE` and similar codes: `detached`, `hidden`, `disabled`, `covered`, `not-a-text-field`, `not-editable`, `not-a-select`, `not-a-file-input`, `type-not-accepted`, `editor-needs-trusted-input`, or `state-unchanged` (with `DEADLINE`). |
 | `completedSteps` | Steps that finished. |
 | `partial` | Some steps finished and the outcome is not `observed`. |
 | `noop` | The wanted state already held, so no input was sent. |
@@ -289,6 +300,9 @@ The host checks a `page.call` in this order:
 | `generation` is not older than the bound document's | `CONTEXT_REPLACED` |
 | `generation` is not newer (the next document has not bound) | `NOT_READY` |
 | Fewer than `limits.pendingRequestsMax` calls are open in the context | `QUOTA_EXCEEDED` |
+| For an input operation, the context's input budget has a token | `RATE_LIMITED` |
+
+Input operations (`click`, `longPress`, `fill`, `type`, `press`, `select`, `check`, `submit`, `attachFiles`, `run` and `invoke`) spend the context's input budget: `limits.inputBurst` calls at once, then one more every `limits.inputRefillMs`. Reads, watches, `wait`, `scroll`, `hover`, `unhover`, `focus`, `blur` and navigation spend nothing. An empty budget answers `RATE_LIMITED` with `details { dispatched: false, retryAfterMs }`; nothing reached the page, so the client reports the input as `failed`. Do not retry it on a timer: the next input should come from the user's next tap.
 
 The call's budget is `min(timeoutMs or limits.rpcDeadlineMs, limits.actionTimeoutMs)`. The host sends it to the page as `deadlineMs`.
 
@@ -296,7 +310,7 @@ A call ends in one of four ways:
 
 1. The page answers with `page.result`. The host answers the foreground's request with the value or the error.
 2. The document is replaced (a cross-document navigation, a reload, the page leaving the context) before it answers. The host ends the call with `CONTEXT_REPLACED`.
-3. The budget runs out. The host ends the call with `DEADLINE`.
+3. The budget runs out. The host ends the call with `DEADLINE`. The budget does not count the time a JavaScript dialog of the context is open (see [Website dialogs](#website-dialogs)).
 4. The foreground document that asked is retired. The call is dropped with no answer.
 
 In cases 2 and 3 the error's `details` hold `dispatched`, `navigating` and `completedSteps` as the last `page.progress` reported them. This is how a client tells a call that never touched the page (`dispatched` false: safe to send again) from an input that may have taken effect (`dispatched` true: never send again without checking the page). A call with `navigating` true started a navigation, and the client judges the effect on the destination page.
@@ -469,7 +483,56 @@ The agent never reads or writes the value of a password field, a hidden input, o
 - `page.input` answers `INPUT_UNAVAILABLE` when `limits.trustedInput` is not true, and when the context is revealed: the user is looking at the website then, and applet input there would count as the user's own gesture. It answers `CONTEXT_REPLACED` when another document has already started loading in the context, `NOT_FOUND` when `callId` is not an open call of the asking document, and `DEADLINE` when the call's budget runs out first.
 - A trusted `click` is one touch tap: `gesture` other than `tap`, or `count` other than 1, is `INVALID_ARGUMENT`. Any other operation with `input: "trusted"` is `INVALID_ARGUMENT`.
 - A trusted tap or key gives the page user activation. A trusted hover does not.
-- For 5 seconds after the last trusted input to a context's page, that page may not open a window or hand a link to another app, even once it is revealed and the user taps it. The page's user activation can outlast the input, so the shell does not count any gesture as the user's in that time.
+- For 5 seconds after the last trusted input to a context's page, that page may not open a window or hand a link to another app, even once it is revealed and the user taps it. The page's user activation can outlast the input, so the shell does not count any gesture as the user's in that time. The one exception is a live `window` or `handoff` grant (see [Grants](#grants)): it lets one such request through.
+
+## Website dialogs
+
+A page's `alert`, `confirm`, `prompt` and `beforeunload` dialogs block the page until they are answered. On a revealed context, its popup and the foreground, they are WebView's own dialogs. On a hidden context, the shell shows Genesis's own dialog at once, over the applet UI and titled with the page's origin; the website stays hidden and the foreground receives no message. The user's answer goes straight to the page.
+
+- The dialog shows the site's exact message, a field for a prompt, OK, and Cancel for every kind but `alert`. Android Back cancels it.
+- When the page navigates or goes away while the dialog is open, the dialog is cancelled.
+- While a dialog is open, the context's page calls do not use up their budget: when the dialog ends, the host adds the time it was open to each of their deadlines. The page agent keeps its own clock for waits and evidence, so an effect that appears only later after a long dialog can still end as `unknown` with `DEADLINE`.
+
+## User actions
+
+`files.pick`, `downloads.save`, `share.open`, `links.openExternal` and `notifications.enable` are things only the user may start. The host passes each to the shell, which carries it out only after a tap on the applet UI in the last 3 seconds, once per tap. Without one it does nothing and answers `USER_ACTION_REQUIRED`; the foreground then asks the user to tap again. A tap on the website, the website bar or a popup does not count, and neither does trusted input. The host's deadline for these methods is 10 minutes, because the user may stay in a picker or a permission prompt; the client waits as long.
+
+```json
+{ "type": "request", "documentId": "d3", "requestId": 51, "method": "files.pick", "params": { "accept": ["image/*", "video/*"], "multiple": true } }
+```
+
+```json
+{ "type": "response", "documentId": "d3", "requestId": 51, "result": { "files": [{ "id": "9f0c2e6a41d8b7735c1e0a9d2f4b6c18", "name": "beach.jpg", "type": "image/jpeg", "size": 482113 }] } }
+```
+
+- `files.pick`: `accept` holds up to 16 MIME types (`image/*`) or `.ext` suffixes; anything else is `INVALID_ARGUMENT`. Image and video types open Android's photo picker, others the document picker. At most 16 files of 64 MiB each; a larger file is left out. An `id` is 32 hex characters and stays valid until `files.release`, until the applet is retired or its window closes, or for 30 minutes. The foreground shows a picked file at `https://appassets.androidplatform.net/genesis-files/<id>`, for example as an `<img>` or `<video>` source; only the foreground can load it. The file stays with Genesis: never put an `id` in storage, because it means nothing after it expires.
+- `downloads.save`: `url` is `https`, or a `data:` URL up to 2 MiB, with no user name or password, else `INVALID_ARGUMENT`. The https download carries the cookies and User-Agent of `context` (`NOT_FOUND` when it is not a running context of the manifest). `filename` is 1 to 128 characters without `/`. The file goes to Downloads.
+- `share.open` needs at least one field. `title` is at most 200 characters, `text` 4000, and `url` is `http` or `https`. The answer means the share sheet showed, not that the user shared.
+- `links.openExternal` takes `mailto`, `tel`, `sms`, `smsto`, `geo`, `intent` and `https`. An `https` link opens only in an app that claims it, never in a browser; on Android 10 and earlier, and when no app claims it, the answer is `NOT_FOUND`.
+- `notifications.enable` needs `capabilities.notifications`, else `CONFIGURATION_REQUIRED`. It turns on the applet's notifications as the Applet info switch does, asking Android first on Android 13 and later. `enabled` is false when the user or Android refused.
+- `page.share` is the page agent's `navigator.share` for a website that has none in the WebView. It takes the same fields and limits as `share.open`. It works only while the context is revealed, and only when `active` is true, because the user tapped the website itself: otherwise it answers `USER_ACTION_REQUIRED`. A tap on the applet UI does not count, and it needs `limits.userActions`.
+- `page.files` carries picked files to the page for the page agent's `attachFiles` operation. It needs an open call of the asking document (`NOT_FOUND`), a context that is not already loading another document (`CONTEXT_REPLACED`), and ids the applet still holds (`FILE_UNAVAILABLE`). The shell posts the bytes straight to the page, not through the host.
+- `limits.userActions` is true when the host takes these methods and `attachFiles`. It is absent in an older Genesis.
+
+## Grants
+
+A hidden context's page cannot show UI of its own: it may not go fullscreen, download a file, open a window, hand a link to another app or ask for the location. `context.grant` lets it do one of these once, right after the user's tap on the applet UI:
+
+```json
+{ "type": "request", "documentId": "d3", "requestId": 52, "method": "context.grant", "params": { "id": "main", "grant": "fullscreen" } }
+```
+
+```json
+{ "type": "response", "documentId": "d3", "requestId": 52, "result": { "granted": true, "expiresInMs": 5000 } }
+```
+
+- `grant` is `fullscreen`, `download`, `window`, `handoff` or `location`. `context.grant` is a user action: without a fresh tap on the applet UI it answers `USER_ACTION_REQUIRED` and grants nothing (see [User actions](#user-actions)). An unknown `id` is `NOT_FOUND`.
+- A revealed context needs no grant, because the user taps the website itself: the answer is `{ granted: true, expiresInMs: 0 }` at once, and no `context.grantEnded` follows.
+- The page has 5 seconds to use the grant, once. Then the foreground drives the page to the feature, usually with a trusted click (`await ctx.allow("fullscreen")`, then `click` with `input: "trusted"`).
+- `fullscreen` shows the page's fullscreen view over everything; the context stays hidden, and Back or the page's own exit returns to the applet. `download` saves an `http`, `https` or `data:` download to Downloads, and a `blob:` one on a declared origin, where the page agent reads it. A `blob:` or `data:` file takes the `download` name of the link the user clicked, when the page agent saw the click. `window` opens the page's popup in a sheet over the applet; closing it returns to the applet. `handoff` lets one link open in another app. `location` shows Genesis's location prompt for the page's origin over the applet.
+- A `window` or `handoff` grant overrides the 5-second block after trusted input (see [Trusted input](#trusted-input)) for that one request.
+- One grant per context: a new grant replaces an unused one. The grant ends when it is used, after 5 seconds, and when the page navigates, the context is revealed or covered, a popup opens or the view goes away. Each end sends `context.grantEnded { id, grant, used }`.
+- `limits.grants` is true when the host takes `context.grant`. It is absent in an older Genesis.
 
 ## Error codes
 
@@ -509,6 +572,9 @@ The agent never reads or writes the value of a password field, a hidden input, o
 | `PROTECTED_FIELD` | The input would write into a protected field. |
 | `INPUT_UNAVAILABLE` | Trusted input is not available, or the shell could not dispatch it. |
 | `UNKNOWN_OPERATION` | The page agent has no such operation. |
+| `USER_ACTION_REQUIRED` | The action needs a fresh tap on the applet UI, and there was none or it was already used. Nothing happened. |
+| `FILE_UNAVAILABLE` | A file id is unknown, expired or released, or its file can no longer be read. |
+| `RATE_LIMITED` | The context's input budget is empty. Nothing reached the page; `details.retryAfterMs` says when one more input is allowed. |
 
 `packages/core/src/errors.ts` and `crates/contracts` list the same codes.
 
@@ -534,6 +600,9 @@ The agent never reads or writes the value of a password field, a hidden input, o
 | `historyEntriesMax` | History entries per watch whose last copy the client keeps. |
 | `watchesMax` | Open watches per context document. |
 | `trustedInput` | True when the shell can send real input to a hidden context. Absent in an older Genesis. |
+| `userActions` | True when the foreground can pick files, save, share, open links in apps and turn on notifications, and attach picked files with `attachFiles`. Absent in an older Genesis. |
+| `grants` | True when the foreground can let a hidden page use one website feature once with `context.grant`. Absent in an older Genesis. |
+| `inputBurst`, `inputRefillMs` | A context's input budget: input page calls at once (20), and milliseconds for one to come back (1000). Absent in an older Genesis, which has no budget. |
 
 ## Versions
 

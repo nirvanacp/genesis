@@ -31,6 +31,17 @@ export interface Limits {
   watchesMax: number;
   /** The shell can send real input to a hidden context (`page.input`). Absent in an older Genesis. */
   trustedInput?: boolean;
+  /**
+   * The foreground can pick files, save, share, open links in apps and turn on notifications
+   * after a tap, and attach picked files to a page (`attachFiles`). Absent in an older Genesis.
+   */
+  userActions?: boolean;
+  /** The foreground can let a hidden page use one website feature once (`context.grant`). Absent in an older Genesis. */
+  grants?: boolean;
+  /** Input page calls one context takes at once before `RATE_LIMITED`. Absent in an older Genesis, which has no limit. */
+  inputBurst?: number;
+  /** Milliseconds for one input call of the burst to come back. */
+  inputRefillMs?: number;
 }
 
 /** The first message a document sends. */
@@ -122,8 +133,10 @@ export type ForegroundMethod =
   | "context.reveal" | "context.cover"
   | "session.save"
   | "back.handled" | "back.leave"
-  | "page.call" | "page.cancel";
-export type ContextMethod = "page.result" | "page.progress" | "page.emit" | "page.input";
+  | "page.call" | "page.cancel"
+  | "context.grant"
+  | "files.pick" | "files.release" | "downloads.save" | "share.open" | "links.openExternal" | "notifications.enable";
+export type ContextMethod = "page.result" | "page.progress" | "page.emit" | "page.input" | "page.files" | "page.share";
 export type Method = ForegroundMethod | ContextMethod;
 
 export type ForegroundEventName =
@@ -131,7 +144,8 @@ export type ForegroundEventName =
   | "context.navigated" | "context.started" | "context.gone"
   | "user.viewWebsite" | "user.showContext" | "user.done"
   | "back" | "retired"
-  | "context.bound" | "page.emit" | "page.progress";
+  | "context.bound" | "page.emit" | "page.progress"
+  | "context.grantEnded";
 export type ContextEventName = "retired" | "call" | "cancel" | "reset";
 export type EventName = ForegroundEventName | ContextEventName;
 
@@ -150,6 +164,103 @@ export interface NotificationInput {
 /** `posted` is true when Genesis accepted it; the user decides in Applet info whether it shows. */
 export interface NotificationResult {
   posted: boolean;
+}
+
+/** How long the shell has for a user action, which can wait on the user in a picker or a prompt. */
+export const USER_ACTION_DEADLINE_MS = 600_000;
+/** The most `accept` entries of `files.pick`. */
+export const ACCEPT_MAX = 16;
+/** The most files one `files.pick` returns and one `attachFiles` attaches. */
+export const FILES_MAX = 16;
+/** The largest picked file, in bytes. */
+export const FILE_BYTES_MAX = 64 * 1024 * 1024;
+/** The most bytes one `attachFiles` sends. */
+export const FILES_BYTES_MAX = 128 * 1024 * 1024;
+/** The longest `data:` URL `downloads.save` takes. */
+export const SAVE_DATA_URL_MAX = 2 * 1024 * 1024;
+
+/**
+ * Params of `files.pick`. `accept` holds up to 16 MIME types (`image/*`) or `.ext` suffixes;
+ * empty accepts any file.
+ */
+export interface FilesPick {
+  accept?: string[];
+  multiple?: boolean;
+}
+
+/** One picked file. `id` is 32 hex characters and stays valid until released, for at most 30 minutes. */
+export interface FileHandle {
+  id: string;
+  name: string;
+  type: string;
+  size: number;
+}
+
+/** Result of `files.pick`: empty when the user cancelled. At most 16 files of 64 MiB each. */
+export interface FilesPicked {
+  files: FileHandle[];
+}
+
+/**
+ * Params of `downloads.save`: `url` is https, or a `data:` URL up to 2 MiB, without credentials;
+ * the https download carries the cookies of `context`. `filename` is 1 to 128 characters without `/`.
+ */
+export interface DownloadSave {
+  context: string;
+  url: string;
+  filename?: string;
+}
+
+/** Params of `share.open`: at least one field; `title` up to 200 characters, `text` 4000, `url` http or https. */
+export interface ShareInput {
+  title?: string;
+  text?: string;
+  url?: string;
+}
+
+/** Params of `page.files`, sent by the page agent for an open call. Answers `{count}`. */
+export interface PageFiles {
+  callId: string;
+  ids: string[];
+}
+
+/**
+ * Params of `page.share`, the website's own `navigator.share` on a revealed context. `active` is
+ * the page's `navigator.userActivation.isActive`. Answers `{shown: true}`.
+ */
+export interface PageShare extends ShareInput {
+  active: boolean;
+}
+
+/** How long a one-time grant lasts unused, in milliseconds. */
+export const GRANT_MS = 5_000;
+
+/**
+ * A website feature a hidden page may use once after the user's tap: `fullscreen` a video,
+ * `download` a file, open a `window`, `handoff` a link to another app, or ask for `location`.
+ */
+export type GrantKind = "fullscreen" | "download" | "window" | "handoff" | "location";
+
+/** Params of `context.grant`. */
+export interface ContextGrant {
+  id: string;
+  grant: GrantKind;
+}
+
+/** Result of `context.grant`. `expiresInMs` is 0 for a revealed context, which needs no grant. */
+export interface GrantResult {
+  granted: true;
+  expiresInMs: number;
+}
+
+/**
+ * Data of the foreground event `context.grantEnded`: `used` when the page used the grant,
+ * otherwise it expired or a navigation, reveal, cover or popup cleared it.
+ */
+export interface GrantEnded {
+  id: string;
+  grant: GrantKind;
+  used: boolean;
 }
 
 /** `push` adds a history entry; `replace` replaces the current one. */
@@ -303,7 +414,7 @@ export type PageOp =
   | "info" | "read" | "inspect"
   | "watch.open" | "watch.close" | "watch.resync"
   | "click" | "longPress" | "hover" | "unhover" | "focus" | "blur"
-  | "fill" | "type" | "press" | "select" | "check" | "scroll" | "submit"
+  | "fill" | "type" | "press" | "select" | "check" | "scroll" | "submit" | "attachFiles"
   | "wait" | "run" | "invoke";
 
 /** Evidence that an input took effect: an element state, or a read whose value must be truthy. */
@@ -344,10 +455,17 @@ export type Step =
   | ({ op: "press"; key: string; modifiers?: string[]; target?: Locator } & InputOptions)
   | ({ op: "select"; target: Locator; values?: string[]; labels?: string[] } & InputOptions)
   | ({ op: "check"; target: Locator; checked: boolean } & InputOptions)
+  | ({ op: "attachFiles"; target: Locator; files: string[]; via?: AttachVia } & InputOptions)
   | { op: "scroll"; target?: Locator; to: ScrollTo }
   | { op: "submit"; target: Locator }
   | { op: "wait"; for: WaitFor; timeoutMs: number }
   | { op: "navigate"; url: string };
+
+/**
+ * How `attachFiles` hands picked files to the page: `input` sets a file input's files (default);
+ * `drop` and `paste` dispatch those events with the files on the target.
+ */
+export type AttachVia = "input" | "drop" | "paste";
 
 export type ScrollTo = "start" | "end" | "intoView" | { x?: number; y?: number } | { by: { x?: number; y?: number } };
 

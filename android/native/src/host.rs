@@ -122,6 +122,11 @@ impl Host {
             ShellEvent::RemoveApplet { applet_id } => self.remove_applet(&applet_id),
             ShellEvent::ClearData { applet_id } => self.clear_data(&applet_id),
             ShellEvent::KeepVersion { applet_id } => self.keep_version(&applet_id),
+            ShellEvent::JsDialog { view, token } => self.js_dialog(&view, token, now),
+            ShellEvent::JsDialogClosed { view, token } => self.js_dialog_closed(&view, token, now),
+            ShellEvent::UserActionDone { token, ok, code, message, result } => self.user_action_done(token, ok, code, message, result),
+            ShellEvent::FilesSent { token, ok, code, message } => self.files_sent(token, ok, code, message),
+            ShellEvent::GrantEnded { view, grant, used } => self.grant_ended(&view, grant, used),
         }
         Ok(std::mem::take(&mut self.out))
     }
@@ -659,6 +664,8 @@ impl Host {
         if !self.is_live(&view.applet_id) {
             return;
         }
+        // The old page's dialog went with it.
+        self.end_dialog(&view.applet_id, id, None, now);
         let origin = |u: &str| url::Url::parse(u).map(|u| u.origin().ascii_serialization()).ok();
         match self.documents.current_mut(&view) {
             Some(document) if !document.started && origin(&document.url).is_some_and(|o| Some(o) == origin(&url)) => {
@@ -798,10 +805,12 @@ impl Host {
         }
     }
 
-    /// One live applet's deadlines: its page calls, its Back slot, its unbound documents and its suspension.
+    /// One live applet's deadlines: its page calls, its Back slot, its
+    /// unbound documents and its suspension. A call whose context has a dialog open waits.
     fn tick_session(&mut self, applet_id: &str, now: u64) {
         let Some(session) = self.session_mut(applet_id) else { return };
-        let expired = session.take_calls(|c| c.deadline_ms <= now);
+        let waiting: Vec<String> = session.dialogs.keys().cloned().collect();
+        let expired = session.take_calls(|c| c.deadline_ms <= now && !waiting.contains(&c.context_id));
         for (_, handle) in expired {
             self.fail_call(applet_id, &handle, ErrorBody::new(ErrorCode::Deadline, "The page did not answer the call in time"));
         }

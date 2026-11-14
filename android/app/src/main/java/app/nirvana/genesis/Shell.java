@@ -14,6 +14,8 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowInsets;
 import android.view.accessibility.AccessibilityNodeInfo;
+import android.webkit.JsPromptResult;
+import android.webkit.JsResult;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.widget.FrameLayout;
@@ -57,6 +59,8 @@ final class Shell implements Views.Listener, Ui.Actions {
         void launcherShown();
         boolean chooseFiles(WebChromeClient.FileChooserParams params, ValueCallback<Uri[]> callback, java.util.function.BooleanSupplier valid);
         void cancelInvalidFiles();
+        /** Opens the system picker for the applet UI's `files.pick`; `callback` gets null when nothing usable was picked. */
+        void chooseAppletFiles(String[] accept, boolean multiple, ValueCallback<Uri[]> callback, java.util.function.BooleanSupplier valid);
         /** The applet's "Hide in recent apps" choice changed; its window applies it. */
         void privacyChanged(String appletId);
         /** Opens the system picker for a bundle file, with its release record if the user picks one. */
@@ -137,6 +141,14 @@ final class Shell implements Views.Listener, Ui.Actions {
     private final Notices notices;
     private final Settings settings;
     private final Map<String, Views.Page> pages = new HashMap<>();
+    /** The applet UI's user actions, the tap that allows them, and its picked files. */
+    private final UserActions actions;
+    /** Hidden pages' open JavaScript dialogs by token, until answered or closed. */
+    private final Map<Long, PendingDialog> dialogs = new HashMap<>();
+    /** The `blob:` download each page's agent is reading for the shell. */
+    private final Map<Views.Page, PendingBlob> blobs = new HashMap<>();
+    private long blobTokens;
+    private static long nextDialog;
     private Views.Page revealedPage;
     /** The one window the revealed context opened, or null. */
     private Views.Page popup;
@@ -161,6 +173,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         sites = SiteData.defaultProfile(activity);
         state = state(activity);
         views = new Views(activity, this);
+        actions = new UserActions(activity, this, owner);
         tokens = new Tokens(activity);
         ui = new Ui(activity, tokens, this);
         addFlow = new AddFlow(ui);
@@ -196,7 +209,14 @@ final class Shell implements Views.Listener, Ui.Actions {
         barrier.setBackgroundColor(tokens.surface);
         barrier.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         applet.addView(barrier, new FrameLayout.LayoutParams(-1, -1));
-        foreground = new FrameLayout(activity);
+        // A finger lifted on the applet UI allows one user action. The website bar, the revealed
+        // website and its popups sit above this container and keep their touches.
+        foreground = new FrameLayout(activity) {
+            @Override public boolean dispatchTouchEvent(android.view.MotionEvent event) {
+                if (event.getActionMasked() == android.view.MotionEvent.ACTION_UP) actions.tapped();
+                return super.dispatchTouchEvent(event);
+            }
+        };
         applet.addView(foreground, new FrameLayout.LayoutParams(-1, -1));
         splash = new Splash(activity, tokens);
         applet.addView(splash, new FrameLayout.LayoutParams(-1, -1));
@@ -306,7 +326,12 @@ final class Shell implements Views.Listener, Ui.Actions {
     void destroyView(JSONObject ref) {
         Views.Page page = pages.remove(key(ref));
         if (page == null) return;
+        closeDialogs(page);
+        endGrant(page, false);
+        dropBlob(page);
         if (page == revealedPage) dropRevealed();
+        else if (popup != null && popup.opener == page) closePopup();
+        if (page.isForeground()) actions.clear();
         page.destroy();
     }
 
@@ -372,6 +397,9 @@ final class Shell implements Views.Listener, Ui.Actions {
     void revealContext(JSONObject ref, String title) {
         Views.Page page = pages.get(key(ref));
         if (page == null || !page.isContext()) return;
+        endGrants();
+        // A window a hidden context opened with its grant shows over the applet, not over a website.
+        if (popup != null && popup.opener != revealedPage) closePopup();
         if (revealedPage != null && revealedPage != page) coverContext();
         if (revealedPage == page) { bar.setTitle(title); return; }
         sources.removeView(page.web);
@@ -396,6 +424,7 @@ final class Shell implements Views.Listener, Ui.Actions {
      */
     @SuppressLint("AccessibilityFocus")
     void coverContext() {
+        endGrants();
         Views.Page page = revealedPage;
         if (page == null) return;
         closeCustomView();
@@ -459,6 +488,279 @@ final class Shell implements Views.Listener, Ui.Actions {
                     .put("ok", message == null).put("message", message == null ? JSONObject.NULL : message));
             } catch (JSONException ignored) { /* Unreachable for these values. */ }
         });
+    }
+
+    /** Carries out a user action for the applet UI, after checking its tap. `view` is the context it concerns, or null. */
+    void userAction(long token, JSONObject view, JSONObject action) {
+        if (appletId == null) {
+            JSONObject refusal = UserActions.done(token, "NOT_FOUND", "The applet is not open", null);
+            bar.post(() -> owner.send(refusal));
+            return;
+        }
+        actions.run(appletId, token, view, action);
+    }
+
+    /**
+     * A `blob:` download the page agent is reading: its header, then its bytes. For a `data:`
+     * download, which the shell reads itself, the agent only names the file.
+     */
+    private static final class PendingBlob {
+        final long token;
+        /** From the Content-Disposition, or null. */
+        final String name;
+        /** The link's `download` name from the agent, which wins over `name`, or null. */
+        String named;
+        /** The `data:` URL whose name the agent was asked for, or null for a blob. */
+        String dataUrl;
+        /** The page address the download came from, for the repeat-download question. */
+        String from;
+        String mime;
+        long size = -1;
+        /** Base64 chunks the header announced; -1 for one ArrayBuffer. */
+        int chunks = -1;
+        int received;
+        java.io.ByteArrayOutputStream bytes;
+        Runnable timeout;
+
+        PendingBlob(long token, String name, String mime) {
+            this.token = token;
+            this.name = name;
+            this.mime = mime;
+        }
+    }
+
+    /** The most bytes a page agent may hand over for one download (the SDK's `BLOB_DOWNLOAD_LIMIT`). */
+    private static final long BLOB_LIMIT = 128L * 1024 * 1024;
+    /** How long the agent has to hand over a blob download. */
+    private static final long BLOB_TIMEOUT_MS = 60_000;
+    /** How long the agent has to name a `data:` download before it is saved under its own name. */
+    private static final long DATA_NAME_TIMEOUT_MS = 1_000;
+
+    /** Asks the page agent for the bytes of `url`; a new download replaces one still under way. */
+    private void requestBlob(Views.Page page, String url, String name, String mime) {
+        PendingBlob blob = newBlob(page, name, mime, BLOB_TIMEOUT_MS);
+        try {
+            page.post(new JSONObject().put("type", "genesis.blob").put("token", blob.token).put("url", url)
+                .put("buffers", WebFeatures.has(androidx.webkit.WebViewFeature.WEB_MESSAGE_ARRAY_BUFFER)).toString());
+        } catch (JSONException ignored) { /* Unreachable for these values. */ }
+    }
+
+    /**
+     * Asks the page agent for the `download` name of the `data:` link the user clicked, then saves
+     * `url`. The name comes first, since the agent remembers the click only briefly.
+     */
+    private void requestDataName(Views.Page page, String url, String name, String from) {
+        PendingBlob blob = newBlob(page, name, null, DATA_NAME_TIMEOUT_MS);
+        blob.dataUrl = url;
+        blob.from = from;
+        try { page.post(new JSONObject().put("type", "genesis.blob").put("token", blob.token).put("url", "data:").put("nameOnly", true).toString()); }
+        catch (JSONException ignored) { /* Unreachable for these values. */ }
+    }
+
+    /** Starts waiting for the agent's answer, in place of a download still under way. */
+    private PendingBlob newBlob(Views.Page page, String name, String mime, long timeoutMs) {
+        dropBlob(page);
+        PendingBlob blob = new PendingBlob(++blobTokens, name, mime);
+        blobs.put(page, blob);
+        blob.timeout = () -> { if (blobs.get(page) == blob) failBlob(page); };
+        bar.postDelayed(blob.timeout, timeoutMs);
+        return blob;
+    }
+
+    @Override public void blobMessage(Views.Page page, String payload) {
+        PendingBlob blob = blobs.get(page);
+        if (blob == null) return;
+        JSONObject message;
+        try { message = new JSONObject(payload); } catch (JSONException error) { failBlob(page); return; }
+        if (message.optLong("token", -1) != blob.token) return;
+        if ("genesis.blob".equals(message.optString("type"))) {
+            String named = downloadName(message.optString("name", ""));
+            if (blob.dataUrl != null) {
+                blobs.remove(page);
+                bar.removeCallbacks(blob.timeout);
+                saveData(page, blob, named != null ? named : blob.name);
+                return;
+            }
+            if (named != null) blob.named = named;
+            long size = message.optLong("size", -1);
+            if (message.has("error") || blob.bytes != null || size < 0 || size > BLOB_LIMIT) { failBlob(page); return; }
+            String mime = message.optString("mime", "").split(";", 2)[0].trim();
+            if (!mime.isEmpty()) blob.mime = mime;
+            blob.size = size;
+            blob.chunks = message.optInt("chunks", -1);
+            blob.bytes = new java.io.ByteArrayOutputStream((int) size);
+            if (blob.chunks == 0) finishBlob(page, blob);
+        } else if ("genesis.blobChunk".equals(message.optString("type"))) {
+            if (blob.bytes == null || blob.chunks < 0 || message.optInt("seq", -1) != blob.received) { failBlob(page); return; }
+            byte[] piece;
+            try { piece = android.util.Base64.decode(message.optString("data"), android.util.Base64.DEFAULT); }
+            catch (IllegalArgumentException error) { failBlob(page); return; }
+            blob.bytes.write(piece, 0, piece.length);
+            if (blob.bytes.size() > blob.size) { failBlob(page); return; }
+            if (++blob.received == blob.chunks) finishBlob(page, blob);
+        }
+    }
+
+    @Override public void blobBytes(Views.Page page, byte[] bytes) {
+        PendingBlob blob = blobs.get(page);
+        if (blob == null || blob.bytes == null || blob.chunks != -1 || blob.bytes.size() > 0) return;
+        blob.bytes.write(bytes, 0, bytes.length);
+        finishBlob(page, blob);
+    }
+
+    private void finishBlob(Views.Page page, PendingBlob blob) {
+        if (blob.bytes.size() != blob.size) { failBlob(page); return; }
+        blobs.remove(page);
+        bar.removeCallbacks(blob.timeout);
+        String mime = blob.mime == null || blob.mime.isEmpty() ? "application/octet-stream" : blob.mime;
+        String name = blob.named != null ? blob.named : blob.name != null ? blob.name : UserActions.defaultName(mime);
+        byte[] bytes = blob.bytes.toByteArray();
+        UserActions.IO.execute(() -> actions.saveBytes(name, mime, bytes));
+    }
+
+    /** Ends the agent's pending download of `page`: a blob fails, and a `data:` URL saves under its own name. */
+    private void failBlob(Views.Page page) {
+        PendingBlob blob = blobs.get(page);
+        if (blob == null) return;
+        dropBlob(page);
+        if (blob.dataUrl == null) Toast.makeText(activity, "The download couldn't be read", Toast.LENGTH_SHORT).show();
+    }
+
+    /** Stops waiting for the agent: a blob download is dropped, and a `data:` URL saves under its own name. */
+    private void dropBlob(Views.Page page) {
+        PendingBlob blob = blobs.remove(page);
+        if (blob == null) return;
+        bar.removeCallbacks(blob.timeout);
+        if (blob.dataUrl != null) saveData(page, blob, blob.name);
+    }
+
+    private void saveData(Views.Page page, PendingBlob blob, String name) {
+        confirmDownload(page, blob.from, name, () -> actions.saveDownload(blob.dataUrl, name));
+    }
+
+    /** A file name the page gave, without any folder, or null when it gave none. */
+    private static String downloadName(String name) {
+        String base = name.substring(Math.max(name.lastIndexOf('/'), name.lastIndexOf('\\')) + 1).trim();
+        return base.isEmpty() || base.equals(".") || base.equals("..") ? null : base;
+    }
+
+    /**
+     * Lets hidden context `view` use `kind` once within `GRANT_MS`, after the tap the caller used.
+     * A new grant replaces an unused one. Returns the `userActionDone` answer.
+     */
+    JSONObject grant(long token, JSONObject view, String kind) {
+        Views.Page page = view == null ? null : pages.get(key(view));
+        if (page == null || !page.isContext()) return UserActions.done(token, "NOT_FOUND", "The website is gone", null);
+        try {
+            if (page.isRevealed()) return UserActions.done(token, null, null, new JSONObject().put("granted", true).put("expiresInMs", 0));
+            endGrant(page, false);
+            page.grant = kind;
+            page.grantUntil = SystemClock.uptimeMillis() + SitePolicy.GRANT_MS;
+            page.grantExpiry = () -> { if (page.grant != null) endGrant(page, false); };
+            bar.postDelayed(page.grantExpiry, SitePolicy.GRANT_MS);
+            return UserActions.done(token, null, null, new JSONObject().put("granted", true).put("expiresInMs", SitePolicy.GRANT_MS));
+        } catch (JSONException error) {
+            throw new IllegalStateException(error);
+        }
+    }
+
+    /** A page used its grant: it ends as used. A window grant leaves the page `GRANT_MS` to show the window the host may still ask for. */
+    @Override public void useGrant(Views.Page page) {
+        if (page.grant == null) return;
+        if (SitePolicy.WINDOW.equals(page.grant)) page.windowUntil = SystemClock.uptimeMillis() + SitePolicy.GRANT_MS;
+        endGrant(page, true);
+    }
+
+    /** Ends the page's grant, if any, and tells the host after the command batch under way. */
+    private void endGrant(Views.Page page, boolean used) {
+        String grant = page.grant;
+        if (grant == null) return;
+        page.grant = null;
+        page.grantUntil = 0;
+        if (page.grantExpiry != null) bar.removeCallbacks(page.grantExpiry);
+        page.grantExpiry = null;
+        bar.post(() -> {
+            try { owner.send(Bridge.event("grantEnded").put("view", page.ref).put("grant", grant).put("used", used)); }
+            catch (JSONException ignored) { /* Unreachable for these values. */ }
+        });
+    }
+
+    /** What the user sees changed, so no hidden page keeps the grant their tap gave. */
+    private void endGrants() {
+        for (Views.Page page : pages.values()) endGrant(page, false);
+    }
+
+    /** Posts picked files to the page agent of `ref`'s page, for its `attachFiles`. */
+    void sendFiles(JSONObject ref, long token, JSONArray files) { actions.send(pages.get(key(ref)), token, files); }
+
+    /** The applet let go of these picked files. */
+    void releaseFiles(JSONArray ids) { actions.release(ids); }
+
+    @Override public android.webkit.WebResourceResponse pickedFile(String id) { return actions.preview(id); }
+
+    /** A hidden page's JavaScript dialog: the page waits until `result` is answered. */
+    private static final class PendingDialog {
+        final Views.Page page;
+        final String kind, message, defaultValue;
+        final JsResult result;
+        /** Genesis's dialog that shows it over the applet UI. */
+        android.app.Dialog shown;
+
+        PendingDialog(Views.Page page, String kind, String message, String defaultValue, JsResult result) {
+            this.page = page;
+            this.kind = kind;
+            this.message = message;
+            this.defaultValue = defaultValue;
+            this.result = result;
+        }
+
+        /** OK, with a prompt's `value` (its default when null), or Cancel. */
+        void answer(boolean accept, String value) {
+            if (!accept) result.cancel();
+            else if (result instanceof JsPromptResult) ((JsPromptResult) result).confirm(value != null ? value : defaultValue != null ? defaultValue : "");
+            else result.confirm();
+        }
+    }
+
+    /** Shows dialog `token` over the applet UI, titled with the page's origin; the website stays hidden. */
+    private void showDialog(long token, PendingDialog dialog) {
+        android.widget.EditText field = null;
+        MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(activity)
+            .setTitle(Views.origin(String.valueOf(dialog.page.web.getUrl())))
+            .setMessage(dialog.message);
+        if ("prompt".equals(dialog.kind)) {
+            LinearLayout form = new LinearLayout(activity);
+            form.setPadding(tokens.dp(24), tokens.dp(8), tokens.dp(24), 0);
+            field = authField("", android.text.InputType.TYPE_CLASS_TEXT);
+            if (dialog.defaultValue != null) field.setText(dialog.defaultValue);
+            form.addView(field, new LinearLayout.LayoutParams(-1, -2));
+            builder.setView(form);
+        }
+        android.widget.EditText input = field;
+        builder.setPositiveButton("OK", (d, w) -> closeDialog(token, true, input == null ? null : input.getText().toString()));
+        if (!"alert".equals(dialog.kind)) builder.setNegativeButton("Cancel", (d, w) -> closeDialog(token, false, null));
+        builder.setOnCancelListener(d -> closeDialog(token, false, null));
+        dialog.shown = builder.show();
+    }
+
+    /** Ends dialog `token` with the user's answer, or cancels it, and tells the host its calls' deadlines run again. */
+    private void closeDialog(long token, boolean accept, String value) {
+        PendingDialog dialog = dialogs.remove(token);
+        if (dialog == null) return;
+        if (dialog.shown != null) dialog.shown.dismiss();
+        dialog.answer(accept, value);
+        // Sent after the current command batch, since a destroyView that closes it runs inside one.
+        bar.post(() -> {
+            try { owner.send(Bridge.event("jsDialogClosed").put("view", dialog.page.ref).put("token", token)); }
+            catch (JSONException ignored) { /* Unreachable for these values. */ }
+        });
+    }
+
+    /** The page navigated or is going away: its open dialogs are cancelled. */
+    private void closeDialogs(Views.Page page) {
+        List<Long> open = new ArrayList<>();
+        for (Map.Entry<Long, PendingDialog> entry : dialogs.entrySet()) if (entry.getValue().page == page) open.add(entry.getKey());
+        for (long token : open) closeDialog(token, false, null);
     }
 
     /** Shows the foreground once its first frame with applet content is ready to draw. */
@@ -578,22 +880,38 @@ final class Shell implements Views.Listener, Ui.Actions {
      * to Genesis's own Downloads folder.
      */
     @Override public void download(Views.Page page, String url, String userAgent, String disposition, String mimeType) {
-        if (!SitePolicy.mayShowUi(page)) return;
+        if (!SitePolicy.mayUse(page, SitePolicy.DOWNLOAD)) return;
+        useGrant(page);
         // A window that only started a download has nothing to show.
         if (page == popup && page.web.copyBackForwardList().getSize() == 0) bar.post(() -> { if (page == popup) closePopup(); });
         String scheme = Uri.parse(url).getScheme();
-        if (!"https".equalsIgnoreCase(scheme) && !"http".equalsIgnoreCase(scheme)) {
+        boolean web = "https".equalsIgnoreCase(scheme) || "http".equalsIgnoreCase(scheme);
+        boolean blob = "blob".equalsIgnoreCase(scheme);
+        // Only the page agent can read a blob: URL, and it runs on declared origins only.
+        if ((!web && !blob && !"data".equalsIgnoreCase(scheme)) || (blob && page.reply == null)) {
             Toast.makeText(activity, "This download isn't supported in Genesis", Toast.LENGTH_SHORT).show();
             return;
         }
-        String name = android.webkit.URLUtil.guessFileName(url, disposition, mimeType);
+        // A data: or blob: URL names no file: a Content-Disposition with a file name can, and so can
+        // the clicked link's `download` attribute, which only the page agent knows.
+        boolean named = disposition != null && disposition.toLowerCase(java.util.Locale.ROOT).contains("filename");
+        String name = web || named ? android.webkit.URLUtil.guessFileName(web ? url : "", disposition, mimeType) : null;
+        String from = web ? url : String.valueOf(page.web.getUrl());
+        if (!web && !blob && page.reply != null) { requestDataName(page, url, name, from); return; }
+        confirmDownload(page, from, name, web ? () -> startDownload(page, url, userAgent, mimeType, name)
+            : blob ? () -> requestBlob(page, url, name, mimeType)
+            : () -> actions.saveDownload(url, name));
+    }
+
+    /** Runs `start`, asking first when `page` already downloaded a file. */
+    private void confirmDownload(Views.Page page, String from, String name, Runnable start) {
         // A popup counts against the page that opened it, since each download can open a new one.
         Views.Page counted = page.opener != null ? page.opener : page;
-        if (counted.downloads++ == 0) { startDownload(page, url, userAgent, mimeType, name); return; }
+        if (counted.downloads++ == 0) { start.run(); return; }
         new MaterialAlertDialogBuilder(activity)
             .setTitle("Download another file?")
-            .setMessage(linkTitle(url) + " wants to download " + name + ".")
-            .setPositiveButton("Download", (d, w) -> startDownload(page, url, userAgent, mimeType, name))
+            .setMessage(linkTitle(from) + " wants to download " + (name == null ? "a file" : name) + ".")
+            .setPositiveButton("Download", (d, w) -> start.run())
             .setNegativeButton("Cancel", null)
             .show();
     }
@@ -602,7 +920,7 @@ final class Shell implements Views.Listener, Ui.Actions {
      * DownloadManager sends the Cookie header to every host a redirect reaches. Fetching the file in
      * the shell would scope cookies per host; until then this is a known limit.
      */
-    private void startDownload(Views.Page page, String url, String userAgent, String mimeType, String name) {
+    boolean startDownload(Views.Page page, String url, String userAgent, String mimeType, String name) {
         android.app.DownloadManager.Request request = new android.app.DownloadManager.Request(Uri.parse(url))
             .setMimeType(mimeType)
             .setTitle(name)
@@ -615,8 +933,10 @@ final class Shell implements Views.Listener, Ui.Actions {
         try {
             ((android.app.DownloadManager) activity.getSystemService(android.content.Context.DOWNLOAD_SERVICE)).enqueue(request);
             Toast.makeText(activity, "Downloading " + name, Toast.LENGTH_SHORT).show();
+            return true;
         } catch (RuntimeException error) {
             showError("The download couldn't start: " + error.getMessage());
+            return false;
         }
     }
 
@@ -658,6 +978,9 @@ final class Shell implements Views.Listener, Ui.Actions {
         if (revealedPage != null) {
             revealed.setVisibility(View.VISIBLE);
             bar.setUrl(revealedPage.web.getUrl());
+        } else {
+            bar.setVisibility(View.GONE);
+            GenesisMenu.tint(menu, tokens, false);
         }
         return true;
     }
@@ -678,10 +1001,14 @@ final class Shell implements Views.Listener, Ui.Actions {
     }
 
     private void destroyAll() {
+        endGrants();
+        blobs.clear();
         closeCustomView();
         cancelPrompts();
         dropRevealed();
         owner.cancelInvalidFiles();
+        actions.clear();
+        for (Views.Page page : pages.values()) closeDialogs(page);
         for (Views.Page page : pages.values()) page.destroy();
         pages.clear();
     }
@@ -691,6 +1018,9 @@ final class Shell implements Views.Listener, Ui.Actions {
 
     @Override public void documentStarted(Views.Page page, String url) {
         if (pages.get(key(page.ref)) != page) return;
+        closeDialogs(page);
+        endGrant(page, false);
+        page.windowUntil = 0;
         try { owner.send(Bridge.event("documentStarted").put("view", page.ref).put("url", url)); }
         catch (JSONException ignored) { /* Unreachable for string values. */ }
     }
@@ -717,7 +1047,11 @@ final class Shell implements Views.Listener, Ui.Actions {
         if (page == popup) { closePopup(); return; }
         if (pages.get(key(page.ref)) != page) return;
         pages.remove(key(page.ref));
+        closeDialogs(page);
+        endGrant(page, false);
+        dropBlob(page);
         if (page == revealedPage) dropRevealed();
+        else if (popup != null && popup.opener == page) closePopup();
         page.destroy();
         try { owner.send(Bridge.event("rendererGone").put("view", page.ref)); }
         catch (JSONException ignored) { /* Unreachable for these values. */ }
@@ -744,10 +1078,14 @@ final class Shell implements Views.Listener, Ui.Actions {
 
     /**
      * The opener keeps running behind the sheet, so `window.opener.postMessage` still reaches it,
-     * but it is no longer shown: its prompts and fullscreen video close and its capture stops.
+     * but it is no longer shown: its prompts and fullscreen video close and its capture stops. A
+     * hidden opener's sheet shows over the applet with the website bar, and Done or Back returns
+     * to the applet.
      */
     @Override public Views.Page openWindow(Views.Page opener) {
-        if (opener != revealedPage) return null;
+        if (!mayOpenWindow(opener)) return null;
+        opener.windowUntil = 0;
+        endGrants();
         closePopup();
         closeCustomView();
         cancelPrompts();
@@ -757,13 +1095,24 @@ final class Shell implements Views.Listener, Ui.Actions {
         popupSheet.setVisibility(View.VISIBLE);
         revealed.setVisibility(View.GONE);
         owner.cancelInvalidFiles();
+        if (opener != revealedPage) {
+            bar.setTitle(appletName);
+            bar.setReason(appletName, true, false);
+            bar.setVisibility(View.VISIBLE);
+            GenesisMenu.tint(menu, tokens, true);
+        }
         bar.setUrl(popup.web.getUrl());
         return popup;
     }
 
+    /** The revealed context, or a hidden one that used its window grant in the last `GRANT_MS`. */
+    private boolean mayOpenWindow(Views.Page opener) {
+        return opener == revealedPage || (opener.isContext() && SystemClock.uptimeMillis() < opener.windowUntil);
+    }
+
     /** A tapped link asks for a new window; the host decides where it goes. */
     @Override public void windowRequested(Views.Page page, String url) {
-        if (page != revealedPage) return;
+        if (!mayOpenWindow(page)) return;
         try { owner.send(Bridge.event("windowRequested").put("view", page.ref).put("url", url)); }
         catch (JSONException ignored) { /* Unreachable for these values. */ }
     }
@@ -774,7 +1123,7 @@ final class Shell implements Views.Listener, Ui.Actions {
      */
     void showWindow(JSONObject ref, String url) {
         Views.Page page = pages.get(key(ref));
-        if (page == null || page != revealedPage) return;
+        if (page == null) return;
         Views.Page window = openWindow(page);
         if (window != null) window.web.loadUrl(url);
     }
@@ -916,6 +1265,20 @@ final class Shell implements Views.Listener, Ui.Actions {
         Runnable cancel = cancelAuth;
         cancelAuth = null;
         if (cancel != null) cancel.run();
+    }
+
+    /**
+     * A hidden page's JavaScript dialog shows at once as Genesis's own dialog over the applet UI.
+     * The host only learns that it is open, so the page's calls stop using up their budget.
+     */
+    @Override public void jsDialog(Views.Page page, String kind, String message, String defaultValue, JsResult result) {
+        if (pages.get(key(page.ref)) != page) { result.cancel(); return; }
+        long token = ++nextDialog;
+        PendingDialog dialog = new PendingDialog(page, kind, message, defaultValue, result);
+        dialogs.put(token, dialog);
+        try { owner.send(Bridge.event("jsDialog").put("view", page.ref).put("token", token)); }
+        catch (JSONException ignored) { /* Unreachable for these values. */ }
+        showDialog(token, dialog);
     }
 
     /** A server's own sign-in prompt. Genesis passes the answer on and saves nothing. */
@@ -1354,6 +1717,11 @@ final class Shell implements Views.Listener, Ui.Actions {
         for (Views.Page page : pages.values()) if (page.isForeground()) return page;
         return null;
     }
+
+    boolean hasForeground() { return foregroundPage() != null; }
+
+    /** The page `ref` names, or null. */
+    Views.Page page(JSONObject ref) { return pages.get(key(ref)); }
 
     private static String key(JSONObject ref) { return ref.optString("appletId") + "\n" + ref.optString("role"); }
 

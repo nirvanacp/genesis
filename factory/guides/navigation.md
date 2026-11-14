@@ -126,7 +126,7 @@ Menus, sheets and dialogs drawn inside a screen are not history entries. Close t
 
 ## External origins
 
-A context can browse any web page. A link to an origin the manifest does not declare loads in the same context and shows as the website, under the website bar; the page module does not run there. Done or Back returns to the previous entry. Links with other schemes (`mailto:`, `tel:`, `intent:`, app links) open in Android only when the user taps them on the revealed website; a hidden context launches nothing.
+A context can browse any web page. A link to an origin the manifest does not declare loads in the same context and shows as the website, under the website bar; the page module does not run there. Done or Back returns to the previous entry. Links with other schemes (`mailto:`, `tel:`, `intent:`, app links) open in Android only when the user taps them on the revealed website; a hidden context launches nothing without a `handoff` grant. The website's own Share button (`navigator.share` with a title, text or link) opens Android's share sheet on declared origins while the website is revealed and the user just tapped it; a hidden page cannot share, and files are not shared. From the applet UI, share with `genesis.share` and open another app with `genesis.links.openExternal`, as [website features](website-features.md) shows.
 
 ## Links that open a new window
 
@@ -138,7 +138,7 @@ A tapped link that opens a new window (`target="_blank"`) on the revealed websit
 | A site another installed applet uses | That applet, with its own screen for the page. Several such applets ask the user to choose. |
 | Any other site | A website sheet over the revealed website, in the same sign-in. Back goes back inside the sheet, then closes it. |
 
-A window that a script opens from a tap, such as a sign-in with another account provider, opens as the sheet so the page keeps `window.opener`. A hidden context never opens a window, and a window without a tap is refused, so a page module must not rely on `window.open` or on clicking a `target="_blank"` link; navigate to the link's URL instead.
+A window that a script opens from a tap, such as a sign-in with another account provider, opens as the sheet so the page keeps `window.opener`. A hidden context opens a window only with a `window` grant (see [One-time grants](interactions.md#one-time-grants)); that window shows as a sheet over the applet under the website bar, and closing it returns to the applet. Any other window from a hidden context, and any window without a tap, is refused, so a page module must not rely on `window.open` or on clicking a `target="_blank"` link; navigate to the link's URL instead.
 
 ## Links from other apps
 

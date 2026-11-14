@@ -12,7 +12,8 @@ import {
   type ReactNode,
 } from "react";
 import { createRoot } from "react-dom/client";
-import type { ActionResult, Locator, ReadSpec } from "@genesis/core";
+import type { ActionResult, FilesPick, GrantKind, GrantResult, Locator, ReadSpec } from "@genesis/core";
+import type { PickedFile } from "./client/actions.js";
 import type { ContextHandle, ContextState, Expect, PendingInput, Watch, WatchOptions } from "./client/context.js";
 import { connect, type ConnectOptions, type Genesis } from "./client/session.js";
 import { emptyWatchValue, type WatchValue } from "./client/watch.js";
@@ -333,9 +334,70 @@ export function useService(serviceId: string) {
     genesis.services.request<T>(serviceId, path, options), [genesis, serviceId]);
 }
 
+/**
+ * One-time grants of a context (see `ContextHandle.allow`): `allow(kind)` asks for one from the
+ * user's tap, and `grant` is the kind the hidden page may use now, or null once it ended.
+ */
+export function useGrant(contextId?: string): { grant: GrantKind | null; allow(kind: GrantKind): Promise<GrantResult> } {
+  const handle = useContextHandle(contextId);
+  const [grant, setGrant] = useState<GrantKind | null>(null);
+  useEffect(() => {
+    setGrant(null);
+    return handle.onGrantEnded(ended => setGrant(current => (current === ended.grant ? null : current)));
+  }, [handle]);
+  const allow = useCallback(async (kind: GrantKind) => {
+    const result = await handle.allow(kind);
+    if (result.expiresInMs > 0) setGrant(kind);
+    return result;
+  }, [handle]);
+  return { grant, allow };
+}
+
 /** `post(input)` notifies the user; see `Genesis["notifications"]`. */
 export function useNotifications() {
   return useGenesis().notifications;
+}
+
+/**
+ * Files the user picks, held until removed or until the component unmounts, which releases them.
+ * `pick` is a user action: call it straight from a tap's handler. Each file has a `previewUrl` for
+ * an `<img>` or `<video>`, and its `id` goes to `attachFiles`. Never store the ids.
+ */
+export function useFilePicker() {
+  const genesis = useGenesis();
+  const [files, setFiles] = useState<readonly PickedFile[]>([]);
+  const held = useRef<readonly PickedFile[]>([]);
+  held.current = files;
+  const release = useCallback((ids: string[]) => {
+    genesis.files.release(ids).catch(error => console.error("Genesis files.release failed", error));
+  }, [genesis]);
+
+  useEffect(() => () => release(held.current.map(file => file.id)), [release]);
+
+  const pick = useCallback(async (options?: FilesPick) => {
+    const picked = await genesis.files.pick(options);
+    if (!picked.length) return picked;
+    const replaced = options?.multiple ? [] : held.current.map(file => file.id);
+    const next = options?.multiple ? [...held.current, ...picked] : picked;
+    held.current = next;
+    setFiles(next);
+    if (replaced.length) release(replaced);
+    return picked;
+  }, [genesis, release]);
+  const remove = useCallback((id: string) => {
+    if (!held.current.some(file => file.id === id)) return;
+    const next = held.current.filter(file => file.id !== id);
+    held.current = next;
+    setFiles(next);
+    release([id]);
+  }, [release]);
+  const clear = useCallback(() => {
+    const ids = held.current.map(file => file.id);
+    held.current = [];
+    setFiles([]);
+    if (ids.length) release(ids);
+  }, [release]);
+  return { files, pick, remove, clear };
 }
 
 /**

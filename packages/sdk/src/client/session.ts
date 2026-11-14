@@ -4,11 +4,13 @@ import {
   type Compat,
   type ContextBound,
   type ContextNavigated,
+  type GrantEnded,
   type Hello,
   type Limits,
   type Manifest,
   type Method,
   type PageEmitEvent,
+  type ShareInput,
 } from "@genesis/core";
 import { GenesisError } from "../bridge.js";
 import type { Storage } from "../types.js";
@@ -16,12 +18,15 @@ import { createContext, type ContextHandle, type ContextControl } from "./contex
 import { createPresentation, type Website } from "./presentation.js";
 import { createServices, type Services } from "./services.js";
 import { createNotifications, type Notifications } from "./notifications.js";
+import { createUserActions, type Downloads, type Files, type Links } from "./actions.js";
 import { createSavedState, type SavedState } from "./state.js";
 import { createStorage } from "./storage.js";
 import { webViewTransport, type Transport } from "./transport.js";
 
 /** Time the client waits past a request's own deadline before it gives up on the answer itself. */
 const DEADLINE_GRACE_MS = 2000;
+/** How late a timer may fire before the client counts its page as having been frozen. */
+const STALL_MS = 1000;
 
 /** The client stopped waiting for an answer; the host may still have acted on the request. */
 export class AnswerTimeout extends GenesisError {
@@ -67,11 +72,20 @@ export function openSession(transport: Transport, url: string): Promise<Session>
         const requestId = nextRequestId++;
         const timeoutMs = (options.timeoutMs ?? bound!.limits.rpcDeadlineMs) + DEADLINE_GRACE_MS;
         return new Promise<T>((resolve, reject) => {
-          const timer = setTimeout(() => {
-            pending.delete(requestId);
-            reject(new AnswerTimeout(method));
-          }, timeoutMs);
-          pending.set(requestId, { resolve: resolve as (value: unknown) => void, reject, timer });
+          const entry: Pending = { resolve: resolve as (value: unknown) => void, reject, timer: undefined! };
+          const wait = (ms: number) => {
+            const due = Date.now() + ms;
+            entry.timer = setTimeout(() => {
+              // A timer that fires late means this page was frozen, for example while a hidden
+              // page's dialog was open, and the host paused the call's deadline meanwhile. Wait
+              // the grace time again, awake, for the answer already on its way.
+              if (Date.now() - due > STALL_MS) { wait(DEADLINE_GRACE_MS); return; }
+              pending.delete(requestId);
+              reject(new AnswerTimeout(method));
+            }, ms);
+          };
+          wait(timeoutMs);
+          pending.set(requestId, entry);
           transport.send(JSON.stringify({ type: "request", documentId: bound!.documentId, requestId, method, params }));
         });
       },
@@ -134,7 +148,7 @@ export function openSession(transport: Transport, url: string): Promise<Session>
   });
 }
 
-/** The connected client: the applet's contexts, the website's presentation, Back, saved state, storage, services and notifications. */
+/** The connected client: the applet's contexts, the website's presentation, Back, saved state, storage, services, notifications and user actions. */
 export interface Genesis {
   readonly appletId: string;
   readonly revision: number;
@@ -159,6 +173,17 @@ export interface Genesis {
   readonly storage: Storage;
   readonly services: Services;
   readonly notifications: Notifications;
+  /**
+   * Picked files. Opening the picker is a user action: it runs only within 3 seconds of a tap on
+   * the applet UI, so call it straight from the tap's handler, or it rejects with `USER_ACTION_REQUIRED`.
+   */
+  readonly files: Files;
+  /** Saves to Downloads; a user action. */
+  readonly downloads: Downloads;
+  /** Opens Android's share sheet; a user action. */
+  share(input: ShareInput): Promise<void>;
+  /** Opens links in other apps; a user action. */
+  readonly links: Links;
   /** Reports the first layout; the shell then shows the UI. */
   ready(): void;
   /** The applet came back to the foreground. */
@@ -199,6 +224,7 @@ function createGenesis(session: Session): Genesis {
   session.on("context.started", (data: { id: string; url: string }) => of(data.id)?.started(data.url));
   session.on("context.gone", (data: { id: string; code?: string; message?: string }) => of(data.id)?.gone(data));
   session.on("page.emit", (data: PageEmitEvent) => of(data.context)?.emit(data));
+  session.on("context.grantEnded", (data: GrantEnded) => of(data.id)?.grantEnded(data));
 
   const listeners = { resume: new Set<() => void>(), suspend: new Set<() => void>(), retired: new Set<() => void>() };
   const call = (set: Set<() => void>) => { for (const listener of [...set]) listener(); };
@@ -244,6 +270,7 @@ function createGenesis(session: Session): Genesis {
     storage: createStorage(session),
     services: createServices(session),
     notifications: createNotifications(session),
+    ...createUserActions(session),
     ready() {
       if (readySent) return;
       readySent = true;

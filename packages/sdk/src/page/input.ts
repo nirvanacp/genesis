@@ -16,6 +16,8 @@ export interface InputContext {
   stop(): boolean;
   /** The applet's declared origins, the only ones `navigate` goes to. */
   origins: readonly string[];
+  /** Has the shell post these picked files to the page; absent when this Genesis cannot. */
+  files?: (ids: string[]) => Promise<File[]>;
 }
 
 /** A step whose target is found and ready: its effect has not run yet. */
@@ -128,6 +130,26 @@ export async function prepare(step: Step, context: InputContext): Promise<Prepar
         },
       };
     }
+    case "attachFiles": {
+      if (!context.files) throw new PageError("INPUT_UNAVAILABLE", "Attaching files is not available in this Genesis");
+      const via = step.via ?? "input";
+      // File inputs are usually hidden on purpose, so an input needs only to exist and be enabled.
+      const element = await target(step.target, via === "input" ? { ...step, force: true } : step);
+      if (via === "input") {
+        if (!(element instanceof HTMLInputElement) || element.type !== "file") {
+          throw new PageError("NOT_ACTIONABLE", "attachFiles needs an <input type=\"file\">", { reason: "not-a-file-input" });
+        }
+        if (element.disabled) throw new PageError("NOT_ACTIONABLE", "The file input is disabled", { reason: "disabled" });
+        if (!element.multiple && step.files.length > 1) throw new PageError("INVALID_ARGUMENT", "The file input takes one file");
+      }
+      // The files reach the page before the step reports `dispatched`: a failed transfer sent nothing.
+      const files = await context.files(step.files);
+      if (via === "input") {
+        const refused = files.find(file => !accepts(element as HTMLInputElement, file));
+        if (refused) throw new PageError("NOT_ACTIONABLE", `The file input does not accept ${refused.name}`, { reason: "type-not-accepted" });
+      }
+      return { element, run: async () => attach(element, files, via) };
+    }
     case "scroll": {
       const element = step.target ? locate(step.target, context.records) : undefined;
       return { element, run: async () => scroll(element, step.to) };
@@ -155,6 +177,36 @@ export async function prepare(step: Step, context: InputContext): Promise<Prepar
 
 export function refuseProtected(element: Element) {
   if (isProtected(element)) throw new PageError("PROTECTED_FIELD", "Genesis does not enter text into password, one-time code or card fields");
+}
+
+// ---- Files -------------------------------------------------------------------------------------
+
+/** Whether a file input's `accept` list takes the file: a `.ext` suffix, a `type/*` or an exact MIME type. */
+function accepts(input: HTMLInputElement, file: File): boolean {
+  const entries = input.accept.split(",").map(entry => entry.trim().toLowerCase()).filter(Boolean);
+  if (entries.length === 0) return true;
+  const name = file.name.toLowerCase();
+  const type = file.type.toLowerCase();
+  return entries.some(entry => entry.startsWith(".") ? name.endsWith(entry) : entry.endsWith("/*") ? type.startsWith(entry.slice(0, -1)) : type === entry);
+}
+
+/** Sets a file input's files, or drops or pastes the files on the target, as the website's own handlers expect. */
+function attach(element: Element, files: File[], via: "input" | "drop" | "paste") {
+  const transfer = new DataTransfer();
+  for (const file of files) transfer.items.add(file);
+  if (via === "input") {
+    (element as HTMLInputElement).files = transfer.files;
+    element.dispatchEvent(new Event("input", { bubbles: true }));
+    element.dispatchEvent(new Event("change", { bubbles: true }));
+    return;
+  }
+  if (via === "paste") {
+    element.dispatchEvent(new ClipboardEvent("paste", { bubbles: true, cancelable: true, composed: true, clipboardData: transfer }));
+    return;
+  }
+  for (const type of ["dragenter", "dragover", "drop"]) {
+    element.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, composed: true, dataTransfer: transfer }));
+  }
 }
 
 // ---- Events ------------------------------------------------------------------------------------
