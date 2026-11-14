@@ -76,7 +76,8 @@ pub struct Session {
     pub saved: Option<Value>,
     /// The context an opened link loaded in; the foreground shows it once it binds.
     pub open_context: Option<String>,
-    /// When the applet's window suspended; None while it is resumed.
+    /// When the applet's window suspended, in wall-clock milliseconds (`now_ms`), so time the
+    /// phone sleeps counts; None while it is resumed.
     pub suspended_at_ms: Option<u64>,
     /// Each context's input budget, by context id, created on its first input call.
     pub input_budgets: HashMap<String, InputBudget>,

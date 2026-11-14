@@ -76,13 +76,13 @@ impl Host {
                 self.end_flow();
                 self.show_launcher();
             }
-            ShellEvent::Resumed { applet_id: Some(applet_id) } => self.window_resumed(&applet_id, now),
+            ShellEvent::Resumed { applet_id: Some(applet_id) } => self.window_resumed(&applet_id),
             ShellEvent::Resumed { applet_id: None } => {
                 if self.flow.is_none() {
                     self.show_launcher();
                 }
             }
-            ShellEvent::Suspended { applet_id } => self.window_suspended(applet_id.as_deref(), now),
+            ShellEvent::Suspended { applet_id } => self.window_suspended(applet_id.as_deref()),
             ShellEvent::Back { applet_id } => self.back(applet_id, now),
             ShellEvent::WebsiteDone { applet_id } => {
                 if let Some(id) = applet_id.filter(|id| self.is_live(id)) {
@@ -240,16 +240,16 @@ impl Host {
         // pages stopped, starts the applet now.
         let resumed = self.contexts.resumed_window.as_deref() == Some(applet_id);
         if resumed && (opens_link || !self.is_live(applet_id)) {
-            self.window_resumed(applet_id, mono_ms());
+            self.window_resumed(applet_id);
         }
     }
 
     /// An applet's window resumed. A live applet continues where it was; otherwise it starts,
     /// from where it was when it has a resume target. Other live applets are left as they are.
-    fn window_resumed(&mut self, applet_id: &str, now: u64) {
+    fn window_resumed(&mut self, applet_id: &str) {
         self.contexts.resumed_window = Some(applet_id.into());
         let opening = self.contexts.pending_open.remove(applet_id).flatten();
-        self.retire_if_long_suspended(applet_id, now);
+        self.retire_if_long_suspended(applet_id);
         if let Some(session) = self.session_mut(applet_id) {
             let suspended = session.suspended_at_ms.take().is_some();
             if opening.is_none() {
@@ -272,13 +272,13 @@ impl Host {
 
     /// An applet's window suspends its live applet. Where it is gets saved, so its Recents card
     /// restores it if the process ends in the background.
-    fn window_suspended(&mut self, applet_id: Option<&str>, now: u64) {
+    fn window_suspended(&mut self, applet_id: Option<&str>) {
         let Some(applet_id) = applet_id else { return };
         if self.contexts.resumed_window.as_deref() == Some(applet_id) {
             self.contexts.resumed_window = None;
         }
         let Some(session) = self.session_mut(applet_id) else { return };
-        session.suspended_at_ms = Some(now);
+        session.suspended_at_ms = Some(now_ms());
         let resume = Self::resume_of(session);
         self.save_resume(applet_id, &resume);
         self.broadcast(applet_id, "suspended", json!({}));
@@ -518,11 +518,13 @@ impl Host {
         self.retire_session(applet_id);
     }
 
-    fn retire_if_long_suspended(&mut self, applet_id: &str, now: u64) {
+    /// Measured on the wall clock, which keeps counting while the phone sleeps; the monotonic
+    /// clock stops then. A clock set back counts as no time passed.
+    fn retire_if_long_suspended(&mut self, applet_id: &str) {
         let Some(session) = self.session(applet_id) else { return };
         // `revealed` does not change while suspended, so this is the state the user left in.
         let limit = if session.revealed.is_some() { REVEALED_RETIRE_MS } else { SUSPEND_RETIRE_MS };
-        if session.suspended_at_ms.is_some_and(|at| now.saturating_sub(at) >= limit) {
+        if session.suspended_at_ms.is_some_and(|at| now_ms().saturating_sub(at) >= limit) {
             self.retire_for_resume(applet_id);
         }
     }
@@ -830,7 +832,7 @@ impl Host {
             return self.back_fallback(applet_id, true);
         }
         self.expire_unbound_documents(applet_id, now);
-        self.retire_if_long_suspended(applet_id, now);
+        self.retire_if_long_suspended(applet_id);
     }
 
     /// A context page on a declared origin that committed and never said hello within
