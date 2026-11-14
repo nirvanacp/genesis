@@ -1,4 +1,5 @@
 import {
+  FILES_MAX,
   InvalidSpecError,
   matchesGuard,
   TEXT_MAX,
@@ -86,7 +87,7 @@ export async function runSequence(sequence: Sequence, context: SequenceContext):
       void context.progress("navigating", completed);
     }
   });
-  const inner: InputContext = { records: context.records, stop, origins: context.origins };
+  const inner: InputContext = { records: context.records, stop, origins: context.origins, files: context.files };
   // The document is retiring: stop where we are. The agent drops the answer; the host answers the call.
   const retired = () => result(dispatched ? "unknown" : "failed", "RETIRED", "The page was retired");
 
@@ -191,7 +192,7 @@ export function holds(condition: WaitFor | Evidence | ((doc: Document) => boolea
 
 // ---- Validation --------------------------------------------------------------------------------
 
-const INPUT_OPS = new Set(["click", "longPress", "hover", "unhover", "focus", "blur", "fill", "type", "press", "select", "check", "scroll", "submit"]);
+const INPUT_OPS = new Set(["click", "longPress", "hover", "unhover", "focus", "blur", "fill", "type", "press", "select", "check", "scroll", "submit", "attachFiles"]);
 const STATES = new Set(["attached", "visible", "hidden", "detached"]);
 
 /** Checks a `run` step list; `navigate` and `submit` may only be last. Throws `InvalidSpecError`. */
@@ -235,6 +236,12 @@ export function validateInput(op: string, value: Record<string, unknown>, path =
   if (op === "fill") string("value");
   if (op === "type") string("text");
   if (op === "press") string("key");
+  if (op === "attachFiles") {
+    if (!isStringArray(value.files) || value.files.length === 0 || value.files.length > FILES_MAX) {
+      throw new InvalidSpecError(`${path}.files`, `must be 1 to ${FILES_MAX} file ids from files.pick`);
+    }
+    if (value.via !== undefined && !["input", "drop", "paste"].includes(value.via as string)) throw new InvalidSpecError(`${path}.via`, "must be input, drop or paste");
+  }
   if (op === "check" && typeof value.checked !== "boolean") throw new InvalidSpecError(`${path}.checked`, "must be a boolean");
   if (op === "select") {
     if (value.values === undefined && value.labels === undefined) throw new InvalidSpecError(path, "select needs values or labels");

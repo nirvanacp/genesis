@@ -3,6 +3,7 @@ import {
   validateGuards,
   validateReadSpec,
   type ActionResult,
+  type AttachVia,
   type ContextBound,
   type ContextNavigated,
   type DialogClosed,
@@ -155,6 +156,12 @@ export interface ContextHandle {
   select(target: Locator, choice: { values?: string[]; labels?: string[] }, options?: InputCallOptions): Promise<ActionResult>;
   check(target: Locator, checked: boolean, options?: InputCallOptions): Promise<ActionResult>;
   submit(target: Locator, options?: Omit<InputCallOptions, "navigates">): Promise<ActionResult>;
+  /**
+   * Hands files from `genesis.files.pick` to the website: sets an `<input type="file">`'s files
+   * (`via: "input"`, the default) or drops or pastes them on the target. The bytes go from Genesis
+   * straight to the page. Needs `limits.userActions`.
+   */
+  attachFiles(target: Locator, files: ReadonlyArray<string | { id: string }>, options?: InputCallOptions & { via?: AttachVia }): Promise<ActionResult>;
   /** Steps in order inside the page; `navigate` and `submit` may only be last. */
   run(steps: Step[], options?: { until?: Evidence; navigates?: boolean; expect?: Expect; deadlineMs?: number; timeoutMs?: number }): Promise<ActionResult>;
   /** A page module command. A command that returns a value answers `observed` with `value`. */
@@ -656,6 +663,11 @@ export function createContext(id: string, startUrl: string, session: Session): C
     select: (target, choice, options) => run("select", target, defined({ values: choice.values, labels: choice.labels }), options),
     check: (target, checked, options) => run("check", target, { checked }, options),
     submit: (target, options) => run("submit", target, {}, options),
+    attachFiles: (target, files, options = {}) => {
+      const { via, ...rest } = options;
+      const ids = files.map(file => typeof file === "string" ? file : file.id);
+      return run("attachFiles", target, defined({ files: ids, via }), rest);
+    },
     run: (steps, options = {}) => {
       const { expect, navigates, timeoutMs, until: evidence, deadlineMs } = options;
       return input("run", defined({ steps, until: evidence, navigates, deadlineMs }), { expect, navigates, timeoutMs });
