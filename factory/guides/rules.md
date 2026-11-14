@@ -19,6 +19,9 @@ Read the latest request, local instructions, `.specs/current.md`, relevant decis
 | requirement-route-policy | Requirement: exact origins and a route table in code. A routed page shows its screen while ready, while loading within its readiness deadline, and on error while a stale copy is within that deadline; a page that was ready and starts loading or fails again gets a fresh deadline. Genesis shows the website for unrouted pages, sign-in, unsupported pages, a load that outlasts the deadline and an error with no stale copy. A screen opens the website itself only on explicit user intent | [Navigation](navigation.md), [presentation](presentation.md) |
 | requirement-loading-evidence | Requirement: a route's `ready` reader returns a truthy value only from content it recognized; a list is empty only when the page says so | [Page modules](page-modules.md) |
 | requirement-real-interactions | Requirement: a control performs the action its label names, against the current entity and account, reports the observed outcome, and never retries an uncertain one | [Interactions](interactions.md) |
+| requirement-user-paced-writes | Requirement: every write to a website comes from one user tap; no loops of writes, no background writes, no writes while the user is not in the applet; bulk work uses the website's own bulk control | [User-paced writes](#user-paced-writes) |
+| requirement-user-tap-actions | Requirement: picking files, saving, sharing, opening another app, enabling notifications and one-time grants start only from the handler of a user's tap on the applet UI, one per tap, never chained or automatic; features that need visible UI stay in the applet as [website features](website-features.md) describes | [User tap actions](#user-tap-actions) |
+| requirement-website-dialogs | Requirement: a website's `alert`, `confirm`, `prompt` or leave question reaches the user unchanged, as Genesis's own dialog, and is answered only by the user | [Website dialogs](#website-dialogs) |
 | requirement-protected-fields | Requirement: the applet never reads or enters passwords, hidden inputs, one-time codes or card data; the user types them on the website | [Protected fields](#protected-fields) |
 | requirement-data-integrity | Requirement: stable keys, one authoritative store per record type, revision checks, credentials outside the bundle, no blind retry of uncertain writes | [Services and data](services-and-data.md) |
 | requirement-accessible-navigation | Authoring requirement: semantic labels, focus, readable contrast, scalable text, 48 dp touch targets and working Back | [Design](design.md) |
@@ -40,6 +43,28 @@ Read the latest request, local instructions, `.specs/current.md`, relevant decis
 - One page module serves every context, and each read sees only its own page. Screens that combine contexts watch each one from the UI.
 - A route match permits reading; it does not prove the page holds valid content. Sign-in pages, challenges, error pages and changed markup can appear at any declared URL, so a route's `ready` reader needs positive evidence.
 - A watch snapshot is capped at 192 KiB of JSON (196608 bytes), and a context page holds at most 32 open watches. Bound long lists, and give every item a stable unique key.
+
+## User-paced writes
+
+Genesis is a different face for websites the user already uses, not an automation tool. Websites watch for bot-like input, and an account that looks automated can be locked.
+
+- Every input that changes something on a website (a vote, a post, a follow, a delete, a form submit) comes from one tap on the applet control that names it. One tap may run one input or one sequence (`run`, a command) that does that one thing. Filling a composer, attaching its files and clicking the site's Post button after one Post tap is one sequence.
+- No loops of writes over a list, no writes from timers, page events, watches or a backend, and no writes while the user is not in the applet.
+- Bulk work uses the website's own bulk control: select all, then one action, as the website offers it. When the website has none, the applet offers the action per item.
+- The host enforces a budget per context: `limits.inputBurst` input calls at once (20), then one more every `limits.inputRefillMs` (1 s). An input over the budget fails with `RATE_LIMITED` and never reaches the page. Treat it as a design error, not as something to wait out; never retry after `retryAfterMs`.
+
+## User tap actions
+
+Some things only the user may start: picking files, saving to Downloads, sharing, opening another app, turning notifications on, and letting a hidden page use a website feature once with `context.allow`.
+
+- Call each straight from the handler of a tap on the applet control that names it, before any other `await`. Genesis carries it out only within 3 seconds of that tap, once per tap.
+- One tap starts one of them. Never chain two, and never start one from a timer, a watch, a page event, a backend or a retry.
+- When one rejects with `USER_ACTION_REQUIRED`, ask the user to tap again.
+- Keep these features in the applet. File attachments, downloads, sharing, links to apps, fullscreen video, windows and location follow [website features](website-features.md); only camera and microphone, server sign-in prompts and client certificates, protected fields, payments and challenges show the website.
+
+## Website dialogs
+
+A hidden page's `alert`, `confirm`, `prompt` or leave question waits for the user, and Genesis shows it as its own dialog over the applet with the site's origin and its exact message. Only the user answers it: a page module never replaces `window.alert`, `confirm` or `prompt`, never removes the site's `beforeunload` question, and never answers a dialog for the user from a stored preference. See [interactions](interactions.md#website-dialogs).
 
 ## Protected fields
 

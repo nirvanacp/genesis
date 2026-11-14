@@ -33,6 +33,8 @@ abstract class WindowActivity extends Activity implements Shell.Owner {
     GenesisRuntime runtime;
     Shell shell;
     private FileSelection selection;
+    /** The window paused for the file picker and stays resumed for the host. */
+    private boolean picking;
     private OnBackInvokedCallback backCallback;
     private boolean registered;
     /** The pending Android permission request: its callback and the permissions already held. */
@@ -93,6 +95,10 @@ abstract class WindowActivity extends Activity implements Shell.Owner {
         return true;
     }
 
+    @Override public void chooseAppletFiles(String[] accept, boolean multiple, ValueCallback<Uri[]> callback, BooleanSupplier valid) {
+        selection.openForApplet(accept, multiple, callback, valid);
+    }
+
     @Override public void cancelInvalidFiles() { if (selection != null) selection.cancelIfInvalid(); }
 
     /**
@@ -148,11 +154,17 @@ abstract class WindowActivity extends Activity implements Shell.Owner {
 
     @Override protected void onResume() {
         super.onResume();
-        if (registered) runtime.windowResumed(shell);
+        if (registered && !picking) runtime.windowResumed(shell);
+        picking = false;
     }
 
+    /**
+     * The system file picker covers the window while the applet waits for the user's files, so the
+     * applet stays resumed: a long pick must not retire it and lose the call.
+     */
     @Override protected void onPause() {
-        if (registered) runtime.windowSuspended(shell);
+        picking = selection != null && selection.pending();
+        if (registered && !picking) runtime.windowSuspended(shell);
         super.onPause();
     }
 

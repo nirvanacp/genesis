@@ -1,6 +1,6 @@
 //! Document messages: handshake, role authorization and method dispatch.
 use crate::{
-    contexts::CallHandle,
+    contexts::{CallHandle, InputBudget, PACED_OPS},
     documents::PendingOp,
     host::Host,
     services::{self, ServiceCall},
@@ -8,7 +8,7 @@ use crate::{
 use genesis_contracts::*;
 use serde_json::{Value, json};
 
-const FOREGROUND_METHODS: [&str; 17] = [
+const FOREGROUND_METHODS: [&str; 24] = [
     "ui.ready",
     "storage.get",
     "storage.list",
@@ -26,8 +26,15 @@ const FOREGROUND_METHODS: [&str; 17] = [
     "back.leave",
     "page.call",
     "page.cancel",
+    "context.grant",
+    "files.pick",
+    "files.release",
+    "downloads.save",
+    "share.open",
+    "links.openExternal",
+    "notifications.enable",
 ];
-const CONTEXT_METHODS: [&str; 4] = ["page.result", "page.progress", "page.emit", "page.input"];
+const CONTEXT_METHODS: [&str; 6] = ["page.result", "page.progress", "page.emit", "page.input", "page.files", "page.share"];
 /// Events in one `page.input`.
 const INPUT_EVENTS_MAX: usize = 64;
 /// Characters of `text` in one `page.input`, all its text events together. The shell types each
@@ -296,6 +303,57 @@ impl Host {
                 self.page_emit(view, stream, kind, seq, page_view, url, data)
             }
             Call::PageInput { call_id, events } => self.page_input(view, document_id, request_id, call_id, events),
+            Call::FilesPick { accept, multiple } => {
+                let accept = accept.into_iter().map(|a| a.trim().to_ascii_lowercase()).collect();
+                self.user_action(view, document_id, request_id, None, UserAction::PickFiles { accept, multiple }, now)
+            }
+            Call::FilesRelease { ids } => {
+                self.release_files(applet_id, ids);
+                ok()
+            }
+            Call::DownloadsSave { context, url, filename } => {
+                let Some(target) = self.context_view(applet_id, &context) else { return unknown_context(&context) };
+                self.user_action(view, document_id, request_id, Some(target), UserAction::Save { url, filename }, now)
+            }
+            Call::ShareOpen { title, text, url } => self.user_action(view, document_id, request_id, None, UserAction::Share { title, text, url }, now),
+            Call::LinksOpenExternal { url } => self.user_action(view, document_id, request_id, None, UserAction::OpenExternal { url }, now),
+            Call::NotificationsEnable {} => {
+                if manifest.capabilities.notifications.is_none() {
+                    return error(ErrorCode::ConfigurationRequired, "Notifications are not declared in applet.json");
+                }
+                self.user_action(view, document_id, request_id, None, UserAction::EnableNotifications, now)
+            }
+            Call::ContextGrant { id, grant } => {
+                let Some(target) = self.context_view(applet_id, &id) else { return unknown_context(&id) };
+                if !self.limits.grants {
+                    return error(ErrorCode::UnknownMethod, "Grants are not available in this Genesis");
+                }
+                // The user taps a revealed website itself, so it needs no grant.
+                if self.session(applet_id).is_some_and(|s| s.revealed.as_deref() == Some(id.as_str())) {
+                    return Outcome::Now(Ok(json!({ "granted": true, "expiresInMs": 0 })));
+                }
+                self.user_action(view, document_id, request_id, Some(target), UserAction::Grant { grant }, now)
+            }
+            Call::PageFiles { call_id, ids } => match self.page_files(view, document_id, request_id, call_id, ids) {
+                Ok(()) => Outcome::Later,
+                Err(failure) => Outcome::Now(Err(failure)),
+            },
+            Call::PageShare { title, text, url, active } => {
+                // The user tapped the website itself, so only a revealed page with user activation shares.
+                let Role::Context(id) = &view.role else { return error(ErrorCode::InvalidArgument, "page.share is for context documents") };
+                let revealed = self.session(applet_id).is_some_and(|s| s.revealed.as_deref() == Some(id.as_str()));
+                if !revealed || !active {
+                    return error(ErrorCode::UserActionRequired, "The website can share only from the user's tap while it is shown");
+                }
+                self.user_action(view, document_id, request_id, Some(view.clone()), UserAction::Share { title, text, url }, now)
+            }
+        }
+    }
+
+    fn user_action(&mut self, view: &ViewRef, document_id: &str, request_id: u64, context: Option<ViewRef>, action: UserAction, now: u64) -> Outcome {
+        match self.begin_user_action(view, document_id, request_id, context, action, now) {
+            Ok(()) => Outcome::Later,
+            Err(failure) => Outcome::Now(Err(failure)),
         }
     }
 
@@ -346,6 +404,15 @@ impl Host {
         };
         if session.calls.values().filter(|c| c.context_id == context).count() >= self.limits.pending_requests_max {
             return error(ErrorCode::QuotaExceeded, "Too many open calls in this context");
+        }
+        if PACED_OPS.contains(&op.as_str()) {
+            let (burst, refill_ms) = (self.limits.input_burst, u64::from(self.limits.input_refill_ms));
+            let budget = session.input_budgets.entry(context.clone()).or_insert_with(|| InputBudget::full(burst, now));
+            if let Err(retry_after_ms) = budget.take(now, burst, refill_ms) {
+                let body = ErrorBody::new(ErrorCode::RateLimited, "Too many inputs in this context; wait for the user's next tap")
+                    .with_details(json!({ "dispatched": false, "retryAfterMs": retry_after_ms }));
+                return Outcome::Now(Err(body));
+            }
         }
         let budget_ms = timeout_ms.unwrap_or(self.limits.rpc_deadline_ms).min(self.limits.action_timeout_ms);
         let handle = CallHandle {

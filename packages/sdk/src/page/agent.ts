@@ -14,7 +14,10 @@ import {
 import { connect, GenesisError, type BridgeObject, type Connection } from "../bridge.js";
 import { waitUntil } from "./actionable.js";
 import { errorBody, messageOf, PageError } from "./errors.js";
+import { createBlobSender } from "./downloads.js";
+import { createFileReceiver, type FileReceiver } from "./files.js";
 import { scroll, scrollPosition } from "./input.js";
+import { installShare } from "./share.js";
 import { locate, locateAll, type RecordLookup } from "./locate.js";
 import type { CommandSteps, PageModule } from "./module.js";
 import { checkedOf, collapse, compile, isVisible, readOnce, rectOf, textOf, type Compiled } from "./read.js";
@@ -23,7 +26,7 @@ import { trackView, type ViewTracker } from "./view.js";
 import { createWatches } from "./watch.js";
 
 const READS = new Set(["info", "read", "inspect", "watch.open", "watch.close", "watch.resync", "wait"]);
-const INPUTS = new Set(["click", "longPress", "hover", "unhover", "focus", "blur", "fill", "type", "press", "select", "check", "scroll", "submit"]);
+const INPUTS = new Set(["click", "longPress", "hover", "unhover", "focus", "blur", "fill", "type", "press", "select", "check", "scroll", "submit", "attachFiles"]);
 const WATCH_ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}$/;
 
 let running = false;
@@ -43,10 +46,18 @@ export function startAgent(module?: PageModule): void {
   if (!bridge) return;
 
   const view = trackView();
+  // Picked files come from the shell on the same bridge, beside the host's messages.
+  const files = createFileReceiver();
+  bridge.addEventListener("message", files.handle);
+  // The website's own blob: downloads, which only this document can read.
+  bridge.addEventListener("message", createBlobSender(bridge));
   let current: Session | null = null;
+  let connected: Connection | null = null;
+  // The website's own Share button, which the WebView does not support.
+  installShare(() => connected);
   view.onChange(() => current?.viewChanged());
   const bind = () => connect(bridge, location.href).then(
-    connection => { current = serve(connection, module, view); },
+    connection => { connected = connection; current = serve(connection, module, view, files); },
     error => console.error("Genesis could not bind this page", error),
   );
   void bind();
@@ -74,7 +85,7 @@ interface Call {
   stopped: boolean;
 }
 
-function serve(connection: Connection, module: PageModule | undefined, view: ViewTracker): Session {
+function serve(connection: Connection, module: PageModule | undefined, view: ViewTracker, received: FileReceiver): Session {
   const { limits, generation, compat } = connection.bound;
   view.bind(generation);
   const calls = new Map<string, Call>();
@@ -132,6 +143,7 @@ function serve(connection: Connection, module: PageModule | undefined, view: Vie
       flush: () => watches.flush(),
       view: () => view.current().n,
       trusted: limits.trustedInput ? events => connection.request("page.input", { callId, events }).then(() => {}) : undefined,
+      files: limits.userActions ? ids => connection.request<{ count: number }>("page.files", { callId, ids }).then(({ count }) => received.take(count)) : undefined,
     };
   }
 

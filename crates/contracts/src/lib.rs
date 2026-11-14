@@ -243,7 +243,111 @@ pub enum ShellEvent {
         #[serde(default)]
         message: Option<String>,
     },
+    /// A hidden context's page called `alert`, `confirm`, `prompt` or raised `beforeunload`, and
+    /// the shell shows the dialog itself over the applet UI. The page waits, so its calls' deadlines
+    /// pause until `JsDialogClosed` carries `token`. A revealed page shows WebView's own dialog and
+    /// never sends this.
+    JsDialog { view: ViewRef, token: u64 },
+    /// Dialog `token` ended in the shell: the user answered it, or its page navigated or was
+    /// destroyed and the shell cancelled it.
+    JsDialogClosed { view: ViewRef, token: u64 },
+    /// The end of a `UserAction`: `result` when `ok`, otherwise `code` and `message`. The shell
+    /// did nothing when it answers `USER_ACTION_REQUIRED`.
+    UserActionDone {
+        token: u64,
+        ok: bool,
+        #[serde(default)]
+        code: Option<ErrorCode>,
+        #[serde(default)]
+        message: Option<String>,
+        #[serde(default)]
+        result: Option<Value>,
+    },
+    /// The end of a `SendFiles`: when `ok`, every file reached the page's reply proxy, followed
+    /// by the end message.
+    FilesSent {
+        token: u64,
+        ok: bool,
+        #[serde(default)]
+        code: Option<ErrorCode>,
+        #[serde(default)]
+        message: Option<String>,
+    },
+    /// The one-time grant of `view` ended: `used` when the page used it, otherwise it expired or
+    /// was cleared by a navigation, a reveal, a cover, a popup or the view's end.
+    GrantEnded { view: ViewRef, grant: GrantKind, used: bool },
 }
+
+/// Something only the user may start, carried out by the shell after a fresh tap on the applet
+/// UI. The shell answers `UserActionDone`.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase", rename_all_fields = "camelCase")]
+pub enum UserAction {
+    /// Opens Android's file picker. `accept` holds MIME types or `.ext` suffixes.
+    PickFiles { accept: Vec<String>, multiple: bool },
+    /// Saves `url` (https or `data:`) to Downloads, with the cookies of the command's `view`.
+    Save {
+        url: String,
+        #[serde(default)]
+        filename: Option<String>,
+    },
+    /// Opens Android's share sheet.
+    Share {
+        #[serde(default)]
+        title: Option<String>,
+        #[serde(default)]
+        text: Option<String>,
+        #[serde(default)]
+        url: Option<String>,
+    },
+    /// Opens `url` in another app, never in a browser.
+    OpenExternal { url: String },
+    /// Lets the command's `view` use one website feature once.
+    Grant { grant: GrantKind },
+    /// Turns the applet's notifications on, asking Android first when needed.
+    EnableNotifications,
+}
+
+/// How long a hidden page's one-time grant lasts unused.
+pub const GRANT_MS: u64 = 5_000;
+
+/// A website feature a hidden page may use once, after the user's tap.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum GrantKind {
+    Fullscreen,
+    Download,
+    Window,
+    Handoff,
+    Location,
+}
+
+/// One picked file the shell posts to a page; `id` is the handle `files.pick` returned.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+pub struct FileRef {
+    pub id: String,
+    pub name: String,
+    pub mime: String,
+    pub size: u64,
+}
+
+/// How long the shell has for a user action, which can wait on the user in a picker or a prompt.
+pub const USER_ACTION_DEADLINE_MS: u64 = 600_000;
+/// The most `accept` entries of `files.pick`.
+pub const ACCEPT_MAX: usize = 16;
+/// The most files one `files.pick` returns, and one `page.files` sends.
+pub const FILES_MAX: usize = 16;
+/// The largest picked file, in bytes.
+pub const FILE_BYTES_MAX: u64 = 64 * 1024 * 1024;
+/// The most bytes one `page.files` sends.
+pub const FILES_BYTES_MAX: u64 = 128 * 1024 * 1024;
+/// The longest `data:` URL `downloads.save` takes.
+pub const SAVE_DATA_URL_MAX: usize = 2 * 1024 * 1024;
+/// The longest file name `downloads.save` takes.
+pub const FILENAME_MAX: usize = 128;
+/// The longest `share.open` title and text.
+pub const SHARE_TITLE_MAX: usize = 200;
+pub const SHARE_TEXT_MAX: usize = 4_000;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -427,6 +531,20 @@ pub enum ShellCommand {
     /// Real Android input for a hidden context's WebView, dispatched in order. The shell answers
     /// with `InputDone` carrying `token`.
     Input { view: ViewRef, token: u64, events: Vec<InputEvent> },
+    /// Carries out `action` for the applet, after checking the user tapped its UI. `view` is the
+    /// context the action concerns, when it concerns one.
+    UserAction {
+        applet_id: String,
+        token: u64,
+        #[serde(default)]
+        view: Option<ViewRef>,
+        action: UserAction,
+    },
+    /// Posts picked files to `view`'s page through its reply proxy, never through the host. The
+    /// shell answers `FilesSent` carrying `token`.
+    SendFiles { view: ViewRef, token: u64, files: Vec<FileRef> },
+    /// The applet let go of these picked files; the shell forgets them.
+    ReleaseFiles { applet_id: String, ids: Vec<String> },
 }
 
 /// One input event of `Input` or `page.input`. `x` and `y` are CSS pixels of the visual viewport
@@ -906,6 +1024,27 @@ pub struct Limits {
     /// The shell can send real input to a hidden context (`page.input`).
     #[serde(default)]
     pub trusted_input: bool,
+    /// The foreground can pick files, save, share, open links in apps and turn on notifications
+    /// after a tap, and attach picked files to a page (`attachFiles`).
+    #[serde(default)]
+    pub user_actions: bool,
+    /// The foreground can let a hidden page use one website feature once (`context.grant`).
+    #[serde(default)]
+    pub grants: bool,
+    /// Input page calls one context takes at once before the host answers `RATE_LIMITED`.
+    #[serde(default = "default_input_burst")]
+    pub input_burst: u32,
+    /// Milliseconds for one input call of the burst to come back.
+    #[serde(default = "default_input_refill_ms")]
+    pub input_refill_ms: u32,
+}
+
+fn default_input_burst() -> u32 {
+    20
+}
+
+fn default_input_refill_ms() -> u32 {
+    1_000
 }
 
 impl Default for Limits {
@@ -927,6 +1066,10 @@ impl Default for Limits {
             history_entries_max: 16,
             watches_max: 32,
             trusted_input: true,
+            user_actions: true,
+            grants: true,
+            input_burst: default_input_burst(),
+            input_refill_ms: default_input_refill_ms(),
         }
     }
 }
@@ -969,6 +1112,9 @@ pub enum ErrorCode {
     ProtectedField,
     InputUnavailable,
     UnknownOperation,
+    UserActionRequired,
+    FileUnavailable,
+    RateLimited,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -1139,6 +1285,62 @@ pub enum Call {
     /// `events` to that document's view and answers once the shell has.
     #[serde(rename = "page.input")]
     PageInput { call_id: String, events: Vec<InputEvent> },
+    /// Opens Android's file picker after a tap; answers `{files: [{id, name, type, size}]}`.
+    #[serde(rename = "files.pick")]
+    FilesPick {
+        #[serde(default)]
+        accept: Vec<String>,
+        #[serde(default)]
+        multiple: bool,
+    },
+    /// Lets go of picked files.
+    #[serde(rename = "files.release")]
+    FilesRelease { ids: Vec<String> },
+    /// Saves `url` to Downloads with the cookies of `context`, after a tap.
+    #[serde(rename = "downloads.save")]
+    DownloadsSave {
+        context: String,
+        url: String,
+        #[serde(default)]
+        filename: Option<String>,
+    },
+    /// Opens Android's share sheet after a tap.
+    #[serde(rename = "share.open")]
+    ShareOpen {
+        #[serde(default)]
+        title: Option<String>,
+        #[serde(default)]
+        text: Option<String>,
+        #[serde(default)]
+        url: Option<String>,
+    },
+    /// Opens `url` in another app after a tap.
+    #[serde(rename = "links.openExternal")]
+    LinksOpenExternal { url: String },
+    /// Turns the applet's notifications on after a tap.
+    #[serde(rename = "notifications.enable")]
+    NotificationsEnable {},
+    /// Lets hidden context `id` use one website feature once, after a tap. Answers
+    /// `{granted: true, expiresInMs}`; a revealed context needs no grant and gets `0`.
+    #[serde(rename = "context.grant")]
+    ContextGrant { id: String, grant: GrantKind },
+    /// Has the shell post picked files to the asking context document, for an open call. Answers
+    /// `{count}` once the bytes were posted.
+    #[serde(rename = "page.files")]
+    PageFiles { call_id: String, ids: Vec<String> },
+    /// The website's own `navigator.share` on a revealed context: opens Android's share sheet
+    /// when `active` (the page's `navigator.userActivation.isActive`). Answers `{shown: true}`.
+    #[serde(rename = "page.share")]
+    PageShare {
+        #[serde(default)]
+        title: Option<String>,
+        #[serde(default)]
+        text: Option<String>,
+        #[serde(default)]
+        url: Option<String>,
+        #[serde(default)]
+        active: bool,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]

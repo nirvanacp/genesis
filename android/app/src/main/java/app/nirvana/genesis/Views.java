@@ -9,6 +9,8 @@ import android.security.KeyChain;
 import android.webkit.ClientCertRequest;
 import android.webkit.GeolocationPermissions;
 import android.webkit.HttpAuthHandler;
+import android.webkit.JsPromptResult;
+import android.webkit.JsResult;
 import android.webkit.PermissionRequest;
 import android.webkit.RenderProcessGoneDetail;
 import android.webkit.ValueCallback;
@@ -23,6 +25,7 @@ import androidx.webkit.JavaScriptReplyProxy;
 import androidx.webkit.Navigation;
 import androidx.webkit.NavigationListener;
 import androidx.webkit.ScriptHandler;
+import androidx.webkit.WebMessageCompat;
 import androidx.webkit.WebViewAssetLoader;
 import androidx.webkit.WebViewCompat;
 import androidx.webkit.WebViewFeature;
@@ -39,22 +42,40 @@ import org.json.JSONObject;
 final class Views {
     static final String FOREGROUND_ORIGIN = "https://appassets.androidplatform.net";
     static final String BRIDGE = "__genesisBridge";
+    /** Where the applet UI previews picked files, on `FOREGROUND_ORIGIN`. */
+    static final String PICKED_FILES = "/genesis-files/";
+    /** The start of the page agent's blob download messages, which stay in the shell. */
+    static final String BLOB_MESSAGE = "{\"type\":\"genesis.blob";
 
     /** What a view reports back to the shell. */
     interface Listener {
         void documentStarted(Page page, String url);
         void documentMessage(Page page, String payload);
+
+        /** A `genesis.blob` text message: the page agent's answer to the shell's blob download request. */
+        void blobMessage(Page page, String payload);
+
+        /** An `ArrayBuffer` from the page agent: the bytes of the blob download it announced. */
+        void blobBytes(Page page, byte[] bytes);
         void contextNavigated(Page page, Committed committed);
         /** Starts another app for a tapped link. Returns false when no app can handle it. */
         boolean handOff(android.content.Intent intent);
         void rendererGone(Page page);
         void showCustomView(View view, WebChromeClient.CustomViewCallback callback);
+        /**
+         * The page is about to use a feature `SitePolicy.mayUse` allowed. A hidden context's grant
+         * ends here as used; for the shown website this does nothing.
+         */
+        void useGrant(Page page);
         void hideCustomView();
         boolean chooseFiles(Page page, ValueCallback<Uri[]> callback, WebChromeClient.FileChooserParams params);
-        /** The revealed context opened a window from a tap. Returns the popup to load it into, or null to refuse. */
+        /**
+         * The revealed context, or a hidden one with a window grant, opened a window from a tap.
+         * Returns the popup to load it into, or null to refuse.
+         */
         Page openWindow(Page opener);
         void closeWindow(Page popup);
-        /** The revealed context's tapped link asks for a new window at `url`. */
+        /** The revealed context's tapped link, or a granted hidden context's, asks for a new window at `url`. */
         void windowRequested(Page page, String url);
         void popupNavigated(Page popup, String url);
         /**
@@ -68,6 +89,16 @@ final class Views {
         void download(Page page, String url, String userAgent, String disposition, String mimeType);
         /** The shown website's server asks for a username and password. */
         void httpAuth(Page page, HttpAuthHandler handler, String host, String realm);
+        /**
+         * A hidden context's page opened a JavaScript dialog (`alert`, `confirm`, `prompt` or
+         * `beforeunload`) and waits until `result` is answered. `defaultValue` is a prompt's, else null.
+         */
+        void jsDialog(Page page, String kind, String message, String defaultValue, JsResult result);
+        /**
+         * The applet UI loads a picked file from `/genesis-files/<id>`. Called on WebView's request
+         * thread; unknown ids answer 404.
+         */
+        WebResourceResponse pickedFile(String id);
     }
 
     /** The container a revealed context is reparented into, above the foreground. */
@@ -117,6 +148,14 @@ final class Views {
         int downloads;
         /** `SystemClock.uptimeMillis()` of the last trusted input dispatched here; 0 for none. */
         long trustedInputAt;
+        /** The one feature the user let this hidden context use (a `SitePolicy` grant kind), or null. */
+        String grant;
+        /** `SystemClock.uptimeMillis()` until which `grant` is live. */
+        long grantUntil;
+        /** Ends `grant` unused when it expires. */
+        Runnable grantExpiry;
+        /** Until when the window this hidden page opened with its grant may still show; 0 for none. */
+        long windowUntil;
 
         /** The profile the page's cookies and permission answers belong to. */
         final SiteData site;
@@ -186,10 +225,17 @@ final class Views {
         Page page = new Page(ref, web, site);
         page.origins.addAll(origins);
         WebViewCompat.addWebMessageListener(page.web, BRIDGE, page.origins, (view, message, sourceOrigin, isMainFrame, reply) -> {
+            if (!isMainFrame) return;
+            // Only the page agent posts bytes, and only for a download the shell asked it to read.
+            if (message.getType() == WebMessageCompat.TYPE_ARRAY_BUFFER) {
+                if (page.reply == reply) listener.blobBytes(page, message.getArrayBuffer());
+                return;
+            }
             String data = message.getData();
-            if (!isMainFrame || data == null) return;
+            if (data == null) return;
             page.reply = reply;
-            listener.documentMessage(page, data);
+            if (data.startsWith(BLOB_MESSAGE)) listener.blobMessage(page, data);
+            else listener.documentMessage(page, data);
         });
         if (startScript != null) page.script = WebViewCompat.addDocumentStartJavaScript(page.web, startScript, page.origins);
         page.web.setWebViewClient(new Client(page));
@@ -267,7 +313,9 @@ final class Views {
             if (web) return false;
             // Only the revealed page may hand a link to another app, and only from a tap. A server
             // redirect from a tapped link to mailto: arrives without a gesture and is blocked too.
-            if (!SitePolicy.mayHandOff(page, SitePolicy.usersGesture(page, request.hasGesture()))) return true;
+            // A hidden context may with a `handoff` grant, which also lifts the block after trusted input.
+            if (!SitePolicy.mayHandOff(page, SitePolicy.usersGesture(page, request.hasGesture(), SitePolicy.HANDOFF))) return true;
+            listener.useGrant(page);
             android.content.Intent intent = Handoff.intent(url);
             if (intent == null) return true;
             if (listener.handOff(intent)) return true;
@@ -278,7 +326,13 @@ final class Views {
         }
 
         @Override public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
-            return page.isForeground() ? assets.shouldInterceptRequest(request.getUrl()) : null;
+            if (!page.isForeground()) return null;
+            Uri url = request.getUrl();
+            String path = url.getPath();
+            if (FOREGROUND_ORIGIN.equals(origin(url.toString())) && path != null && path.startsWith(PICKED_FILES)) {
+                return listener.pickedFile(path.substring(PICKED_FILES.length()));
+            }
+            return assets.shouldInterceptRequest(url);
         }
 
         // onPageStarted fires at commit, once per cross-document navigation, with the final URL.
@@ -383,7 +437,8 @@ final class Views {
 
         /** WebView keeps nothing (`retain` false); `SiteGrants` remembers the answer instead. */
         @Override public void onGeolocationPermissionsShowPrompt(String origin, GeolocationPermissions.Callback callback) {
-            if (!SitePolicy.mayShowUi(page)) { callback.invoke(origin, false, false); return; }
+            if (!SitePolicy.mayUse(page, SitePolicy.LOCATION)) { callback.invoke(origin, false, false); return; }
+            listener.useGrant(page);
             locating = origin;
             located = callback;
             listener.askSite(page, origin(origin), List.of(SiteGrants.LOCATION), allowed -> {
@@ -415,20 +470,49 @@ final class Views {
         }
 
         @Override public void onShowCustomView(View view, CustomViewCallback callback) {
-            if (SitePolicy.mayShowUi(page)) listener.showCustomView(view, callback);
-            else callback.onCustomViewHidden();
+            // WebView ignores an exit inside this call, which would leave the page in fullscreen; exit after it.
+            if (!SitePolicy.mayUse(page, SitePolicy.FULLSCREEN)) { page.web.post(callback::onCustomViewHidden); return; }
+            listener.useGrant(page);
+            listener.showCustomView(view, callback);
         }
 
         @Override public void onHideCustomView() { listener.hideCustomView(); }
 
+        @Override public boolean onJsAlert(WebView view, String url, String message, JsResult result) {
+            return hiddenDialog("alert", message, null, result);
+        }
+
+        @Override public boolean onJsConfirm(WebView view, String url, String message, JsResult result) {
+            return hiddenDialog("confirm", message, null, result);
+        }
+
+        @Override public boolean onJsPrompt(WebView view, String url, String message, String defaultValue, JsPromptResult result) {
+            return hiddenDialog("prompt", message, defaultValue, result);
+        }
+
+        @Override public boolean onJsBeforeUnload(WebView view, String url, String message, JsResult result) {
+            return hiddenDialog("beforeunload", message, null, result);
+        }
+
+        /**
+         * A hidden context's dialog shows as Genesis's own dialog over the applet UI, and the website
+         * stays hidden. The shown website, its popup and the applet's own page keep WebView's dialogs.
+         */
+        private boolean hiddenDialog(String kind, String message, String defaultValue, JsResult result) {
+            if (!page.isContext() || page.isRevealed()) return false;
+            listener.jsDialog(page, kind, message == null ? "" : message, defaultValue, result);
+            return true;
+        }
+
         /**
          * Only the revealed context opens a window, and only from a tap; a popup's own windows load
-         * in place. A tapped link goes to the host, which opens it in this context, in another
+         * in place. A hidden context may too with a `window` grant, from the trusted tap that used it. A tapped link goes to the host, which opens it in this context, in another
          * applet or in a popup. A script's window, such as a sign-in, opens as a popup at once so
          * it keeps `window.opener`.
          */
         @Override public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture, android.os.Message resultMsg) {
-            if (page.opener != null || !SitePolicy.usersGesture(page, isUserGesture) || !SitePolicy.mayShowUi(page)) return false;
+            if (page.opener != null || !SitePolicy.usersGesture(page, isUserGesture, SitePolicy.WINDOW) || !SitePolicy.mayUse(page, SitePolicy.WINDOW)) return false;
+            listener.useGrant(page);
             WebView.HitTestResult hit = view.getHitTestResult();
             String link = hit == null || hit.getType() != WebView.HitTestResult.SRC_ANCHOR_TYPE ? null : hit.getExtra();
             if (link != null && (link.startsWith("https:") || link.startsWith("http:"))) {

@@ -166,6 +166,21 @@ async function checkPageModuleFiles(base, files) {
   if (problems.length > 0) throw toolError('PAGE_MODULE_INVALID', `The page module breaks the page module rules (checked in the applet's own files only):\n${problems.join('\n')}`);
 }
 
+/** A file input in built UI code: `type="file"` in markup, `type: "file"` in compiled JSX. */
+const FILE_INPUT = /\btype\s*[:=]\s*["'`]file["'`]/;
+
+/**
+ * Warnings for the built UI files: a file input there opens no picker, since the applet UI has
+ * no file chooser; the UI picks files with `genesis.files.pick` instead.
+ */
+export function uiWarnings(files) {
+  const names = [];
+  for (const [name, bytes] of files) {
+    if (['.js', '.mjs', '.html'].includes(path.extname(name)) && FILE_INPUT.test(bytes.toString('utf8'))) names.push(name);
+  }
+  return names.length ? [`${names.join(', ')}: the applet UI cannot open a file picker; use genesis.files.pick`] : [];
+}
+
 /**
  * Checks an applet: compatibility with these tools first, then the manifest and its `build`
  * section, the type check, and the page module named by `build.page`, which is bundled and
