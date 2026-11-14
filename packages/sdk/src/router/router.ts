@@ -178,7 +178,7 @@ export function createRouter(genesis: Genesis, options: RouterOptions): Router {
    * and the status its screen shows meanwhile. The new screen shows at once, loading, instead of
    * the previous page's screen until the website starts the new page.
    */
-  const pending = new Map<string, { url: string; status: RouteStatus; timer: ReturnType<typeof setTimeout> }>();
+  const pending = new Map<string, { screen: string; params: Readonly<Record<string, string>>; status: RouteStatus; timer: ReturnType<typeof setTimeout> }>();
   let pendingChanged = false;
 
   let version = 0;
@@ -272,16 +272,17 @@ export function createRouter(genesis: Genesis, options: RouterOptions): Router {
   function startPending(id: string, url: string) {
     endPending(id);
     const match = matchRoute(table, url);
-    const route = match.kind === "route" ? routes.get(match.routeId) : undefined;
+    if (match.kind !== "route") return;
+    const route = routes.get(match.routeId);
     const current = tracked.get(id)?.status;
     if (!route || route.website || !current) return;
-    const status: RouteStatus = { ...current, status: "loading", routeId: route.id, params: match.kind === "route" ? match.params : NO_PARAMS, stale: false, error: null, url };
+    const status: RouteStatus = { ...current, status: "loading", routeId: route.id, params: match.params, stale: false, error: null, url };
     const timer = setTimeout(() => {
       timers.delete(timer);
       if (pending.get(id)?.timer === timer && endPending(id)) notify();
     }, limits.documentReadyMs);
     timers.add(timer);
-    pending.set(id, { url, status, timer });
+    pending.set(id, { screen: match.screen, params: match.params, status, timer });
     pendingChanged = true;
   }
 
@@ -319,7 +320,11 @@ export function createRouter(genesis: Genesis, options: RouterOptions): Router {
   }
 
   function done(id: string) {
+    const before = state;
     dispatch({ type: "user.done", id });
+    // Declining a sign-in the first context needs at its own page leaves no applet page to return
+    // to, so Done leaves the applet instead of doing nothing.
+    if (state === before && revealedNow() === id && state.contexts[id]?.pin === "auth") genesis.leave();
     for (const listener of [...doneListeners]) listener(id);
   }
 
@@ -353,10 +358,7 @@ export function createRouter(genesis: Genesis, options: RouterOptions): Router {
       screen = { key: top.key, id: top.id, params: top.params, context: state.active, overlay: true };
     } else if (active && next) {
       // A push takes the next history index, so the screen keeps its key when the page arrives.
-      const match = matchRoute(table, next.url);
-      if (match.kind === "route") {
-        screen = { key: `${active.id}:${active.index + 1}`, id: match.screen, params: match.params, context: active.id, overlay: false };
-      }
+      screen = { key: `${active.id}:${active.index + 1}`, id: next.screen, params: next.params, context: active.id, overlay: false };
     } else if (active?.url) {
       const match = matchRoute(table, active.url);
       if (match.kind === "route") {
@@ -560,6 +562,8 @@ export function createRouter(genesis: Genesis, options: RouterOptions): Router {
     }
     stops.push(context.subscribe(() => update(id)));
     stops.push(context.onNavigated(navigation => {
+      // Any navigation ends the push, even a step the previous page takes first: at worst that
+      // page's screen shows again until the new page starts, as it did before pending pushes.
       endPending(id);
       dispatch({ type: "context.navigated", ...navigation });
       update(id);
