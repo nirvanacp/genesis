@@ -243,7 +243,38 @@ pub enum ShellEvent {
         #[serde(default)]
         message: Option<String>,
     },
+    /// A hidden context's page called `alert`, `confirm`, `prompt` or raised `beforeunload`. The
+    /// page waits until `AnswerDialog` or `ShowDialog` carries `token`. A revealed page shows
+    /// WebView's own dialog and never sends this. `url` is the page's URL.
+    JsDialog {
+        view: ViewRef,
+        token: u64,
+        kind: DialogKind,
+        message: String,
+        #[serde(default)]
+        default_value: Option<String>,
+        url: String,
+    },
+    /// The page of an open dialog navigated or was destroyed; the shell cancelled the dialog.
+    JsDialogClosed { view: ViewRef, token: u64 },
 }
+
+/// The kind of a page's JavaScript dialog.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DialogKind {
+    Alert,
+    Confirm,
+    Prompt,
+    BeforeUnload,
+}
+
+/// How long the foreground has to claim a hidden page's dialog before the host reveals the
+/// website and the shell shows the dialog itself.
+pub const DIALOG_CLAIM_MS: u64 = 1_000;
+
+/// The most characters of a dialog's message, and of a prompt's default or answered value.
+pub const DIALOG_TEXT_MAX: usize = 2_000;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -427,6 +458,18 @@ pub enum ShellCommand {
     /// Real Android input for a hidden context's WebView, dispatched in order. The shell answers
     /// with `InputDone` carrying `token`.
     Input { view: ViewRef, token: u64, events: Vec<InputEvent> },
+    /// Answers the open dialog `token` of a hidden page: OK when `accept`, else Cancel. `value`
+    /// is a prompt's answer.
+    AnswerDialog {
+        view: ViewRef,
+        token: u64,
+        accept: bool,
+        #[serde(default)]
+        value: Option<String>,
+    },
+    /// The applet did not take dialog `token`: the context was revealed, and the shell shows the
+    /// dialog itself over the website.
+    ShowDialog { view: ViewRef, token: u64 },
 }
 
 /// One input event of `Input` or `page.input`. `x` and `y` are CSS pixels of the visual viewport
@@ -906,6 +949,9 @@ pub struct Limits {
     /// The shell can send real input to a hidden context (`page.input`).
     #[serde(default)]
     pub trusted_input: bool,
+    /// A hidden page's JavaScript dialogs reach the foreground (`context.dialog`).
+    #[serde(default)]
+    pub dialogs: bool,
 }
 
 impl Default for Limits {
@@ -927,6 +973,7 @@ impl Default for Limits {
             history_entries_max: 16,
             watches_max: 32,
             trusted_input: true,
+            dialogs: true,
         }
     }
 }
@@ -1139,6 +1186,19 @@ pub enum Call {
     /// `events` to that document's view and answers once the shell has.
     #[serde(rename = "page.input")]
     PageInput { call_id: String, events: Vec<InputEvent> },
+    /// The foreground will show the open dialog of context `id` itself, so the host does not
+    /// reveal the website for it.
+    #[serde(rename = "context.dialog.claim")]
+    DialogClaim { id: String, dialog_id: u64 },
+    /// The user's answer to the open dialog of context `id`. `value` is a prompt's answer.
+    #[serde(rename = "context.dialog.answer")]
+    DialogAnswer {
+        id: String,
+        dialog_id: u64,
+        accept: bool,
+        #[serde(default)]
+        value: Option<String>,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
