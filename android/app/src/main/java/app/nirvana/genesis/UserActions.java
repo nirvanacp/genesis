@@ -104,10 +104,12 @@ final class UserActions {
     void run(String appletId, long token, JSONObject view, JSONObject action) {
         String kind = action.optString("kind");
         if (kind.equals("share") && view != null) {
-            // The website's own Share button: the host checked the page's user activation; the
-            // shell checks that the user still sees that website.
+            // The website's own Share button: the user sees that website and just lifted a finger
+            // on it. The page's own claim of user activation is not trusted; one touch shares once.
             Views.Page page = shell.page(view);
             if (page == null || !page.isRevealed()) { answer(done(token, "USER_ACTION_REQUIRED", "The website shares only while it is shown", null)); return; }
+            if (!SitePolicy.touchedRecently(page)) { answer(done(token, "USER_ACTION_REQUIRED", "The website shares only after a tap on it", null)); return; }
+            page.touchedAt = 0;
             share(token, text(action, "title"), text(action, "text"), text(action, "url"));
             return;
         }

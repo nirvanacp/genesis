@@ -178,6 +178,9 @@ abstract class WindowActivity extends Activity implements Shell.Owner {
 
     @Override protected void onDestroy() {
         if (registered) {
+            // A window closed while the file picker covered it never reported its pause.
+            if (picking) runtime.windowSuspended(shell);
+            picking = false;
             windowClosing();
             runtime.router.detach(shell);
             registered = false;

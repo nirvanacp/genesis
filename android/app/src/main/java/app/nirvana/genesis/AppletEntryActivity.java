@@ -17,11 +17,14 @@ public final class AppletEntryActivity extends Activity {
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         Intent intent = getIntent();
-        String appletId = Router.appletId(intent);
-        if (appletId == null) appletId = aliasApplet(intent.getComponent());
+        ComponentName component = intent.getComponent();
+        // A drawer alias is exported, so any app can start it with any data and extras: it opens
+        // only the applet its meta-data names, at its start. Shortcuts reach this activity itself.
+        boolean alias = component != null && !getClass().getName().equals(component.getClassName());
+        String appletId = alias ? aliasApplet(component) : Router.appletId(intent);
         if (appletId != null) {
             Intent window = Router.appletIntent(this, appletId);
-            String url = intent.getStringExtra(AppletActivity.EXTRA_URL);
+            String url = alias ? null : intent.getStringExtra(AppletActivity.EXTRA_URL);
             if (url != null) window.putExtra(AppletActivity.EXTRA_URL, url);
             startActivity(window);
         }

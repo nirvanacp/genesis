@@ -82,7 +82,15 @@ final class Views {
 
     /** The container a revealed context is reparented into, above the foreground. */
     static final class Revealed extends android.widget.FrameLayout {
+        /** Runs when the user lifts a finger on the revealed context, or null. */
+        Runnable touched;
+
         Revealed(android.content.Context context) { super(context); }
+
+        @Override public boolean dispatchTouchEvent(android.view.MotionEvent event) {
+            if (event.getActionMasked() == android.view.MotionEvent.ACTION_UP && touched != null) touched.run();
+            return super.dispatchTouchEvent(event);
+        }
     }
 
     /** The container a revealed context's popup shows in, in place of the revealed context. */
@@ -116,6 +124,8 @@ final class Views {
         boolean capturing;
         /** Downloads this document started; a second one asks first. */
         int downloads;
+        /** `SystemClock.uptimeMillis()` of the user's last touch on this revealed context; 0 for none or used. */
+        long touchedAt;
         /** `SystemClock.uptimeMillis()` of the last trusted input dispatched here; 0 for none. */
         long trustedInputAt;
         /** The one feature the user let this hidden context use (a `SitePolicy` grant kind), or null. */

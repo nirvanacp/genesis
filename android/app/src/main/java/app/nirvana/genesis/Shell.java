@@ -117,6 +117,10 @@ final class Shell implements Views.Listener, Ui.Actions {
     private boolean websiteChosen;
     private Requests.FullScreen customView;
     private int visualState;
+    /** Dialogs `destroy` closes: messages, choosers and settings prompts. */
+    private final List<android.app.Dialog> dialogsShown = new ArrayList<>();
+    /** The window is gone; dismiss listeners no longer navigate. */
+    private boolean destroyed;
     /** The host's progress message for flows that have no page of their own. */
     private androidx.appcompat.app.AlertDialog progress;
     private TextView progressText;
@@ -184,6 +188,8 @@ final class Shell implements Views.Listener, Ui.Actions {
         bar.setVisibility(View.GONE);
         website.addView(bar, new LinearLayout.LayoutParams(-1, -2));
         revealed = new Views.Revealed(activity);
+        // A real touch on the shown website lets its own Share button share once.
+        revealed.touched = () -> { if (revealedPage != null) revealedPage.touchedAt = SystemClock.uptimeMillis(); };
         revealed.setBackgroundColor(tokens.surface);
         revealed.setVisibility(View.GONE);
         website.addView(revealed, new LinearLayout.LayoutParams(-1, 0, 1));
@@ -625,13 +631,13 @@ final class Shell implements Views.Listener, Ui.Actions {
     void showError(String message) {
         dismissProgress();
         if (addFlow.error(message)) return;
-        new MaterialAlertDialogBuilder(activity).setTitle("Genesis").setMessage(message).setPositiveButton("Close", null)
-            .setOnDismissListener(d -> leaveIfEmpty()).show();
+        show(new MaterialAlertDialogBuilder(activity).setTitle("Genesis").setMessage(message).setPositiveButton("Close", null)
+            .setOnDismissListener(d -> leaveIfEmpty()));
     }
 
     /** An applet window whose applet did not start has nothing to show after its message: Genesis opens instead. */
     private void leaveIfEmpty() {
-        if (window != null && appletId == null && ui.pages.top() == null) goHome();
+        if (!destroyed && window != null && appletId == null && ui.pages.top() == null) goHome();
     }
 
     /** "Go to Home" in an applet window opens the Genesis list; the manager already shows it. */
@@ -647,7 +653,7 @@ final class Shell implements Views.Listener, Ui.Actions {
             Toast.makeText(activity, message, Toast.LENGTH_SHORT).show();
             return;
         }
-        new MaterialAlertDialogBuilder(activity).setTitle(title).setMessage(message).setPositiveButton("Close", null).show();
+        show(new MaterialAlertDialogBuilder(activity).setTitle(title).setMessage(message).setPositiveButton("Close", null));
     }
 
     /**
@@ -740,13 +746,33 @@ final class Shell implements Views.Listener, Ui.Actions {
         return true;
     }
 
+    /** The window is going away: every dialog it still shows closes with it. */
     void destroy() {
+        destroyed = true;
         destroyAll();
+        dismissProgress();
+        for (android.app.Dialog dialog : dialogsShown) dialog.dismiss();
+        dialogsShown.clear();
     }
 
+    /** Shows `builder`'s dialog and keeps it, so `destroy` can close it. */
+    private android.app.Dialog show(MaterialAlertDialogBuilder builder) {
+        dialogsShown.removeIf(dialog -> !dialog.isShowing());
+        android.app.Dialog dialog = builder.show();
+        dialogsShown.add(dialog);
+        return dialog;
+    }
+
+    /** Ends the open applet's pages and the questions about them. */
     private void destroyAll() {
         endGrants();
         downloads.destroy();
+        if (featureDialog != null) {
+            // Its dismiss listener runs later and asks no further question for this one.
+            android.app.Dialog dialog = featureDialog;
+            featureDialog = null;
+            dialog.dismiss();
+        }
         closeCustomView();
         cancelPrompts();
         dropRevealed();
@@ -974,14 +1000,13 @@ final class Shell implements Views.Listener, Ui.Actions {
     }
 
     private void showAndroidSettings(List<String> permissions) {
-        new MaterialAlertDialogBuilder(activity)
+        show(new MaterialAlertDialogBuilder(activity)
             .setTitle("Android blocks Genesis from using your " + permissionNames(permissions))
             .setMessage("Allow it for Genesis in Android's settings, under Permissions.")
             .setPositiveButton("Open settings", (d, w) -> activity.startActivity(
                 new android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
                     Uri.fromParts("package", activity.getPackageName(), null))))
-            .setNegativeButton("Not now", null)
-            .show();
+            .setNegativeButton("Not now", null));
     }
 
     /** The Android permissions behind a `SiteGrants` permission; any one of them is enough. */
@@ -1132,15 +1157,14 @@ final class Shell implements Views.Listener, Ui.Actions {
             choices[i] = "Open in " + (entry == null ? ids[i] : entry.optString("name", ids[i]));
         }
         choices[count] = "Create a new applet";
-        new MaterialAlertDialogBuilder(activity)
+        show(new MaterialAlertDialogBuilder(activity)
             .setTitle(linkTitle(url))
             .setItems(choices, (d, which) -> {
                 if (which < count) openUrl(url, ids[which], external);
                 else ui.pages.push(CreateApplet.TAG, () -> CreateApplet.page(ui, url), null, false);
             })
             .setNegativeButton("Cancel", (d, which) -> leaveFor(external))
-            .setOnCancelListener(d -> leaveFor(external))
-            .show();
+            .setOnCancelListener(d -> leaveFor(external)));
     }
 
     /** A cancelled chooser for a link another app shared returns to that app, as Back would. */
@@ -1163,7 +1187,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         String copied = clipboardLink();
         if (copied != null) field.setText(copied);
         form.addView(field, new LinearLayout.LayoutParams(-1, -2));
-        new MaterialAlertDialogBuilder(activity)
+        show(new MaterialAlertDialogBuilder(activity)
             .setTitle("Open a link")
             .setMessage("Choose the applet that opens it, or create a new one.")
             .setView(form)
@@ -1171,8 +1195,7 @@ final class Shell implements Views.Listener, Ui.Actions {
                 String url = field.getText().toString().trim();
                 if (!url.isEmpty()) openUrl(url, null, false);
             })
-            .setNegativeButton("Cancel", null)
-            .show();
+            .setNegativeButton("Cancel", null));
     }
 
     private String clipboardLink() {
@@ -1403,6 +1426,8 @@ final class Shell implements Views.Listener, Ui.Actions {
             .setPositiveButton("Switch to " + target, (dialog, which) -> setEngine(id, to))
             .setOnDismissListener(dialog -> {
                 if (remember != null && remember.isChecked()) state.edit().putBoolean(engineAskKey(id, feature), true).apply();
+                // `destroyAll` already let go of it, and the next applet asks its own questions.
+                if (featureDialog != dialog) return;
                 featureDialog = null;
                 askWaitingFeature();
             })
@@ -1443,14 +1468,13 @@ final class Shell implements Views.Listener, Ui.Actions {
     }
 
     private void showNotificationSettings(String name) {
-        new MaterialAlertDialogBuilder(activity)
+        show(new MaterialAlertDialogBuilder(activity)
             .setTitle("Android blocks notifications from Genesis")
             .setMessage("Allow them for Genesis in Android's settings, so " + name + " can notify you.")
             .setPositiveButton("Open settings", (d, w) -> activity.startActivity(
                 new android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
                     .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, activity.getPackageName())))
-            .setNegativeButton("Not now", null)
-            .show();
+            .setNegativeButton("Not now", null));
     }
 
     @Override public boolean separateSignInAvailable() { return WebViewSites.profilesSupported(); }

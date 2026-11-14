@@ -43,6 +43,15 @@ final class SitePolicy {
         return gesture && (granted(page, kind) || usersGesture(page, true));
     }
 
+    /**
+     * The user's own finger lifted on this shown page within `INPUT_ACTIVATION_MS`, with no
+     * trusted input from the applet since. Trusted input goes straight to the page's view and
+     * never reaches the container that records a touch.
+     */
+    static boolean touchedRecently(Views.Page page) {
+        return page.touchedAt != 0 && SystemClock.uptimeMillis() - page.touchedAt < INPUT_ACTIVATION_MS && usersGesture(page, true);
+    }
+
     /** File choosers, fullscreen video and any other UI a page asks the shell for. */
     static boolean mayShowUi(Views.Page page) {
         return (page.isContext() || page.opener != null) && page.isRevealed();
