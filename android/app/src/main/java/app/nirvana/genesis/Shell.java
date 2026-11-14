@@ -685,6 +685,14 @@ final class Shell implements Views.Listener, Ui.Actions {
         downloads.start(page, url, userAgent, disposition, mimeType);
     }
 
+    /** The same policy as `download`, for a response the engine already holds; a refused one is closed. */
+    @Override public void downloadResponse(Views.Page page, String url, java.io.InputStream body, String disposition, String mimeType, long length) {
+        if (!SitePolicy.mayUse(page, SitePolicy.DOWNLOAD)) { Downloads.close(body); return; }
+        useGrant(page);
+        if (page == popup && page.tab.history().size() == 0) bar.post(() -> { if (page == popup) closePopup(); });
+        downloads.saveResponse(page, url, body, disposition, mimeType, length);
+    }
+
     /** Downloads `url` with the page's cookies through DownloadManager; false when it couldn't start. */
     boolean startDownload(Views.Page page, String url, String userAgent, String mimeType, String name) {
         return downloads.startDownload(page, url, userAgent, mimeType, name);

@@ -110,6 +110,9 @@ final class GeckoPage implements WebsitePage {
             List<Runnable> loads = waiting;
             waiting = null;
             for (Runnable load : loads) load.run();
+        }, () -> {
+            // Without its bridge the page can't run; the host offers Reload, which opens it again.
+            if (!destroyed) listener.rendererGone(page);
         });
     }
 
@@ -217,6 +220,8 @@ final class GeckoPage implements WebsitePage {
         main.removeCallbacksAndMessages(null);
         port = null;
         closeDialog();
+        page.fullScreen = false;
+        forgetAnswers();
         if (fullParent != null) {
             fullParent = null;
             listener.hideFullScreen();
@@ -438,6 +443,7 @@ final class GeckoPage implements WebsitePage {
             fullIndex = fullParent.indexOfChild(view);
             fullParams = view.getLayoutParams();
             fullParent.removeView(view);
+            page.fullScreen = true;
             listener.showFullScreen(new Requests.FullScreen(view, () -> {
                 restoreView();
                 if (!destroyed) session.exitFullScreen();
@@ -446,16 +452,25 @@ final class GeckoPage implements WebsitePage {
 
         /**
          * A response GeckoView does not show, such as an attachment, goes to the shell's download.
-         * GeckoView has no cookie read yet, so the download goes without the site's cookies.
+         * The body GeckoView already fetched with the page's session is saved as is, so the file
+         * comes with the site's cookies; GeckoView has no cookie read for a second fetch.
          */
         @Override public void onExternalResponse(GeckoSession s, org.mozilla.geckoview.WebResponse response) {
-            if (response.body != null) {
-                try { response.body.close(); } catch (java.io.IOException ignored) { /* The shell fetches the URL again. */ }
-            }
             String type = header(response.headers, "Content-Type");
             if (type != null && type.contains(";")) type = type.substring(0, type.indexOf(';')).trim();
-            listener.download(page, response.uri, GeckoSession.getDefaultUserAgent(), header(response.headers, "Content-Disposition"), type);
+            String disposition = header(response.headers, "Content-Disposition");
+            if (response.body == null) {
+                listener.download(page, response.uri, GeckoSession.getDefaultUserAgent(), disposition, type);
+                return;
+            }
+            listener.downloadResponse(page, response.uri, response.body, disposition, type, length(header(response.headers, "Content-Length")));
         }
+    }
+
+    /** A `Content-Length` value, or -1 when it is missing or not a number. */
+    private static long length(String value) {
+        if (value == null) return -1;
+        try { return Long.parseLong(value.trim()); } catch (NumberFormatException error) { return -1; }
     }
 
     private static String header(Map<String, String> headers, String name) {
@@ -523,6 +538,7 @@ final class GeckoPage implements WebsitePage {
 
     /** Puts the view back where it was before the full screen. */
     private void restoreView() {
+        page.fullScreen = false;
         ViewGroup parent = fullParent;
         fullParent = null;
         if (parent == null || destroyed) return;
@@ -866,7 +882,9 @@ final class GeckoPage implements WebsitePage {
     /**
      * Permissions follow WebView's: website pages get protected media (EME) without asking, shown
      * or hidden; location, camera and microphone only for the shown website, through `SiteGrants`.
-     * Everything else is refused.
+     * Everything else is refused. A refusal by policy answers "ask again", so Gecko stores no denial
+     * for a page that never asked the user, and the user's location answers last only as long as the
+     * page, as WebView's do: `destroy` resets them. One the process ends before resetting stays.
      */
     private final class Permissions implements GeckoSession.PermissionDelegate {
         @Override public GeckoResult<Integer> onContentPermissionRequest(GeckoSession s, ContentPermission permission) {
@@ -875,34 +893,40 @@ final class GeckoPage implements WebsitePage {
                 case PERMISSION_AUTOPLAY_INAUDIBLE:
                     return GeckoResult.fromValue(ContentPermission.VALUE_ALLOW);
                 case PERMISSION_GEOLOCATION: {
-                    if (!SitePolicy.mayUse(page, SitePolicy.LOCATION)) return GeckoResult.fromValue(ContentPermission.VALUE_DENY);
+                    if (!SitePolicy.mayUse(page, SitePolicy.LOCATION)) return GeckoResult.fromValue(ContentPermission.VALUE_PROMPT);
                     listener.useGrant(page);
                     GeckoResult<Integer> result = new GeckoResult<>();
-                    listener.askSite(page, Views.origin(permission.uri), List.of(SiteGrants.LOCATION), allowed ->
-                        result.complete(allowed.contains(SiteGrants.LOCATION) ? ContentPermission.VALUE_ALLOW : ContentPermission.VALUE_DENY));
+                    listener.askSite(page, Views.origin(permission.uri), List.of(SiteGrants.LOCATION), allowed -> {
+                        if (!destroyed) answers.add(permission);
+                        result.complete(allowed.contains(SiteGrants.LOCATION) ? ContentPermission.VALUE_ALLOW : ContentPermission.VALUE_DENY);
+                    });
                     return result;
                 }
                 default:
-                    return GeckoResult.fromValue(ContentPermission.VALUE_DENY);
+                    return GeckoResult.fromValue(ContentPermission.VALUE_PROMPT);
             }
         }
 
         /**
-         * GeckoView asks for Android's permission before the website's own question. One Genesis
-         * already holds is granted; otherwise the shown website asks through `SiteGrants`, whose
-         * question includes Android's request, and a hidden page is refused.
+         * GeckoView asks for Android's permission before the website's own question. A hidden page is
+         * refused first, even for a permission Genesis already holds, unless its location grant
+         * covers the request. One Genesis holds is then granted; otherwise the shown website asks
+         * through `SiteGrants`, whose question includes Android's request.
          */
         @Override public void onAndroidPermissionsRequest(GeckoSession s, String[] permissions, Callback callback) {
-            if (permissions == null || permissions.length == 0 || held(permissions)) { callback.grant(); return; }
+            if (permissions == null || permissions.length == 0) { callback.grant(); return; }
             Set<String> wanted = new LinkedHashSet<>();
+            boolean unknown = false;
             for (String name : permissions) {
                 String grant = siteGrant(name);
-                if (grant == null) { callback.reject(); return; }
-                wanted.add(grant);
+                if (grant == null) unknown = true;
+                else wanted.add(grant);
             }
             // A hidden context's location grant is used by the website's own question, which follows.
-            boolean located = wanted.equals(Set.of(SiteGrants.LOCATION)) && SitePolicy.granted(page, SitePolicy.LOCATION);
+            boolean located = !unknown && wanted.equals(Set.of(SiteGrants.LOCATION)) && SitePolicy.granted(page, SitePolicy.LOCATION);
             if (!SitePolicy.mayShowUi(page) && !located) { callback.reject(); return; }
+            if (held(permissions)) { callback.grant(); return; }
+            if (unknown) { callback.reject(); return; }
             listener.askSite(page, Views.origin(url == null ? "" : url), new ArrayList<>(wanted), allowed -> {
                 if (allowed.containsAll(wanted)) callback.grant();
                 else callback.reject();
@@ -924,6 +948,18 @@ final class GeckoPage implements WebsitePage {
                 callback.grant(grantVideo, grantAudio);
             });
         }
+    }
+
+    /** The user's location answers for this page, which `destroy` turns back to "ask". */
+    private final List<GeckoSession.PermissionDelegate.ContentPermission> answers = new ArrayList<>();
+
+    private void forgetAnswers() {
+        if (answers.isEmpty()) return;
+        org.mozilla.geckoview.StorageController storage = GeckoEngine.runtime(activity).getStorageController();
+        for (GeckoSession.PermissionDelegate.ContentPermission answer : answers) {
+            storage.setPermission(answer, GeckoSession.PermissionDelegate.ContentPermission.VALUE_PROMPT);
+        }
+        answers.clear();
     }
 
     private boolean held(String[] permissions) {

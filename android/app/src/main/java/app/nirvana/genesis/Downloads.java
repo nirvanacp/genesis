@@ -137,6 +137,24 @@ final class Downloads {
     }
 
     /**
+     * A response the engine already holds, which `SitePolicy` already allowed: it is saved as it
+     * streams in, with the same question as other downloads. A declined one is closed.
+     */
+    void saveResponse(Views.Page page, String url, InputStream body, String disposition, String mimeType, long length) {
+        String scheme = Uri.parse(url).getScheme();
+        boolean web = "https".equalsIgnoreCase(scheme) || "http".equalsIgnoreCase(scheme);
+        String name = android.webkit.URLUtil.guessFileName(web ? url : "", disposition, mimeType);
+        confirm(page, web ? url : String.valueOf(page.tab.url()), name, () -> save(body, name, mimeType, length), () -> close(body));
+    }
+
+    /** Closes a response body that won't be read. */
+    static void close(InputStream body) {
+        STREAMS.execute(() -> {
+            try { body.close(); } catch (IOException ignored) { /* Nothing more to release. */ }
+        });
+    }
+
+    /**
      * Runs `start`, asking first when `page` already downloaded a file. `declined`, which may be
      * null, runs instead when the user cancels the question or the window closes it. Main thread.
      */

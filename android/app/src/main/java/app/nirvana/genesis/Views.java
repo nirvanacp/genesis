@@ -64,6 +64,12 @@ final class Views {
         void cancelAsk();
         /** A page started a download; Android reports no gesture for it. */
         void download(Page page, String url, String userAgent, String disposition, String mimeType);
+        /**
+         * A page started a download whose response its engine already holds, as GeckoView does, so
+         * the file arrives through the page's own session. The shell always closes `body`.
+         * `length` is the expected size, or -1 when unknown.
+         */
+        void downloadResponse(Page page, String url, java.io.InputStream body, String disposition, String mimeType, long length);
         /** The shown website's server asks for a username and password. */
         void httpAuth(Page page, Requests.AuthRequest request, String host, String realm);
         /** The page ran into a feature its engine lacks; the shell may offer the other engine. */
@@ -124,6 +130,8 @@ final class Views {
         boolean capturing;
         /** Downloads this document started; a second one asks first. */
         int downloads;
+        /** The page's own view fills the screen for the website's full screen, which counts as shown. */
+        boolean fullScreen;
         /** `SystemClock.uptimeMillis()` of the user's last touch on this revealed context; 0 for none or used. */
         long touchedAt;
         /** `SystemClock.uptimeMillis()` of the last trusted input dispatched here; 0 for none. */
@@ -152,10 +160,12 @@ final class Views {
         boolean isForeground() { return "foreground".equals(role); }
         boolean isContext() { return role.startsWith("context:"); }
         /**
-         * True exactly while the shell shows this context above the foreground, or this popup over it.
-         * A context whose popup covers it stays in the hidden `Revealed` container and is not shown.
+         * True exactly while the shell shows this context above the foreground, or this popup over it,
+         * or the page's view fills the screen. A context whose popup covers it stays in the hidden
+         * `Revealed` container and is not shown.
          */
         boolean isRevealed() {
+            if (fullScreen) return true;
             android.view.ViewParent parent = tab.view().getParent();
             return parent instanceof PopupSheet || (parent instanceof Revealed && ((View) parent).getVisibility() == View.VISIBLE);
         }
