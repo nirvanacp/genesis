@@ -105,7 +105,8 @@ final class WebViewPage implements WebsitePage {
         this.assets = assets;
         website = !page.isForeground();
         web = new WebView(activity);
-        WebsiteSettings.apply(web, website, page.site);
+        // A WebView page always runs in a WebView profile.
+        WebsiteSettings.apply(web, website, (WebViewSites) page.site);
     }
 
     /** A foreground or context view. The bridge listener and start script apply on the page's origins only. */

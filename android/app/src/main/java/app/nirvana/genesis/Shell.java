@@ -115,7 +115,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         this.activity = activity;
         this.owner = owner;
         this.window = window;
-        sites = SiteData.defaultProfile(activity);
+        sites = WebViewSites.defaultProfile(activity);
         state = state(activity);
         views = new Views(activity, this);
         tokens = new Tokens(activity);
@@ -1088,7 +1088,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         String name = profileName(appletId);
         SiteData cached = profiles.get(appletId);
         if (cached == null || !name.equals(cached.profile)) {
-            cached = SiteData.profile(activity, name);
+            cached = WebViewSites.profile(activity, name);
             profiles.put(appletId, cached);
         }
         return cached;
@@ -1097,8 +1097,8 @@ final class Shell implements Views.Listener, Ui.Actions {
     /** The same, for work outside a window, such as a cookie import. */
     static SiteData sitesFor(android.content.Context context, String appletId) {
         android.content.SharedPreferences state = state(context);
-        if (appletId == null || !SiteData.profilesSupported() || !state.getBoolean(profileKey(appletId), false)) return SiteData.defaultProfile(context);
-        return SiteData.profile(context, profileName(state, appletId));
+        if (appletId == null || !WebViewSites.profilesSupported() || !state.getBoolean(profileKey(appletId), false)) return WebViewSites.defaultProfile(context);
+        return WebViewSites.profile(context, profileName(state, appletId));
     }
 
     @Override public void addToHomeScreen(String appletId) {
@@ -1145,10 +1145,10 @@ final class Shell implements Views.Listener, Ui.Actions {
             .show();
     }
 
-    @Override public boolean separateSignInAvailable() { return SiteData.profilesSupported(); }
+    @Override public boolean separateSignInAvailable() { return WebViewSites.profilesSupported(); }
 
     @Override public boolean separateSignIn(String appletId) {
-        return SiteData.profilesSupported() && state.getBoolean(profileKey(appletId), false);
+        return WebViewSites.profilesSupported() && state.getBoolean(profileKey(appletId), false);
     }
 
     /**
@@ -1162,7 +1162,7 @@ final class Shell implements Views.Listener, Ui.Actions {
             String name = "applet-" + appletId + "-" + Long.toString(System.currentTimeMillis(), 36);
             state.edit().putBoolean(profileKey(appletId), true).putString(profileNameKey(appletId), name).apply();
         } else {
-            pending.add(profileName(appletId));
+            pending.add(deletionEntry(profileName(appletId)));
             state.edit().remove(profileKey(appletId)).remove(profileNameKey(appletId)).putStringSet(DELETE_PROFILES, pending).apply();
         }
         profiles.remove(appletId);
@@ -1210,7 +1210,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         android.content.SharedPreferences state = state(context);
         if (!state.getBoolean(profileKey(appletId), false)) return;
         Set<String> pending = new LinkedHashSet<>(state.getStringSet(DELETE_PROFILES, Set.of()));
-        pending.add(profileName(state, appletId));
+        pending.add(deletionEntry(profileName(state, appletId)));
         state.edit().remove(profileKey(appletId)).remove(profileNameKey(appletId)).putStringSet(DELETE_PROFILES, pending).apply();
     }
 
@@ -1220,12 +1220,26 @@ final class Shell implements Views.Listener, Ui.Actions {
         state(context).edit().remove(privacyKey(appletId)).apply();
     }
 
-    /** Deletes the profiles waiting for deletion; one a WebView still holds waits for the next launcher. */
+    /**
+     * A profile waiting for deletion is stored as `<engine>:<name>`, so each engine deletes its
+     * own. An entry without a prefix was written before engines existed and is a WebView profile.
+     */
+    private static String deletionEntry(String profile) { return WebViewSites.ENGINE + ":" + profile; }
+
+    /** Deletes the profiles waiting for deletion; one a page still holds waits for the next launcher. */
     private void deleteProfiles() {
         Set<String> pending = new LinkedHashSet<>(state.getStringSet(DELETE_PROFILES, Set.of()));
         if (pending.isEmpty()) return;
-        pending.removeIf(name -> SiteData.delete(activity, name));
+        pending.removeIf(this::deleteProfile);
         state.edit().putStringSet(DELETE_PROFILES, pending).apply();
+    }
+
+    /** Returns whether the entry's profile is gone. An engine this build does not run keeps its entry. */
+    private boolean deleteProfile(String entry) {
+        String prefix = WebViewSites.ENGINE + ":";
+        if (entry.startsWith(prefix)) return WebViewSites.delete(activity, entry.substring(prefix.length()));
+        if (entry.matches("[a-z]+:.*")) return false;
+        return WebViewSites.delete(activity, entry);
     }
 
     @Override public void storageSize(java.util.function.LongConsumer result) { owner.storageSize(result); }
