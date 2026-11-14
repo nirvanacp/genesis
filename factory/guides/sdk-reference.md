@@ -117,7 +117,6 @@ genesis.ready();
 | Sequences | `run(steps, { until?, navigates?, expect?, deadlineMs? })`, `invoke(command, args?, { target?, expect?, navigates?, timeoutMs? })` |
 | Pending | `pending(target?)`, `subscribePending(listener)`, `cancel()` |
 | Watches | `watch(id, spec, { when? })`, `resync()`, `forget({ current?, keepInputs? })` |
-| Dialogs | `dialog`, `onDialog(handler)`; see [Website dialogs](#website-dialogs) |
 | Grants | `allow(grant): Promise<GrantResult>`, `onGrantEnded(listener)`; see [User actions](#user-actions) |
 | Raw | `call(op, args?, options?)` sends one page agent operation as is. |
 
@@ -316,9 +315,7 @@ router.subscribe(() => console.log(router.screen()?.id, router.status().status))
 | `useService` | `useService(serviceId)` | `request(path, { method?, body? })` for a declared service. |
 | `useNotifications` | `useNotifications(): Notifications` | `genesis.notifications`. |
 | `useFilePicker` | `useFilePicker(): { files, pick, remove, clear }` | Picked files held while the component is mounted, released when it unmounts. `pick(options?)` adds to `files` with `multiple` and replaces them without. |
-| `useDialog` | `useDialog(contextId?): Dialog \| null` | The open dialog of a hidden context's page, the active context by default. Using it claims the context's dialogs. |
 | `useGrant` | `useGrant(contextId?): { grant, allow(kind) }` | One-time grants of a context, the active context by default: `grant` is the `GrantKind` the hidden page may use now, or `null` once it ended. |
-| `WebsiteDialog` | `<WebsiteDialog dialog {...divProps}>` | An unstyled, accessible `alertdialog` that answers a `Dialog` with the user's choice. |
 | `useScrollMemory` | `useScrollMemory()` | A ref callback that keeps a scroll container's position per screen. |
 | `ScrollMemory` | `<ScrollMemory {...divProps}>` | A `div` with `useScrollMemory`. |
 | `useAppResume` | `useAppResume(callback)` | Runs on resume from the background and, with the router, after Done on the website. |
@@ -374,14 +371,7 @@ In React, `useNotifications()` returns the same object. It notifies the user und
 
 ### Website dialogs
 
-```tsx
-const dialog = useDialog();
-return <WebsiteDialog dialog={dialog} className="sheet" />;
-```
-
-A hidden context's page can open a JavaScript `alert`, `confirm` or `prompt`, or a `beforeunload` question; the page waits until it is answered. While at least one `context.onDialog(handler)` is registered, or a component uses `useDialog(contextId?)`, the client claims each dialog of that context at once and passes it on as a `Dialog`: `{ context, kind, message, defaultValue?, origin, answer(accept, value?), closed }`. `context.dialog` is the open one, or `null`. `kind` is `alert`, `confirm`, `prompt` or `beforeunload`; `message` and `defaultValue` are the site's text, cut to 2000 characters; `origin` is the page's origin. `answer(true)` is OK, `answer(false)` is Cancel, and only a prompt takes a `value`, at most 2000 characters. `closed` resolves once the dialog was answered or closed because its page navigated or went away. Answer only with the user's choice.
-
-`WebsiteDialog` renders a plain, unstyled `alertdialog` with the origin, the exact message, a field for a prompt, Cancel (not for an alert) and OK. Style it through `className` and the other props, or build the applet's own sheet from `useDialog`. An applet that claims no dialog within about a second sees the website revealed with the dialog over it, followed by `user.showContext`; the user answers it there, and the website stays shown until they tap Done.
+A hidden context's page can open a JavaScript `alert`, `confirm` or `prompt`, or a `beforeunload` question. Genesis shows it at once as its own dialog over the applet UI, titled with the page's origin, and the website stays hidden; the user's answer goes straight to the page. The SDK has no dialog API and the applet does nothing. While the dialog is open, the page calls of that context do not use up their budget.
 
 ### User actions
 
@@ -430,7 +420,6 @@ return <>
 | Stale copies kept for Back | `historyEntriesMax` | 16 history entries per context |
 | Input calls per context | `inputBurst`, `inputRefillMs` | 20 at once, then one more per second; over it an input is `failed` with `RATE_LIMITED` |
 | Trusted input | `trustedInput` | `true` where the shell can send real input |
-| Website dialogs | `dialogs` | `true` where hidden pages' dialogs reach the applet; 1 s to claim one, text cut to 2000 characters |
 | One-time grants | `grants` | `true` where `context.allow` works; a grant lasts 5 s and is used once |
 | User actions | `userActions` | `true` where the applet UI can pick files, save, share, open links and enable notifications, and `attachFiles` works |
 | Picked files | | 16 per pick of at most 64 MiB each, 128 MiB per `attachFiles`; held for at most 30 minutes |

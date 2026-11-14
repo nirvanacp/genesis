@@ -21,7 +21,7 @@ Read the latest request, local instructions, `.specs/current.md`, relevant decis
 | requirement-real-interactions | Requirement: a control performs the action its label names, against the current entity and account, reports the observed outcome, and never retries an uncertain one | [Interactions](interactions.md) |
 | requirement-user-paced-writes | Requirement: every write to a website comes from one user tap; no loops of writes, no background writes, no writes while the user is not in the applet; bulk work uses the website's own bulk control | [User-paced writes](#user-paced-writes) |
 | requirement-user-tap-actions | Requirement: picking files, saving, sharing, opening another app, enabling notifications and one-time grants start only from the handler of a user's tap on the applet UI, one per tap, never chained or automatic; features that need visible UI stay in the applet as [website features](website-features.md) describes | [User tap actions](#user-tap-actions) |
-| requirement-website-dialogs | Requirement: a hidden page's `alert`, `confirm`, `prompt` or leave question shows in the applet with its origin and exact text, and is answered only with the user's choice | [Website dialogs](#website-dialogs) |
+| requirement-website-dialogs | Requirement: a website's `alert`, `confirm`, `prompt` or leave question reaches the user unchanged, as Genesis's own dialog, and is answered only by the user | [Website dialogs](#website-dialogs) |
 | requirement-protected-fields | Requirement: the applet never reads or enters passwords, hidden inputs, one-time codes or card data; the user types them on the website | [Protected fields](#protected-fields) |
 | requirement-data-integrity | Requirement: stable keys, one authoritative store per record type, revision checks, credentials outside the bundle, no blind retry of uncertain writes | [Services and data](services-and-data.md) |
 | requirement-accessible-navigation | Authoring requirement: semantic labels, focus, readable contrast, scalable text, 48 dp touch targets and working Back | [Design](design.md) |
@@ -64,7 +64,7 @@ Some things only the user may start: picking files, saving to Downloads, sharing
 
 ## Website dialogs
 
-A hidden page's `alert`, `confirm`, `prompt` or leave question waits for the user. Every screen whose actions can raise one renders `useDialog()`, with the site's origin and its exact message. Answer only with the user's choice: never accept, dismiss or answer a dialog in code, and never answer it for the user from a stored preference. See [interactions](interactions.md#website-dialogs).
+A hidden page's `alert`, `confirm`, `prompt` or leave question waits for the user, and Genesis shows it as its own dialog over the applet with the site's origin and its exact message. Only the user answers it: a page module never replaces `window.alert`, `confirm` or `prompt`, never removes the site's `beforeunload` question, and never answers a dialog for the user from a stored preference. See [interactions](interactions.md#website-dialogs).
 
 ## Protected fields
 

@@ -18,7 +18,7 @@ While you inspect the website ([product scope](product-scope.md#start-from-the-w
 | [Share](#share) | `genesis.share` with the page's canonical URL | `limits.userActions` |
 | [Open in another app](#open-in-another-app) | `genesis.links.openExternal`, or `allow("handoff")` and a trusted click | `limits.userActions` or `limits.grants` |
 | [Sign in with another provider](#sign-in-with-another-provider) | `allow("window")`, then a trusted click on the provider button | `limits.grants`, `limits.trustedInput` |
-| [Website dialogs](#website-dialogs) | `useDialog` with `WebsiteDialog` or the applet's own sheet | `limits.dialogs` |
+| [Website dialogs](#website-dialogs) | Nothing: Genesis shows them over the applet | None |
 | [Location](#location) | `allow("location")`, then a trusted click on the site's control | `limits.grants`, `limits.trustedInput` |
 | [Notifications](#notifications) | `genesis.notifications.enable` from a switch | `capabilities.notifications` |
 
@@ -201,7 +201,7 @@ Some files exist only after the site builds them, such as an export or a `blob:`
 }}>Export</button>
 ```
 
-The file goes to Downloads. A `blob:` file is saved only on the manifest's origins.
+The file goes to Downloads, named as the site names it. A `blob:` file is saved only on the manifest's origins.
 
 ## Play a video fullscreen
 
@@ -272,21 +272,7 @@ The window opens in a sheet over the applet, under the website bar; the user sig
 
 ## Website dialogs
 
-A site asks with `confirm`, `alert`, `prompt` or a leave question, often before it deletes or discards something. The hidden page waits for the answer. Render `useDialog()` on every screen whose actions can raise one ([requirement-website-dialogs](rules.md#website-dialogs)):
-
-```tsx
-import { useDialog, WebsiteDialog } from "@genesis/sdk/react";
-
-export function PostScreen() {
-  const dialog = useDialog();
-  return <>
-    {/* the screen's content and its Delete control */}
-    <WebsiteDialog dialog={dialog} className="sheet" />
-  </>;
-}
-```
-
-`WebsiteDialog` shows the site's origin, its exact message, a field for a prompt, Cancel and OK. Style it, or build the applet's own sheet from the `Dialog` with `dialog.answer(accept, value?)`. Answer only with the user's choice. A dialog no screen claims within about a second shows on the revealed website instead.
+A site asks with `confirm`, `alert`, `prompt` or a leave question, often before it deletes or discards something. The applet does nothing for these: Genesis shows the question at once as its own dialog over the applet, titled with the site's origin and with its exact text, while the website stays hidden. The user's answer goes straight to the page, and the call that raised it continues ([requirement-website-dialogs](rules.md#website-dialogs)).
 
 ## Location
 
@@ -356,7 +342,6 @@ Read the flags from `genesis.limits` before showing a control. Each is absent in
 | `userActions` | Picking, saving, sharing and opening apps reject with `UNKNOWN_METHOD`, and `attachFiles` fails with `INPUT_UNAVAILABLE`. |
 | `grants` | `allow` rejects with `UNKNOWN_METHOD`. |
 | `trustedInput` | Trusted clicks fail with `INPUT_UNAVAILABLE`, so a grant has nothing to use it. |
-| `dialogs` | Dialogs show on the revealed website. |
 
 When a flag is missing, keep the control and make it show the website with the website cue, such as "Post in *website*", through `viewWebsite()`. The user then does the same thing on the site.
 

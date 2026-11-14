@@ -18,7 +18,7 @@ A control in the UI performs a real action on the website, in the applet's own d
 | Opening a link in another app | `genesis.links.openExternal`, or `allow("handoff")` and a trusted click ([recipe](website-features.md#open-in-another-app)) |
 | Playing a video fullscreen | `allow("fullscreen")` and a trusted click on the site's player ([recipe](website-features.md#play-a-video-fullscreen)) |
 | A "Sign in with ..." button on an applet screen | `allow("window")` and a trusted click; the window shows in a sheet over the applet ([recipe](website-features.md#sign-in-with-another-provider)) |
-| A website `confirm`, `alert`, `prompt` or leave question | `useDialog` and `WebsiteDialog`, answered with the user's choice ([Website dialogs](#website-dialogs)) |
+| A website `confirm`, `alert`, `prompt` or leave question | Nothing: Genesis shows it over the applet ([Website dialogs](#website-dialogs)) |
 | Using the location | `allow("location")` and a trusted click on the site's control ([recipe](website-features.md#location)) |
 | Recording with the camera or microphone | The website, from an explicit control such as "Record in *website*" |
 
@@ -36,7 +36,7 @@ Only these need the revealed website:
 
 On the revealed website these features work as in a browser. Downloads carry the website's sign-in, and the second download from one page asks the user first. `data:` downloads are saved, and so are `blob:` downloads on the manifest's origins, where the page agent reads them; other `blob:` downloads are not. Windows open in a sheet, and `mailto:` and app links open their apps from a tap.
 
-When the running Genesis lacks the flag a recipe needs (`limits.userActions`, `limits.grants`, `limits.trustedInput` or `limits.dialogs`), show the website instead, from an explicit control such as "Download in *website*" that calls `viewWebsite()` from `useRouter`.
+When the running Genesis lacks the flag a recipe needs (`limits.userActions`, `limits.grants`, or `limits.trustedInput`), show the website instead, from an explicit control such as "Download in *website*" that calls `viewWebsite()` from `useRouter`.
 
 ## One-time grants
 
@@ -60,7 +60,7 @@ Picking files, saving to Downloads, sharing, opening another app and turning not
 
 ## Website dialogs
 
-A website can ask with `confirm`, `alert`, `prompt` or a "leave this page?" question, often before it deletes, discards or leaves something. In a hidden context the page waits for the answer. Every routed screen whose actions can lead to such a dialog renders `useDialog()`, for example through `WebsiteDialog` or the applet's own sheet, showing the site's origin and its exact message. Answer only with the user's choice: never accept or dismiss a dialog in code ([website dialogs rule](rules.md#website-dialogs)). An applet that does not claim a dialog within about a second sees the website revealed with the dialog over it, which is safe but shows the website. See [Website dialogs](sdk-reference.md#website-dialogs).
+A website can ask with `confirm`, `alert`, `prompt` or a "leave this page?" question, often before it deletes, discards or leaves something. In a hidden context Genesis shows it at once as its own dialog over the applet, titled with the site's origin and with its exact text, and the website stays hidden. The user answers it there and the page continues. The applet renders nothing for it and never answers, suppresses or replaces a dialog in code ([website dialogs rule](rules.md#website-dialogs)). See [Website dialogs](sdk-reference.md#website-dialogs).
 
 ## Commands describe the desired state
 
