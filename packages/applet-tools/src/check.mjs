@@ -190,15 +190,21 @@ function maskSource(source) {
       while (start > 0 && /[\w$]/.test(source[start - 1])) start--;
       return REGEX_KEYWORDS.has(source.slice(start, last + 1));
     }
+    // After `x++`, `x--` or a TypeScript non-null `x!`, a `/` divides.
+    if ((c === '+' || c === '-') && source[last - 1] === c) return false;
+    if (c === '!' && last > 0 && /[\w$)\]]/.test(source[last - 1])) return false;
     return /[(,=:[!&|?{};+\-*%<>~^]/.test(c);
   }
-  /** Blanks a quoted string's contents from `i`, its opening quote; returns the index after it. */
+  /**
+   * Blanks a quoted string's contents from `i`, its opening quote; returns the index after it.
+   * A quote without its closing quote on the same line was misread (it sits in a regular
+   * expression read as a division), so it is left as code and scanning continues after it.
+   */
   function string(i, quote) {
     let j = i + 1;
-    while (j < n && source[j] !== quote && source[j] !== '\n') {
-      if (source[j] === '\\') { blank(code, j); blank(code, j + 1); j += 2; continue; }
-      blank(code, j++);
-    }
+    while (j < n && source[j] !== quote && source[j] !== '\n') j += source[j] === '\\' ? 2 : 1;
+    if (j >= n || source[j] !== quote) return i + 1;
+    for (let k = i + 1; k < j; k++) blank(code, k);
     return j + 1;
   }
   /** Blanks template text from `i` until its end or a `${`; returns the index after the delimiter. */
@@ -212,17 +218,23 @@ function maskSource(source) {
     }
     return j;
   }
-  /** Blanks a regular expression's body from `i`, its opening slash; returns the index after it. */
+  /**
+   * Blanks a regular expression's body from `i`, its opening slash; returns the index after it.
+   * A slash without its closing slash on the same line was a division, so scanning continues
+   * after it.
+   */
   function regex(i) {
     let j = i + 1, inClass = false;
     while (j < n && source[j] !== '\n') {
       const c = source[j];
-      if (c === '\\') { blank(code, j); blank(code, j + 1); j += 2; continue; }
+      if (c === '\\') { if (source[j + 1] === '\n') break; j += 2; continue; }
       if (c === '/' && !inClass) break;
       if (c === '[') inClass = true;
       else if (c === ']') inClass = false;
-      blank(code, j++);
+      j++;
     }
+    if (j >= n || source[j] !== '/') return i + 1;
+    for (let k = i + 1; k < j; k++) blank(code, k);
     return j + 1;
   }
 
