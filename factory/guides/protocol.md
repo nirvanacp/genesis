@@ -221,6 +221,7 @@ Events a context document receives:
 | `press` | `{ key, modifiers?, target?, ...options }` | `ActionResult` |
 | `select` | `{ target, values?, labels?, ...options }` | `ActionResult` |
 | `check` | `{ target, checked, ...options }` | `ActionResult` |
+| `attachFiles` | `{ target, files, via?, ...options }` | `ActionResult`. `files` holds 1 to 16 ids from `files.pick`. `via` is `input` (default: the target is an `<input type="file">`), `drop` or `paste`. Needs `limits.userActions`. |
 | `scroll` | `{ to, target? }` | `{ x, y, maxX, maxY, atEnd }`. `to` is `start`, `end`, `intoView` (needs `target`), `{ x?, y? }` or `{ by: { x?, y? } }`. |
 | `submit` | `{ target, ...options }` | `ActionResult` |
 | `run` | `{ steps, until?, navigates?, deadlineMs? }` | `ActionResult` |
@@ -246,7 +247,7 @@ Inputs, `run` and `invoke` with steps never fail with an error response for a pr
 | --- | --- |
 | `outcome` | `observed`: the input ran and its evidence held (or it had no evidence). `failed`: nothing took effect. `unknown`: input reached the page, but whether it took effect is not known. `cancelled`: the call was cancelled before any input. |
 | `code`, `message` | Why, when the outcome is not `observed`, or why an `unknown` stayed unknown. |
-| `reason` | A short word for `NOT_ACTIONABLE` and similar codes: `detached`, `hidden`, `disabled`, `covered`, `not-a-text-field`, `not-editable`, `not-a-select`, `editor-needs-trusted-input`, or `state-unchanged` (with `DEADLINE`). |
+| `reason` | A short word for `NOT_ACTIONABLE` and similar codes: `detached`, `hidden`, `disabled`, `covered`, `not-a-text-field`, `not-editable`, `not-a-select`, `not-a-file-input`, `type-not-accepted`, `editor-needs-trusted-input`, or `state-unchanged` (with `DEADLINE`). |
 | `completedSteps` | Steps that finished. |
 | `partial` | Some steps finished and the outcome is not `observed`. |
 | `noop` | The wanted state already held, so no input was sent. |

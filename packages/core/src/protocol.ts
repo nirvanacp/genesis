@@ -410,7 +410,7 @@ export type PageOp =
   | "info" | "read" | "inspect"
   | "watch.open" | "watch.close" | "watch.resync"
   | "click" | "longPress" | "hover" | "unhover" | "focus" | "blur"
-  | "fill" | "type" | "press" | "select" | "check" | "scroll" | "submit"
+  | "fill" | "type" | "press" | "select" | "check" | "scroll" | "submit" | "attachFiles"
   | "wait" | "run" | "invoke";
 
 /** Evidence that an input took effect: an element state, or a read whose value must be truthy. */
@@ -451,10 +451,17 @@ export type Step =
   | ({ op: "press"; key: string; modifiers?: string[]; target?: Locator } & InputOptions)
   | ({ op: "select"; target: Locator; values?: string[]; labels?: string[] } & InputOptions)
   | ({ op: "check"; target: Locator; checked: boolean } & InputOptions)
+  | ({ op: "attachFiles"; target: Locator; files: string[]; via?: AttachVia } & InputOptions)
   | { op: "scroll"; target?: Locator; to: ScrollTo }
   | { op: "submit"; target: Locator }
   | { op: "wait"; for: WaitFor; timeoutMs: number }
   | { op: "navigate"; url: string };
+
+/**
+ * How `attachFiles` hands picked files to the page: `input` sets a file input's files (default);
+ * `drop` and `paste` dispatch those events with the files on the target.
+ */
+export type AttachVia = "input" | "drop" | "paste";
 
 export type ScrollTo = "start" | "end" | "intoView" | { x?: number; y?: number } | { by: { x?: number; y?: number } };
 
