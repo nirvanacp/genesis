@@ -128,6 +128,8 @@ Params and results use the field names shown.
 | `back.leave` | `{}` | `{}`. Leaves the applet. |
 | `page.call` | `{ context, generation, op, args, timeoutMs? }` | The operation's value (see [Page operations](#page-operations)). |
 | `page.cancel` | `{ context, callId? }` | `{}` |
+| `context.dialog.claim` | `{ id, dialogId }` | `{}`. The foreground shows the dialog itself (see [Website dialogs](#website-dialogs)). |
+| `context.dialog.answer` | `{ id, dialogId, accept, value? }` | `{}`. The user's answer: OK when `accept`, else Cancel. |
 
 Rules the host applies:
 
@@ -168,7 +170,9 @@ Events the foreground receives:
 | `context.gone` | `{ id, code, message }`. The context's document is gone without a replacement, for example `NOT_READY` when a page on a declared origin did not bind within `limits.documentReadyMs`. |
 | `user.viewWebsite` | `{ id }`. The user chose View website in the Genesis menu. `id` is the revealed context, or null when none is revealed (the foreground then picks its active context). |
 | `user.done` | `{ id }`. The user tapped Done on the website bar. `id` is the revealed context or null. |
-| `user.showContext` | `{ id }`. A link opened the applet in this context; show it. |
+| `user.showContext` | `{ id }`. A link opened the applet in this context, or Genesis revealed it for an unclaimed dialog; show it. |
+| `context.dialog` | `{ id, dialogId, kind, message, defaultValue?, origin }`. A hidden context's page opened a JavaScript dialog (see [Website dialogs](#website-dialogs)). |
+| `context.dialogClosed` | `{ id, dialogId }`. The dialog ended without the foreground's answer. |
 | `back` | `{}`. The user pressed Back; answer with `back.handled` or `back.leave`. |
 | `retired` | `{}`. The document will get no more answers. |
 | `page.emit` | `{ context, generation, stream, kind, seq, view, url, data }` |
@@ -296,7 +300,7 @@ A call ends in one of four ways:
 
 1. The page answers with `page.result`. The host answers the foreground's request with the value or the error.
 2. The document is replaced (a cross-document navigation, a reload, the page leaving the context) before it answers. The host ends the call with `CONTEXT_REPLACED`.
-3. The budget runs out. The host ends the call with `DEADLINE`.
+3. The budget runs out. The host ends the call with `DEADLINE`. The budget does not count the time a JavaScript dialog of the context is open (see [Website dialogs](#website-dialogs)).
 4. The foreground document that asked is retired. The call is dropped with no answer.
 
 In cases 2 and 3 the error's `details` hold `dispatched`, `navigating` and `completedSteps` as the last `page.progress` reported them. This is how a client tells a call that never touched the page (`dispatched` false: safe to send again) from an input that may have taken effect (`dispatched` true: never send again without checking the page). A call with `navigating` true started a navigation, and the client judges the effect on the destination page.
@@ -471,6 +475,23 @@ The agent never reads or writes the value of a password field, a hidden input, o
 - A trusted tap or key gives the page user activation. A trusted hover does not.
 - For 5 seconds after the last trusted input to a context's page, that page may not open a window or hand a link to another app, even once it is revealed and the user taps it. The page's user activation can outlast the input, so the shell does not count any gesture as the user's in that time.
 
+## Website dialogs
+
+A page's `alert`, `confirm`, `prompt` and `beforeunload` dialogs block the page until they are answered. On a revealed context, its popup and the foreground, they are WebView's own dialogs. On a hidden context, the host sends the foreground `context.dialog`:
+
+```json
+{ "type": "event", "documentId": "d3", "name": "context.dialog", "data": { "id": "main", "dialogId": 7, "kind": "confirm", "message": "Delete this item?", "origin": "https://example.com" } }
+```
+
+- `kind` is `alert`, `confirm`, `prompt` or `beforeunload`. `message` and `defaultValue` (a prompt's prefilled value) are cut to 2000 characters. `origin` is the page's origin, not its URL.
+- A context has at most one open dialog. The foreground that shows it sends `context.dialog.claim` within 1 second, then `context.dialog.answer` with the user's choice. Answer only with what the user chose.
+- Without a claim within 1 second, the host reveals the context, sends `user.showContext`, and the shell shows the dialog over the website, titled with its origin. Once the user answers it there, the foreground receives `context.dialogClosed`.
+- `context.dialog.answer` takes `value` only for a `prompt`, at most 2000 characters, else `INVALID_ARGUMENT`. A prompt accepted without `value` gets its default value. Claim and answer answer `NOT_FOUND` when `dialogId` is not the context's open dialog or the shell already shows it.
+- When the page navigates or goes away while the dialog is open, the dialog is cancelled and the foreground receives `context.dialogClosed`.
+- A new foreground receives `context.dialog` again for each open dialog that the shell does not show yet, with a new claim window.
+- While a dialog is open, the context's page calls do not use up their budget: when the dialog ends, the host adds the time it was open to each of their deadlines. The page agent keeps its own clock for waits and evidence, so an effect that appears only later after a long dialog can still end as `unknown` with `DEADLINE`.
+- `limits.dialogs` is true when the host sends `context.dialog`. It is absent in an older Genesis.
+
 ## Error codes
 
 | Code | Meaning |
@@ -534,6 +555,7 @@ The agent never reads or writes the value of a password field, a hidden input, o
 | `historyEntriesMax` | History entries per watch whose last copy the client keeps. |
 | `watchesMax` | Open watches per context document. |
 | `trustedInput` | True when the shell can send real input to a hidden context. Absent in an older Genesis. |
+| `dialogs` | True when a hidden page's JavaScript dialogs reach the foreground as `context.dialog`. Absent in an older Genesis. |
 
 ## Versions
 

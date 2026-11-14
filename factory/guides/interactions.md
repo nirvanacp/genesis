@@ -25,6 +25,10 @@ Some website features work only while the user is looking at the website, becaus
 
 A hidden context gets a refusal for each of these. When a journey needs one, send the user to the website with an explicit control, such as "Download in *website*", that calls `viewWebsite()` from `useRouter`.
 
+## Website dialogs
+
+A website can ask with `confirm`, `alert`, `prompt` or a "leave this page?" question, often before it deletes, discards or leaves something. In a hidden context the page waits for the answer. Every routed screen whose actions can lead to such a dialog renders `useDialog()`, for example through `WebsiteDialog` or the applet's own sheet, showing the site's origin and its exact message. Answer only with the user's choice: never accept or dismiss a dialog in code. An applet that does not claim a dialog within about a second sees the website revealed with the dialog over it, which is safe but shows the website. See [Website dialogs](sdk-reference.md#website-dialogs).
+
 ## Commands describe the desired state
 
 A command is a function in the page module. It receives the page as it is now and the caller's args, and returns one of three things: `{ satisfied: true }` when the page already shows the wanted state, the steps that get there with the evidence that they did, or a plain JSON value:

@@ -112,6 +112,7 @@ genesis.ready();
 | Sequences | `run(steps, { until?, navigates?, expect?, deadlineMs? })`, `invoke(command, args?, { target?, expect?, navigates?, timeoutMs? })` |
 | Pending | `pending(target?)`, `subscribePending(listener)`, `cancel()` |
 | Watches | `watch(id, spec, { when? })`, `resync()`, `forget({ current?, keepInputs? })` |
+| Dialogs | `dialog`, `onDialog(handler)`; see [Website dialogs](#website-dialogs) |
 | Raw | `call(op, args?, options?)` sends one page agent operation as is. |
 
 `resync()` asks every open watch of the context for a fresh snapshot. `forget()` drops the copies the watches kept of earlier history entries, so none shows after the account changed; with `current: true` it also clears the data shown now. It settles the context's pending inputs as `unknown` with `CONTEXT_REPLACED`, unless `keepInputs` is true. The router calls both when the account changes.
@@ -298,6 +299,8 @@ router.subscribe(() => console.log(router.screen()?.id, router.status().status))
 | `useRecords` | `useRecords(collection, { storage? })` | `{ records, loading, error, put, remove, commit }` over every document of a collection. |
 | `useService` | `useService(serviceId)` | `request(path, { method?, body? })` for a declared service. |
 | `useNotifications` | `useNotifications(): Notifications` | `genesis.notifications`. |
+| `useDialog` | `useDialog(contextId?): Dialog \| null` | The open dialog of a hidden context's page, the active context by default. Using it claims the context's dialogs. |
+| `WebsiteDialog` | `<WebsiteDialog dialog {...divProps}>` | An unstyled, accessible `alertdialog` that answers a `Dialog` with the user's choice. |
 | `useScrollMemory` | `useScrollMemory()` | A ref callback that keeps a scroll container's position per screen. |
 | `ScrollMemory` | `<ScrollMemory {...divProps}>` | A `div` with `useScrollMemory`. |
 | `useAppResume` | `useAppResume(callback)` | Runs on resume from the background and, with the router, after Done on the website. |
@@ -351,6 +354,17 @@ await genesis.notifications.post({ id: `reply-${reply.id}`, title: "New reply", 
 
 In React, `useNotifications()` returns the same object. It notifies the user under the applet's name, when the manifest declares `capabilities.notifications`; otherwise it throws `CONFIGURATION_REQUIRED`. `id` is 1 to 64 letters, digits, `.`, `_` or `-`, and a later notification with the same id replaces the earlier one. `title` is 1 to 120 characters and `body` at most 500. `url` is optional, `https` on one of the applet's origins, and opens in the applet when the user taps the notification; without it the tap opens the applet where it was. Anything else throws `INVALID_ARGUMENT`. The result `{ posted: true }` means Genesis accepted the request: it shows only if the user turned the applet's notifications on in Applet info, which is off by default.
 
+### Website dialogs
+
+```tsx
+const dialog = useDialog();
+return <WebsiteDialog dialog={dialog} className="sheet" />;
+```
+
+A hidden context's page can open a JavaScript `alert`, `confirm` or `prompt`, or a `beforeunload` question; the page waits until it is answered. While at least one `context.onDialog(handler)` is registered, or a component uses `useDialog(contextId?)`, the client claims each dialog of that context at once and passes it on as a `Dialog`: `{ context, kind, message, defaultValue?, origin, answer(accept, value?), closed }`. `context.dialog` is the open one, or `null`. `kind` is `alert`, `confirm`, `prompt` or `beforeunload`; `message` and `defaultValue` are the site's text, cut to 2000 characters; `origin` is the page's origin. `answer(true)` is OK, `answer(false)` is Cancel, and only a prompt takes a `value`, at most 2000 characters. `closed` resolves once the dialog was answered or closed because its page navigated or went away. Answer only with the user's choice.
+
+`WebsiteDialog` renders a plain, unstyled `alertdialog` with the origin, the exact message, a field for a prompt, Cancel (not for an alert) and OK. Style it through `className` and the other props, or build the applet's own sheet from `useDialog`. An applet that claims no dialog within about a second sees the website revealed with the dialog over it, followed by `user.showContext`; the user answers it there.
+
 ## Errors and limits
 
 `ErrorCode` is one of `RETIRED`, `CONFLICT`, `NOT_FOUND`, `DOCUMENT_TOO_LARGE`, `STORAGE_FAILURE`, `ORIGIN_NOT_DECLARED`, `MESSAGE_TOO_LARGE`, `PAGE_TOO_LARGE`, `PATCH_TOO_LARGE`, `DEADLINE`, `INVALID_STEPS`, `SERVICE_UNREACHABLE`, `SERVICE_FAILURE`, `AUTHENTICATION_FAILED`, `CERTIFICATE_FAILED`, `CONFIGURATION_REQUIRED`, `NOT_READY`, `UNKNOWN_METHOD`, `INVALID_ARGUMENT`, `QUOTA_EXCEEDED`, `PROTOCOL_MISMATCH`, `APPLET_INCOMPATIBLE`, `ENVELOPE_INVALID`, `CONTEXT_REPLACED`, `TARGET_NOT_FOUND`, `PRECONDITION_FAILED`, `ASYNC_READ`, `AUTH_REQUIRED`, `REJECTED`, `NOT_ACTIONABLE`, `AMBIGUOUS_TARGET`, `PROTECTED_FIELD`, `INPUT_UNAVAILABLE` and `UNKNOWN_OPERATION`. Action results carry the same codes in `code`. The [protocol guide](protocol.md) says when each one occurs.
@@ -372,6 +386,7 @@ In React, `useNotifications()` returns the same object. It notifies the user und
 | Back answer | `backAnswerMs` | 300 ms, after which the shell leaves the applet |
 | Stale copies kept for Back | `historyEntriesMax` | 16 history entries per context |
 | Trusted input | `trustedInput` | `true` where the shell can send real input |
+| Website dialogs | `dialogs` | `true` where hidden pages' dialogs reach the applet; 1 s to claim one, text cut to 2000 characters |
 | Service request or response body | | 256 KiB, with 3 s to connect and 3 s to read |
 | Notification | | `id` 64 characters, `title` 120, `body` 500; at most 5 per background check |
 | Background news check | | Every 15 to 1440 minutes, only with a network and only after the user turns notifications on |
