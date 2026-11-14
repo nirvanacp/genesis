@@ -43,7 +43,7 @@ import org.json.JSONObject;
 
 /**
  * What the applet UI may start only from the user's tap: picking files, saving, sharing, opening
- * another app and turning on notifications. Each action needs a fresh tap on the applet UI and
+ * another app, turning on notifications and granting a hidden page one feature. Each action needs a fresh tap on the applet UI and
  * uses it up. Picked files stay `content:` URIs in the shell, under random ids; the applet holds
  * only the ids, and nothing is copied into applet storage.
  */
@@ -110,14 +110,13 @@ final class UserActions {
     /** Carries out `action` for the applet and answers `userActionDone` after the command batch. */
     void run(String appletId, long token, JSONObject view, JSONObject action) {
         String kind = action.optString("kind");
-        // Grants arrive with one-time website features; until then nothing asks for one.
-        if ("grant".equals(kind)) { answer(done(token, "UNKNOWN_METHOD", "Grants are not available in this Genesis", null)); return; }
         if (!consumeTap()) { answer(done(token, "USER_ACTION_REQUIRED", "The action needs a fresh tap on the applet", null)); return; }
         switch (kind) {
             case "pickFiles": pick(token, strings(action.optJSONArray("accept")), action.optBoolean("multiple")); break;
             case "save": save(token, view, action.optString("url"), action.isNull("filename") ? null : action.optString("filename", null)); break;
             case "share": share(token, text(action, "title"), text(action, "text"), text(action, "url")); break;
             case "openExternal": openExternal(token, action.optString("url")); break;
+            case "grant": answer(shell.grant(token, view, action.optString("grant"))); break;
             case "enableNotifications":
                 shell.setNotificationsOn(appletId, true, on -> answer(done(token, null, null, object("enabled", on))));
                 break;
@@ -183,30 +182,83 @@ final class UserActions {
     }
 
     private void saveData(long token, String url, String filename) {
-        int comma = url.indexOf(',');
-        if (comma < 0) { answer(done(token, "INVALID_ARGUMENT", "The data: URL has no data", null)); return; }
-        String meta = url.substring(5, comma);
-        boolean base64 = meta.toLowerCase(Locale.ROOT).endsWith(";base64");
-        String mime = meta.split(";", 2)[0].trim().toLowerCase(Locale.ROOT);
-        if (mime.isEmpty()) mime = "text/plain";
-        byte[] bytes;
+        Data data;
         try {
-            String data = url.substring(comma + 1);
-            bytes = base64 ? Base64.decode(data, Base64.DEFAULT) : Uri.decode(data).getBytes(StandardCharsets.UTF_8);
+            data = decode(url);
         } catch (IllegalArgumentException error) {
-            answer(done(token, "INVALID_ARGUMENT", "The data: URL is not valid base64", null));
+            answer(done(token, "INVALID_ARGUMENT", error.getMessage(), null));
             return;
         }
-        String extension = MimeTypeMap.getSingleton().getExtensionFromMimeType(mime);
-        String name = filename != null ? filename : "download" + (extension == null ? "" : "." + extension);
+        String name = filename != null ? filename : data.name();
         try {
-            write(name, mime, bytes);
+            write(name, data.mime, data.bytes);
         } catch (IOException | RuntimeException error) {
             answer(done(token, "STORAGE_FAILURE", "The file couldn't be saved: " + error.getMessage(), null));
             return;
         }
         main.post(() -> Toast.makeText(activity, "Saved " + name + " to Downloads", Toast.LENGTH_SHORT).show());
         answer(done(token, null, null, object("started", true)));
+    }
+
+    /** A website's own `data:` download, which the shell already allowed. `filename` may be null. */
+    void saveDownload(String url, String filename) {
+        IO.execute(() -> {
+            try {
+                Data data = decode(url);
+                saveBytes(filename != null ? filename : data.name(), data.mime, data.bytes);
+            } catch (IllegalArgumentException error) {
+                main.post(() -> Toast.makeText(activity, "The download couldn't be read", Toast.LENGTH_SHORT).show());
+            }
+        });
+    }
+
+    /** Writes a website's download to Downloads and tells the user how it went. Runs on `IO`. */
+    void saveBytes(String name, String mime, byte[] bytes) {
+        String message;
+        try {
+            write(name, mime, bytes);
+            message = "Saved " + name + " to Downloads";
+        } catch (IOException | RuntimeException error) {
+            message = "The file couldn't be saved";
+        }
+        String text = message;
+        main.post(() -> Toast.makeText(activity, text, Toast.LENGTH_SHORT).show());
+    }
+
+    /** A decoded `data:` URL. */
+    private static final class Data {
+        final String mime;
+        final byte[] bytes;
+
+        Data(String mime, byte[] bytes) {
+            this.mime = mime;
+            this.bytes = bytes;
+        }
+
+        /** `download`, with the extension of the type when Android knows one. */
+        String name() { return defaultName(mime); }
+    }
+
+    /** `download`, with the extension of `mime` when Android knows one. */
+    static String defaultName(String mime) {
+        String extension = MimeTypeMap.getSingleton().getExtensionFromMimeType(mime);
+        return "download" + (extension == null ? "" : "." + extension);
+    }
+
+    /** Throws IllegalArgumentException with the reason when the URL has no data or bad base64. */
+    private static Data decode(String url) {
+        int comma = url.indexOf(',');
+        if (comma < 0) throw new IllegalArgumentException("The data: URL has no data");
+        String meta = url.substring(5, comma);
+        boolean base64 = meta.toLowerCase(Locale.ROOT).endsWith(";base64");
+        String mime = meta.split(";", 2)[0].trim().toLowerCase(Locale.ROOT);
+        if (mime.isEmpty()) mime = "text/plain";
+        try {
+            String data = url.substring(comma + 1);
+            return new Data(mime, base64 ? Base64.decode(data, Base64.DEFAULT) : Uri.decode(data).getBytes(StandardCharsets.UTF_8));
+        } catch (IllegalArgumentException error) {
+            throw new IllegalArgumentException("The data: URL is not valid base64");
+        }
     }
 
     /** Android 10+ writes to the public Downloads folder; 8 and 9 to Genesis's own, as `startDownload` does. */

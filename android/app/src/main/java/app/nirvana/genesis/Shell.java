@@ -324,7 +324,9 @@ final class Shell implements Views.Listener, Ui.Actions {
         Views.Page page = pages.remove(key(ref));
         if (page == null) return;
         closeDialogs(page);
+        endGrant(page, false);
         if (page == revealedPage) dropRevealed();
+        else if (popup != null && popup.opener == page) closePopup();
         if (page.isForeground()) actions.clear();
         page.destroy();
     }
@@ -391,6 +393,9 @@ final class Shell implements Views.Listener, Ui.Actions {
     void revealContext(JSONObject ref, String title) {
         Views.Page page = pages.get(key(ref));
         if (page == null || !page.isContext()) return;
+        endGrants();
+        // A window a hidden context opened with its grant shows over the applet, not over a website.
+        if (popup != null && popup.opener != revealedPage) closePopup();
         if (revealedPage != null && revealedPage != page) coverContext();
         if (revealedPage == page) { bar.setTitle(title); return; }
         sources.removeView(page.web);
@@ -415,6 +420,7 @@ final class Shell implements Views.Listener, Ui.Actions {
      */
     @SuppressLint("AccessibilityFocus")
     void coverContext() {
+        endGrants();
         Views.Page page = revealedPage;
         if (page == null) return;
         closeCustomView();
@@ -488,6 +494,52 @@ final class Shell implements Views.Listener, Ui.Actions {
             return;
         }
         actions.run(appletId, token, view, action);
+    }
+
+    /**
+     * Lets hidden context `view` use `kind` once within `GRANT_MS`, after the tap the caller used.
+     * A new grant replaces an unused one. Returns the `userActionDone` answer.
+     */
+    JSONObject grant(long token, JSONObject view, String kind) {
+        Views.Page page = view == null ? null : pages.get(key(view));
+        if (page == null || !page.isContext()) return UserActions.done(token, "NOT_FOUND", "The website is gone", null);
+        try {
+            if (page.isRevealed()) return UserActions.done(token, null, null, new JSONObject().put("granted", true).put("expiresInMs", 0));
+            endGrant(page, false);
+            page.grant = kind;
+            page.grantUntil = SystemClock.uptimeMillis() + SitePolicy.GRANT_MS;
+            page.grantExpiry = () -> { if (page.grant != null) endGrant(page, false); };
+            bar.postDelayed(page.grantExpiry, SitePolicy.GRANT_MS);
+            return UserActions.done(token, null, null, new JSONObject().put("granted", true).put("expiresInMs", SitePolicy.GRANT_MS));
+        } catch (JSONException error) {
+            throw new IllegalStateException(error);
+        }
+    }
+
+    /** A page used its grant: it ends as used. A window grant leaves the page `GRANT_MS` to show the window the host may still ask for. */
+    @Override public void useGrant(Views.Page page) {
+        if (page.grant == null) return;
+        if (SitePolicy.WINDOW.equals(page.grant)) page.windowUntil = SystemClock.uptimeMillis() + SitePolicy.GRANT_MS;
+        endGrant(page, true);
+    }
+
+    /** Ends the page's grant, if any, and tells the host after the command batch under way. */
+    private void endGrant(Views.Page page, boolean used) {
+        String grant = page.grant;
+        if (grant == null) return;
+        page.grant = null;
+        page.grantUntil = 0;
+        if (page.grantExpiry != null) bar.removeCallbacks(page.grantExpiry);
+        page.grantExpiry = null;
+        bar.post(() -> {
+            try { owner.send(Bridge.event("grantEnded").put("view", page.ref).put("grant", grant).put("used", used)); }
+            catch (JSONException ignored) { /* Unreachable for these values. */ }
+        });
+    }
+
+    /** What the user sees changed, so no hidden page keeps the grant their tap gave. */
+    private void endGrants() {
+        for (Views.Page page : pages.values()) endGrant(page, false);
     }
 
     /** Posts picked files to the page agent of `ref`'s page, for its `attachFiles`. */
@@ -691,22 +743,26 @@ final class Shell implements Views.Listener, Ui.Actions {
      * to Genesis's own Downloads folder.
      */
     @Override public void download(Views.Page page, String url, String userAgent, String disposition, String mimeType) {
-        if (!SitePolicy.mayShowUi(page)) return;
+        if (!SitePolicy.mayUse(page, SitePolicy.DOWNLOAD)) return;
+        useGrant(page);
         // A window that only started a download has nothing to show.
         if (page == popup && page.web.copyBackForwardList().getSize() == 0) bar.post(() -> { if (page == popup) closePopup(); });
         String scheme = Uri.parse(url).getScheme();
-        if (!"https".equalsIgnoreCase(scheme) && !"http".equalsIgnoreCase(scheme)) {
+        boolean web = "https".equalsIgnoreCase(scheme) || "http".equalsIgnoreCase(scheme);
+        if (!web && !"data".equalsIgnoreCase(scheme)) {
             Toast.makeText(activity, "This download isn't supported in Genesis", Toast.LENGTH_SHORT).show();
             return;
         }
-        String name = android.webkit.URLUtil.guessFileName(url, disposition, mimeType);
+        // A data: URL names no file; only a Content-Disposition can.
+        String name = web || disposition != null ? android.webkit.URLUtil.guessFileName(web ? url : "", disposition, mimeType) : null;
+        Runnable start = web ? () -> startDownload(page, url, userAgent, mimeType, name) : () -> actions.saveDownload(url, name);
         // A popup counts against the page that opened it, since each download can open a new one.
         Views.Page counted = page.opener != null ? page.opener : page;
-        if (counted.downloads++ == 0) { startDownload(page, url, userAgent, mimeType, name); return; }
+        if (counted.downloads++ == 0) { start.run(); return; }
         new MaterialAlertDialogBuilder(activity)
             .setTitle("Download another file?")
-            .setMessage(linkTitle(url) + " wants to download " + name + ".")
-            .setPositiveButton("Download", (d, w) -> startDownload(page, url, userAgent, mimeType, name))
+            .setMessage(linkTitle(web ? url : String.valueOf(page.web.getUrl())) + " wants to download " + (name == null ? "a file" : name) + ".")
+            .setPositiveButton("Download", (d, w) -> start.run())
             .setNegativeButton("Cancel", null)
             .show();
     }
@@ -773,6 +829,9 @@ final class Shell implements Views.Listener, Ui.Actions {
         if (revealedPage != null) {
             revealed.setVisibility(View.VISIBLE);
             bar.setUrl(revealedPage.web.getUrl());
+        } else {
+            bar.setVisibility(View.GONE);
+            GenesisMenu.tint(menu, tokens, false);
         }
         return true;
     }
@@ -793,6 +852,7 @@ final class Shell implements Views.Listener, Ui.Actions {
     }
 
     private void destroyAll() {
+        endGrants();
         closeCustomView();
         cancelPrompts();
         dropRevealed();
@@ -809,6 +869,8 @@ final class Shell implements Views.Listener, Ui.Actions {
     @Override public void documentStarted(Views.Page page, String url) {
         if (pages.get(key(page.ref)) != page) return;
         closeDialogs(page);
+        endGrant(page, false);
+        page.windowUntil = 0;
         try { owner.send(Bridge.event("documentStarted").put("view", page.ref).put("url", url)); }
         catch (JSONException ignored) { /* Unreachable for string values. */ }
     }
@@ -836,7 +898,9 @@ final class Shell implements Views.Listener, Ui.Actions {
         if (pages.get(key(page.ref)) != page) return;
         pages.remove(key(page.ref));
         closeDialogs(page);
+        endGrant(page, false);
         if (page == revealedPage) dropRevealed();
+        else if (popup != null && popup.opener == page) closePopup();
         page.destroy();
         try { owner.send(Bridge.event("rendererGone").put("view", page.ref)); }
         catch (JSONException ignored) { /* Unreachable for these values. */ }
@@ -863,10 +927,14 @@ final class Shell implements Views.Listener, Ui.Actions {
 
     /**
      * The opener keeps running behind the sheet, so `window.opener.postMessage` still reaches it,
-     * but it is no longer shown: its prompts and fullscreen video close and its capture stops.
+     * but it is no longer shown: its prompts and fullscreen video close and its capture stops. A
+     * hidden opener's sheet shows over the applet with the website bar, and Done or Back returns
+     * to the applet.
      */
     @Override public Views.Page openWindow(Views.Page opener) {
-        if (opener != revealedPage) return null;
+        if (!mayOpenWindow(opener)) return null;
+        opener.windowUntil = 0;
+        endGrants();
         closePopup();
         closeCustomView();
         cancelPrompts();
@@ -876,13 +944,24 @@ final class Shell implements Views.Listener, Ui.Actions {
         popupSheet.setVisibility(View.VISIBLE);
         revealed.setVisibility(View.GONE);
         owner.cancelInvalidFiles();
+        if (opener != revealedPage) {
+            bar.setTitle(appletName);
+            bar.setReason(appletName, true, false);
+            bar.setVisibility(View.VISIBLE);
+            GenesisMenu.tint(menu, tokens, true);
+        }
         bar.setUrl(popup.web.getUrl());
         return popup;
     }
 
+    /** The revealed context, or a hidden one that used its window grant in the last `GRANT_MS`. */
+    private boolean mayOpenWindow(Views.Page opener) {
+        return opener == revealedPage || (opener.isContext() && SystemClock.uptimeMillis() < opener.windowUntil);
+    }
+
     /** A tapped link asks for a new window; the host decides where it goes. */
     @Override public void windowRequested(Views.Page page, String url) {
-        if (page != revealedPage) return;
+        if (!mayOpenWindow(page)) return;
         try { owner.send(Bridge.event("windowRequested").put("view", page.ref).put("url", url)); }
         catch (JSONException ignored) { /* Unreachable for these values. */ }
     }
@@ -893,7 +972,7 @@ final class Shell implements Views.Listener, Ui.Actions {
      */
     void showWindow(JSONObject ref, String url) {
         Views.Page page = pages.get(key(ref));
-        if (page == null || page != revealedPage) return;
+        if (page == null) return;
         Views.Page window = openWindow(page);
         if (window != null) window.web.loadUrl(url);
     }

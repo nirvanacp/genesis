@@ -53,12 +53,20 @@ final class Views {
         boolean handOff(android.content.Intent intent);
         void rendererGone(Page page);
         void showCustomView(View view, WebChromeClient.CustomViewCallback callback);
+        /**
+         * The page is about to use a feature `SitePolicy.mayUse` allowed. A hidden context's grant
+         * ends here as used; for the shown website this does nothing.
+         */
+        void useGrant(Page page);
         void hideCustomView();
         boolean chooseFiles(Page page, ValueCallback<Uri[]> callback, WebChromeClient.FileChooserParams params);
-        /** The revealed context opened a window from a tap. Returns the popup to load it into, or null to refuse. */
+        /**
+         * The revealed context, or a hidden one with a window grant, opened a window from a tap.
+         * Returns the popup to load it into, or null to refuse.
+         */
         Page openWindow(Page opener);
         void closeWindow(Page popup);
-        /** The revealed context's tapped link asks for a new window at `url`. */
+        /** The revealed context's tapped link, or a granted hidden context's, asks for a new window at `url`. */
         void windowRequested(Page page, String url);
         void popupNavigated(Page popup, String url);
         /**
@@ -131,6 +139,14 @@ final class Views {
         int downloads;
         /** `SystemClock.uptimeMillis()` of the last trusted input dispatched here; 0 for none. */
         long trustedInputAt;
+        /** The one feature the user let this hidden context use (a `SitePolicy` grant kind), or null. */
+        String grant;
+        /** `SystemClock.uptimeMillis()` until which `grant` is live. */
+        long grantUntil;
+        /** Ends `grant` unused when it expires. */
+        Runnable grantExpiry;
+        /** Until when the window this hidden page opened with its grant may still show; 0 for none. */
+        long windowUntil;
 
         /** The profile the page's cookies and permission answers belong to. */
         final SiteData site;
@@ -281,7 +297,9 @@ final class Views {
             if (web) return false;
             // Only the revealed page may hand a link to another app, and only from a tap. A server
             // redirect from a tapped link to mailto: arrives without a gesture and is blocked too.
-            if (!SitePolicy.mayHandOff(page, SitePolicy.usersGesture(page, request.hasGesture()))) return true;
+            // A hidden context may with a `handoff` grant, which also lifts the block after trusted input.
+            if (!SitePolicy.mayHandOff(page, SitePolicy.usersGesture(page, request.hasGesture(), SitePolicy.HANDOFF))) return true;
+            listener.useGrant(page);
             android.content.Intent intent = Handoff.intent(url);
             if (intent == null) return true;
             if (listener.handOff(intent)) return true;
@@ -403,7 +421,8 @@ final class Views {
 
         /** WebView keeps nothing (`retain` false); `SiteGrants` remembers the answer instead. */
         @Override public void onGeolocationPermissionsShowPrompt(String origin, GeolocationPermissions.Callback callback) {
-            if (!SitePolicy.mayShowUi(page)) { callback.invoke(origin, false, false); return; }
+            if (!SitePolicy.mayUse(page, SitePolicy.LOCATION)) { callback.invoke(origin, false, false); return; }
+            listener.useGrant(page);
             locating = origin;
             located = callback;
             listener.askSite(page, origin(origin), List.of(SiteGrants.LOCATION), allowed -> {
@@ -435,8 +454,9 @@ final class Views {
         }
 
         @Override public void onShowCustomView(View view, CustomViewCallback callback) {
-            if (SitePolicy.mayShowUi(page)) listener.showCustomView(view, callback);
-            else callback.onCustomViewHidden();
+            if (!SitePolicy.mayUse(page, SitePolicy.FULLSCREEN)) { callback.onCustomViewHidden(); return; }
+            listener.useGrant(page);
+            listener.showCustomView(view, callback);
         }
 
         @Override public void onHideCustomView() { listener.hideCustomView(); }
@@ -469,12 +489,13 @@ final class Views {
 
         /**
          * Only the revealed context opens a window, and only from a tap; a popup's own windows load
-         * in place. A tapped link goes to the host, which opens it in this context, in another
+         * in place. A hidden context may too with a `window` grant, from the trusted tap that used it. A tapped link goes to the host, which opens it in this context, in another
          * applet or in a popup. A script's window, such as a sign-in, opens as a popup at once so
          * it keeps `window.opener`.
          */
         @Override public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture, android.os.Message resultMsg) {
-            if (page.opener != null || !SitePolicy.usersGesture(page, isUserGesture) || !SitePolicy.mayShowUi(page)) return false;
+            if (page.opener != null || !SitePolicy.usersGesture(page, isUserGesture, SitePolicy.WINDOW) || !SitePolicy.mayUse(page, SitePolicy.WINDOW)) return false;
+            listener.useGrant(page);
             WebView.HitTestResult hit = view.getHitTestResult();
             String link = hit == null || hit.getType() != WebView.HitTestResult.SRC_ANCHOR_TYPE ? null : hit.getExtra();
             if (link != null && (link.startsWith("https:") || link.startsWith("http:"))) {
