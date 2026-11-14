@@ -148,7 +148,7 @@ Rules the host applies:
 
 ## Context methods
 
-Only a context document sends these, and only about calls the host gave it.
+Only a context document sends these. All but `page.share` are about calls the host gave it.
 
 | Method | Params | Result |
 | --- | --- | --- |
@@ -157,6 +157,7 @@ Only a context document sends these, and only about calls the host gave it.
 | `page.emit` | `{ stream, kind, seq, view, url, data }` | `{}`. One message of a watch stream. |
 | `page.input` | `{ callId, events }` | `{}` once the shell dispatched the events. |
 | `page.files` | `{ callId, ids }` | `{ count }` once the shell posted the files to the page (see [User actions](#user-actions)). |
+| `page.share` | `{ title?, text?, url?, active }` | `{ shown: true }`. The website's own `navigator.share` (see [User actions](#user-actions)). |
 
 - `page.result` and `page.progress` about a call that is not this document's, or that has already ended, are accepted and ignored. `page.result` with `ok: false` and no `error` ends the call with `INVALID_ARGUMENT`. The page agent checks a value before it answers: a value that is not JSON data (a BigInt, a cycle) answers `INVALID_ARGUMENT`, and one over `limits.pageMaxBytes` answers `PAGE_TOO_LARGE`.
 - `page.progress` marks the call `dispatched`, and `navigating` when that is the state. The host forwards it to the foreground as the event `page.progress`.
@@ -522,6 +523,7 @@ A page's `alert`, `confirm`, `prompt` and `beforeunload` dialogs block the page 
 - `share.open` needs at least one field. `title` is at most 200 characters, `text` 4000, and `url` is `http` or `https`. The answer means the share sheet showed, not that the user shared.
 - `links.openExternal` takes `mailto`, `tel`, `sms`, `smsto`, `geo`, `intent` and `https`. An `https` link opens only in an app that claims it, never in a browser; on Android 10 and earlier, and when no app claims it, the answer is `NOT_FOUND`.
 - `notifications.enable` needs `capabilities.notifications`, else `CONFIGURATION_REQUIRED`. It turns on the applet's notifications as the Applet info switch does, asking Android first on Android 13 and later. `enabled` is false when the user or Android refused.
+- `page.share` is the page agent's `navigator.share` for a website that has none in the WebView. It takes the same fields and limits as `share.open`. It works only while the context is revealed, and only when `active` is true, because the user tapped the website itself: otherwise it answers `USER_ACTION_REQUIRED`. A tap on the applet UI does not count, and it needs `limits.userActions`.
 - `page.files` carries picked files to the page for the page agent's `attachFiles` operation. It needs an open call of the asking document (`NOT_FOUND`), a context that is not already loading another document (`CONTEXT_REPLACED`), and ids the applet still holds (`FILE_UNAVAILABLE`). The shell posts the bytes straight to the page, not through the host.
 - `limits.userActions` is true when the host takes these methods and `attachFiles`. It is absent in an older Genesis.
 

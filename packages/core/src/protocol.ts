@@ -138,7 +138,7 @@ export type ForegroundMethod =
   | "page.call" | "page.cancel"
   | "context.dialog.claim" | "context.dialog.answer" | "context.grant"
   | "files.pick" | "files.release" | "downloads.save" | "share.open" | "links.openExternal" | "notifications.enable";
-export type ContextMethod = "page.result" | "page.progress" | "page.emit" | "page.input" | "page.files";
+export type ContextMethod = "page.result" | "page.progress" | "page.emit" | "page.input" | "page.files" | "page.share";
 export type Method = ForegroundMethod | ContextMethod;
 
 export type ForegroundEventName =
@@ -224,6 +224,14 @@ export interface ShareInput {
 export interface PageFiles {
   callId: string;
   ids: string[];
+}
+
+/**
+ * Params of `page.share`, the website's own `navigator.share` on a revealed context. `active` is
+ * the page's `navigator.userActivation.isActive`. Answers `{shown: true}`.
+ */
+export interface PageShare extends ShareInput {
+  active: boolean;
 }
 
 /** How long a one-time grant lasts unused, in milliseconds. */

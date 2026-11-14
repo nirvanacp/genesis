@@ -1381,6 +1381,19 @@ pub enum Call {
     /// `{count}` once the bytes were posted.
     #[serde(rename = "page.files")]
     PageFiles { call_id: String, ids: Vec<String> },
+    /// The website's own `navigator.share` on a revealed context: opens Android's share sheet
+    /// when `active` (the page's `navigator.userActivation.isActive`). Answers `{shown: true}`.
+    #[serde(rename = "page.share")]
+    PageShare {
+        #[serde(default)]
+        title: Option<String>,
+        #[serde(default)]
+        text: Option<String>,
+        #[serde(default)]
+        url: Option<String>,
+        #[serde(default)]
+        active: bool,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
