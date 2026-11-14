@@ -127,6 +127,8 @@ final class FileSelection {
         for (String accepted : mimeTypes) if (accepted.equals(type) || accepted.endsWith("/*") && type.startsWith(accepted.substring(0, accepted.length() - 1))) return true;
         return false;
     }
+    /** Whether a picker is open and waits for its result. */
+    boolean pending() { return callback != null; }
     void cancelIfInvalid() { if (callback != null && !valid.getAsBoolean()) cancel(); }
     void cancel() {
         ValueCallback<Uri[]> pending = callback; callback = null; valid = null;
