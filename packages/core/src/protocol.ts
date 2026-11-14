@@ -40,6 +40,10 @@ export interface Limits {
   userActions?: boolean;
   /** The foreground can let a hidden page use one website feature once (`context.grant`). Absent in an older Genesis. */
   grants?: boolean;
+  /** Input page calls one context takes at once before `RATE_LIMITED`. Absent in an older Genesis, which has no limit. */
+  inputBurst?: number;
+  /** Milliseconds for one input call of the burst to come back. */
+  inputRefillMs?: number;
 }
 
 /** The first message a document sends. */

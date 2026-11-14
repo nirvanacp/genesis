@@ -1,6 +1,6 @@
 //! Document messages: handshake, role authorization and method dispatch.
 use crate::{
-    contexts::CallHandle,
+    contexts::{CallHandle, InputBudget, PACED_OPS},
     documents::PendingOp,
     host::Host,
     services::{self, ServiceCall},
@@ -404,6 +404,15 @@ impl Host {
         };
         if session.calls.values().filter(|c| c.context_id == context).count() >= self.limits.pending_requests_max {
             return error(ErrorCode::QuotaExceeded, "Too many open calls in this context");
+        }
+        if PACED_OPS.contains(&op.as_str()) {
+            let (burst, refill_ms) = (self.limits.input_burst, u64::from(self.limits.input_refill_ms));
+            let budget = session.input_budgets.entry(context.clone()).or_insert_with(|| InputBudget::full(burst, now));
+            if let Err(retry_after_ms) = budget.take(now, burst, refill_ms) {
+                let body = ErrorBody::new(ErrorCode::RateLimited, "Too many inputs in this context; wait for the user's next tap")
+                    .with_details(json!({ "dispatched": false, "retryAfterMs": retry_after_ms }));
+                return Outcome::Now(Err(body));
+            }
         }
         let budget_ms = timeout_ms.unwrap_or(self.limits.rpc_deadline_ms).min(self.limits.action_timeout_ms);
         let handle = CallHandle {

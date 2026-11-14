@@ -1070,6 +1070,20 @@ pub struct Limits {
     /// The foreground can let a hidden page use one website feature once (`context.grant`).
     #[serde(default)]
     pub grants: bool,
+    /// Input page calls one context takes at once before the host answers `RATE_LIMITED`.
+    #[serde(default = "default_input_burst")]
+    pub input_burst: u32,
+    /// Milliseconds for one input call of the burst to come back.
+    #[serde(default = "default_input_refill_ms")]
+    pub input_refill_ms: u32,
+}
+
+fn default_input_burst() -> u32 {
+    20
+}
+
+fn default_input_refill_ms() -> u32 {
+    1_000
 }
 
 impl Default for Limits {
@@ -1094,6 +1108,8 @@ impl Default for Limits {
             dialogs: true,
             user_actions: true,
             grants: true,
+            input_burst: default_input_burst(),
+            input_refill_ms: default_input_refill_ms(),
         }
     }
 }
@@ -1138,6 +1154,7 @@ pub enum ErrorCode {
     UnknownOperation,
     UserActionRequired,
     FileUnavailable,
+    RateLimited,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

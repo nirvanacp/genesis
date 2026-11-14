@@ -74,6 +74,41 @@ pub struct Session {
     pub open_context: Option<String>,
     /// When the applet's window suspended; None while it is resumed.
     pub suspended_at_ms: Option<u64>,
+    /// Each context's input budget, by context id, created on its first input call.
+    pub input_budgets: HashMap<String, InputBudget>,
+}
+
+/// Page operations that act on the website, so they spend the context's input budget. Reads,
+/// watches, waits, scrolling, focus and hover do not.
+pub const PACED_OPS: [&str; 11] = ["click", "longPress", "fill", "type", "press", "select", "check", "submit", "attachFiles", "run", "invoke"];
+
+/// A token bucket: `burst` input calls at once, then one more every `refill_ms`.
+#[derive(Debug)]
+pub struct InputBudget {
+    tokens: u32,
+    /// When the next token started to come back; moves to `now` while the bucket is full.
+    since_ms: u64,
+}
+
+impl InputBudget {
+    pub fn full(burst: u32, now: u64) -> Self {
+        Self { tokens: burst, since_ms: now }
+    }
+
+    /// Takes one token, or answers how many milliseconds until one is back.
+    pub fn take(&mut self, now: u64, burst: u32, refill_ms: u64) -> Result<(), u64> {
+        if refill_ms == 0 {
+            return Ok(());
+        }
+        let gained = now.saturating_sub(self.since_ms) / refill_ms;
+        self.tokens = (u64::from(self.tokens) + gained).min(u64::from(burst)) as u32;
+        self.since_ms = if self.tokens == burst { now } else { self.since_ms + gained * refill_ms };
+        if self.tokens == 0 {
+            return Err(refill_ms - now.saturating_sub(self.since_ms));
+        }
+        self.tokens -= 1;
+        Ok(())
+    }
 }
 
 impl Session {
@@ -94,6 +129,7 @@ impl Session {
             saved: None,
             open_context: None,
             suspended_at_ms: None,
+            input_budgets: HashMap::new(),
         }
     }
 

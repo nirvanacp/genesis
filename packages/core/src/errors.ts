@@ -36,6 +36,7 @@ export const ERROR_CODES = [
   "UNKNOWN_OPERATION",
   "USER_ACTION_REQUIRED",
   "FILE_UNAVAILABLE",
+  "RATE_LIMITED",
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

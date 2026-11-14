@@ -303,6 +303,9 @@ The host checks a `page.call` in this order:
 | `generation` is not older than the bound document's | `CONTEXT_REPLACED` |
 | `generation` is not newer (the next document has not bound) | `NOT_READY` |
 | Fewer than `limits.pendingRequestsMax` calls are open in the context | `QUOTA_EXCEEDED` |
+| For an input operation, the context's input budget has a token | `RATE_LIMITED` |
+
+Input operations (`click`, `longPress`, `fill`, `type`, `press`, `select`, `check`, `submit`, `attachFiles`, `run` and `invoke`) spend the context's input budget: `limits.inputBurst` calls at once, then one more every `limits.inputRefillMs`. Reads, watches, `wait`, `scroll`, `hover`, `unhover`, `focus`, `blur` and navigation spend nothing. An empty budget answers `RATE_LIMITED` with `details { dispatched: false, retryAfterMs }`; nothing reached the page, so the client reports the input as `failed`. Do not retry it on a timer: the next input should come from the user's next tap.
 
 The call's budget is `min(timeoutMs or limits.rpcDeadlineMs, limits.actionTimeoutMs)`. The host sends it to the page as `deadlineMs`.
 
@@ -582,6 +585,7 @@ A hidden context's page cannot show UI of its own: it may not go fullscreen, dow
 | `UNKNOWN_OPERATION` | The page agent has no such operation. |
 | `USER_ACTION_REQUIRED` | The action needs a fresh tap on the applet UI, and there was none or it was already used. Nothing happened. |
 | `FILE_UNAVAILABLE` | A file id is unknown, expired or released, or its file can no longer be read. |
+| `RATE_LIMITED` | The context's input budget is empty. Nothing reached the page; `details.retryAfterMs` says when one more input is allowed. |
 
 `packages/core/src/errors.ts` and `crates/contracts` list the same codes.
 
@@ -610,6 +614,7 @@ A hidden context's page cannot show UI of its own: it may not go fullscreen, dow
 | `dialogs` | True when a hidden page's JavaScript dialogs reach the foreground as `context.dialog`. Absent in an older Genesis. |
 | `userActions` | True when the foreground can pick files, save, share, open links in apps and turn on notifications, and attach picked files with `attachFiles`. Absent in an older Genesis. |
 | `grants` | True when the foreground can let a hidden page use one website feature once with `context.grant`. Absent in an older Genesis. |
+| `inputBurst`, `inputRefillMs` | A context's input budget: input page calls at once (20), and milliseconds for one to come back (1000). Absent in an older Genesis, which has no budget. |
 
 ## Versions
 
