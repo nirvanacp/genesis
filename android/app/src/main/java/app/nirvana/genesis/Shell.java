@@ -14,8 +14,6 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowInsets;
 import android.view.accessibility.AccessibilityNodeInfo;
-import android.webkit.ValueCallback;
-import android.webkit.WebChromeClient;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -55,7 +53,7 @@ final class Shell implements Views.Listener, Ui.Actions {
     interface Owner {
         void send(JSONObject event);
         void launcherShown();
-        boolean chooseFiles(WebChromeClient.FileChooserParams params, ValueCallback<Uri[]> callback, java.util.function.BooleanSupplier valid);
+        boolean chooseFiles(Requests.FileRequest request, java.util.function.BooleanSupplier valid);
         void cancelInvalidFiles();
         /** The applet's "Hide in recent apps" choice changed; its window applies it. */
         void privacyChanged(String appletId);
@@ -147,8 +145,7 @@ final class Shell implements Views.Listener, Ui.Actions {
     private String appletId, appletName;
     /** The user chose View website, so the next revealed context is their choice, not the applet's. */
     private boolean websiteChosen;
-    private View customView;
-    private WebChromeClient.CustomViewCallback customCallback;
+    private Requests.FullScreen customView;
     private int visualState;
     /** The host's progress message for flows that have no page of their own. */
     private androidx.appcompat.app.AlertDialog progress;
@@ -665,11 +662,10 @@ final class Shell implements Views.Listener, Ui.Actions {
     /** Closes a fullscreen video. Returns whether one was showing, so Back stays local to the shell. */
     boolean closeCustomView() {
         if (customView == null) return false;
-        root.removeView(customView);
+        Requests.FullScreen screen = customView;
         customView = null;
-        WebChromeClient.CustomViewCallback callback = customCallback;
-        customCallback = null;
-        if (callback != null) callback.onCustomViewHidden();
+        root.removeView(screen.view);
+        screen.exit();
         return true;
     }
 
@@ -723,23 +719,21 @@ final class Shell implements Views.Listener, Ui.Actions {
         catch (JSONException ignored) { /* Unreachable for these values. */ }
     }
 
-    @Override public void showCustomView(View view, WebChromeClient.CustomViewCallback callback) {
+    @Override public void showFullScreen(Requests.FullScreen screen) {
         closeCustomView();
-        customView = view;
-        customCallback = callback;
-        view.setBackgroundColor(Color.BLACK);
-        root.addView(view, new FrameLayout.LayoutParams(-1, -1));
+        customView = screen;
+        screen.view.setBackgroundColor(Color.BLACK);
+        root.addView(screen.view, new FrameLayout.LayoutParams(-1, -1));
     }
 
-    @Override public void hideCustomView() {
+    @Override public void hideFullScreen() {
         if (customView == null) return;
-        root.removeView(customView);
+        root.removeView(customView.view);
         customView = null;
-        customCallback = null;
     }
 
-    @Override public boolean chooseFiles(Views.Page page, ValueCallback<Uri[]> callback, WebChromeClient.FileChooserParams params) {
-        return owner.chooseFiles(params, callback, () -> (page == popup || pages.get(key(page.ref)) == page) && SitePolicy.mayShowUi(page));
+    @Override public boolean chooseFiles(Views.Page page, Requests.FileRequest request) {
+        return owner.chooseFiles(request, () -> (page == popup || pages.get(key(page.ref)) == page) && SitePolicy.mayShowUi(page));
     }
 
     /**
@@ -919,7 +913,7 @@ final class Shell implements Views.Listener, Ui.Actions {
     }
 
     /** A server's own sign-in prompt. Genesis passes the answer on and saves nothing. */
-    @Override public void httpAuth(Views.Page page, android.webkit.HttpAuthHandler handler, String host, String realm) {
+    @Override public void httpAuth(Views.Page page, Requests.AuthRequest handler, String host, String realm) {
         cancelPrompts();
         LinearLayout form = new LinearLayout(activity);
         form.setOrientation(LinearLayout.VERTICAL);

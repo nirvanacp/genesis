@@ -48,9 +48,10 @@ final class Views {
         /** Starts another app for a tapped link. Returns false when no app can handle it. */
         boolean handOff(android.content.Intent intent);
         void rendererGone(Page page);
-        void showCustomView(View view, WebChromeClient.CustomViewCallback callback);
-        void hideCustomView();
-        boolean chooseFiles(Page page, ValueCallback<Uri[]> callback, WebChromeClient.FileChooserParams params);
+        void showFullScreen(Requests.FullScreen screen);
+        void hideFullScreen();
+        /** The shown website's file input. Returns false when no picker opens; the request is then unanswered. */
+        boolean chooseFiles(Page page, Requests.FileRequest request);
         /** The revealed context opened a window from a tap. Returns the popup to load it into, or null to refuse. */
         Page openWindow(Page opener);
         void closeWindow(Page popup);
@@ -67,7 +68,7 @@ final class Views {
         /** A page started a download; Android reports no gesture for it. */
         void download(Page page, String url, String userAgent, String disposition, String mimeType);
         /** The shown website's server asks for a username and password. */
-        void httpAuth(Page page, HttpAuthHandler handler, String host, String realm);
+        void httpAuth(Page page, Requests.AuthRequest request, String host, String realm);
     }
 
     /** The container a revealed context is reparented into, above the foreground. */
@@ -301,8 +302,11 @@ final class Views {
 
         /** A hidden page can't ask; its server's error page shows, and Reload asks once it is shown. */
         @Override public void onReceivedHttpAuthRequest(WebView view, HttpAuthHandler handler, String host, String realm) {
-            if (SitePolicy.mayShowUi(page)) listener.httpAuth(page, handler, host, realm);
-            else handler.cancel();
+            if (!SitePolicy.mayShowUi(page)) { handler.cancel(); return; }
+            listener.httpAuth(page, new Requests.AuthRequest() {
+                @Override public void proceed(String user, String password) { handler.proceed(user, password); }
+                @Override public void cancel() { handler.cancel(); }
+            }, host, realm);
         }
 
         /**
@@ -411,15 +415,19 @@ final class Views {
         }
 
         @Override public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
-            return SitePolicy.mayShowUi(page) && listener.chooseFiles(page, callback, params);
+            if (!SitePolicy.mayShowUi(page)) return false;
+            int mode = params.getMode();
+            boolean open = mode == FileChooserParams.MODE_OPEN || mode == FileChooserParams.MODE_OPEN_MULTIPLE;
+            return listener.chooseFiles(page, new Requests.FileRequest(params.getAcceptTypes(),
+                mode == FileChooserParams.MODE_OPEN_MULTIPLE, open, callback::onReceiveValue));
         }
 
         @Override public void onShowCustomView(View view, CustomViewCallback callback) {
-            if (SitePolicy.mayShowUi(page)) listener.showCustomView(view, callback);
+            if (SitePolicy.mayShowUi(page)) listener.showFullScreen(new Requests.FullScreen(view, callback::onCustomViewHidden));
             else callback.onCustomViewHidden();
         }
 
-        @Override public void onHideCustomView() { listener.hideCustomView(); }
+        @Override public void onHideCustomView() { listener.hideFullScreen(); }
 
         /**
          * Only the revealed context opens a window, and only from a tap; a popup's own windows load

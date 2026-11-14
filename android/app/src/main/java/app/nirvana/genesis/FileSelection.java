@@ -5,8 +5,6 @@ import android.content.ClipData;
 import android.content.Intent;
 import android.net.Uri;
 import android.webkit.MimeTypeMap;
-import android.webkit.ValueCallback;
-import android.webkit.WebChromeClient;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BooleanSupplier;
@@ -14,7 +12,7 @@ import java.util.function.BooleanSupplier;
 /** One system picker, tied to the requesting document. Files never enter applet storage. */
 final class FileSelection {
     private final Activity activity;
-    private ValueCallback<Uri[]> callback;
+    private Requests.FileRequest callback;
     private BooleanSupplier valid;
     private int requestCode = 41000;
     private boolean multiple;
@@ -22,16 +20,12 @@ final class FileSelection {
 
     FileSelection(Activity activity) { this.activity = activity; }
 
-    @SuppressWarnings("deprecation")
-    void open(WebChromeClient.FileChooserParams params, ValueCallback<Uri[]> result, BooleanSupplier current) {
+    void open(Requests.FileRequest result, BooleanSupplier current) {
         cancel();
-        int mode = params.getMode();
-        if (mode != WebChromeClient.FileChooserParams.MODE_OPEN && mode != WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE) {
-            result.onReceiveValue(null); return;
-        }
-        callback = result; valid = current; multiple = mode == WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE;
+        if (!result.open) { result.cancel(); return; }
+        callback = result; valid = current; multiple = result.multiple;
         List<String> accepted = new ArrayList<>();
-        for (String value : params.getAcceptTypes()) {
+        for (String value : result.acceptTypes) {
             for (String part : value.split(",")) {
                 String mime = part.trim().toLowerCase(java.util.Locale.ROOT);
                 if (mime.startsWith(".")) mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(mime.substring(1));
@@ -65,8 +59,8 @@ final class FileSelection {
                 if (mimeTypes.length > 0 && !matches(type)) { acceptable = false; break; }
             } catch (SecurityException error) { acceptable = false; break; }
         }
-        ValueCallback<Uri[]> pending = callback; callback = null; valid = null;
-        pending.onReceiveValue(acceptable ? selected.toArray(new Uri[0]) : null);
+        Requests.FileRequest pending = callback; callback = null; valid = null;
+        pending.deliver(acceptable ? selected.toArray(new Uri[0]) : null);
         return true;
     }
 
@@ -77,7 +71,7 @@ final class FileSelection {
     }
     void cancelIfInvalid() { if (callback != null && !valid.getAsBoolean()) cancel(); }
     void cancel() {
-        ValueCallback<Uri[]> pending = callback; callback = null; valid = null;
-        if (pending != null) pending.onReceiveValue(null);
+        Requests.FileRequest pending = callback; callback = null; valid = null;
+        if (pending != null) pending.cancel();
     }
 }
