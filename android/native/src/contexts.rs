@@ -1,4 +1,5 @@
 //! State of the live applets' contexts: navigation, reveal, page calls and the Back slot.
+use crate::dialogs::OpenDialog;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap};
@@ -60,6 +61,8 @@ pub struct Session {
     pub contexts: BTreeMap<String, ContextView>,
     /// Open page calls by call id.
     pub calls: HashMap<String, CallHandle>,
+    /// Each hidden context's open JavaScript dialog, by context id. Its page calls' deadlines wait.
+    pub dialogs: BTreeMap<String, OpenDialog>,
     next_call: u64,
     /// The applet was recreated after being retired in the background.
     pub restored: bool,
@@ -82,6 +85,7 @@ impl Session {
             back_history: None,
             contexts: BTreeMap::new(),
             calls: HashMap::new(),
+            dialogs: BTreeMap::new(),
             next_call: 0,
             restored,
             saved: None,

@@ -1,6 +1,7 @@
 mod applets;
 mod compat;
 mod contexts;
+mod dialogs;
 mod documents;
 mod fetch;
 mod flows;

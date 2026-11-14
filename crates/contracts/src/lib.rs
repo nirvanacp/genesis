@@ -255,7 +255,8 @@ pub enum ShellEvent {
         default_value: Option<String>,
         url: String,
     },
-    /// The page of an open dialog navigated or was destroyed; the shell cancelled the dialog.
+    /// Dialog `token` ended in the shell: the user answered it after `ShowDialog`, or its page
+    /// navigated or was destroyed and the shell cancelled it.
     JsDialogClosed { view: ViewRef, token: u64 },
 }
 
