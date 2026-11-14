@@ -272,11 +272,7 @@ export function createRouter(genesis: Genesis, options: RouterOptions): Router {
   }
 
   function done(id: string) {
-    // Done while the UI thinks it shows itself: the host revealed a website on its own, such as
-    // one it showed for an unclaimed dialog, so the rules alone would leave it shown.
-    const unasked = genesis.website.state.shown === null;
     dispatch({ type: "user.done", id });
-    if (unasked && revealedNow() === null) genesis.website.hide();
     for (const listener of [...doneListeners]) listener(id);
   }
 

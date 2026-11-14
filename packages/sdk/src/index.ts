@@ -9,7 +9,6 @@ export type { Transport } from "./client/transport.js";
 export type {
   CallOptions,
   ContextHandle,
-  Dialog,
   ContextState,
   Expect,
   InputCallOptions,
@@ -34,7 +33,6 @@ export type {
   AttachVia,
   CallDetails,
   DownloadSave,
-  DialogKind,
   ElementState,
   ErrorBody,
   ErrorCode,

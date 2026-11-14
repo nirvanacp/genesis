@@ -3,7 +3,6 @@ import {
   useCallback,
   useContext,
   useEffect,
-  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -15,7 +14,7 @@ import {
 import { createRoot } from "react-dom/client";
 import type { ActionResult, FilesPick, GrantKind, GrantResult, Locator, ReadSpec } from "@genesis/core";
 import type { PickedFile } from "./client/actions.js";
-import type { ContextHandle, ContextState, Dialog, Expect, PendingInput, Watch, WatchOptions } from "./client/context.js";
+import type { ContextHandle, ContextState, Expect, PendingInput, Watch, WatchOptions } from "./client/context.js";
 import { connect, type ConnectOptions, type Genesis } from "./client/session.js";
 import { emptyWatchValue, type WatchValue } from "./client/watch.js";
 import { createRouter, type CurrentScreen, type NavigateTarget, type Router, type RouterOptions, type RouteStatus } from "./router/router.js";
@@ -336,28 +335,6 @@ export function useService(serviceId: string) {
 }
 
 /**
- * The open JavaScript dialog of a hidden context's page, the active context by default, or null.
- * While a component uses it, the applet claims the context's dialogs: render it, for example
- * with `WebsiteDialog`, and answer only with the user's choice.
- */
-export function useDialog(contextId?: string): Dialog | null {
-  const handle = useContextHandle(contextId);
-  const [dialog, setDialog] = useState<Dialog | null>(() => handle.dialog);
-  useEffect(() => {
-    let current: Dialog | null = null;
-    const show = (next: Dialog | null) => {
-      current = next;
-      setDialog(next);
-      next?.closed.then(() => { if (current === next) show(null); });
-    };
-    show(handle.dialog);
-    const stop = handle.onDialog(show);
-    return () => { current = null; stop(); };
-  }, [handle]);
-  return dialog;
-}
-
-/**
  * One-time grants of a context (see `ContextHandle.allow`): `allow(kind)` asks for one from the
  * user's tap, and `grant` is the kind the hidden page may use now, or null once it ended.
  */
@@ -374,36 +351,6 @@ export function useGrant(contextId?: string): { grant: GrantKind | null; allow(k
     return result;
   }, [handle]);
   return { grant, allow };
-}
-
-/**
- * A website dialog as a plain, unstyled `alertdialog`: the site's origin, its exact message, a
- * field for a prompt, OK, and Cancel for every kind but `alert`. Renders nothing for `null`. Style
- * it through `className` and the props, or build the applet's own sheet from `useDialog`.
- */
-export function WebsiteDialog({ dialog, ...props }: { dialog: Dialog | null } & HTMLAttributes<HTMLDivElement>) {
-  const [value, setValue] = useState("");
-  const titleId = useId();
-  const messageId = useId();
-  useEffect(() => setValue(dialog?.defaultValue ?? ""), [dialog]);
-  if (!dialog) return null;
-  const prompt = dialog.kind === "prompt";
-  const answer = (accept: boolean) => {
-    dialog.answer(accept, accept && prompt ? value : undefined).catch(error => console.error("Genesis dialog answer failed", error));
-  };
-  return (
-    <div role="alertdialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={messageId} {...props}>
-      <form method="dialog" onSubmit={event => { event.preventDefault(); answer(true); }}>
-        <p id={titleId}>{dialog.origin}</p>
-        <p id={messageId} style={{ whiteSpace: "pre-wrap" }}>{dialog.message}</p>
-        {prompt && <input aria-labelledby={messageId} value={value} onChange={event => setValue(event.target.value)} maxLength={2000} autoFocus />}
-        <div>
-          {dialog.kind !== "alert" && <button type="button" onClick={() => answer(false)}>Cancel</button>}
-          <button type="submit" autoFocus={!prompt}>OK</button>
-        </div>
-      </form>
-    </div>
-  );
 }
 
 /** `post(input)` notifies the user; see `Genesis["notifications"]`. */
@@ -531,6 +478,6 @@ export function useAppResume(callback: () => void) {
 
 export { createRouter } from "./router/router.js";
 export type { CurrentScreen, NavigateTarget, Router, RouterOptions, RouterRoute, RouteStatus } from "./router/router.js";
-export type { ContextHandle, ContextState, Dialog, Expect, PendingInput, Watch, WatchOptions } from "./client/context.js";
+export type { ContextHandle, ContextState, Expect, PendingInput, Watch, WatchOptions } from "./client/context.js";
 export type { Genesis } from "./client/session.js";
 export type { WatchValue } from "./client/watch.js";

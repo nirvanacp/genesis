@@ -31,8 +31,6 @@ export interface Limits {
   watchesMax: number;
   /** The shell can send real input to a hidden context (`page.input`). Absent in an older Genesis. */
   trustedInput?: boolean;
-  /** A hidden page's JavaScript dialogs reach the foreground (`context.dialog`). Absent in an older Genesis. */
-  dialogs?: boolean;
   /**
    * The foreground can pick files, save, share, open links in apps and turn on notifications
    * after a tap, and attach picked files to a page (`attachFiles`). Absent in an older Genesis.
@@ -136,7 +134,7 @@ export type ForegroundMethod =
   | "session.save"
   | "back.handled" | "back.leave"
   | "page.call" | "page.cancel"
-  | "context.dialog.claim" | "context.dialog.answer" | "context.grant"
+  | "context.grant"
   | "files.pick" | "files.release" | "downloads.save" | "share.open" | "links.openExternal" | "notifications.enable";
 export type ContextMethod = "page.result" | "page.progress" | "page.emit" | "page.input" | "page.files" | "page.share";
 export type Method = ForegroundMethod | ContextMethod;
@@ -147,7 +145,7 @@ export type ForegroundEventName =
   | "user.viewWebsite" | "user.showContext" | "user.done"
   | "back" | "retired"
   | "context.bound" | "page.emit" | "page.progress"
-  | "context.dialog" | "context.dialogClosed" | "context.grantEnded";
+  | "context.grantEnded";
 export type ContextEventName = "retired" | "call" | "cancel" | "reset";
 export type EventName = ForegroundEventName | ContextEventName;
 
@@ -263,45 +261,6 @@ export interface GrantEnded {
   id: string;
   grant: GrantKind;
   used: boolean;
-}
-
-/** The kind of a website's JavaScript dialog. */
-export type DialogKind = "alert" | "confirm" | "prompt" | "beforeunload";
-
-/**
- * Data of the foreground event `context.dialog`: a hidden context's page opened a dialog and waits
- * for the answer. Claim it with `context.dialog.claim` within one second, or Genesis reveals the
- * website and shows the dialog there. `message` and `defaultValue` are at most 2000 characters;
- * `origin` is the page's origin.
- */
-export interface DialogEvent {
-  id: string;
-  dialogId: number;
-  kind: DialogKind;
-  message: string;
-  /** A prompt's default value. */
-  defaultValue?: string;
-  origin: string;
-}
-
-/** Params of `context.dialog.claim`. */
-export interface DialogClaim {
-  id: string;
-  dialogId: number;
-}
-
-/** Params of `context.dialog.answer`: OK when `accept`, else Cancel. `value` only for a prompt, at most 2000 characters. */
-export interface DialogAnswer {
-  id: string;
-  dialogId: number;
-  accept: boolean;
-  value?: string;
-}
-
-/** Data of the foreground event `context.dialogClosed`: the dialog ended without the applet's answer. */
-export interface DialogClosed {
-  id: string;
-  dialogId: number;
 }
 
 /** `push` adds a history entry; `replace` replaces the current one. */
