@@ -901,6 +901,7 @@ final class Shell implements Views.Listener, Ui.Actions {
      */
     void appearanceChanged() {
         // The font size can change without the appearance; website pages rescale either way.
+        GeckoEngine.configurationChanged(activity.getResources().getConfiguration());
         for (Views.Page page : pages.values()) page.tab.configurationChanged();
         if (popup != null) popup.tab.configurationChanged();
         boolean dark = (activity.getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK)
