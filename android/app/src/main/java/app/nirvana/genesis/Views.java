@@ -9,6 +9,8 @@ import android.security.KeyChain;
 import android.webkit.ClientCertRequest;
 import android.webkit.GeolocationPermissions;
 import android.webkit.HttpAuthHandler;
+import android.webkit.JsPromptResult;
+import android.webkit.JsResult;
 import android.webkit.PermissionRequest;
 import android.webkit.RenderProcessGoneDetail;
 import android.webkit.ValueCallback;
@@ -68,6 +70,11 @@ final class Views {
         void download(Page page, String url, String userAgent, String disposition, String mimeType);
         /** The shown website's server asks for a username and password. */
         void httpAuth(Page page, HttpAuthHandler handler, String host, String realm);
+        /**
+         * A hidden context's page opened a JavaScript dialog (`alert`, `confirm`, `prompt` or
+         * `beforeunload`) and waits until `result` is answered. `defaultValue` is a prompt's, else null.
+         */
+        void jsDialog(Page page, String kind, String message, String defaultValue, JsResult result);
     }
 
     /** The container a revealed context is reparented into, above the foreground. */
@@ -420,6 +427,32 @@ final class Views {
         }
 
         @Override public void onHideCustomView() { listener.hideCustomView(); }
+
+        @Override public boolean onJsAlert(WebView view, String url, String message, JsResult result) {
+            return hiddenDialog("alert", message, null, result);
+        }
+
+        @Override public boolean onJsConfirm(WebView view, String url, String message, JsResult result) {
+            return hiddenDialog("confirm", message, null, result);
+        }
+
+        @Override public boolean onJsPrompt(WebView view, String url, String message, String defaultValue, JsPromptResult result) {
+            return hiddenDialog("prompt", message, defaultValue, result);
+        }
+
+        @Override public boolean onJsBeforeUnload(WebView view, String url, String message, JsResult result) {
+            return hiddenDialog("beforeunload", message, null, result);
+        }
+
+        /**
+         * A hidden context's dialog goes to the host, which hands it to the applet or reveals the
+         * website for it. The shown website, its popup and the applet's own page keep WebView's dialogs.
+         */
+        private boolean hiddenDialog(String kind, String message, String defaultValue, JsResult result) {
+            if (!page.isContext() || page.isRevealed()) return false;
+            listener.jsDialog(page, kind, message == null ? "" : message, defaultValue, result);
+            return true;
+        }
 
         /**
          * Only the revealed context opens a window, and only from a tap; a popup's own windows load

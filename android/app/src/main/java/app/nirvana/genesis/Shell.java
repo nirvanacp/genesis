@@ -14,6 +14,8 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowInsets;
 import android.view.accessibility.AccessibilityNodeInfo;
+import android.webkit.JsPromptResult;
+import android.webkit.JsResult;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.widget.FrameLayout;
@@ -137,6 +139,9 @@ final class Shell implements Views.Listener, Ui.Actions {
     private final Notices notices;
     private final Settings settings;
     private final Map<String, Views.Page> pages = new HashMap<>();
+    /** Hidden pages' open JavaScript dialogs by token, until answered or closed. */
+    private final Map<Long, PendingDialog> dialogs = new HashMap<>();
+    private static long nextDialog;
     private Views.Page revealedPage;
     /** The one window the revealed context opened, or null. */
     private Views.Page popup;
@@ -306,6 +311,7 @@ final class Shell implements Views.Listener, Ui.Actions {
     void destroyView(JSONObject ref) {
         Views.Page page = pages.remove(key(ref));
         if (page == null) return;
+        closeDialogs(page);
         if (page == revealedPage) dropRevealed();
         page.destroy();
     }
@@ -459,6 +465,82 @@ final class Shell implements Views.Listener, Ui.Actions {
                     .put("ok", message == null).put("message", message == null ? JSONObject.NULL : message));
             } catch (JSONException ignored) { /* Unreachable for these values. */ }
         });
+    }
+
+    /** A hidden page's JavaScript dialog: the page waits until `result` is answered. */
+    private static final class PendingDialog {
+        final Views.Page page;
+        final String kind, message, defaultValue;
+        final JsResult result;
+        /** The dialog the shell shows over the website after `showDialog`, or null. */
+        android.app.Dialog shown;
+
+        PendingDialog(Views.Page page, String kind, String message, String defaultValue, JsResult result) {
+            this.page = page;
+            this.kind = kind;
+            this.message = message;
+            this.defaultValue = defaultValue;
+            this.result = result;
+        }
+
+        /** OK, with a prompt's `value` (its default when null), or Cancel. */
+        void answer(boolean accept, String value) {
+            if (!accept) result.cancel();
+            else if (result instanceof JsPromptResult) ((JsPromptResult) result).confirm(value != null ? value : defaultValue != null ? defaultValue : "");
+            else result.confirm();
+        }
+    }
+
+    /** The applet's answer to a hidden page's dialog. */
+    void answerDialog(long token, boolean accept, String value) {
+        PendingDialog dialog = dialogs.remove(token);
+        if (dialog != null) dialog.answer(accept, value);
+    }
+
+    /**
+     * The applet did not take a hidden page's dialog, and the host revealed the website: the shell
+     * shows it there, titled with the page's origin, and reports `jsDialogClosed` once answered.
+     */
+    void showDialog(long token) {
+        PendingDialog dialog = dialogs.get(token);
+        if (dialog == null || dialog.shown != null) return;
+        android.widget.EditText field = null;
+        MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(activity)
+            .setTitle(Views.origin(String.valueOf(dialog.page.web.getUrl())))
+            .setMessage(dialog.message);
+        if ("prompt".equals(dialog.kind)) {
+            LinearLayout form = new LinearLayout(activity);
+            form.setPadding(tokens.dp(24), tokens.dp(8), tokens.dp(24), 0);
+            field = authField("", android.text.InputType.TYPE_CLASS_TEXT);
+            if (dialog.defaultValue != null) field.setText(dialog.defaultValue);
+            form.addView(field, new LinearLayout.LayoutParams(-1, -2));
+            builder.setView(form);
+        }
+        android.widget.EditText input = field;
+        builder.setPositiveButton("OK", (d, w) -> closeDialog(token, true, input == null ? null : input.getText().toString()));
+        if (!"alert".equals(dialog.kind)) builder.setNegativeButton("Cancel", (d, w) -> closeDialog(token, false, null));
+        builder.setOnCancelListener(d -> closeDialog(token, false, null));
+        dialog.shown = builder.show();
+    }
+
+    /** Ends dialog `token` in the shell and tells the host, which no longer waits for the applet. */
+    private void closeDialog(long token, boolean accept, String value) {
+        PendingDialog dialog = dialogs.remove(token);
+        if (dialog == null) return;
+        if (dialog.shown != null) dialog.shown.dismiss();
+        dialog.answer(accept, value);
+        // Sent after the current command batch, since a destroyView that closes it runs inside one.
+        bar.post(() -> {
+            try { owner.send(Bridge.event("jsDialogClosed").put("view", dialog.page.ref).put("token", token)); }
+            catch (JSONException ignored) { /* Unreachable for these values. */ }
+        });
+    }
+
+    /** The page navigated or is going away: its open dialogs are cancelled. */
+    private void closeDialogs(Views.Page page) {
+        List<Long> open = new ArrayList<>();
+        for (Map.Entry<Long, PendingDialog> entry : dialogs.entrySet()) if (entry.getValue().page == page) open.add(entry.getKey());
+        for (long token : open) closeDialog(token, false, null);
     }
 
     /** Shows the foreground once its first frame with applet content is ready to draw. */
@@ -682,6 +764,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         cancelPrompts();
         dropRevealed();
         owner.cancelInvalidFiles();
+        for (Views.Page page : pages.values()) closeDialogs(page);
         for (Views.Page page : pages.values()) page.destroy();
         pages.clear();
     }
@@ -691,6 +774,7 @@ final class Shell implements Views.Listener, Ui.Actions {
 
     @Override public void documentStarted(Views.Page page, String url) {
         if (pages.get(key(page.ref)) != page) return;
+        closeDialogs(page);
         try { owner.send(Bridge.event("documentStarted").put("view", page.ref).put("url", url)); }
         catch (JSONException ignored) { /* Unreachable for string values. */ }
     }
@@ -717,6 +801,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         if (page == popup) { closePopup(); return; }
         if (pages.get(key(page.ref)) != page) return;
         pages.remove(key(page.ref));
+        closeDialogs(page);
         if (page == revealedPage) dropRevealed();
         page.destroy();
         try { owner.send(Bridge.event("rendererGone").put("view", page.ref)); }
@@ -916,6 +1001,18 @@ final class Shell implements Views.Listener, Ui.Actions {
         Runnable cancel = cancelAuth;
         cancelAuth = null;
         if (cancel != null) cancel.run();
+    }
+
+    /** A hidden page's JavaScript dialog goes to the host, which answers it or asks to show it. */
+    @Override public void jsDialog(Views.Page page, String kind, String message, String defaultValue, JsResult result) {
+        if (pages.get(key(page.ref)) != page) { result.cancel(); return; }
+        long token = ++nextDialog;
+        dialogs.put(token, new PendingDialog(page, kind, message, defaultValue, result));
+        String url = page.web.getUrl();
+        try {
+            owner.send(Bridge.event("jsDialog").put("view", page.ref).put("token", token).put("kind", kind).put("message", message)
+                .put("defaultValue", defaultValue == null ? JSONObject.NULL : defaultValue).put("url", url == null ? "" : url));
+        } catch (JSONException ignored) { /* Unreachable for these values. */ }
     }
 
     /** A server's own sign-in prompt. Genesis passes the answer on and saves nothing. */
