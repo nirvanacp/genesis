@@ -328,7 +328,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         if (page == null) return;
         closeDialogs(page);
         endGrant(page, false);
-        blobs.remove(page);
+        dropBlob(page);
         if (page == revealedPage) dropRevealed();
         else if (popup != null && popup.opener == page) closePopup();
         if (page.isForeground()) actions.clear();
@@ -500,11 +500,18 @@ final class Shell implements Views.Listener, Ui.Actions {
         actions.run(appletId, token, view, action);
     }
 
-    /** A `blob:` download the page agent is reading: its header, then its bytes. */
+    /**
+     * A `blob:` download the page agent is reading: its header, then its bytes. For a `data:`
+     * download, which the shell reads itself, the agent only names the file.
+     */
     private static final class PendingBlob {
         final long token;
         /** From the Content-Disposition, or null. */
         final String name;
+        /** The link's `download` name from the agent, which wins over `name`, or null. */
+        String named;
+        /** The `data:` URL whose name the agent was asked for, or null for a blob. */
+        String dataUrl;
         String mime;
         long size = -1;
         /** Base64 chunks the header announced; -1 for one ArrayBuffer. */
@@ -524,17 +531,34 @@ final class Shell implements Views.Listener, Ui.Actions {
     private static final long BLOB_LIMIT = 128L * 1024 * 1024;
     /** How long the agent has to hand over a blob download. */
     private static final long BLOB_TIMEOUT_MS = 60_000;
+    /** How long the agent has to name a `data:` download before it is saved under its own name. */
+    private static final long DATA_NAME_TIMEOUT_MS = 1_000;
 
     /** Asks the page agent for the bytes of `url`; a new download replaces one still under way. */
     private void requestBlob(Views.Page page, String url, String name, String mime) {
-        PendingBlob blob = new PendingBlob(++blobTokens, name, mime);
-        blobs.put(page, blob);
-        blob.timeout = () -> { if (blobs.get(page) == blob) failBlob(page); };
-        bar.postDelayed(blob.timeout, BLOB_TIMEOUT_MS);
+        PendingBlob blob = newBlob(page, name, mime, BLOB_TIMEOUT_MS);
         try {
             page.post(new JSONObject().put("type", "genesis.blob").put("token", blob.token).put("url", url)
                 .put("buffers", WebFeatures.has(androidx.webkit.WebViewFeature.WEB_MESSAGE_ARRAY_BUFFER)).toString());
         } catch (JSONException ignored) { /* Unreachable for these values. */ }
+    }
+
+    /** Asks the page agent for the `download` name of the `data:` link the user clicked, then saves `url`. */
+    private void requestDataName(Views.Page page, String url, String name) {
+        PendingBlob blob = newBlob(page, name, null, DATA_NAME_TIMEOUT_MS);
+        blob.dataUrl = url;
+        try { page.post(new JSONObject().put("type", "genesis.blob").put("token", blob.token).put("url", "data:").put("nameOnly", true).toString()); }
+        catch (JSONException ignored) { /* Unreachable for these values. */ }
+    }
+
+    /** Starts waiting for the agent's answer, in place of a download still under way. */
+    private PendingBlob newBlob(Views.Page page, String name, String mime, long timeoutMs) {
+        dropBlob(page);
+        PendingBlob blob = new PendingBlob(++blobTokens, name, mime);
+        blobs.put(page, blob);
+        blob.timeout = () -> { if (blobs.get(page) == blob) failBlob(page); };
+        bar.postDelayed(blob.timeout, timeoutMs);
+        return blob;
     }
 
     @Override public void blobMessage(Views.Page page, String payload) {
@@ -544,6 +568,14 @@ final class Shell implements Views.Listener, Ui.Actions {
         try { message = new JSONObject(payload); } catch (JSONException error) { failBlob(page); return; }
         if (message.optLong("token", -1) != blob.token) return;
         if ("genesis.blob".equals(message.optString("type"))) {
+            String named = downloadName(message.optString("name", ""));
+            if (blob.dataUrl != null) {
+                blobs.remove(page);
+                bar.removeCallbacks(blob.timeout);
+                actions.saveDownload(blob.dataUrl, named != null ? named : blob.name);
+                return;
+            }
+            if (named != null) blob.named = named;
             long size = message.optLong("size", -1);
             if (message.has("error") || blob.bytes != null || size < 0 || size > BLOB_LIMIT) { failBlob(page); return; }
             String mime = message.optString("mime", "").split(";", 2)[0].trim();
@@ -575,16 +607,31 @@ final class Shell implements Views.Listener, Ui.Actions {
         blobs.remove(page);
         bar.removeCallbacks(blob.timeout);
         String mime = blob.mime == null || blob.mime.isEmpty() ? "application/octet-stream" : blob.mime;
-        String name = blob.name != null ? blob.name : UserActions.defaultName(mime);
+        String name = blob.named != null ? blob.named : blob.name != null ? blob.name : UserActions.defaultName(mime);
         byte[] bytes = blob.bytes.toByteArray();
         UserActions.IO.execute(() -> actions.saveBytes(name, mime, bytes));
     }
 
+    /** Ends the agent's pending download of `page`: a blob fails, and a `data:` URL saves under its own name. */
     private void failBlob(Views.Page page) {
+        PendingBlob blob = blobs.get(page);
+        if (blob == null) return;
+        dropBlob(page);
+        if (blob.dataUrl == null) Toast.makeText(activity, "The download couldn't be read", Toast.LENGTH_SHORT).show();
+    }
+
+    /** Stops waiting for the agent: a blob download is dropped, and a `data:` URL saves under its own name. */
+    private void dropBlob(Views.Page page) {
         PendingBlob blob = blobs.remove(page);
         if (blob == null) return;
         bar.removeCallbacks(blob.timeout);
-        Toast.makeText(activity, "The download couldn't be read", Toast.LENGTH_SHORT).show();
+        if (blob.dataUrl != null) actions.saveDownload(blob.dataUrl, blob.name);
+    }
+
+    /** A file name the page gave, without any folder, or null when it gave none. */
+    private static String downloadName(String name) {
+        String base = name.substring(Math.max(name.lastIndexOf('/'), name.lastIndexOf('\\')) + 1).trim();
+        return base.isEmpty() || base.equals(".") || base.equals("..") ? null : base;
     }
 
     /**
@@ -835,10 +882,13 @@ final class Shell implements Views.Listener, Ui.Actions {
             Toast.makeText(activity, "This download isn't supported in Genesis", Toast.LENGTH_SHORT).show();
             return;
         }
-        // A data: or blob: URL names no file; only a Content-Disposition can.
-        String name = web || disposition != null ? android.webkit.URLUtil.guessFileName(web ? url : "", disposition, mimeType) : null;
+        // A data: or blob: URL names no file: a Content-Disposition with a file name can, and so can
+        // the clicked link's `download` attribute, which only the page agent knows.
+        boolean named = disposition != null && disposition.toLowerCase(java.util.Locale.ROOT).contains("filename");
+        String name = web || named ? android.webkit.URLUtil.guessFileName(web ? url : "", disposition, mimeType) : null;
         Runnable start = web ? () -> startDownload(page, url, userAgent, mimeType, name)
             : blob ? () -> requestBlob(page, url, name, mimeType)
+            : page.reply != null ? () -> requestDataName(page, url, name)
             : () -> actions.saveDownload(url, name);
         // A popup counts against the page that opened it, since each download can open a new one.
         Views.Page counted = page.opener != null ? page.opener : page;
@@ -984,7 +1034,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         pages.remove(key(page.ref));
         closeDialogs(page);
         endGrant(page, false);
-        blobs.remove(page);
+        dropBlob(page);
         if (page == revealedPage) dropRevealed();
         else if (popup != null && popup.opener == page) closePopup();
         page.destroy();
