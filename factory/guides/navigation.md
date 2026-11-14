@@ -88,6 +88,8 @@ Use `{ url }` for every link that came from the website, so the routes decide wh
 
 `navigate({ url })` without `context` uses the active context, so a link followed from a page stays in that page's history. A route's `context` applies only from a tab root (the active context on its start page) and from an overlay screen. That way a profile link on the Home tab's feed opens in the Home history, while the same link from Search opens in the route's context.
 
+Genesis refuses a navigation it cannot make, such as a URL outside the declared origins. The router logs the refusal to the console. A direct `context.navigate`, `back`, `forward` or `reload` rejects with a `GenesisError` instead, so catch it where the screen should show the failure.
+
 ## Tabs and overlay screens
 
 Bottom tabs belong to the UI. A tab is either a context or an overlay screen:

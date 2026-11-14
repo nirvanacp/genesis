@@ -265,6 +265,8 @@ Trusted input has more limits:
 
 - A key that would reach the clipboard fails with `INPUT_UNAVAILABLE`: `Control` or `Meta` with a one-character key (copy, paste, select all), and `Shift+Delete`.
 - One trusted `type` takes at most 2000 characters; a longer text fails with `INVALID_ARGUMENT`.
+- Trusted taps, keys and text are accepted only from a call whose operation is `click`, `longPress`, `fill`, `type`, `press`, `select`, `check`, `submit`, `attachFiles`, `run` or `invoke`. From any other call, such as a read or a wait, they fail with `INPUT_UNAVAILABLE`. Trusted hover works from any call.
+- One call sends trusted input at most 64 times, hover included; the 65th fails with `INPUT_UNAVAILABLE`.
 - Once another document has started loading in the context, the shell refuses trusted input with `CONTEXT_REPLACED`, so it never reaches the next page. The outcome is `unknown` with that code, like other input cut short by a navigation.
 - An element inside a same-origin frame is tapped at its point on the top page, measured through every frame that contains it.
 - For 5 seconds after trusted input, the page may not open a window or hand a link to another app, even when the user reveals it and taps. A `window` or `handoff` grant lifts this block for one request.

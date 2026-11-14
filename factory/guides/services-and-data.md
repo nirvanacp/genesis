@@ -79,7 +79,7 @@ The UI calls it with `genesis.services.request("bookmarks", path, { method, body
 
 An applet notifies only after the user turns on Notifications in its Applet info; it is off by default, and Android 13 and later also ask the user. Each applet's notifications appear under its own name in Android's settings, and tapping one opens the applet.
 
-- **While the applet runs**, the foreground posts with `useNotifications()` (see the [SDK reference](sdk-reference.md#usenotifications)). Declare `"notifications": {}` under `capabilities`.
+- **While the applet runs**, the foreground posts with `useNotifications()` (see the [SDK reference](sdk-reference.md#notifications)). Declare `"notifications": {}` under `capabilities`.
 - **In the background**, the shell asks a declared service for news. Declare the service and a path:
 
 ```json
@@ -98,7 +98,7 @@ Android runs the check about every `intervalMinutes` (15 to 1440, default 60) wh
 - The backend owns deduplication. `since` is empty on the first check, then the `cursor` from the previous answer; the shell keeps it, at most 256 characters, and sends it back unchanged. Return the notifications that are new after `since`, and a cursor that marks the newest one.
 - Each notification follows the `useNotifications()` rules. The shell shows at most 5 per check and skips invalid ones, so put the most important first.
 - Any status other than 200, or a body without a string `cursor` and a `notifications` array, shows nothing and keeps the old cursor; the next check tries again. Only an unreachable service is retried sooner.
-- The check runs without the applet, its adapter or its websites, so the backend has to know on its own what is new for the user.
+- The check runs without the applet, its page module or its websites, so the backend has to know on its own what is new for the user.
 
 A route for it in the backend's request handler, where `db` is its SQLite database (`node:sqlite`) and `json(response, status, value)` writes a JSON answer:
 

@@ -112,7 +112,7 @@ Steps are page operations, written as `{ op, ...args }`. The same operations are
 | `longPress` | Presses and holds the target for `ms`. |
 | `hover`, `unhover` | Moves the pointer over the target, or away. |
 | `focus`, `blur` | Moves focus to the target, or away from it. |
-| `fill` | Sets an input, textarea or editable element to `value`, firing `input` and `change`. |
+| `fill` | Sets an `input` or `textarea` to `value`, firing `input` and `change`. Any other element answers `NOT_ACTIONABLE` with `not-a-text-field`; use `type` for a rich text editor. |
 | `type` | Types `text` into the target key by key. |
 | `press` | Presses `key` with optional `modifiers`, on `target` or on the focused element. |
 | `select` | Chooses options of a `select` by `values` or `labels`. |
@@ -127,7 +127,7 @@ Each input waits up to its `timeoutMs` (default 0) for the target to exist and b
 
 ### Trusted input
 
-By default the page agent dispatches DOM events, which the page sees as synthetic. `input: "trusted"` asks the shell to send real Android input to the hidden page instead: the events are trusted, CSS `:hover` applies, and a tap or key gives the page user activation. Only `click` (as one touch tap), `hover`, `unhover`, `type` and `press` take it. It needs `limits.trustedInput`; where that is off, and in a context whose website is revealed, the input fails with `INPUT_UNAVAILABLE`. Use it only when the site ignores synthetic events.
+By default the page agent dispatches DOM events, which the page sees as synthetic. `input: "trusted"` asks the shell to send real Android input to the hidden page instead: the events are trusted, CSS `:hover` applies, and a tap or key gives the page user activation. Only `click` (as one touch tap), `hover`, `unhover`, `type` and `press` take it. It needs `limits.trustedInput`; where that is off, and in a context whose website is revealed, the input fails with `INPUT_UNAVAILABLE`. A trusted tap, key or text is accepted only from a call whose operation is `click`, `longPress`, `fill`, `type`, `press`, `select`, `check`, `submit`, `attachFiles`, `run` or `invoke`; from any other call it fails with `INPUT_UNAVAILABLE`. Trusted hover works from any call. One call sends trusted input at most 64 times, hover included, and the next one fails with `INPUT_UNAVAILABLE`. Use it only when the site ignores synthetic events.
 
 ## Evidence: `until`
 

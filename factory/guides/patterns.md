@@ -8,7 +8,7 @@ src/main.tsx              mount with the router options
 src/routes.ts             the router's routes, overlay screens and sign-in URL
 src/app.tsx               the screen switch and the tabs
 src/page.ts               definePageModule: the readers and commands
-src/adapter/*.ts          one file per sort of page or shared reader, imported by src/page.ts
+src/pages/*.ts            page module code: one file per sort of page or shared reader, imported by src/page.ts
 src/model.ts              data types shared by the page module and screens
 src/screens/*.tsx         one file per screen, such as compose.tsx for the applet's composer
 src/components/*.tsx      shared rows, skeletons, sheets, attachment previews
