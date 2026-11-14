@@ -512,6 +512,8 @@ final class Shell implements Views.Listener, Ui.Actions {
         String named;
         /** The `data:` URL whose name the agent was asked for, or null for a blob. */
         String dataUrl;
+        /** The page address the download came from, for the repeat-download question. */
+        String from;
         String mime;
         long size = -1;
         /** Base64 chunks the header announced; -1 for one ArrayBuffer. */
@@ -543,10 +545,14 @@ final class Shell implements Views.Listener, Ui.Actions {
         } catch (JSONException ignored) { /* Unreachable for these values. */ }
     }
 
-    /** Asks the page agent for the `download` name of the `data:` link the user clicked, then saves `url`. */
-    private void requestDataName(Views.Page page, String url, String name) {
+    /**
+     * Asks the page agent for the `download` name of the `data:` link the user clicked, then saves
+     * `url`. The name comes first, since the agent remembers the click only briefly.
+     */
+    private void requestDataName(Views.Page page, String url, String name, String from) {
         PendingBlob blob = newBlob(page, name, null, DATA_NAME_TIMEOUT_MS);
         blob.dataUrl = url;
+        blob.from = from;
         try { page.post(new JSONObject().put("type", "genesis.blob").put("token", blob.token).put("url", "data:").put("nameOnly", true).toString()); }
         catch (JSONException ignored) { /* Unreachable for these values. */ }
     }
@@ -572,7 +578,7 @@ final class Shell implements Views.Listener, Ui.Actions {
             if (blob.dataUrl != null) {
                 blobs.remove(page);
                 bar.removeCallbacks(blob.timeout);
-                actions.saveDownload(blob.dataUrl, named != null ? named : blob.name);
+                saveData(page, blob, named != null ? named : blob.name);
                 return;
             }
             if (named != null) blob.named = named;
@@ -625,7 +631,11 @@ final class Shell implements Views.Listener, Ui.Actions {
         PendingBlob blob = blobs.remove(page);
         if (blob == null) return;
         bar.removeCallbacks(blob.timeout);
-        if (blob.dataUrl != null) actions.saveDownload(blob.dataUrl, blob.name);
+        if (blob.dataUrl != null) saveData(page, blob, blob.name);
+    }
+
+    private void saveData(Views.Page page, PendingBlob blob, String name) {
+        confirmDownload(page, blob.from, name, () -> actions.saveDownload(blob.dataUrl, name));
     }
 
     /** A file name the page gave, without any folder, or null when it gave none. */
@@ -886,16 +896,21 @@ final class Shell implements Views.Listener, Ui.Actions {
         // the clicked link's `download` attribute, which only the page agent knows.
         boolean named = disposition != null && disposition.toLowerCase(java.util.Locale.ROOT).contains("filename");
         String name = web || named ? android.webkit.URLUtil.guessFileName(web ? url : "", disposition, mimeType) : null;
-        Runnable start = web ? () -> startDownload(page, url, userAgent, mimeType, name)
+        String from = web ? url : String.valueOf(page.web.getUrl());
+        if (!web && !blob && page.reply != null) { requestDataName(page, url, name, from); return; }
+        confirmDownload(page, from, name, web ? () -> startDownload(page, url, userAgent, mimeType, name)
             : blob ? () -> requestBlob(page, url, name, mimeType)
-            : page.reply != null ? () -> requestDataName(page, url, name)
-            : () -> actions.saveDownload(url, name);
+            : () -> actions.saveDownload(url, name));
+    }
+
+    /** Runs `start`, asking first when `page` already downloaded a file. */
+    private void confirmDownload(Views.Page page, String from, String name, Runnable start) {
         // A popup counts against the page that opened it, since each download can open a new one.
         Views.Page counted = page.opener != null ? page.opener : page;
         if (counted.downloads++ == 0) { start.run(); return; }
         new MaterialAlertDialogBuilder(activity)
             .setTitle("Download another file?")
-            .setMessage(linkTitle(web ? url : String.valueOf(page.web.getUrl())) + " wants to download " + (name == null ? "a file" : name) + ".")
+            .setMessage(linkTitle(from) + " wants to download " + (name == null ? "a file" : name) + ".")
             .setPositiveButton("Download", (d, w) -> start.run())
             .setNegativeButton("Cancel", null)
             .show();
