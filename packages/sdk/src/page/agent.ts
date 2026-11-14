@@ -17,6 +17,7 @@ import { errorBody, messageOf, PageError } from "./errors.js";
 import { createBlobSender } from "./downloads.js";
 import { createFileReceiver, type FileReceiver } from "./files.js";
 import { scroll, scrollPosition } from "./input.js";
+import { installShare } from "./share.js";
 import { locate, locateAll, type RecordLookup } from "./locate.js";
 import type { CommandSteps, PageModule } from "./module.js";
 import { checkedOf, collapse, compile, isVisible, readOnce, rectOf, textOf, type Compiled } from "./read.js";
@@ -51,9 +52,12 @@ export function startAgent(module?: PageModule): void {
   // The website's own blob: downloads, which only this document can read.
   bridge.addEventListener("message", createBlobSender(bridge));
   let current: Session | null = null;
+  let connected: Connection | null = null;
+  // The website's own Share button, which the WebView does not support.
+  installShare(() => connected);
   view.onChange(() => current?.viewChanged());
   const bind = () => connect(bridge, location.href).then(
-    connection => { current = serve(connection, module, view, files); },
+    connection => { connected = connection; current = serve(connection, module, view, files); },
     error => console.error("Genesis could not bind this page", error),
   );
   void bind();
