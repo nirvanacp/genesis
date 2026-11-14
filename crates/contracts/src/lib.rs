@@ -280,6 +280,9 @@ pub enum ShellEvent {
         #[serde(default)]
         message: Option<String>,
     },
+    /// The one-time grant of `view` ended: `used` when the page used it, otherwise it expired or
+    /// was cleared by a navigation, a reveal, a cover, a popup or the view's end.
+    GrantEnded { view: ViewRef, grant: GrantKind, used: bool },
 }
 
 /// The kind of a page's JavaScript dialog.
@@ -328,6 +331,9 @@ pub enum UserAction {
     /// Turns the applet's notifications on, asking Android first when needed.
     EnableNotifications,
 }
+
+/// How long a hidden page's one-time grant lasts unused.
+pub const GRANT_MS: u64 = 5_000;
 
 /// A website feature a hidden page may use once, after the user's tap.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
@@ -1061,6 +1067,9 @@ pub struct Limits {
     /// after a tap, and attach picked files to a page (`attachFiles`).
     #[serde(default)]
     pub user_actions: bool,
+    /// The foreground can let a hidden page use one website feature once (`context.grant`).
+    #[serde(default)]
+    pub grants: bool,
 }
 
 impl Default for Limits {
@@ -1084,6 +1093,7 @@ impl Default for Limits {
             trusted_input: true,
             dialogs: true,
             user_actions: true,
+            grants: true,
         }
     }
 }
@@ -1346,6 +1356,10 @@ pub enum Call {
     /// Turns the applet's notifications on after a tap.
     #[serde(rename = "notifications.enable")]
     NotificationsEnable {},
+    /// Lets hidden context `id` use one website feature once, after a tap. Answers
+    /// `{granted: true, expiresInMs}`; a revealed context needs no grant and gets `0`.
+    #[serde(rename = "context.grant")]
+    ContextGrant { id: String, grant: GrantKind },
     /// Has the shell post picked files to the asking context document, for an open call. Answers
     /// `{count}` once the bytes were posted.
     #[serde(rename = "page.files")]

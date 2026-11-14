@@ -130,6 +130,7 @@ Params and results use the field names shown.
 | `page.cancel` | `{ context, callId? }` | `{}` |
 | `context.dialog.claim` | `{ id, dialogId }` | `{}`. The foreground shows the dialog itself (see [Website dialogs](#website-dialogs)). |
 | `context.dialog.answer` | `{ id, dialogId, accept, value? }` | `{}`. The user's answer: OK when `accept`, else Cancel. |
+| `context.grant` | `{ id, grant }` | `{ granted: true, expiresInMs }`. Lets a hidden context's page use one website feature once (see [Grants](#grants)). |
 | `files.pick` | `{ accept?, multiple? }` | `{ files: [{ id, name, type, size }] }`, empty when the user cancels (see [User actions](#user-actions)). |
 | `files.release` | `{ ids }` | `{}`. Lets go of picked files. |
 | `downloads.save` | `{ context, url, filename? }` | `{ started: true }` |
@@ -180,6 +181,7 @@ Events the foreground receives:
 | `user.showContext` | `{ id }`. A link opened the applet in this context, or Genesis revealed it for an unclaimed dialog; show it. |
 | `context.dialog` | `{ id, dialogId, kind, message, defaultValue?, origin }`. A hidden context's page opened a JavaScript dialog (see [Website dialogs](#website-dialogs)). |
 | `context.dialogClosed` | `{ id, dialogId }`. The dialog ended without the foreground's answer. |
+| `context.grantEnded` | `{ id, grant, used }`. A grant from `context.grant` was used, or ended unused (see [Grants](#grants)). |
 | `back` | `{}`. The user pressed Back; answer with `back.handled` or `back.leave`. |
 | `retired` | `{}`. The document will get no more answers. |
 | `page.emit` | `{ context, generation, stream, kind, seq, view, url, data }` |
@@ -481,7 +483,7 @@ The agent never reads or writes the value of a password field, a hidden input, o
 - `page.input` answers `INPUT_UNAVAILABLE` when `limits.trustedInput` is not true, and when the context is revealed: the user is looking at the website then, and applet input there would count as the user's own gesture. It answers `CONTEXT_REPLACED` when another document has already started loading in the context, `NOT_FOUND` when `callId` is not an open call of the asking document, and `DEADLINE` when the call's budget runs out first.
 - A trusted `click` is one touch tap: `gesture` other than `tap`, or `count` other than 1, is `INVALID_ARGUMENT`. Any other operation with `input: "trusted"` is `INVALID_ARGUMENT`.
 - A trusted tap or key gives the page user activation. A trusted hover does not.
-- For 5 seconds after the last trusted input to a context's page, that page may not open a window or hand a link to another app, even once it is revealed and the user taps it. The page's user activation can outlast the input, so the shell does not count any gesture as the user's in that time.
+- For 5 seconds after the last trusted input to a context's page, that page may not open a window or hand a link to another app, even once it is revealed and the user taps it. The page's user activation can outlast the input, so the shell does not count any gesture as the user's in that time. The one exception is a live `window` or `handoff` grant (see [Grants](#grants)): it lets one such request through.
 
 ## Website dialogs
 
@@ -519,6 +521,26 @@ A page's `alert`, `confirm`, `prompt` and `beforeunload` dialogs block the page 
 - `notifications.enable` needs `capabilities.notifications`, else `CONFIGURATION_REQUIRED`. It turns on the applet's notifications as the Applet info switch does, asking Android first on Android 13 and later. `enabled` is false when the user or Android refused.
 - `page.files` carries picked files to the page for the page agent's `attachFiles` operation. It needs an open call of the asking document (`NOT_FOUND`), a context that is not already loading another document (`CONTEXT_REPLACED`), and ids the applet still holds (`FILE_UNAVAILABLE`). The shell posts the bytes straight to the page, not through the host.
 - `limits.userActions` is true when the host takes these methods and `attachFiles`. It is absent in an older Genesis.
+
+## Grants
+
+A hidden context's page cannot show UI of its own: it may not go fullscreen, download a file, open a window, hand a link to another app or ask for the location. `context.grant` lets it do one of these once, right after the user's tap on the applet UI:
+
+```json
+{ "type": "request", "documentId": "d3", "requestId": 52, "method": "context.grant", "params": { "id": "main", "grant": "fullscreen" } }
+```
+
+```json
+{ "type": "response", "documentId": "d3", "requestId": 52, "result": { "granted": true, "expiresInMs": 5000 } }
+```
+
+- `grant` is `fullscreen`, `download`, `window`, `handoff` or `location`. `context.grant` is a user action: without a fresh tap on the applet UI it answers `USER_ACTION_REQUIRED` and grants nothing (see [User actions](#user-actions)). An unknown `id` is `NOT_FOUND`.
+- A revealed context needs no grant, because the user taps the website itself: the answer is `{ granted: true, expiresInMs: 0 }` at once, and no `context.grantEnded` follows.
+- The page has 5 seconds to use the grant, once. Then the foreground drives the page to the feature, usually with a trusted click (`await ctx.allow("fullscreen")`, then `click` with `input: "trusted"`).
+- `fullscreen` shows the page's fullscreen view over everything; the context stays hidden, and Back or the page's own exit returns to the applet. `download` saves an `http`, `https`, `data:` or `blob:` download to Downloads. `window` opens the page's popup in a sheet over the applet; closing it returns to the applet. `handoff` lets one link open in another app. `location` shows Genesis's location prompt for the page's origin over the applet.
+- A `window` or `handoff` grant overrides the 5-second block after trusted input (see [Trusted input](#trusted-input)) for that one request.
+- One grant per context: a new grant replaces an unused one. The grant ends when it is used, after 5 seconds, and when the page navigates, the context is revealed or covered, a popup opens or the view goes away. Each end sends `context.grantEnded { id, grant, used }`.
+- `limits.grants` is true when the host takes `context.grant`. It is absent in an older Genesis.
 
 ## Error codes
 
@@ -587,6 +609,7 @@ A page's `alert`, `confirm`, `prompt` and `beforeunload` dialogs block the page 
 | `trustedInput` | True when the shell can send real input to a hidden context. Absent in an older Genesis. |
 | `dialogs` | True when a hidden page's JavaScript dialogs reach the foreground as `context.dialog`. Absent in an older Genesis. |
 | `userActions` | True when the foreground can pick files, save, share, open links in apps and turn on notifications, and attach picked files with `attachFiles`. Absent in an older Genesis. |
+| `grants` | True when the foreground can let a hidden page use one website feature once with `context.grant`. Absent in an older Genesis. |
 
 ## Versions
 

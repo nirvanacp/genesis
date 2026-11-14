@@ -38,6 +38,8 @@ export interface Limits {
    * after a tap, and attach picked files to a page (`attachFiles`). Absent in an older Genesis.
    */
   userActions?: boolean;
+  /** The foreground can let a hidden page use one website feature once (`context.grant`). Absent in an older Genesis. */
+  grants?: boolean;
 }
 
 /** The first message a document sends. */
@@ -130,7 +132,7 @@ export type ForegroundMethod =
   | "session.save"
   | "back.handled" | "back.leave"
   | "page.call" | "page.cancel"
-  | "context.dialog.claim" | "context.dialog.answer"
+  | "context.dialog.claim" | "context.dialog.answer" | "context.grant"
   | "files.pick" | "files.release" | "downloads.save" | "share.open" | "links.openExternal" | "notifications.enable";
 export type ContextMethod = "page.result" | "page.progress" | "page.emit" | "page.input" | "page.files";
 export type Method = ForegroundMethod | ContextMethod;
@@ -141,7 +143,7 @@ export type ForegroundEventName =
   | "user.viewWebsite" | "user.showContext" | "user.done"
   | "back" | "retired"
   | "context.bound" | "page.emit" | "page.progress"
-  | "context.dialog" | "context.dialogClosed";
+  | "context.dialog" | "context.dialogClosed" | "context.grantEnded";
 export type ContextEventName = "retired" | "call" | "cancel" | "reset";
 export type EventName = ForegroundEventName | ContextEventName;
 
@@ -218,6 +220,37 @@ export interface ShareInput {
 export interface PageFiles {
   callId: string;
   ids: string[];
+}
+
+/** How long a one-time grant lasts unused, in milliseconds. */
+export const GRANT_MS = 5_000;
+
+/**
+ * A website feature a hidden page may use once after the user's tap: `fullscreen` a video,
+ * `download` a file, open a `window`, `handoff` a link to another app, or ask for `location`.
+ */
+export type GrantKind = "fullscreen" | "download" | "window" | "handoff" | "location";
+
+/** Params of `context.grant`. */
+export interface ContextGrant {
+  id: string;
+  grant: GrantKind;
+}
+
+/** Result of `context.grant`. `expiresInMs` is 0 for a revealed context, which needs no grant. */
+export interface GrantResult {
+  granted: true;
+  expiresInMs: number;
+}
+
+/**
+ * Data of the foreground event `context.grantEnded`: `used` when the page used the grant,
+ * otherwise it expired or a navigation, reveal, cover or popup cleared it.
+ */
+export interface GrantEnded {
+  id: string;
+  grant: GrantKind;
+  used: boolean;
 }
 
 /** The kind of a website's JavaScript dialog. */
