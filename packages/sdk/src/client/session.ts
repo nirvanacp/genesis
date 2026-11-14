@@ -6,6 +6,7 @@ import {
   type ContextNavigated,
   type DialogClosed,
   type DialogEvent,
+  type GrantEnded,
   type Hello,
   type Limits,
   type Manifest,
@@ -216,6 +217,7 @@ function createGenesis(session: Session): Genesis {
   session.on("page.emit", (data: PageEmitEvent) => of(data.context)?.emit(data));
   session.on("context.dialog", (data: DialogEvent) => of(data.id)?.dialog(data));
   session.on("context.dialogClosed", (data: DialogClosed) => of(data.id)?.dialogClosed(data));
+  session.on("context.grantEnded", (data: GrantEnded) => of(data.id)?.grantEnded(data));
 
   const listeners = { resume: new Set<() => void>(), suspend: new Set<() => void>(), retired: new Set<() => void>() };
   const call = (set: Set<() => void>) => { for (const listener of [...set]) listener(); };

@@ -13,6 +13,9 @@ import {
   type ErrorBody,
   type ErrorCode,
   type Evidence,
+  type GrantEnded,
+  type GrantKind,
+  type GrantResult,
   type InputOptions,
   type InspectResult,
   type Locator,
@@ -184,6 +187,18 @@ export interface ContextHandle {
   onDialog(handler: (dialog: Dialog) => void): () => void;
 
   /**
+   * Lets this hidden page use one website feature once within `GRANT_MS` (5 s): enter fullscreen,
+   * start a download, open a window, hand a link to another app or ask for the location. Call it
+   * from the user's tap, then make the page do it, for example
+   * `await ctx.allow("fullscreen"); await ctx.click(playButton, { input: "trusted" })`. A revealed
+   * context needs no grant and answers `expiresInMs: 0`. Rejects with `USER_ACTION_REQUIRED`
+   * without a fresh tap. Needs `limits.grants`.
+   */
+  allow(grant: GrantKind): Promise<GrantResult>;
+  /** Runs when a grant of this context ends: `used`, or expired or cleared unused. */
+  onGrantEnded(listener: (ended: GrantEnded) => void): () => void;
+
+  /**
    * Opens a watch. The same `id` with an equal specification returns the same watch; another
    * specification throws `CONFLICT` while the watch is open. A closed watch keeps its copies of
    * this context's history entries, so opening it again shows them at once, marked stale.
@@ -209,6 +224,7 @@ export interface ContextControl {
   emit(data: PageEmitEvent): void;
   dialog(data: DialogEvent): void;
   dialogClosed(data: DialogClosed): void;
+  grantEnded(data: GrantEnded): void;
   resumed(): void;
   retired(): void;
 }
@@ -264,6 +280,7 @@ export function createContext(id: string, startUrl: string, session: Session): C
   let loadingTimer: ReturnType<typeof setTimeout> | null = null;
   const navigationListeners = new Set<(navigation: ContextNavigated) => void>();
   const dialogHandlers = new Set<(dialog: Dialog) => void>();
+  const grantListeners = new Set<(ended: GrantEnded) => void>();
   /** The claimed open dialog, with its id and the function that marks it closed. */
   let openDialog: { id: number; dialog: Dialog; close(): void } | null = null;
 
@@ -692,6 +709,12 @@ export function createContext(id: string, startUrl: string, session: Session): C
       return () => { dialogHandlers.delete(handler); };
     },
 
+    allow: grant => session.request("context.grant", { id, grant }) as Promise<GrantResult>,
+    onGrantEnded(listener) {
+      grantListeners.add(listener);
+      return () => { grantListeners.delete(listener); };
+    },
+
     watch: watch as ContextHandle["watch"],
     resync: resyncAll,
     forget,
@@ -746,6 +769,12 @@ export function createContext(id: string, startUrl: string, session: Session): C
     },
     dialog: showDialog,
     dialogClosed: data => { if (data.id === id) closeDialog(data.dialogId); },
+    grantEnded(data) {
+      if (data.id !== id) return;
+      for (const listener of [...grantListeners]) {
+        try { listener(data); } catch (error) { console.error("Genesis grantEnded listener failed", error); }
+      }
+    },
     resumed: resyncAll,
     retired() {
       if (openDialog) closeDialog(openDialog.id);

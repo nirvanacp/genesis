@@ -13,7 +13,7 @@ import {
   type ReactNode,
 } from "react";
 import { createRoot } from "react-dom/client";
-import type { ActionResult, FilesPick, Locator, ReadSpec } from "@genesis/core";
+import type { ActionResult, FilesPick, GrantKind, GrantResult, Locator, ReadSpec } from "@genesis/core";
 import type { PickedFile } from "./client/actions.js";
 import type { ContextHandle, ContextState, Dialog, Expect, PendingInput, Watch, WatchOptions } from "./client/context.js";
 import { connect, type ConnectOptions, type Genesis } from "./client/session.js";
@@ -355,6 +355,25 @@ export function useDialog(contextId?: string): Dialog | null {
     return () => { current = null; stop(); };
   }, [handle]);
   return dialog;
+}
+
+/**
+ * One-time grants of a context (see `ContextHandle.allow`): `allow(kind)` asks for one from the
+ * user's tap, and `grant` is the kind the hidden page may use now, or null once it ended.
+ */
+export function useGrant(contextId?: string): { grant: GrantKind | null; allow(kind: GrantKind): Promise<GrantResult> } {
+  const handle = useContextHandle(contextId);
+  const [grant, setGrant] = useState<GrantKind | null>(null);
+  useEffect(() => {
+    setGrant(null);
+    return handle.onGrantEnded(ended => setGrant(current => (current === ended.grant ? null : current)));
+  }, [handle]);
+  const allow = useCallback(async (kind: GrantKind) => {
+    const result = await handle.allow(kind);
+    if (result.expiresInMs > 0) setGrant(kind);
+    return result;
+  }, [handle]);
+  return { grant, allow };
 }
 
 /**
