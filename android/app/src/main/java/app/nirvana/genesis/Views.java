@@ -470,7 +470,8 @@ final class Views {
         }
 
         @Override public void onShowCustomView(View view, CustomViewCallback callback) {
-            if (!SitePolicy.mayUse(page, SitePolicy.FULLSCREEN)) { callback.onCustomViewHidden(); return; }
+            // WebView ignores an exit inside this call, which would leave the page in fullscreen; exit after it.
+            if (!SitePolicy.mayUse(page, SitePolicy.FULLSCREEN)) { page.web.post(callback::onCustomViewHidden); return; }
             listener.useGrant(page);
             listener.showCustomView(view, callback);
         }
