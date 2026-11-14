@@ -68,46 +68,6 @@ final class Shell implements Views.Listener, Ui.Actions {
         void requestPermissions(String[] permissions, java.util.function.Consumer<Set<String>> granted);
     }
 
-    /** How long history.go() may take to start moving before the native fallback runs. */
-    private static final long HISTORY_FALLBACK_MS = 1000;
-    /** How long a page that took a link click has to start moving before the shell loads the URL itself. */
-    private static final long LINK_FALLBACK_MS = 1000;
-
-    /**
-     * Offers a navigation to the page as a click on its own link to the URL. A single-page website
-     * takes the click and routes inside the document, so its state, such as playing audio, stays.
-     * Answers true when the page's script prevented the click's default, or stopped the click before
-     * the window, which leaves the page to route or follow the link itself. Otherwise the click is
-     * cancelled before the link moves, and the shell loads the URL itself.
-     */
-    private static final String FOLLOW_LINK = """
-        (function (target) {
-          try {
-            var url = new URL(target);
-            if (url.origin !== location.origin) return false;
-            var link = Array.prototype.find.call(document.querySelectorAll("a[href]"), function (a) {
-              return a.href === url.href && (!a.target || a.target === "_self") && !a.hasAttribute("download");
-            });
-            if (!link) return false;
-            var taken = false;
-            var reached = false;
-            var last = function (event) {
-              reached = true;
-              taken = event.defaultPrevented;
-              if (!taken) event.preventDefault();
-            };
-            addEventListener("click", last);
-            try {
-              link.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window, button: 0 }));
-            } finally {
-              removeEventListener("click", last);
-            }
-            return !reached || taken;
-          } catch (error) {
-            return false;
-          }
-        })""";
-
     private final Activity activity;
     private final Owner owner;
     /** The applet this window belongs to, or null for the manager. */
@@ -268,8 +228,7 @@ final class Shell implements Views.Listener, Ui.Actions {
     @Override public List<String> visitedUrls() {
         List<String> urls = new ArrayList<>();
         for (Views.Page page : pages.values()) {
-            android.webkit.WebBackForwardList history = page.web.copyBackForwardList();
-            for (int i = 0; i < history.getSize(); i++) urls.add(history.getItemAtIndex(i).getUrl());
+            urls.addAll(page.tab.history().urls());
         }
         return urls;
     }
@@ -292,12 +251,12 @@ final class Shell implements Views.Listener, Ui.Actions {
         Views.Page page = views.document(ref, set(origins), startScript, site);
         pages.put(key(ref), page);
         if (page.isForeground()) {
-            page.web.setVisibility(View.INVISIBLE);
-            foreground.addView(page.web, new FrameLayout.LayoutParams(-1, -1));
+            page.tab.view().setVisibility(View.INVISIBLE);
+            foreground.addView(page.tab.view(), new FrameLayout.LayoutParams(-1, -1));
         } else {
-            sources.addView(page.web, new FrameLayout.LayoutParams(-1, -1));
+            sources.addView(page.tab.view(), new FrameLayout.LayoutParams(-1, -1));
         }
-        page.web.loadUrl(url);
+        page.tab.load(url);
     }
 
     void destroyView(JSONObject ref) {
@@ -315,54 +274,26 @@ final class Shell implements Views.Listener, Ui.Actions {
     void loadUrl(JSONObject ref, String url, String mode) {
         Views.Page page = pages.get(key(ref));
         if (page == null) return;
-        if ("replace".equals(mode)) replaceUrl(ref, page, url);
-        else followLink(ref, page, url);
-    }
-
-    private void replaceUrl(JSONObject ref, Views.Page page, String url) {
-        String script = "(location.replace(" + JSONObject.quote(url) + "), true)";
-        page.web.evaluateJavascript(script, result -> {
-            if (pages.get(key(ref)) == page && !"true".equals(result)) page.web.loadUrl(url);
-        });
+        if ("replace".equals(mode)) page.tab.replace(url);
+        else page.tab.followLink(url);
     }
 
     /**
-     * When the page takes the click and starts no navigation within LINK_FALLBACK_MS of the script's
-     * callback, the URL loads as before. The time counts from the callback, as in historyGo.
-     */
-    private void followLink(JSONObject ref, Views.Page page, String url) {
-        int moves = page.moves;
-        page.web.evaluateJavascript(FOLLOW_LINK + "(" + JSONObject.quote(url) + ")", result -> {
-            if (pages.get(key(ref)) != page) return;
-            if (!"true".equals(result)) { page.web.loadUrl(url); return; }
-            page.web.postDelayed(() -> {
-                if (pages.get(key(ref)) == page && page.moves == moves) page.web.loadUrl(url);
-            }, LINK_FALLBACK_MS);
-        });
-    }
-
-    /**
-     * Moves through the context's history in the page, since WebView's own goBack() skips entries
-     * left without a user gesture. If nothing starts moving within a second of the page running the
-     * script, the native call runs; when it cannot move either, the host hears `historyUnmoved` so
-     * a Back can fall through. The second counts from the script's callback, so a busy renderer
-     * that has not run the script yet is not taken for a page that cannot move.
+     * Moves through the context's history in the page. When neither the page nor the engine can
+     * move, the host hears `historyUnmoved` so a Back can fall through.
      */
     void historyGo(JSONObject ref, int delta) {
         Views.Page page = pages.get(key(ref));
         if (page == null) return;
-        int moves = page.moves;
-        page.web.evaluateJavascript("history.go(" + delta + ")", ran -> page.web.postDelayed(() -> {
-            if (pages.get(key(ref)) != page || page.moves != moves) return;
-            if (page.web.canGoBackOrForward(delta)) { page.web.goBackOrForward(delta); return; }
+        page.tab.go(delta, () -> {
             try { owner.send(Bridge.event("historyUnmoved").put("view", page.ref)); }
             catch (JSONException ignored) { /* Unreachable for these values. */ }
-        }, HISTORY_FALLBACK_MS));
+        });
     }
 
     void reload(JSONObject ref) {
         Views.Page page = pages.get(key(ref));
-        if (page != null) page.web.reload();
+        if (page != null) page.tab.reload();
     }
 
     /** Reparents the context's WebView above the foreground. Nothing reloads; the page keeps running. */
@@ -371,14 +302,16 @@ final class Shell implements Views.Listener, Ui.Actions {
         if (page == null || !page.isContext()) return;
         if (revealedPage != null && revealedPage != page) coverContext();
         if (revealedPage == page) { bar.setTitle(title); return; }
-        sources.removeView(page.web);
-        page.web.setFocusable(true);
-        page.web.setFocusableInTouchMode(true);
-        page.web.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);
-        revealed.addView(page.web, new FrameLayout.LayoutParams(-1, -1));
+        View view = page.tab.view();
+        sources.removeView(view);
+        view.setFocusable(true);
+        view.setFocusableInTouchMode(true);
+        view.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);
+        revealed.addView(view, new FrameLayout.LayoutParams(-1, -1));
         revealed.setVisibility(View.VISIBLE);
+        page.tab.setRevealed(true);
         bar.setTitle(title);
-        bar.setUrl(page.web.getUrl());
+        bar.setUrl(page.tab.url());
         JSONObject entry = appletId == null ? null : ui.entry(appletId);
         bar.setReason(appletName, websiteChosen, entry != null && Home.hasUpdate(entry));
         websiteChosen = false;
@@ -399,10 +332,12 @@ final class Shell implements Views.Listener, Ui.Actions {
         cancelPrompts();
         dropRevealed();
         stopCapture(page);
-        page.web.clearFocus();
-        page.web.setFocusable(false);
-        page.web.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
-        sources.addView(page.web, new FrameLayout.LayoutParams(-1, -1));
+        View view = page.tab.view();
+        view.clearFocus();
+        view.setFocusable(false);
+        view.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
+        sources.addView(view, new FrameLayout.LayoutParams(-1, -1));
+        page.tab.setRevealed(false);
         owner.cancelInvalidFiles();
         menu.performAccessibilityAction(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS, null);
     }
@@ -414,13 +349,13 @@ final class Shell implements Views.Listener, Ui.Actions {
     private static void stopCapture(Views.Page page) {
         if (!page.capturing) return;
         page.capturing = false;
-        page.web.reload();
+        page.tab.reload();
     }
 
     /** Hides the revealed container and forgets its page, leaving the WebView detached. */
     private void dropRevealed() {
         closePopup();
-        if (revealedPage != null) revealed.removeView(revealedPage.web);
+        if (revealedPage != null) revealed.removeView(revealedPage.tab.view());
         revealedPage = null;
         revealed.setVisibility(View.GONE);
         bar.setVisibility(View.GONE);
@@ -443,7 +378,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         else if (page.isRevealed()) refusal = "Trusted input goes only to a hidden page";
         else {
             try {
-                Input.dispatch(page.web, events);
+                page.tab.input(events);
                 page.trustedInputAt = SystemClock.uptimeMillis();
             }
             catch (Input.Refused refused) { refusal = refused.getMessage(); }
@@ -462,10 +397,12 @@ final class Shell implements Views.Listener, Ui.Actions {
     void revealForeground() {
         Views.Page page = foregroundPage();
         if (page == null) return;
-        page.web.postVisualStateCallback(++visualState, new android.webkit.WebView.VisualStateCallback() {
+        // The foreground is always a WebView page.
+        android.webkit.WebView web = ((WebViewPage) page.tab).web;
+        web.postVisualStateCallback(++visualState, new android.webkit.WebView.VisualStateCallback() {
             @Override public void onComplete(long requestId) {
                 if (pages.get(key(page.ref)) != page) return;
-                page.web.setVisibility(View.VISIBLE);
+                web.setVisibility(View.VISIBLE);
                 splash.hide();
             }
         });
@@ -577,7 +514,7 @@ final class Shell implements Views.Listener, Ui.Actions {
     @Override public void download(Views.Page page, String url, String userAgent, String disposition, String mimeType) {
         if (!SitePolicy.mayShowUi(page)) return;
         // A window that only started a download has nothing to show.
-        if (page == popup && page.web.copyBackForwardList().getSize() == 0) bar.post(() -> { if (page == popup) closePopup(); });
+        if (page == popup && page.tab.history().size() == 0) bar.post(() -> { if (page == popup) closePopup(); });
         String scheme = Uri.parse(url).getScheme();
         if (!"https".equalsIgnoreCase(scheme) && !"http".equalsIgnoreCase(scheme)) {
             Toast.makeText(activity, "This download isn't supported in Genesis", Toast.LENGTH_SHORT).show();
@@ -636,7 +573,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         if (closeCustomView()) return true;
         if (ui.pages.back()) return true;
         if (popup == null) return false;
-        if (popup.web.canGoBack()) popup.web.goBack();
+        if (popup.tab.canGoBack()) popup.tab.goBack();
         else closePopup();
         return true;
     }
@@ -648,13 +585,14 @@ final class Shell implements Views.Listener, Ui.Actions {
         popup = null;
         closeCustomView();
         cancelPrompts();
-        popupSheet.removeView(page.web);
+        popupSheet.removeView(page.tab.view());
         popupSheet.setVisibility(View.GONE);
         page.destroy();
         owner.cancelInvalidFiles();
         if (revealedPage != null) {
             revealed.setVisibility(View.VISIBLE);
-            bar.setUrl(revealedPage.web.getUrl());
+            revealedPage.tab.setRevealed(true);
+            bar.setUrl(revealedPage.tab.url());
         }
         return true;
     }
@@ -747,11 +685,13 @@ final class Shell implements Views.Listener, Ui.Actions {
         cancelPrompts();
         stopCapture(opener);
         popup = views.popup(opener);
-        popupSheet.addView(popup.web, new FrameLayout.LayoutParams(-1, -1));
+        popupSheet.addView(popup.tab.view(), new FrameLayout.LayoutParams(-1, -1));
         popupSheet.setVisibility(View.VISIBLE);
         revealed.setVisibility(View.GONE);
+        opener.tab.setRevealed(false);
+        popup.tab.setRevealed(true);
         owner.cancelInvalidFiles();
-        bar.setUrl(popup.web.getUrl());
+        bar.setUrl(popup.tab.url());
         return popup;
     }
 
@@ -770,7 +710,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         Views.Page page = pages.get(key(ref));
         if (page == null || page != revealedPage) return;
         Views.Page window = openWindow(page);
-        if (window != null) window.web.loadUrl(url);
+        if (window != null) window.tab.load(url);
     }
 
     /** `window.close()` arrives inside the popup's own callback, so the view goes after it returns. */
@@ -961,8 +901,8 @@ final class Shell implements Views.Listener, Ui.Actions {
      */
     void appearanceChanged() {
         // The font size can change without the appearance; website pages rescale either way.
-        for (Views.Page page : pages.values()) WebsiteSettings.configurationChanged(page.web, page.isContext());
-        if (popup != null) WebsiteSettings.configurationChanged(popup.web, true);
+        for (Views.Page page : pages.values()) page.tab.configurationChanged();
+        if (popup != null) popup.tab.configurationChanged();
         boolean dark = (activity.getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK)
             == android.content.res.Configuration.UI_MODE_NIGHT_YES;
         if (dark == tokens.dark) return;
@@ -1334,14 +1274,14 @@ final class Shell implements Views.Listener, Ui.Actions {
 
     /** The URL of the applet's first website context, shown in the menu over the applet's own screens. */
     private String contextUrl() {
-        for (Views.Page page : pages.values()) if (page.isContext() && page.web.getUrl() != null) return page.web.getUrl();
+        for (Views.Page page : pages.values()) if (page.isContext() && page.tab.url() != null) return page.tab.url();
         return null;
     }
 
     /** What the user sees: the popup while one is open, otherwise the revealed context. */
     private String revealedUrl() {
-        if (popup != null) return popup.web.getUrl();
-        return revealedPage == null ? null : revealedPage.web.getUrl();
+        if (popup != null) return popup.tab.url();
+        return revealedPage == null ? null : revealedPage.tab.url();
     }
 
     private Views.Page foregroundPage() {

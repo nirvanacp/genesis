@@ -1,41 +1,20 @@
 package app.nirvana.genesis;
 
-import android.annotation.SuppressLint;
 import android.app.Activity;
-import android.graphics.Bitmap;
 import android.net.Uri;
 import android.view.View;
-import android.security.KeyChain;
-import android.webkit.ClientCertRequest;
-import android.webkit.GeolocationPermissions;
-import android.webkit.HttpAuthHandler;
-import android.webkit.PermissionRequest;
-import android.webkit.RenderProcessGoneDetail;
-import android.webkit.ValueCallback;
-import android.webkit.WebChromeClient;
-import android.webkit.WebResourceRequest;
-import android.webkit.WebResourceResponse;
-import android.webkit.WebView;
-import android.webkit.WebViewClient;
-import android.webkit.WebBackForwardList;
-import android.webkit.WebHistoryItem;
-import androidx.webkit.JavaScriptReplyProxy;
-import androidx.webkit.Navigation;
-import androidx.webkit.NavigationListener;
-import androidx.webkit.ScriptHandler;
 import androidx.webkit.WebViewAssetLoader;
-import androidx.webkit.WebViewCompat;
-import androidx.webkit.WebViewFeature;
 import java.io.File;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
 import org.json.JSONObject;
 
-/** Creates the applet's WebViews and enforces each view's origin policy. */
+/**
+ * The shell's record of each applet document and the listener its pages report to. The pages
+ * themselves are `WebsitePage`s; `WebViewPage` runs them in Android WebView.
+ */
 final class Views {
     static final String FOREGROUND_ORIGIN = "https://appassets.androidplatform.net";
     static final String BRIDGE = "__genesisBridge";
@@ -92,22 +71,13 @@ final class Views {
         boolean canGoForward() { return index < size - 1; }
     }
 
-    /** One WebView and the document state the shell keeps for it. */
+    /** One document the shell keeps: its role and origins, and the engine page that shows it. */
     static final class Page {
         final JSONObject ref;
         final String role;
-        final WebView web;
         final Set<String> origins = new LinkedHashSet<>();
-        JavaScriptReplyProxy reply;
-        ScriptHandler script;
-        /** The last navigation the AndroidX listener reported committed; it precedes doUpdateVisitedHistory. */
-        Navigation completed;
-        /** Without the listener: an onPageStarted since the last committed navigation. */
-        boolean startedSinceCommit;
-        int lastIndex = -1;
-        String lastUrl;
-        /** Counts navigation starts and commits, so a history.go() fallback can see whether anything moved. */
-        int moves;
+        /** The engine's page; set once by `Views` right after the record is made. */
+        WebsitePage tab;
 
         /** The revealed context that opened this popup; null for the applet's own documents. */
         final Page opener;
@@ -122,12 +92,11 @@ final class Views {
         /** The profile the page's cookies and permission answers belong to. */
         final SiteData site;
 
-        Page(JSONObject ref, WebView web, SiteData site) { this(ref, ref.optString("role"), web, null, site); }
+        Page(JSONObject ref, SiteData site) { this(ref, ref.optString("role"), null, site); }
 
-        private Page(JSONObject ref, String role, WebView web, Page opener, SiteData site) {
+        private Page(JSONObject ref, String role, Page opener, SiteData site) {
             this.ref = ref;
             this.role = role;
-            this.web = web;
             this.opener = opener;
             this.site = site;
         }
@@ -139,23 +108,13 @@ final class Views {
          * A context whose popup covers it stays in the hidden `Revealed` container and is not shown.
          */
         boolean isRevealed() {
-            android.view.ViewParent parent = web.getParent();
+            android.view.ViewParent parent = tab.view().getParent();
             return parent instanceof PopupSheet || (parent instanceof Revealed && ((View) parent).getVisibility() == View.VISIBLE);
         }
 
-        @SuppressLint("RequiresFeature") // MainActivity checks WEB_MESSAGE_LISTENER before creating any view.
-        void post(String payload) {
-            if (reply != null) reply.postMessage(payload);
-        }
+        void post(String payload) { tab.post(payload); }
 
-        void destroy() {
-            if (script != null) script.remove();
-            reply = null;
-            web.stopLoading();
-            web.setWebChromeClient(null);
-            if (web.getParent() instanceof android.view.ViewGroup) ((android.view.ViewGroup) web.getParent()).removeView(web);
-            web.destroy();
-        }
+        void destroy() { tab.destroy(); }
     }
 
     private final Activity activity;
@@ -179,36 +138,11 @@ final class Views {
         return uri.getScheme() + "://" + uri.getHost() + (defaultPort ? "" : ":" + port);
     }
 
-    /** A foreground or context view. The bridge listener and start script apply on the view's origins only. */
-    @SuppressLint("RequiresFeature") // WebFeatures.supported() and the NAVIGATION_LISTENER check gate every feature call.
+    /** A foreground or context page. The bridge listener and start script apply on the page's origins only. */
     Page document(JSONObject ref, Set<String> origins, String startScript, SiteData site) {
-        WebView web = new WebView(activity);
-        WebsiteSettings.apply(web, !"foreground".equals(ref.optString("role")), site);
-        Page page = new Page(ref, web, site);
+        Page page = new Page(ref, site);
         page.origins.addAll(origins);
-        WebViewCompat.addWebMessageListener(page.web, BRIDGE, page.origins, (view, message, sourceOrigin, isMainFrame, reply) -> {
-            String data = message.getData();
-            if (!isMainFrame || data == null) return;
-            page.reply = reply;
-            listener.documentMessage(page, data);
-        });
-        if (startScript != null) page.script = WebViewCompat.addDocumentStartJavaScript(page.web, startScript, page.origins);
-        page.web.setWebViewClient(new Client(page));
-        page.web.setWebChromeClient(new Chrome(page));
-        page.web.setDownloadListener((url, userAgent, disposition, mimeType, length) -> listener.download(page, url, userAgent, disposition, mimeType));
-        if (page.isContext()) {
-            page.web.setFocusable(false);
-            page.web.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
-            if (WebFeatures.has(WebViewFeature.NAVIGATION_LISTENER)) {
-                WebViewCompat.addNavigationListener(page.web, new NavigationListener() {
-                    @Override public void onNavigationStarted(Navigation navigation) { page.moves++; }
-
-                    @Override public void onNavigationCompleted(Navigation navigation) {
-                        if (navigation.didCommit()) page.completed = navigation;
-                    }
-                });
-            }
-        }
+        page.tab = WebViewPage.document(activity, listener, assets, page, startScript);
         return page;
     }
 
@@ -217,239 +151,8 @@ final class Views {
      * start script. Its own windows load in place, so there is never more than one popup.
      */
     Page popup(Page opener) {
-        WebView web = new WebView(activity);
-        WebsiteSettings.apply(web, true, opener.site);
-        web.getSettings().setSupportMultipleWindows(false);
-        Page page = new Page(opener.ref, "popup", web, opener, opener.site);
-        web.setWebViewClient(new Client(page));
-        web.setWebChromeClient(new Chrome(page));
-        web.setDownloadListener((url, userAgent, disposition, mimeType, length) -> listener.download(page, url, userAgent, disposition, mimeType));
+        Page page = new Page(opener.ref, "popup", opener, opener.site);
+        page.tab = WebViewPage.popup(activity, listener, page);
         return page;
-    }
-
-    /**
-     * Reads the history list and the flags of the navigation that just committed. The listener's
-     * navigation describes this commit only when it ended on the same URL; otherwise the flags
-     * come from the start and history bookkeeping.
-     */
-    static Committed committed(Page page) {
-        Committed result = new Committed();
-        WebBackForwardList list = page.web.copyBackForwardList();
-        WebHistoryItem item = list.getCurrentItem();
-        result.index = list.getCurrentIndex();
-        result.size = list.getSize();
-        result.url = item == null ? page.web.getUrl() : item.getUrl();
-        if (page.completed != null && result.url != null && result.url.equals(page.completed.getUrl())) {
-            result.sameDocument = page.completed.isSameDocument();
-            result.reload = page.completed.isReload();
-        } else {
-            result.sameDocument = !page.startedSinceCommit;
-            result.reload = page.startedSinceCommit && result.index == page.lastIndex && result.url != null && result.url.equals(page.lastUrl);
-        }
-        page.completed = null;
-        page.startedSinceCommit = false;
-        page.lastIndex = result.index;
-        page.lastUrl = result.url;
-        return result;
-    }
-
-    private final class Client extends WebViewClient {
-        private final Page page;
-
-        Client(Page page) { this.page = page; }
-
-        @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-            if (!request.isForMainFrame()) return false;
-            String url = request.getUrl().toString();
-            String scheme = request.getUrl().getScheme();
-            boolean web = "https".equals(scheme) || "http".equals(scheme);
-            if (page.isForeground()) return !FOREGROUND_ORIGIN.equals(origin(url));
-            // A context browses any website; the bridge exists only on declared origins.
-            if (web) return false;
-            // Only the revealed page may hand a link to another app, and only from a tap. A server
-            // redirect from a tapped link to mailto: arrives without a gesture and is blocked too.
-            if (!SitePolicy.mayHandOff(page, SitePolicy.usersGesture(page, request.hasGesture()))) return true;
-            android.content.Intent intent = Handoff.intent(url);
-            if (intent == null) return true;
-            if (listener.handOff(intent)) return true;
-            String fallback = Handoff.fallback(url);
-            if (fallback != null) view.loadUrl(fallback);
-            else android.widget.Toast.makeText(activity, "No app can open this link", android.widget.Toast.LENGTH_SHORT).show();
-            return true;
-        }
-
-        @Override public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
-            return page.isForeground() ? assets.shouldInterceptRequest(request.getUrl()) : null;
-        }
-
-        // onPageStarted fires at commit, once per cross-document navigation, with the final URL.
-        @Override public void onPageStarted(WebView view, String url, Bitmap favicon) {
-            page.capturing = false;
-            page.downloads = 0;
-            if (!page.isContext()) return;
-            page.startedSinceCommit = true;
-            page.moves++;
-            listener.documentStarted(page, url);
-        }
-
-        // The callback's isReload is wrong for reloads; committed() takes the flags from the listener.
-        @Override public void doUpdateVisitedHistory(WebView view, String url, boolean isReload) {
-            if (page.opener != null) { listener.popupNavigated(page, url); return; }
-            if (!page.isContext()) return;
-            page.moves++;
-            listener.contextNavigated(page, committed(page));
-        }
-
-        /** A hidden page can't ask; its server's error page shows, and Reload asks once it is shown. */
-        @Override public void onReceivedHttpAuthRequest(WebView view, HttpAuthHandler handler, String host, String realm) {
-            if (!SitePolicy.mayShowUi(page)) { handler.cancel(); return; }
-            listener.httpAuth(page, new Requests.AuthRequest() {
-                @Override public void proceed(String user, String password) { handler.proceed(user, password); }
-                @Override public void cancel() { handler.cancel(); }
-            }, host, realm);
-        }
-
-        /**
-         * A hidden page's request is ignored rather than cancelled: WebView remembers a cancel for
-         * the session, and ignoring lets the site ask again once it is shown.
-         */
-        @Override public void onReceivedClientCertRequest(WebView view, ClientCertRequest request) {
-            if (!SitePolicy.mayShowUi(page)) { request.ignore(); return; }
-            KeyChain.choosePrivateKeyAlias(activity, alias -> {
-                if (alias == null) { request.cancel(); return; }
-                new Thread(() -> {
-                    try {
-                        java.security.PrivateKey key = KeyChain.getPrivateKey(activity, alias);
-                        java.security.cert.X509Certificate[] chain = KeyChain.getCertificateChain(activity, alias);
-                        if (key == null || chain == null) request.cancel();
-                        else request.proceed(key, chain);
-                    } catch (android.security.KeyChainException | InterruptedException error) {
-                        request.cancel();
-                    }
-                }, "genesis-client-cert").start();
-            }, request.getKeyTypes(), request.getPrincipals(), request.getHost(), request.getPort(), null);
-        }
-
-        @Override public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail detail) {
-            listener.rendererGone(page);
-            return true;
-        }
-    }
-
-    private final class Chrome extends WebChromeClient {
-        private final Page page;
-
-        /** The media request being asked about; null once answered or withdrawn. */
-        private PermissionRequest asking;
-        /** The origin whose location question is open, or null, and its callback. */
-        private String locating;
-        private GeolocationPermissions.Callback located;
-        /**
-         * The question the website is withdrawing while its dialog closes. Every other answer
-         * reaches its own request, including one a newer question replaced, which is refused.
-         */
-        private Object withdrawn;
-
-        Chrome(Page page) { this.page = page; }
-
-        /**
-         * Website pages get protected media (EME, such as Widevine) without asking, shown or hidden,
-         * like a browser's default. Camera and microphone only for the shown website, after the user
-         * allows them. The applet's own page and MIDI are always refused.
-         */
-        @Override public void onPermissionRequest(PermissionRequest request) {
-            boolean website = page.isContext() || page.opener != null;
-            String media = null;
-            Map<String, String> wanted = new LinkedHashMap<>();
-            for (String resource : request.getResources()) {
-                if (PermissionRequest.RESOURCE_PROTECTED_MEDIA_ID.equals(resource)) { if (website) media = resource; }
-                else if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource)) wanted.put(SiteGrants.CAMERA, resource);
-                else if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)) wanted.put(SiteGrants.MICROPHONE, resource);
-            }
-            if (wanted.isEmpty() || !SitePolicy.mayShowUi(page)) {
-                if (media != null) request.grant(new String[] {media});
-                else request.deny();
-                return;
-            }
-            String protectedMedia = media;
-            asking = request;
-            listener.askSite(page, origin(request.getOrigin().toString()), new java.util.ArrayList<>(wanted.keySet()), allowed -> {
-                if (withdrawn == request) return;
-                if (asking == request) asking = null;
-                List<String> grant = new java.util.ArrayList<>();
-                for (Map.Entry<String, String> entry : wanted.entrySet()) if (allowed.contains(entry.getKey())) grant.add(entry.getValue());
-                if (!grant.isEmpty()) page.capturing = true;
-                if (protectedMedia != null) grant.add(protectedMedia);
-                if (grant.isEmpty()) { request.deny(); return; }
-                request.grant(grant.toArray(new String[0]));
-            });
-        }
-
-        /** WebView keeps nothing (`retain` false); `SiteGrants` remembers the answer instead. */
-        @Override public void onGeolocationPermissionsShowPrompt(String origin, GeolocationPermissions.Callback callback) {
-            if (!SitePolicy.mayShowUi(page)) { callback.invoke(origin, false, false); return; }
-            locating = origin;
-            located = callback;
-            listener.askSite(page, origin(origin), List.of(SiteGrants.LOCATION), allowed -> {
-                if (withdrawn == callback) return;
-                if (origin.equals(locating)) locating = null;
-                callback.invoke(origin, allowed.contains(SiteGrants.LOCATION), false);
-            });
-        }
-
-        @Override public void onGeolocationPermissionsHidePrompt() {
-            if (locating == null) return;
-            locating = null;
-            withdraw(located);
-        }
-
-        @Override public void onPermissionRequestCanceled(PermissionRequest request) {
-            if (asking != request) return;
-            asking = null;
-            withdraw(request);
-        }
-
-        private void withdraw(Object question) {
-            withdrawn = question;
-            try { listener.cancelAsk(); } finally { withdrawn = null; }
-        }
-
-        @Override public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
-            if (!SitePolicy.mayShowUi(page)) return false;
-            int mode = params.getMode();
-            boolean open = mode == FileChooserParams.MODE_OPEN || mode == FileChooserParams.MODE_OPEN_MULTIPLE;
-            return listener.chooseFiles(page, new Requests.FileRequest(params.getAcceptTypes(),
-                mode == FileChooserParams.MODE_OPEN_MULTIPLE, open, callback::onReceiveValue));
-        }
-
-        @Override public void onShowCustomView(View view, CustomViewCallback callback) {
-            if (SitePolicy.mayShowUi(page)) listener.showFullScreen(new Requests.FullScreen(view, callback::onCustomViewHidden));
-            else callback.onCustomViewHidden();
-        }
-
-        @Override public void onHideCustomView() { listener.hideFullScreen(); }
-
-        /**
-         * Only the revealed context opens a window, and only from a tap; a popup's own windows load
-         * in place. A tapped link goes to the host, which opens it in this context, in another
-         * applet or in a popup. A script's window, such as a sign-in, opens as a popup at once so
-         * it keeps `window.opener`.
-         */
-        @Override public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture, android.os.Message resultMsg) {
-            if (page.opener != null || !SitePolicy.usersGesture(page, isUserGesture) || !SitePolicy.mayShowUi(page)) return false;
-            WebView.HitTestResult hit = view.getHitTestResult();
-            String link = hit == null || hit.getType() != WebView.HitTestResult.SRC_ANCHOR_TYPE ? null : hit.getExtra();
-            if (link != null && (link.startsWith("https:") || link.startsWith("http:"))) {
-                listener.windowRequested(page, link);
-                return false;
-            }
-            Page popup = listener.openWindow(page);
-            if (popup == null) return false;
-            ((WebView.WebViewTransport) resultMsg.obj).setWebView(popup.web);
-            resultMsg.sendToTarget();
-            return true;
-        }
-
-        @Override public void onCloseWindow(WebView window) { if (page.opener != null) listener.closeWindow(page); }
     }
 }
