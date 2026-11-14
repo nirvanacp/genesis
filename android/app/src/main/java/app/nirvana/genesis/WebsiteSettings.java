@@ -17,7 +17,7 @@ final class WebsiteSettings {
 
     /** `context` is true for a website context and false for the applet's foreground. */
     @SuppressLint({"SetJavaScriptEnabled", "RequiresFeature"}) // Each compat call is behind WebFeatures.has.
-    static void apply(WebView web, boolean context, SiteData site) {
+    static void apply(WebView web, boolean context, WebViewSites site) {
         // The profile must be set before anything else touches the new WebView.
         if (!site.isDefault()) WebViewCompat.setProfile(web, site.profile);
         WebSettings settings = web.getSettings();

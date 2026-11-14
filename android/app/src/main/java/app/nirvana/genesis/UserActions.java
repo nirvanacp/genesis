@@ -35,8 +35,6 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import androidx.webkit.JavaScriptReplyProxy;
-import androidx.webkit.WebViewFeature;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -182,7 +180,7 @@ final class UserActions {
         if (page == null) { answer(done(token, "NOT_FOUND", "The website is gone", null)); return; }
         String name = filename != null ? filename : URLUtil.guessFileName(url, null, null);
         String mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(MimeTypeMap.getFileExtensionFromUrl(name));
-        if (!shell.startDownload(page, url, page.web.getSettings().getUserAgentString(), mime, name)) {
+        if (!shell.startDownload(page, url, page.tab.userAgent(), mime, name)) {
             answer(done(token, "NOT_FOUND", "The download couldn't start", null));
             return;
         }
@@ -367,13 +365,13 @@ final class UserActions {
     }
 
     /**
-     * Posts picked files to the page agent through the page's reply proxy, then answers `filesSent`.
+     * Posts picked files to the page agent through the page's bridge channel, then answers `filesSent`.
      * The bytes never pass the host. Each file is a header, then one ArrayBuffer message, or base64
-     * chunks where the WebView cannot post one, and the transfer ends with `genesis.filesEnd`.
+     * chunks where the engine cannot post one, and the transfer ends with `genesis.filesEnd`.
      * Files are read on `IO`, one piece at a time; only posting runs on the UI thread.
      */
     void send(Views.Page page, long token, JSONArray refs) {
-        JavaScriptReplyProxy reply = page == null ? null : page.reply;
+        Object reply = page == null ? null : page.tab.channel();
         if (reply == null) { answer(sent(token, "CONTEXT_REPLACED", "The page is gone")); return; }
         List<PickedFile> picked = new ArrayList<>();
         for (int i = 0; i < refs.length(); i++) {
@@ -381,7 +379,7 @@ final class UserActions {
             if (file == null) { answer(sent(token, "FILE_UNAVAILABLE", "A picked file expired or was released")); return; }
             picked.add(file);
         }
-        boolean buffers = WebFeatures.has(WebViewFeature.WEB_MESSAGE_ARRAY_BUFFER);
+        boolean buffers = page.tab.postsBytes();
         IO.execute(() -> {
             try {
                 for (int index = 0; index < picked.size(); index++) sendFile(page, reply, token, index, picked.get(index), buffers);
@@ -393,7 +391,7 @@ final class UserActions {
         });
     }
 
-    private void sendFile(Views.Page page, JavaScriptReplyProxy reply, long token, int index, PickedFile file, boolean buffers) throws Stopped {
+    private void sendFile(Views.Page page, Object reply, long token, int index, PickedFile file, boolean buffers) throws Stopped {
         try (InputStream in = activity.getContentResolver().openInputStream(file.uri)) {
             if (in == null) throw new Stopped("FILE_UNAVAILABLE", file.name + " can no longer be read");
             JSONObject header = message("genesis.file", token).put("index", index).put("name", file.name).put("mime", file.mime).put("size", file.size);
@@ -431,14 +429,14 @@ final class UserActions {
     }
 
     /** Posts on the UI thread and waits, so pieces go out in order and one at a time. */
-    private void post(Views.Page page, JavaScriptReplyProxy reply, Object payload) throws Stopped {
+    private void post(Views.Page page, Object reply, Object payload) throws Stopped {
         boolean[] posted = { false };
         CountDownLatch latch = new CountDownLatch(1);
         main.post(() -> {
-            // A new document has a new reply proxy: the files were meant for the old one.
-            if (page.reply == reply) {
-                if (payload instanceof byte[]) reply.postMessage((byte[]) payload);
-                else reply.postMessage((String) payload);
+            // A new document has a new channel: the files were meant for the old one.
+            if (page.tab.channel() == reply) {
+                if (payload instanceof byte[]) page.tab.postBytes((byte[]) payload);
+                else page.tab.post((String) payload);
                 posted[0] = true;
             }
             latch.countDown();
@@ -458,7 +456,7 @@ final class UserActions {
         catch (JSONException error) { throw new Stopped("FILE_UNAVAILABLE", "The transfer could not start"); }
     }
 
-    private void post(Views.Page page, JavaScriptReplyProxy reply, JSONObject message) throws Stopped {
+    private void post(Views.Page page, Object reply, JSONObject message) throws Stopped {
         post(page, reply, message.toString());
     }
 

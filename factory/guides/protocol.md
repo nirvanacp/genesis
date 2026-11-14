@@ -8,7 +8,7 @@ For how an applet uses page control through the SDK, read [page control](page-co
 
 ## Transport
 
-Messages are JSON text, one object per message. In a WebView the shell installs a bridge object as `window.__genesisBridge`, with `postMessage(text)` and a `message` event that carries the host's text. The SDK's `webViewTransport()` wraps it. Any other transport gives `connect({ transport })` an object with `send(text)`, `onMessage(listener)` (which returns a function that removes the listener) and `close()`.
+Messages are JSON text, one object per message. In the UI and in every website page, in WebView or GeckoView, the shell installs a bridge object as `window.__genesisBridge`, with `postMessage(text)` and a `message` event that carries the host's text. The SDK's `webViewTransport()` wraps it. Any other transport gives `connect({ transport })` an object with `send(text)`, `onMessage(listener)` (which returns a function that removes the listener) and `close()`.
 
 In a context page, the page agent captures `__genesisBridge` at document start, before any website script runs, and deletes it from the page, so website scripts cannot send messages as the agent.
 
@@ -462,7 +462,7 @@ The agent never reads or writes the value of a password field, a hidden input, o
 
 ## Trusted input
 
-`click`, `hover`, `unhover`, `type` and `press` accept `input: "trusted"`. The agent finds the target and its point (for an element in a same-origin frame, measured through every containing frame onto the top page), and sends `page.input` with the events for the shell to dispatch as real Android input to the hidden context's WebView. The events reach the page as trusted DOM events.
+`click`, `hover`, `unhover`, `type` and `press` accept `input: "trusted"`. The agent finds the target and its point (for an element in a same-origin frame, measured through every containing frame onto the top page), and sends `page.input` with the events for the shell to dispatch as real Android input to the hidden context's page, in whichever engine runs it. The events reach the page as trusted DOM events.
 
 | Event | Shape | Dispatch |
 | --- | --- | --- |

@@ -144,6 +144,8 @@ const PAGE_MODULE_RULES = [
   { pattern: /\bXMLHttpRequest\b/, reason: () => 'uses XMLHttpRequest; page modules make no network calls' },
   { pattern: /\bdocument\.cookie\b/, reason: () => 'reads document.cookie' },
   { pattern: /\b(localStorage|sessionStorage|indexedDB)\b/, reason: name => `uses ${name}; page modules keep no storage` },
+  { pattern: /\b(wrappedJSObject|unsafeWindow)\b/, reason: name => `uses ${name}; page modules read the DOM, not the website's JavaScript` },
+  { pattern: /\bnavigator\.(userAgent|vendor)\b/, reason: name => `reads navigator.${name}; page modules run the same in WebView and GeckoView and do not branch on the browser` },
 ];
 
 /**

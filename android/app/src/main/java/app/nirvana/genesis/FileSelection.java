@@ -9,7 +9,6 @@ import android.os.ext.SdkExtensions;
 import android.provider.MediaStore;
 import android.webkit.MimeTypeMap;
 import android.webkit.ValueCallback;
-import android.webkit.WebChromeClient;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BooleanSupplier;
@@ -17,7 +16,7 @@ import java.util.function.BooleanSupplier;
 /** One system picker, tied to the requesting document. Files never enter applet storage. */
 final class FileSelection {
     private final Activity activity;
-    private ValueCallback<Uri[]> callback;
+    private Requests.FileRequest callback;
     private BooleanSupplier valid;
     private int requestCode = 41000;
     private boolean multiple;
@@ -25,14 +24,10 @@ final class FileSelection {
 
     FileSelection(Activity activity) { this.activity = activity; }
 
-    @SuppressWarnings("deprecation")
-    void open(WebChromeClient.FileChooserParams params, ValueCallback<Uri[]> result, BooleanSupplier current) {
+    void open(Requests.FileRequest result, BooleanSupplier current) {
         cancel();
-        int mode = params.getMode();
-        if (mode != WebChromeClient.FileChooserParams.MODE_OPEN && mode != WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE) {
-            result.onReceiveValue(null); return;
-        }
-        start(params.getAcceptTypes(), mode == WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE, result, current);
+        if (!result.open) { result.cancel(); return; }
+        start(result.acceptTypes, result.multiple, result, current);
     }
 
     /**
@@ -41,10 +36,10 @@ final class FileSelection {
      */
     void openForApplet(String[] accept, boolean multiple, ValueCallback<Uri[]> result, BooleanSupplier current) {
         cancel();
-        start(accept, multiple, result, current);
+        start(accept, multiple, new Requests.FileRequest(accept, multiple, true, result::onReceiveValue), current);
     }
 
-    private void start(String[] accept, boolean multiple, ValueCallback<Uri[]> result, BooleanSupplier current) {
+    private void start(String[] accept, boolean multiple, Requests.FileRequest result, BooleanSupplier current) {
         callback = result; valid = current; this.multiple = multiple;
         List<String> accepted = new ArrayList<>();
         for (String value : accept) {
@@ -117,8 +112,8 @@ final class FileSelection {
                 if (mimeTypes.length > 0 && !matches(type)) { acceptable = false; break; }
             } catch (SecurityException error) { acceptable = false; break; }
         }
-        ValueCallback<Uri[]> pending = callback; callback = null; valid = null;
-        pending.onReceiveValue(acceptable ? selected.toArray(new Uri[0]) : null);
+        Requests.FileRequest pending = callback; callback = null; valid = null;
+        pending.deliver(acceptable ? selected.toArray(new Uri[0]) : null);
         return true;
     }
 
@@ -131,7 +126,7 @@ final class FileSelection {
     boolean pending() { return callback != null; }
     void cancelIfInvalid() { if (callback != null && !valid.getAsBoolean()) cancel(); }
     void cancel() {
-        ValueCallback<Uri[]> pending = callback; callback = null; valid = null;
-        if (pending != null) pending.onReceiveValue(null);
+        Requests.FileRequest pending = callback; callback = null; valid = null;
+        if (pending != null) pending.cancel();
     }
 }

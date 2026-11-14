@@ -101,6 +101,15 @@ function readAccount(doc: Document): string | false | null {
 }
 ```
 
+## Website engines
+
+An applet's websites run in Android WebView or in GeckoView, the engine of Firefox for Android. The user chooses the engine per applet in Applet info, and can change it at any time; the applet's UI itself always runs in WebView. The same applet build runs on both, so applet code must not assume either engine:
+
+- Read the DOM, and nothing else of the page. Do not read the website's JavaScript globals, prototypes the website changed, or expando properties it put on elements. On GeckoView, `page.js` runs in an extension content-script world that sees the DOM but not the page's own JavaScript objects; on WebView the same code would see them, and a module that relies on them breaks when the user switches.
+- Data the website embeds for its own scripts is DOM too: read the text of a `<script type="application/json">` or `<script>` element and parse it, rather than reading the variable that script defines.
+- Do not branch on the user agent, `navigator.vendor` or the engine. Both engines render the same mobile website; a difference in markup between them is a difference in the website, and the reader handles it as it handles any markup variant.
+- The two engines keep separate sign-ins. After a switch, the user signs in again on the other engine, so the applet's signed-out path must work on both.
+
 ## Reading rules
 
 - Prefer stable attributes, such as ids, `data-*` attributes and URL parameters, to visual class names.
@@ -206,7 +215,7 @@ The steps themselves fail as `run` does, for example with `TARGET_NOT_FOUND` or 
 - The default export must come from `definePageModule`, or the check fails with `PAGE_MODULE_INVALID`.
 - `definePageModule` itself rejects names that do not match `^[A-Za-z][A-Za-z0-9_.-]{0,63}$`, readers not made with `list`, `one` or `value`, missing or empty selectors, a `read`, `key` or `extent` that is not a function, and commands that are not functions. Its error names the first bad field.
 - A reader with an `async` function gets a warning.
-- Each of the applet's own module files is checked line by line, skipping comment lines. A line fails with `PAGE_MODULE_INVALID` when it imports `react`, `react-dom`, `vue`, `svelte`, `solid-js`, `preact` or `@genesis/sdk/react`, calls `eval` or `fetch`, uses `new Function`, `XMLHttpRequest`, `document.cookie`, `localStorage`, `sessionStorage` or `indexedDB`. These rules are a text lint, not a sandbox: they cover only files inside the applet directory (not `node_modules` or shared code outside it), and they miss code that reaches the same API indirectly, such as `window["fe" + "tch"]`. Keep page module code inside the applet so the lint sees it, and treat the rules as a guard against mistakes.
+- Each of the applet's own module files is checked line by line, skipping comment lines. A line fails with `PAGE_MODULE_INVALID` when it imports `react`, `react-dom`, `vue`, `svelte`, `solid-js`, `preact` or `@genesis/sdk/react`, calls `eval` or `fetch`, uses `new Function`, `XMLHttpRequest`, `document.cookie`, `localStorage`, `sessionStorage`, `indexedDB`, `wrappedJSObject` or `unsafeWindow`, or reads `navigator.userAgent` or `navigator.vendor`. These rules are a text lint, not a sandbox: they cover only files inside the applet directory (not `node_modules` or shared code outside it), and they miss code that reaches the same API indirectly, such as `window["fe" + "tch"]`. Keep page module code inside the applet so the lint sees it, and treat the rules as a guard against mistakes.
 
 The build refuses `@genesis/sdk/react` in the page script as well. Import from `@genesis/sdk/page` and pure helpers, and share types, not code with side effects, with the UI.
 
@@ -216,4 +225,4 @@ The build refuses `@genesis/sdk/react` in the page script as well. Import from `
 - **Reads outside the declared nodes go stale.** They are right on the first read and then miss changes.
 - **Size.** A snapshot is at most `limits.pageMaxBytes` of JSON (192 KiB), and one update at most `limits.patchMaxBytes` (64 KiB) and `limits.patchRecordsMax` records (200). A larger snapshot fails with `PAGE_TOO_LARGE`; a virtualized list drops the records farthest from the screen first. Bound long lists in the selector rather than reading everything the site keeps.
 - **`check` runs your code.** It imports the module in Node. This is not a sandbox, so check only applets you trust.
-- **No fixture runner.** The tools cannot load a saved page and run a reader against it. `check` proves the module loads and has the right shape; that its readers read correctly is proven on the device against the live website. To try selectors on the live page, open the context's WebView in Chrome's remote inspector (`chrome://inspect`) on a debuggable Genesis build.
+- **No fixture runner.** The tools cannot load a saved page and run a reader against it. `check` proves the module loads and has the right shape; that its readers read correctly is proven on the device against the live website. To try selectors on the live page, open the context's page on a debuggable Genesis build in Chrome's remote inspector (`chrome://inspect`) when the applet runs on WebView, or in desktop Firefox's `about:debugging` over USB when it runs on GeckoView.

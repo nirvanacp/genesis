@@ -8,7 +8,6 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.webkit.ValueCallback;
-import android.webkit.WebChromeClient;
 import android.window.OnBackInvokedCallback;
 import android.window.OnBackInvokedDispatcher;
 import app.nirvana.genesis.ui.Connections;
@@ -90,8 +89,8 @@ abstract class WindowActivity extends Activity implements Shell.Owner {
 
     @Override public void storageSize(LongConsumer result) { runtime.storageSize(result); }
 
-    @Override public boolean chooseFiles(WebChromeClient.FileChooserParams params, ValueCallback<Uri[]> callback, BooleanSupplier valid) {
-        selection.open(params, callback, valid);
+    @Override public boolean chooseFiles(Requests.FileRequest request, BooleanSupplier valid) {
+        selection.open(request, valid);
         return true;
     }
 

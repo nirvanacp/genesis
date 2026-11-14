@@ -107,6 +107,7 @@ final class GenesisRuntime implements NativeBridge.StorageResults {
 
     /** `appletId` is null for the manager window. */
     void windowResumed(Shell shell) {
+        shell.frontChanged(true);
         if (!attached) return;
         resumedWindows++;
         router.resumed(shell);
@@ -116,6 +117,7 @@ final class GenesisRuntime implements NativeBridge.StorageResults {
     }
 
     void windowSuspended(Shell shell) {
+        shell.frontChanged(false);
         if (!attached) return;
         resumedWindows = Math.max(0, resumedWindows - 1);
         send(windowEvent("suspended", shell.window()));
@@ -173,7 +175,13 @@ final class GenesisRuntime implements NativeBridge.StorageResults {
                 receipt = new JSONObject().put("ok", false).put("error", "Cookie imports need a debug build");
             } else {
                 JSONObject payload = new JSONObject(files.read(file, COOKIE_MAX_BYTES));
-                int count = Shell.sitesFor(app, payload.optString("appletId", null)).importCookies(payload);
+                String appletId = payload.optString("appletId", null);
+                SiteData site = Shell.sitesFor(app, appletId);
+                if (site instanceof GeckoSites) {
+                    Shell.featureNeeded(app, appletId, EngineFeatures.Feature.SIGN_IN_IMPORT);
+                    router.askWaitingFeature();
+                }
+                int count = site.importCookies(payload);
                 receipt = new JSONObject().put("ok", true).put("count", count);
             }
         } catch (java.io.IOException | JSONException | RuntimeException error) {

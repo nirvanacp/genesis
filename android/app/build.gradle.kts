@@ -112,6 +112,7 @@ androidComponents {
 dependencies {
     implementation(libs.androidx.core)
     implementation(libs.androidx.webkit)
+    implementation(libs.geckoview)
     implementation(libs.material)
     implementation(libs.androidx.work.runtime)
     testImplementation(libs.junit)

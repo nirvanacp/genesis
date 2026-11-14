@@ -14,10 +14,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowInsets;
 import android.view.accessibility.AccessibilityNodeInfo;
-import android.webkit.JsPromptResult;
-import android.webkit.JsResult;
 import android.webkit.ValueCallback;
-import android.webkit.WebChromeClient;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -57,7 +54,7 @@ final class Shell implements Views.Listener, Ui.Actions {
     interface Owner {
         void send(JSONObject event);
         void launcherShown();
-        boolean chooseFiles(WebChromeClient.FileChooserParams params, ValueCallback<Uri[]> callback, java.util.function.BooleanSupplier valid);
+        boolean chooseFiles(Requests.FileRequest request, java.util.function.BooleanSupplier valid);
         void cancelInvalidFiles();
         /** Opens the system picker for the applet UI's `files.pick`; `callback` gets null when nothing usable was picked. */
         void chooseAppletFiles(String[] accept, boolean multiple, ValueCallback<Uri[]> callback, java.util.function.BooleanSupplier valid);
@@ -73,46 +70,6 @@ final class Shell implements Views.Listener, Ui.Actions {
          */
         void requestPermissions(String[] permissions, java.util.function.Consumer<Set<String>> granted);
     }
-
-    /** How long history.go() may take to start moving before the native fallback runs. */
-    private static final long HISTORY_FALLBACK_MS = 1000;
-    /** How long a page that took a link click has to start moving before the shell loads the URL itself. */
-    private static final long LINK_FALLBACK_MS = 1000;
-
-    /**
-     * Offers a navigation to the page as a click on its own link to the URL. A single-page website
-     * takes the click and routes inside the document, so its state, such as playing audio, stays.
-     * Answers true when the page's script prevented the click's default, or stopped the click before
-     * the window, which leaves the page to route or follow the link itself. Otherwise the click is
-     * cancelled before the link moves, and the shell loads the URL itself.
-     */
-    private static final String FOLLOW_LINK = """
-        (function (target) {
-          try {
-            var url = new URL(target);
-            if (url.origin !== location.origin) return false;
-            var link = Array.prototype.find.call(document.querySelectorAll("a[href]"), function (a) {
-              return a.href === url.href && (!a.target || a.target === "_self") && !a.hasAttribute("download");
-            });
-            if (!link) return false;
-            var taken = false;
-            var reached = false;
-            var last = function (event) {
-              reached = true;
-              taken = event.defaultPrevented;
-              if (!taken) event.preventDefault();
-            };
-            addEventListener("click", last);
-            try {
-              link.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window, button: 0 }));
-            } finally {
-              removeEventListener("click", last);
-            }
-            return !reached || taken;
-          } catch (error) {
-            return false;
-          }
-        })""";
 
     private final Activity activity;
     private final Owner owner;
@@ -159,8 +116,7 @@ final class Shell implements Views.Listener, Ui.Actions {
     private String appletId, appletName;
     /** The user chose View website, so the next revealed context is their choice, not the applet's. */
     private boolean websiteChosen;
-    private View customView;
-    private WebChromeClient.CustomViewCallback customCallback;
+    private Requests.FullScreen customView;
     private int visualState;
     /** The host's progress message for flows that have no page of their own. */
     private androidx.appcompat.app.AlertDialog progress;
@@ -170,7 +126,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         this.activity = activity;
         this.owner = owner;
         this.window = window;
-        sites = SiteData.defaultProfile(activity);
+        sites = WebViewSites.defaultProfile(activity);
         state = state(activity);
         views = new Views(activity, this);
         actions = new UserActions(activity, this, owner);
@@ -291,8 +247,7 @@ final class Shell implements Views.Listener, Ui.Actions {
     @Override public List<String> visitedUrls() {
         List<String> urls = new ArrayList<>();
         for (Views.Page page : pages.values()) {
-            android.webkit.WebBackForwardList history = page.web.copyBackForwardList();
-            for (int i = 0; i < history.getSize(); i++) urls.add(history.getItemAtIndex(i).getUrl());
+            urls.addAll(page.tab.history().urls());
         }
         return urls;
     }
@@ -306,6 +261,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         applet.setVisibility(View.VISIBLE);
         splash.show(name, accent, icon);
         if (activity instanceof AppletActivity) ((AppletActivity) activity).describeTask(name, accent, icon);
+        askWaitingFeature();
     }
 
     void createView(JSONObject ref, String url, JSONArray origins, String startScript) throws JSONException {
@@ -315,12 +271,12 @@ final class Shell implements Views.Listener, Ui.Actions {
         Views.Page page = views.document(ref, set(origins), startScript, site);
         pages.put(key(ref), page);
         if (page.isForeground()) {
-            page.web.setVisibility(View.INVISIBLE);
-            foreground.addView(page.web, new FrameLayout.LayoutParams(-1, -1));
+            page.tab.view().setVisibility(View.INVISIBLE);
+            foreground.addView(page.tab.view(), new FrameLayout.LayoutParams(-1, -1));
         } else {
-            sources.addView(page.web, new FrameLayout.LayoutParams(-1, -1));
+            sources.addView(page.tab.view(), new FrameLayout.LayoutParams(-1, -1));
         }
-        page.web.loadUrl(url);
+        page.tab.load(url);
     }
 
     void destroyView(JSONObject ref) {
@@ -343,54 +299,26 @@ final class Shell implements Views.Listener, Ui.Actions {
     void loadUrl(JSONObject ref, String url, String mode) {
         Views.Page page = pages.get(key(ref));
         if (page == null) return;
-        if ("replace".equals(mode)) replaceUrl(ref, page, url);
-        else followLink(ref, page, url);
-    }
-
-    private void replaceUrl(JSONObject ref, Views.Page page, String url) {
-        String script = "(location.replace(" + JSONObject.quote(url) + "), true)";
-        page.web.evaluateJavascript(script, result -> {
-            if (pages.get(key(ref)) == page && !"true".equals(result)) page.web.loadUrl(url);
-        });
+        if ("replace".equals(mode)) page.tab.replace(url);
+        else page.tab.followLink(url);
     }
 
     /**
-     * When the page takes the click and starts no navigation within LINK_FALLBACK_MS of the script's
-     * callback, the URL loads as before. The time counts from the callback, as in historyGo.
-     */
-    private void followLink(JSONObject ref, Views.Page page, String url) {
-        int moves = page.moves;
-        page.web.evaluateJavascript(FOLLOW_LINK + "(" + JSONObject.quote(url) + ")", result -> {
-            if (pages.get(key(ref)) != page) return;
-            if (!"true".equals(result)) { page.web.loadUrl(url); return; }
-            page.web.postDelayed(() -> {
-                if (pages.get(key(ref)) == page && page.moves == moves) page.web.loadUrl(url);
-            }, LINK_FALLBACK_MS);
-        });
-    }
-
-    /**
-     * Moves through the context's history in the page, since WebView's own goBack() skips entries
-     * left without a user gesture. If nothing starts moving within a second of the page running the
-     * script, the native call runs; when it cannot move either, the host hears `historyUnmoved` so
-     * a Back can fall through. The second counts from the script's callback, so a busy renderer
-     * that has not run the script yet is not taken for a page that cannot move.
+     * Moves through the context's history in the page. When neither the page nor the engine can
+     * move, the host hears `historyUnmoved` so a Back can fall through.
      */
     void historyGo(JSONObject ref, int delta) {
         Views.Page page = pages.get(key(ref));
         if (page == null) return;
-        int moves = page.moves;
-        page.web.evaluateJavascript("history.go(" + delta + ")", ran -> page.web.postDelayed(() -> {
-            if (pages.get(key(ref)) != page || page.moves != moves) return;
-            if (page.web.canGoBackOrForward(delta)) { page.web.goBackOrForward(delta); return; }
+        page.tab.go(delta, () -> {
             try { owner.send(Bridge.event("historyUnmoved").put("view", page.ref)); }
             catch (JSONException ignored) { /* Unreachable for these values. */ }
-        }, HISTORY_FALLBACK_MS));
+        });
     }
 
     void reload(JSONObject ref) {
         Views.Page page = pages.get(key(ref));
-        if (page != null) page.web.reload();
+        if (page != null) page.tab.reload();
     }
 
     /** Reparents the context's WebView above the foreground. Nothing reloads; the page keeps running. */
@@ -402,14 +330,16 @@ final class Shell implements Views.Listener, Ui.Actions {
         if (popup != null && popup.opener != revealedPage) closePopup();
         if (revealedPage != null && revealedPage != page) coverContext();
         if (revealedPage == page) { bar.setTitle(title); return; }
-        sources.removeView(page.web);
-        page.web.setFocusable(true);
-        page.web.setFocusableInTouchMode(true);
-        page.web.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);
-        revealed.addView(page.web, new FrameLayout.LayoutParams(-1, -1));
+        View view = page.tab.view();
+        sources.removeView(view);
+        view.setFocusable(true);
+        view.setFocusableInTouchMode(true);
+        view.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);
+        revealed.addView(view, new FrameLayout.LayoutParams(-1, -1));
         revealed.setVisibility(View.VISIBLE);
+        page.tab.setRevealed(true);
         bar.setTitle(title);
-        bar.setUrl(page.web.getUrl());
+        bar.setUrl(page.tab.url());
         JSONObject entry = appletId == null ? null : ui.entry(appletId);
         bar.setReason(appletName, websiteChosen, entry != null && Home.hasUpdate(entry));
         websiteChosen = false;
@@ -431,10 +361,12 @@ final class Shell implements Views.Listener, Ui.Actions {
         cancelPrompts();
         dropRevealed();
         stopCapture(page);
-        page.web.clearFocus();
-        page.web.setFocusable(false);
-        page.web.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
-        sources.addView(page.web, new FrameLayout.LayoutParams(-1, -1));
+        View view = page.tab.view();
+        view.clearFocus();
+        view.setFocusable(false);
+        view.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
+        sources.addView(view, new FrameLayout.LayoutParams(-1, -1));
+        page.tab.setRevealed(false);
         owner.cancelInvalidFiles();
         menu.performAccessibilityAction(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS, null);
     }
@@ -446,13 +378,13 @@ final class Shell implements Views.Listener, Ui.Actions {
     private static void stopCapture(Views.Page page) {
         if (!page.capturing) return;
         page.capturing = false;
-        page.web.reload();
+        page.tab.reload();
     }
 
     /** Hides the revealed container and forgets its page, leaving the WebView detached. */
     private void dropRevealed() {
         closePopup();
-        if (revealedPage != null) revealed.removeView(revealedPage.web);
+        if (revealedPage != null) revealed.removeView(revealedPage.tab.view());
         revealedPage = null;
         revealed.setVisibility(View.GONE);
         bar.setVisibility(View.GONE);
@@ -475,7 +407,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         else if (page.isRevealed()) refusal = "Trusted input goes only to a hidden page";
         else {
             try {
-                Input.dispatch(page.web, events);
+                page.tab.input(events);
                 page.trustedInputAt = SystemClock.uptimeMillis();
             }
             catch (Input.Refused refused) { refusal = refused.getMessage(); }
@@ -541,7 +473,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         PendingBlob blob = newBlob(page, name, mime, BLOB_TIMEOUT_MS);
         try {
             page.post(new JSONObject().put("type", "genesis.blob").put("token", blob.token).put("url", url)
-                .put("buffers", WebFeatures.has(androidx.webkit.WebViewFeature.WEB_MESSAGE_ARRAY_BUFFER)).toString());
+                .put("buffers", page.tab.postsBytes()).toString());
         } catch (JSONException ignored) { /* Unreachable for these values. */ }
     }
 
@@ -702,11 +634,11 @@ final class Shell implements Views.Listener, Ui.Actions {
     private static final class PendingDialog {
         final Views.Page page;
         final String kind, message, defaultValue;
-        final JsResult result;
+        final Requests.DialogResult result;
         /** Genesis's dialog that shows it over the applet UI. */
         android.app.Dialog shown;
 
-        PendingDialog(Views.Page page, String kind, String message, String defaultValue, JsResult result) {
+        PendingDialog(Views.Page page, String kind, String message, String defaultValue, Requests.DialogResult result) {
             this.page = page;
             this.kind = kind;
             this.message = message;
@@ -717,8 +649,8 @@ final class Shell implements Views.Listener, Ui.Actions {
         /** OK, with a prompt's `value` (its default when null), or Cancel. */
         void answer(boolean accept, String value) {
             if (!accept) result.cancel();
-            else if (result instanceof JsPromptResult) ((JsPromptResult) result).confirm(value != null ? value : defaultValue != null ? defaultValue : "");
-            else result.confirm();
+            else if ("prompt".equals(kind)) result.confirm(value != null ? value : defaultValue != null ? defaultValue : "");
+            else result.confirm(null);
         }
     }
 
@@ -726,7 +658,7 @@ final class Shell implements Views.Listener, Ui.Actions {
     private void showDialog(long token, PendingDialog dialog) {
         android.widget.EditText field = null;
         MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(activity)
-            .setTitle(Views.origin(String.valueOf(dialog.page.web.getUrl())))
+            .setTitle(Views.origin(String.valueOf(dialog.page.tab.url())))
             .setMessage(dialog.message);
         if ("prompt".equals(dialog.kind)) {
             LinearLayout form = new LinearLayout(activity);
@@ -767,10 +699,12 @@ final class Shell implements Views.Listener, Ui.Actions {
     void revealForeground() {
         Views.Page page = foregroundPage();
         if (page == null) return;
-        page.web.postVisualStateCallback(++visualState, new android.webkit.WebView.VisualStateCallback() {
+        // The foreground is always a WebView page.
+        android.webkit.WebView web = ((WebViewPage) page.tab).web;
+        web.postVisualStateCallback(++visualState, new android.webkit.WebView.VisualStateCallback() {
             @Override public void onComplete(long requestId) {
                 if (pages.get(key(page.ref)) != page) return;
-                page.web.setVisibility(View.VISIBLE);
+                web.setVisibility(View.VISIBLE);
                 splash.hide();
             }
         });
@@ -883,12 +817,12 @@ final class Shell implements Views.Listener, Ui.Actions {
         if (!SitePolicy.mayUse(page, SitePolicy.DOWNLOAD)) return;
         useGrant(page);
         // A window that only started a download has nothing to show.
-        if (page == popup && page.web.copyBackForwardList().getSize() == 0) bar.post(() -> { if (page == popup) closePopup(); });
+        if (page == popup && page.tab.history().size() == 0) bar.post(() -> { if (page == popup) closePopup(); });
         String scheme = Uri.parse(url).getScheme();
         boolean web = "https".equalsIgnoreCase(scheme) || "http".equalsIgnoreCase(scheme);
         boolean blob = "blob".equalsIgnoreCase(scheme);
         // Only the page agent can read a blob: URL, and it runs on declared origins only.
-        if ((!web && !blob && !"data".equalsIgnoreCase(scheme)) || (blob && page.reply == null)) {
+        if ((!web && !blob && !"data".equalsIgnoreCase(scheme)) || (blob && page.tab.channel() == null)) {
             Toast.makeText(activity, "This download isn't supported in Genesis", Toast.LENGTH_SHORT).show();
             return;
         }
@@ -896,8 +830,8 @@ final class Shell implements Views.Listener, Ui.Actions {
         // the clicked link's `download` attribute, which only the page agent knows.
         boolean named = disposition != null && disposition.toLowerCase(java.util.Locale.ROOT).contains("filename");
         String name = web || named ? android.webkit.URLUtil.guessFileName(web ? url : "", disposition, mimeType) : null;
-        String from = web ? url : String.valueOf(page.web.getUrl());
-        if (!web && !blob && page.reply != null) { requestDataName(page, url, name, from); return; }
+        String from = web ? url : String.valueOf(page.tab.url());
+        if (!web && !blob && page.tab.channel() != null) { requestDataName(page, url, name, from); return; }
         confirmDownload(page, from, name, web ? () -> startDownload(page, url, userAgent, mimeType, name)
             : blob ? () -> requestBlob(page, url, name, mimeType)
             : () -> actions.saveDownload(url, name));
@@ -959,7 +893,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         if (closeCustomView()) return true;
         if (ui.pages.back()) return true;
         if (popup == null) return false;
-        if (popup.web.canGoBack()) popup.web.goBack();
+        if (popup.tab.canGoBack()) popup.tab.goBack();
         else closePopup();
         return true;
     }
@@ -971,13 +905,14 @@ final class Shell implements Views.Listener, Ui.Actions {
         popup = null;
         closeCustomView();
         cancelPrompts();
-        popupSheet.removeView(page.web);
+        popupSheet.removeView(page.tab.view());
         popupSheet.setVisibility(View.GONE);
         page.destroy();
         owner.cancelInvalidFiles();
         if (revealedPage != null) {
             revealed.setVisibility(View.VISIBLE);
-            bar.setUrl(revealedPage.web.getUrl());
+            revealedPage.tab.setRevealed(true);
+            bar.setUrl(revealedPage.tab.url());
         } else {
             bar.setVisibility(View.GONE);
             GenesisMenu.tint(menu, tokens, false);
@@ -988,11 +923,10 @@ final class Shell implements Views.Listener, Ui.Actions {
     /** Closes a fullscreen video. Returns whether one was showing, so Back stays local to the shell. */
     boolean closeCustomView() {
         if (customView == null) return false;
-        root.removeView(customView);
+        Requests.FullScreen screen = customView;
         customView = null;
-        WebChromeClient.CustomViewCallback callback = customCallback;
-        customCallback = null;
-        if (callback != null) callback.onCustomViewHidden();
+        root.removeView(screen.view);
+        screen.exit();
         return true;
     }
 
@@ -1057,23 +991,21 @@ final class Shell implements Views.Listener, Ui.Actions {
         catch (JSONException ignored) { /* Unreachable for these values. */ }
     }
 
-    @Override public void showCustomView(View view, WebChromeClient.CustomViewCallback callback) {
+    @Override public void showFullScreen(Requests.FullScreen screen) {
         closeCustomView();
-        customView = view;
-        customCallback = callback;
-        view.setBackgroundColor(Color.BLACK);
-        root.addView(view, new FrameLayout.LayoutParams(-1, -1));
+        customView = screen;
+        screen.view.setBackgroundColor(Color.BLACK);
+        root.addView(screen.view, new FrameLayout.LayoutParams(-1, -1));
     }
 
-    @Override public void hideCustomView() {
+    @Override public void hideFullScreen() {
         if (customView == null) return;
-        root.removeView(customView);
+        root.removeView(customView.view);
         customView = null;
-        customCallback = null;
     }
 
-    @Override public boolean chooseFiles(Views.Page page, ValueCallback<Uri[]> callback, WebChromeClient.FileChooserParams params) {
-        return owner.chooseFiles(params, callback, () -> (page == popup || pages.get(key(page.ref)) == page) && SitePolicy.mayShowUi(page));
+    @Override public boolean chooseFiles(Views.Page page, Requests.FileRequest request) {
+        return owner.chooseFiles(request, () -> (page == popup || pages.get(key(page.ref)) == page) && SitePolicy.mayShowUi(page));
     }
 
     /**
@@ -1091,9 +1023,11 @@ final class Shell implements Views.Listener, Ui.Actions {
         cancelPrompts();
         stopCapture(opener);
         popup = views.popup(opener);
-        popupSheet.addView(popup.web, new FrameLayout.LayoutParams(-1, -1));
+        popupSheet.addView(popup.tab.view(), new FrameLayout.LayoutParams(-1, -1));
         popupSheet.setVisibility(View.VISIBLE);
         revealed.setVisibility(View.GONE);
+        opener.tab.setRevealed(false);
+        popup.tab.setRevealed(true);
         owner.cancelInvalidFiles();
         if (opener != revealedPage) {
             bar.setTitle(appletName);
@@ -1101,7 +1035,7 @@ final class Shell implements Views.Listener, Ui.Actions {
             bar.setVisibility(View.VISIBLE);
             GenesisMenu.tint(menu, tokens, true);
         }
-        bar.setUrl(popup.web.getUrl());
+        bar.setUrl(popup.tab.url());
         return popup;
     }
 
@@ -1125,7 +1059,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         Views.Page page = pages.get(key(ref));
         if (page == null) return;
         Views.Page window = openWindow(page);
-        if (window != null) window.web.loadUrl(url);
+        if (window != null) window.tab.load(url);
     }
 
     /** `window.close()` arrives inside the popup's own callback, so the view goes after it returns. */
@@ -1271,7 +1205,7 @@ final class Shell implements Views.Listener, Ui.Actions {
      * A hidden page's JavaScript dialog shows at once as Genesis's own dialog over the applet UI.
      * The host only learns that it is open, so the page's calls stop using up their budget.
      */
-    @Override public void jsDialog(Views.Page page, String kind, String message, String defaultValue, JsResult result) {
+    @Override public void jsDialog(Views.Page page, String kind, String message, String defaultValue, Requests.DialogResult result) {
         if (pages.get(key(page.ref)) != page) { result.cancel(); return; }
         long token = ++nextDialog;
         PendingDialog dialog = new PendingDialog(page, kind, message, defaultValue, result);
@@ -1282,7 +1216,7 @@ final class Shell implements Views.Listener, Ui.Actions {
     }
 
     /** A server's own sign-in prompt. Genesis passes the answer on and saves nothing. */
-    @Override public void httpAuth(Views.Page page, android.webkit.HttpAuthHandler handler, String host, String realm) {
+    @Override public void httpAuth(Views.Page page, Requests.AuthRequest handler, String host, String realm) {
         cancelPrompts();
         LinearLayout form = new LinearLayout(activity);
         form.setOrientation(LinearLayout.VERTICAL);
@@ -1330,8 +1264,9 @@ final class Shell implements Views.Listener, Ui.Actions {
      */
     void appearanceChanged() {
         // The font size can change without the appearance; website pages rescale either way.
-        for (Views.Page page : pages.values()) WebsiteSettings.configurationChanged(page.web, page.isContext());
-        if (popup != null) WebsiteSettings.configurationChanged(popup.web, true);
+        GeckoEngine.configurationChanged(activity.getResources().getConfiguration());
+        for (Views.Page page : pages.values()) page.tab.configurationChanged();
+        if (popup != null) popup.tab.configurationChanged();
         boolean dark = (activity.getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK)
             == android.content.res.Configuration.UI_MODE_NIGHT_YES;
         if (dark == tokens.dark) return;
@@ -1510,24 +1445,158 @@ final class Shell implements Views.Listener, Ui.Actions {
 
     private String profileName(String appletId) { return profileName(state, appletId); }
 
-    /** The applet's own profile when it keeps a separate sign-in, otherwise the shared one. */
+    /**
+     * The applet's own profile when it keeps a separate sign-in, otherwise the shared one, in the
+     * engine the applet runs its websites in.
+     */
     @Override public SiteData sitesFor(String appletId) {
-        if (appletId == null || !separateSignIn(appletId)) return sites;
-        // Another window may have switched the applet to a new profile, so the cached one must match.
-        String name = profileName(appletId);
-        SiteData cached = profiles.get(appletId);
-        if (cached == null || !name.equals(cached.profile)) {
-            cached = SiteData.profile(activity, name);
-            profiles.put(appletId, cached);
+        if (appletId == null) return sites;
+        boolean gecko = GeckoEngine.ID.equals(engine(state, appletId));
+        boolean separate = separateSignIn(appletId);
+        if (!gecko && !separate) return sites;
+        // Another window may have switched the applet to a new profile or engine, so the cached one must match.
+        String name = separate ? profileName(appletId) : null;
+        String key = (gecko ? GeckoEngine.ID : WebViewSites.ENGINE) + ":" + appletId;
+        SiteData cached = profiles.get(key);
+        if (cached == null || name != null && !name.equals(cached.profile) || name == null && !cached.isDefault()) {
+            cached = sites(activity, gecko, name);
+            profiles.put(key, cached);
         }
         return cached;
     }
 
     /** The same, for work outside a window, such as a cookie import. */
     static SiteData sitesFor(android.content.Context context, String appletId) {
+        if (appletId == null) return WebViewSites.defaultProfile(context);
         android.content.SharedPreferences state = state(context);
-        if (appletId == null || !SiteData.profilesSupported() || !state.getBoolean(profileKey(appletId), false)) return SiteData.defaultProfile(context);
-        return SiteData.profile(context, profileName(state, appletId));
+        boolean gecko = GeckoEngine.ID.equals(engine(state, appletId));
+        boolean separate = (gecko || WebViewSites.profilesSupported()) && state.getBoolean(profileKey(appletId), false);
+        return sites(context, gecko, separate ? profileName(state, appletId) : null);
+    }
+
+    /** A profile of either engine; a null name is the engine's shared one. */
+    private static SiteData sites(android.content.Context context, boolean gecko, String name) {
+        if (gecko) return name == null ? GeckoSites.defaultProfile(context) : GeckoSites.profile(context, name);
+        return name == null ? WebViewSites.defaultProfile(context) : WebViewSites.profile(context, name);
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Website engine
+
+    private static String engineKey(String appletId) { return "engine:" + appletId; }
+
+    /** The engine an applet's website contexts run in: `webview` unless the applet was set to `gecko`. */
+    private static String engine(android.content.SharedPreferences state, String appletId) {
+        return state.getString(engineKey(appletId), WebViewSites.ENGINE);
+    }
+
+    /** Set once the applet first runs in GeckoView, so removing it also deletes its GeckoView sign-in. */
+    private static String geckoUsedKey(String appletId) { return "engineUsed:" + appletId + ":gecko"; }
+
+    @Override public String engine(String appletId) { return engine(state, appletId); }
+
+    /**
+     * Moves the applet's websites to the other engine. Each engine keeps its own sign-ins, so the
+     * applet starts signed out there and finds its old sign-ins again when it comes back. An open
+     * applet reopens, as it does when its sign-in changes.
+     */
+    @Override public void setEngine(String appletId, String engine) {
+        if (engine.equals(engine(appletId))) return;
+        if (GeckoEngine.ID.equals(engine)) state.edit().putString(engineKey(appletId), engine).putBoolean(geckoUsedKey(appletId), true).apply();
+        else state.edit().remove(engineKey(appletId)).apply();
+        forgetProfile(appletId);
+        try { owner.send(GenesisRuntime.windowEvent("menu", appletId).put("action", "reload")); }
+        catch (JSONException ignored) { /* Unreachable for string values. */ }
+        ui.pages.refresh();
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Engine features
+
+    /** Features an applet needed while it was not in front, keyed by applet id and feature; shared by every window. */
+    private static final Map<String, EngineFeatures.Feature> featuresWaiting = new java.util.LinkedHashMap<>();
+    /** Applet and feature pairs already asked about in this process: each is asked at most once. */
+    private static final Set<String> featuresAsked = new java.util.HashSet<>();
+    /** True between the window's resume and pause. */
+    private boolean inFront;
+    /** The open engine-switch question, or null. */
+    private android.app.Dialog featureDialog;
+
+    private static String featureKey(String appletId, EngineFeatures.Feature feature) { return appletId + "\n" + feature.key; }
+
+    private static String engineAskKey(String appletId, EngineFeatures.Feature feature) { return "engineAsk:" + appletId + ":" + feature.key; }
+
+    /**
+     * The applet ran into a feature its engine lacks. The switch question waits until the applet is
+     * in front, and is asked at most once per process; "Don't ask again" keeps it from coming back.
+     */
+    static void featureNeeded(android.content.Context context, String appletId, EngineFeatures.Feature feature) {
+        if (appletId == null || appletId.isEmpty()) return;
+        android.content.SharedPreferences state = state(context);
+        if (EngineFeatures.switchTarget(feature, engine(state, appletId)) == null || state.getBoolean(engineAskKey(appletId, feature), false)) return;
+        String key = featureKey(appletId, feature);
+        if (featuresAsked.contains(key)) return;
+        featuresWaiting.put(key, feature);
+    }
+
+    @Override public void featureNeeded(Views.Page page, EngineFeatures.Feature feature) {
+        featureNeeded(activity, page.ref.optString("appletId"), feature);
+        askWaitingFeature();
+    }
+
+    void frontChanged(boolean front) {
+        inFront = front;
+        askWaitingFeature();
+    }
+
+    /** Asks about the first feature the applet in front is waiting on, one question at a time. */
+    void askWaitingFeature() {
+        if (!inFront || appletId == null || featureDialog != null || activity.isFinishing()) return;
+        for (Map.Entry<String, EngineFeatures.Feature> waiting : featuresWaiting.entrySet()) {
+            if (!waiting.getKey().equals(featureKey(appletId, waiting.getValue()))) continue;
+            featuresWaiting.remove(waiting.getKey());
+            String to = EngineFeatures.switchTarget(waiting.getValue(), engine(appletId));
+            if (to == null) { askWaitingFeature(); return; }
+            featuresAsked.add(waiting.getKey());
+            askSwitch(appletId, appletName, waiting.getValue(), to, true);
+            return;
+        }
+    }
+
+    /** Applet info's "Needs GeckoView on this phone" row: the user asked, so it always shows. */
+    @Override public void offerSeparateSignIn(String id) {
+        JSONObject entry = ui.entry(id);
+        String to = EngineFeatures.switchTarget(EngineFeatures.Feature.SEPARATE_SIGN_IN, engine(id));
+        if (entry == null || to == null || featureDialog != null) return;
+        askSwitch(id, entry.optString("name"), EngineFeatures.Feature.SEPARATE_SIGN_IN, to, false);
+    }
+
+    private void askSwitch(String id, String name, EngineFeatures.Feature feature, String to, boolean offerQuiet) {
+        boolean gecko = GeckoEngine.ID.equals(to);
+        String from = gecko ? "WebView" : "GeckoView", target = gecko ? "GeckoView" : "Android WebView";
+        String title = feature == EngineFeatures.Feature.SEPARATE_SIGN_IN
+            ? "A separate sign-in needs GeckoView on this phone" : feature.title + " doesn't work in " + from;
+        MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(activity).setTitle(title)
+            .setMessage("Run " + name + " in " + target + " instead? You will need to sign in to its websites again.");
+        com.google.android.material.checkbox.MaterialCheckBox quiet = null;
+        if (offerQuiet) {
+            quiet = new com.google.android.material.checkbox.MaterialCheckBox(activity);
+            quiet.setText("Don't ask again for this applet");
+            FrameLayout box = new FrameLayout(activity);
+            box.setPadding(tokens.dp(20), tokens.dp(8), tokens.dp(24), 0);
+            box.addView(quiet);
+            builder.setView(box);
+        }
+        com.google.android.material.checkbox.MaterialCheckBox remember = quiet;
+        featureDialog = builder
+            .setNegativeButton("Not now", null)
+            .setPositiveButton("Switch to " + target, (dialog, which) -> setEngine(id, to))
+            .setOnDismissListener(dialog -> {
+                if (remember != null && remember.isChecked()) state.edit().putBoolean(engineAskKey(id, feature), true).apply();
+                featureDialog = null;
+                askWaitingFeature();
+            })
+            .show();
     }
 
     @Override public void addToHomeScreen(String appletId) {
@@ -1574,10 +1643,10 @@ final class Shell implements Views.Listener, Ui.Actions {
             .show();
     }
 
-    @Override public boolean separateSignInAvailable() { return SiteData.profilesSupported(); }
+    @Override public boolean separateSignInAvailable() { return WebViewSites.profilesSupported(); }
 
     @Override public boolean separateSignIn(String appletId) {
-        return SiteData.profilesSupported() && state.getBoolean(profileKey(appletId), false);
+        return (WebViewSites.profilesSupported() || GeckoEngine.ID.equals(engine(state, appletId))) && state.getBoolean(profileKey(appletId), false);
     }
 
     /**
@@ -1591,10 +1660,10 @@ final class Shell implements Views.Listener, Ui.Actions {
             String name = "applet-" + appletId + "-" + Long.toString(System.currentTimeMillis(), 36);
             state.edit().putBoolean(profileKey(appletId), true).putString(profileNameKey(appletId), name).apply();
         } else {
-            pending.add(profileName(appletId));
+            queueDeletion(state, appletId, pending);
             state.edit().remove(profileKey(appletId)).remove(profileNameKey(appletId)).putStringSet(DELETE_PROFILES, pending).apply();
         }
-        profiles.remove(appletId);
+        forgetProfile(appletId);
         // The applet restarts in its new sign-in wherever it runs; the host ignores this for an applet that is not running.
         try { owner.send(GenesisRuntime.windowEvent("menu", appletId).put("action", "reload")); }
         catch (JSONException ignored) { /* Unreachable for string values. */ }
@@ -1631,7 +1700,8 @@ final class Shell implements Views.Listener, Ui.Actions {
 
     /** This window lets go of a removed or erased applet's profile. */
     void forgetProfile(String appletId) {
-        profiles.remove(appletId);
+        profiles.remove(WebViewSites.ENGINE + ":" + appletId);
+        profiles.remove(GeckoEngine.ID + ":" + appletId);
     }
 
     /** A removed or erased applet's separate sign-in goes with it. */
@@ -1639,22 +1709,51 @@ final class Shell implements Views.Listener, Ui.Actions {
         android.content.SharedPreferences state = state(context);
         if (!state.getBoolean(profileKey(appletId), false)) return;
         Set<String> pending = new LinkedHashSet<>(state.getStringSet(DELETE_PROFILES, Set.of()));
-        pending.add(profileName(state, appletId));
+        queueDeletion(state, appletId, pending);
         state.edit().remove(profileKey(appletId)).remove(profileNameKey(appletId)).putStringSet(DELETE_PROFILES, pending).apply();
     }
 
     /** A removed or erased applet's Genesis choices go with it. */
     static void forgetApplet(android.content.Context context, String appletId) {
         forgetProfile(context, appletId);
-        state(context).edit().remove(privacyKey(appletId)).apply();
+        android.content.SharedPreferences.Editor edit = state(context).edit()
+            .remove(privacyKey(appletId)).remove(engineKey(appletId)).remove(geckoUsedKey(appletId));
+        for (EngineFeatures.Feature feature : EngineFeatures.Feature.values()) edit.remove(engineAskKey(appletId, feature));
+        edit.apply();
     }
 
-    /** Deletes the profiles waiting for deletion; one a WebView still holds waits for the next launcher. */
+    /**
+     * Queues the applet's separate sign-in for deletion in each engine it ran in. GeckoView's is
+     * queued only when the applet ever used GeckoView, so deleting it never starts GeckoView for nothing.
+     */
+    private static void queueDeletion(android.content.SharedPreferences state, String appletId, Set<String> pending) {
+        String name = profileName(state, appletId);
+        pending.add(deletionEntry(WebViewSites.ENGINE, name));
+        if (state.getBoolean(geckoUsedKey(appletId), false)) pending.add(deletionEntry(GeckoEngine.ID, name));
+    }
+
+    /**
+     * A profile waiting for deletion is stored as `<engine>:<name>`, so each engine deletes its
+     * own. An entry without a prefix was written before engines existed and is a WebView profile.
+     */
+    private static String deletionEntry(String engine, String profile) { return engine + ":" + profile; }
+
+    /** Deletes the profiles waiting for deletion; one a page still holds waits for the next launcher. */
     private void deleteProfiles() {
         Set<String> pending = new LinkedHashSet<>(state.getStringSet(DELETE_PROFILES, Set.of()));
         if (pending.isEmpty()) return;
-        pending.removeIf(name -> SiteData.delete(activity, name));
+        pending.removeIf(this::deleteProfile);
         state.edit().putStringSet(DELETE_PROFILES, pending).apply();
+    }
+
+    /** Returns whether the entry's profile is gone. An engine this build does not run keeps its entry. */
+    private boolean deleteProfile(String entry) {
+        String prefix = WebViewSites.ENGINE + ":";
+        if (entry.startsWith(prefix)) return WebViewSites.delete(activity, entry.substring(prefix.length()));
+        String gecko = GeckoEngine.ID + ":";
+        if (entry.startsWith(gecko)) return GeckoSites.delete(activity, entry.substring(gecko.length()));
+        if (entry.matches("[a-z]+:.*")) return false;
+        return WebViewSites.delete(activity, entry);
     }
 
     @Override public void storageSize(java.util.function.LongConsumer result) { owner.storageSize(result); }
@@ -1703,14 +1802,14 @@ final class Shell implements Views.Listener, Ui.Actions {
 
     /** The URL of the applet's first website context, shown in the menu over the applet's own screens. */
     private String contextUrl() {
-        for (Views.Page page : pages.values()) if (page.isContext() && page.web.getUrl() != null) return page.web.getUrl();
+        for (Views.Page page : pages.values()) if (page.isContext() && page.tab.url() != null) return page.tab.url();
         return null;
     }
 
     /** What the user sees: the popup while one is open, otherwise the revealed context. */
     private String revealedUrl() {
-        if (popup != null) return popup.web.getUrl();
-        return revealedPage == null ? null : revealedPage.web.getUrl();
+        if (popup != null) return popup.tab.url();
+        return revealedPage == null ? null : revealedPage.tab.url();
     }
 
     private Views.Page foregroundPage() {

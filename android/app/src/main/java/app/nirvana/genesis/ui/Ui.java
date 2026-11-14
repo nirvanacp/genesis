@@ -57,7 +57,13 @@ public final class Ui {
         /** Whether this phone's WebView can keep a separate sign-in per applet. */
         boolean separateSignInAvailable();
         boolean separateSignIn(String appletId);
+        /** Offers to move the applet to GeckoView, where a separate sign-in works on every phone. */
+        void offerSeparateSignIn(String appletId);
         void setSeparateSignIn(String appletId, boolean on);
+        /** The engine the applet's websites run in: "webview" (the default) or "gecko". */
+        String engine(String appletId);
+        /** Moves the applet's websites to the engine; an open applet reopens on it. */
+        void setEngine(String appletId, String engine);
         /** Whether the applet's Recents card hides its screen. */
         boolean hiddenInRecents(String appletId);
         void setHiddenInRecents(String appletId, boolean on);

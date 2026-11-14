@@ -223,7 +223,7 @@ public final class Settings {
         String version = version();
         if (version != null) content.addView(t.text("Version " + version, Tokens.Type.BODY_MEDIUM, t.onSurfaceVariant));
         TextView body = t.text("Genesis runs applets: native-feeling screens over the websites you already use, in your own sessions.\n\n"
-            + "Genesis uses AndroidX, Material Components for Android and Android System WebView (Apache License 2.0), and Rust crates under the MIT and Apache 2.0 licences.",
+            + "Genesis uses AndroidX, Material Components for Android and Android System WebView (Apache License 2.0), GeckoView (Mozilla Public License 2.0), and Rust crates under the MIT and Apache 2.0 licences.",
             Tokens.Type.BODY_MEDIUM, t.onSurface);
         body.setPadding(0, t.dp(24), 0, 0);
         content.addView(body);

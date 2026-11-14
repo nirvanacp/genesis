@@ -61,6 +61,9 @@ final class Router {
 
     void resumed(Shell shell) { recent = shell; }
 
+    /** The window in front asks about an engine feature its applet is waiting on. */
+    void askWaitingFeature() { if (recent != null) recent.askWaitingFeature(); }
+
     /**
      * The user started or continued an add, update review, version change or file import in this
      * window. The host runs one flow at a time and refuses another while one runs, so the window
