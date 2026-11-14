@@ -18,23 +18,41 @@ import org.json.JSONObject;
 final class Views {
     static final String FOREGROUND_ORIGIN = "https://appassets.androidplatform.net";
     static final String BRIDGE = "__genesisBridge";
+    /** Where the applet UI previews picked files, on `FOREGROUND_ORIGIN`. */
+    static final String PICKED_FILES = "/genesis-files/";
+    /** The start of the page agent's blob download messages, which stay in the shell. */
+    static final String BLOB_MESSAGE = "{\"type\":\"genesis.blob";
 
     /** What a view reports back to the shell. */
     interface Listener {
         void documentStarted(Page page, String url);
         void documentMessage(Page page, String payload);
+
+        /** A `genesis.blob` text message: the page agent's answer to the shell's blob download request. */
+        void blobMessage(Page page, String payload);
+
+        /** An `ArrayBuffer` from the page agent: the bytes of the blob download it announced. */
+        void blobBytes(Page page, byte[] bytes);
         void contextNavigated(Page page, Committed committed);
         /** Starts another app for a tapped link. Returns false when no app can handle it. */
         boolean handOff(android.content.Intent intent);
         void rendererGone(Page page);
         void showFullScreen(Requests.FullScreen screen);
+        /**
+         * The page is about to use a feature `SitePolicy.mayUse` allowed. A hidden context's grant
+         * ends here as used; for the shown website this does nothing.
+         */
+        void useGrant(Page page);
         void hideFullScreen();
         /** The shown website's file input. Returns false when no picker opens; the request is then unanswered. */
         boolean chooseFiles(Page page, Requests.FileRequest request);
-        /** The revealed context opened a window from a tap. Returns the popup to load it into, or null to refuse. */
+        /**
+         * The revealed context, or a hidden one with a window grant, opened a window from a tap.
+         * Returns the popup to load it into, or null to refuse.
+         */
         Page openWindow(Page opener);
         void closeWindow(Page popup);
-        /** The revealed context's tapped link asks for a new window at `url`. */
+        /** The revealed context's tapped link, or a granted hidden context's, asks for a new window at `url`. */
         void windowRequested(Page page, String url);
         void popupNavigated(Page popup, String url);
         /**
@@ -50,6 +68,16 @@ final class Views {
         void httpAuth(Page page, Requests.AuthRequest request, String host, String realm);
         /** The page ran into a feature its engine lacks; the shell may offer the other engine. */
         void featureNeeded(Page page, EngineFeatures.Feature feature);
+        /**
+         * A hidden context's page opened a JavaScript dialog (`alert`, `confirm`, `prompt` or
+         * `beforeunload`) and waits until `result` is answered. `defaultValue` is a prompt's, else null.
+         */
+        void jsDialog(Page page, String kind, String message, String defaultValue, Requests.DialogResult result);
+        /**
+         * The applet UI loads a picked file from `/genesis-files/<id>`. Called on WebView's request
+         * thread; unknown ids answer 404. The applet UI always runs in WebView.
+         */
+        android.webkit.WebResourceResponse pickedFile(String id);
     }
 
     /** The container a revealed context is reparented into, above the foreground. */
@@ -90,6 +118,14 @@ final class Views {
         int downloads;
         /** `SystemClock.uptimeMillis()` of the last trusted input dispatched here; 0 for none. */
         long trustedInputAt;
+        /** The one feature the user let this hidden context use (a `SitePolicy` grant kind), or null. */
+        String grant;
+        /** `SystemClock.uptimeMillis()` until which `grant` is live. */
+        long grantUntil;
+        /** Ends `grant` unused when it expires. */
+        Runnable grantExpiry;
+        /** Until when the window this hidden page opened with its grant may still show; 0 for none. */
+        long windowUntil;
 
         /** The profile the page's cookies and permission answers belong to. */
         final SiteData site;

@@ -9,6 +9,8 @@ import android.view.View;
 import android.webkit.ClientCertRequest;
 import android.webkit.GeolocationPermissions;
 import android.webkit.HttpAuthHandler;
+import android.webkit.JsPromptResult;
+import android.webkit.JsResult;
 import android.webkit.PermissionRequest;
 import android.webkit.RenderProcessGoneDetail;
 import android.webkit.ValueCallback;
@@ -23,6 +25,7 @@ import androidx.webkit.JavaScriptReplyProxy;
 import androidx.webkit.Navigation;
 import androidx.webkit.NavigationListener;
 import androidx.webkit.ScriptHandler;
+import androidx.webkit.WebMessageCompat;
 import androidx.webkit.WebViewAssetLoader;
 import androidx.webkit.WebViewCompat;
 import androidx.webkit.WebViewFeature;
@@ -114,10 +117,17 @@ final class WebViewPage implements WebsitePage {
     static WebViewPage document(Activity activity, Views.Listener listener, WebViewAssetLoader assets, Views.Page page, String startScript) {
         WebViewPage tab = new WebViewPage(activity, listener, page, page.isForeground() ? assets : null);
         WebViewCompat.addWebMessageListener(tab.web, Views.BRIDGE, page.origins, (view, message, sourceOrigin, isMainFrame, reply) -> {
+            if (!isMainFrame) return;
+            // Only the page agent posts bytes, and only for a download the shell asked it to read.
+            if (message.getType() == WebMessageCompat.TYPE_ARRAY_BUFFER) {
+                if (tab.reply == reply) listener.blobBytes(page, message.getArrayBuffer());
+                return;
+            }
             String data = message.getData();
-            if (!isMainFrame || data == null) return;
+            if (data == null) return;
             tab.reply = reply;
-            listener.documentMessage(page, data);
+            if (data.startsWith(Views.BLOB_MESSAGE)) listener.blobMessage(page, data);
+            else listener.documentMessage(page, data);
         });
         if (startScript != null) tab.script = WebViewCompat.addDocumentStartJavaScript(tab.web, startScript, page.origins);
         tab.attach();
@@ -216,6 +226,17 @@ final class WebViewPage implements WebsitePage {
         if (reply != null) reply.postMessage(message);
     }
 
+    @Override public Object channel() { return reply; }
+
+    @Override public boolean postsBytes() { return WebFeatures.has(WebViewFeature.WEB_MESSAGE_ARRAY_BUFFER); }
+
+    @SuppressLint("RequiresFeature") // Callers check postsBytes() first.
+    @Override public void postBytes(byte[] bytes) {
+        if (reply != null) reply.postMessage(bytes);
+    }
+
+    @Override public String userAgent() { return web.getSettings().getUserAgentString(); }
+
     @Override public void input(JSONArray events) throws Input.Refused { Input.dispatch(web, events); }
 
     /** WebView runs a hidden page as it runs a shown one; the shell's reparenting is enough. */
@@ -270,7 +291,9 @@ final class WebViewPage implements WebsitePage {
             if (web) return false;
             // Only the revealed page may hand a link to another app, and only from a tap. A server
             // redirect from a tapped link to mailto: arrives without a gesture and is blocked too.
-            if (!SitePolicy.mayHandOff(page, SitePolicy.usersGesture(page, request.hasGesture()))) return true;
+            // A hidden context may with a `handoff` grant, which also lifts the block after trusted input.
+            if (!SitePolicy.mayHandOff(page, SitePolicy.usersGesture(page, request.hasGesture(), SitePolicy.HANDOFF))) return true;
+            listener.useGrant(page);
             android.content.Intent intent = Handoff.intent(url);
             if (intent == null) return true;
             if (listener.handOff(intent)) return true;
@@ -281,7 +304,13 @@ final class WebViewPage implements WebsitePage {
         }
 
         @Override public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
-            return assets != null ? assets.shouldInterceptRequest(request.getUrl()) : null;
+            if (assets == null) return null;
+            Uri url = request.getUrl();
+            String path = url.getPath();
+            if (Views.FOREGROUND_ORIGIN.equals(Views.origin(url.toString())) && path != null && path.startsWith(Views.PICKED_FILES)) {
+                return listener.pickedFile(path.substring(Views.PICKED_FILES.length()));
+            }
+            return assets.shouldInterceptRequest(url);
         }
 
         // onPageStarted fires at commit, once per cross-document navigation, with the final URL.
@@ -386,7 +415,8 @@ final class WebViewPage implements WebsitePage {
 
         /** WebView keeps nothing (`retain` false); `SiteGrants` remembers the answer instead. */
         @Override public void onGeolocationPermissionsShowPrompt(String origin, GeolocationPermissions.Callback callback) {
-            if (!SitePolicy.mayShowUi(page)) { callback.invoke(origin, false, false); return; }
+            if (!SitePolicy.mayUse(page, SitePolicy.LOCATION)) { callback.invoke(origin, false, false); return; }
+            listener.useGrant(page);
             locating = origin;
             located = callback;
             listener.askSite(page, Views.origin(origin), List.of(SiteGrants.LOCATION), allowed -> {
@@ -422,20 +452,57 @@ final class WebViewPage implements WebsitePage {
         }
 
         @Override public void onShowCustomView(View view, CustomViewCallback callback) {
-            if (SitePolicy.mayShowUi(page)) listener.showFullScreen(new Requests.FullScreen(view, callback::onCustomViewHidden));
-            else callback.onCustomViewHidden();
+            // WebView ignores an exit inside this call, which would leave the page in fullscreen; exit after it.
+            if (!SitePolicy.mayUse(page, SitePolicy.FULLSCREEN)) { web.post(callback::onCustomViewHidden); return; }
+            listener.useGrant(page);
+            listener.showFullScreen(new Requests.FullScreen(view, callback::onCustomViewHidden));
         }
 
         @Override public void onHideCustomView() { listener.hideFullScreen(); }
 
+        @Override public boolean onJsAlert(WebView view, String url, String message, JsResult result) {
+            return hiddenDialog("alert", message, null, result);
+        }
+
+        @Override public boolean onJsConfirm(WebView view, String url, String message, JsResult result) {
+            return hiddenDialog("confirm", message, null, result);
+        }
+
+        @Override public boolean onJsPrompt(WebView view, String url, String message, String defaultValue, JsPromptResult result) {
+            return hiddenDialog("prompt", message, defaultValue, result);
+        }
+
+        @Override public boolean onJsBeforeUnload(WebView view, String url, String message, JsResult result) {
+            return hiddenDialog("beforeunload", message, null, result);
+        }
+
+        /**
+         * A hidden context's dialog shows as Genesis's own dialog over the applet UI, and the website
+         * stays hidden. The shown website, its popup and the applet's own page keep WebView's dialogs.
+         */
+        private boolean hiddenDialog(String kind, String message, String defaultValue, JsResult result) {
+            if (!page.isContext() || page.isRevealed()) return false;
+            listener.jsDialog(page, kind, message == null ? "" : message, defaultValue, new Requests.DialogResult() {
+                @Override public void confirm(String value) {
+                    if (result instanceof JsPromptResult) ((JsPromptResult) result).confirm(value);
+                    else result.confirm();
+                }
+
+                @Override public void cancel() { result.cancel(); }
+            });
+            return true;
+        }
+
         /**
          * Only the revealed context opens a window, and only from a tap; a popup's own windows load
-         * in place. A tapped link goes to the host, which opens it in this context, in another
+         * in place. A hidden context may too with a `window` grant, from the trusted tap that used it.
+         * A tapped link goes to the host, which opens it in this context, in another
          * applet or in a popup. A script's window, such as a sign-in, opens as a popup at once so
          * it keeps `window.opener`.
          */
         @Override public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture, android.os.Message resultMsg) {
-            if (page.opener != null || !SitePolicy.usersGesture(page, isUserGesture) || !SitePolicy.mayShowUi(page)) return false;
+            if (page.opener != null || !SitePolicy.usersGesture(page, isUserGesture, SitePolicy.WINDOW) || !SitePolicy.mayUse(page, SitePolicy.WINDOW)) return false;
+            listener.useGrant(page);
             WebView.HitTestResult hit = view.getHitTestResult();
             String link = hit == null || hit.getType() != WebView.HitTestResult.SRC_ANCHOR_TYPE ? null : hit.getExtra();
             if (link != null && (link.startsWith("https:") || link.startsWith("http:"))) {

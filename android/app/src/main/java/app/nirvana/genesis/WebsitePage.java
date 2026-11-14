@@ -46,6 +46,21 @@ interface WebsitePage {
     /** Sends a message to the page agent over the bridge; dropped when no agent is listening. */
     void post(String message);
 
+    /**
+     * The current document's bridge connection, or null when no agent can listen. A new document
+     * gets a new one, so a transfer meant for the old document can tell it is gone.
+     */
+    Object channel();
+
+    /** Whether `postBytes` reaches the agent; otherwise bytes go as base64 text messages. */
+    boolean postsBytes();
+
+    /** Sends an ArrayBuffer to the page agent; only when `postsBytes()`. */
+    void postBytes(byte[] bytes);
+
+    /** The user agent the page's requests carry, for a download the shell fetches itself. */
+    String userAgent();
+
     /** Real input for a hidden page, as the page agent asked. */
     void input(JSONArray events) throws Input.Refused;
 

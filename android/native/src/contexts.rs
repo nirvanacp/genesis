@@ -1,4 +1,5 @@
 //! State of the live applets' contexts: navigation, reveal, page calls and the Back slot.
+use crate::{dialogs::OpenDialog, files::FileHandles};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap};
@@ -60,6 +61,10 @@ pub struct Session {
     pub contexts: BTreeMap<String, ContextView>,
     /// Open page calls by call id.
     pub calls: HashMap<String, CallHandle>,
+    /// Each hidden context's open JavaScript dialog, by context id. Its page calls' deadlines wait.
+    pub dialogs: BTreeMap<String, OpenDialog>,
+    /// The files the applet picked, and the shell round trips about them.
+    pub files: FileHandles,
     next_call: u64,
     /// The applet was recreated after being retired in the background.
     pub restored: bool,
@@ -69,6 +74,41 @@ pub struct Session {
     pub open_context: Option<String>,
     /// When the applet's window suspended; None while it is resumed.
     pub suspended_at_ms: Option<u64>,
+    /// Each context's input budget, by context id, created on its first input call.
+    pub input_budgets: HashMap<String, InputBudget>,
+}
+
+/// Page operations that act on the website, so they spend the context's input budget. Reads,
+/// watches, waits, scrolling, focus and hover do not.
+pub const PACED_OPS: [&str; 11] = ["click", "longPress", "fill", "type", "press", "select", "check", "submit", "attachFiles", "run", "invoke"];
+
+/// A token bucket: `burst` input calls at once, then one more every `refill_ms`.
+#[derive(Debug)]
+pub struct InputBudget {
+    tokens: u32,
+    /// When the next token started to come back; moves to `now` while the bucket is full.
+    since_ms: u64,
+}
+
+impl InputBudget {
+    pub fn full(burst: u32, now: u64) -> Self {
+        Self { tokens: burst, since_ms: now }
+    }
+
+    /// Takes one token, or answers how many milliseconds until one is back.
+    pub fn take(&mut self, now: u64, burst: u32, refill_ms: u64) -> Result<(), u64> {
+        if refill_ms == 0 {
+            return Ok(());
+        }
+        let gained = now.saturating_sub(self.since_ms) / refill_ms;
+        self.tokens = (u64::from(self.tokens) + gained).min(u64::from(burst)) as u32;
+        self.since_ms = if self.tokens == burst { now } else { self.since_ms + gained * refill_ms };
+        if self.tokens == 0 {
+            return Err(refill_ms - now.saturating_sub(self.since_ms));
+        }
+        self.tokens -= 1;
+        Ok(())
+    }
 }
 
 impl Session {
@@ -82,11 +122,14 @@ impl Session {
             back_history: None,
             contexts: BTreeMap::new(),
             calls: HashMap::new(),
+            dialogs: BTreeMap::new(),
+            files: FileHandles::default(),
             next_call: 0,
             restored,
             saved: None,
             open_context: None,
             suspended_at_ms: None,
+            input_budgets: HashMap::new(),
         }
     }
 

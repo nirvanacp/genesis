@@ -190,6 +190,15 @@ final class GeckoPage implements WebsitePage {
         catch (JSONException ignored) { /* Unreachable for string values. */ }
     }
 
+    @Override public Object channel() { return bound ? port : null; }
+
+    /** The bridge carries text only; bytes go as base64 messages. */
+    @Override public boolean postsBytes() { return false; }
+
+    @Override public void postBytes(byte[] bytes) {}
+
+    @Override public String userAgent() { return GeckoSession.getDefaultUserAgent(); }
+
     @Override public void input(JSONArray events) throws Input.Refused { Input.dispatch(view, events); }
 
     /** A hidden page loses focus, its page tree for accessibility services and its open dialog. */
@@ -276,7 +285,10 @@ final class GeckoPage implements WebsitePage {
                 catch (JSONException ignored) { /* Unreachable for string values. */ }
             }
             case "message" -> {
-                if (bound && message.has("data")) listener.documentMessage(page, message.optString("data"));
+                if (!bound || !message.has("data")) return;
+                String data = message.optString("data");
+                if (data.startsWith(Views.BLOB_MESSAGE)) listener.blobMessage(page, data);
+                else listener.documentMessage(page, data);
             }
             case "windowLink" -> windowLink(message.optString("url"));
             case "followed" -> {
@@ -297,7 +309,8 @@ final class GeckoPage implements WebsitePage {
         String scheme = Uri.parse(link).getScheme();
         if (!"https".equals(scheme) && !"http".equals(scheme)) return;
         if (page.opener != null) { load(link); return; }
-        if (!SitePolicy.usersGesture(page, true) || !SitePolicy.mayShowUi(page)) return;
+        if (!SitePolicy.usersGesture(page, true, SitePolicy.WINDOW) || !SitePolicy.mayUse(page, SitePolicy.WINDOW)) return;
+        listener.useGrant(page);
         listener.windowRequested(page, link);
     }
 
@@ -326,11 +339,13 @@ final class GeckoPage implements WebsitePage {
                     if (web) session.loadUri(request.uri);
                     return GeckoResult.fromValue(AllowOrDeny.DENY);
                 }
-                boolean opens = SitePolicy.usersGesture(page, request.hasUserGesture) && SitePolicy.mayShowUi(page);
+                boolean opens = SitePolicy.usersGesture(page, request.hasUserGesture, SitePolicy.WINDOW) && SitePolicy.mayUse(page, SitePolicy.WINDOW);
+                if (opens) listener.useGrant(page);
                 return GeckoResult.fromValue(opens ? AllowOrDeny.ALLOW : AllowOrDeny.DENY);
             }
             if (web || local) return GeckoResult.fromValue(AllowOrDeny.ALLOW);
-            if (!SitePolicy.mayHandOff(page, SitePolicy.usersGesture(page, request.hasUserGesture))) return GeckoResult.fromValue(AllowOrDeny.DENY);
+            if (!SitePolicy.mayHandOff(page, SitePolicy.usersGesture(page, request.hasUserGesture, SitePolicy.HANDOFF))) return GeckoResult.fromValue(AllowOrDeny.DENY);
+            listener.useGrant(page);
             android.content.Intent intent = Handoff.intent(request.uri);
             if (intent == null || listener.handOff(intent)) return GeckoResult.fromValue(AllowOrDeny.DENY);
             String fallback = Handoff.fallback(request.uri);
@@ -355,9 +370,12 @@ final class GeckoPage implements WebsitePage {
 
         @Override public void onCanGoBack(GeckoSession s, boolean can) { canGoBack = can; }
 
-        /** The window `onLoadRequest` allowed. GeckoView opens the popup's session itself. */
+        /**
+         * The window `onLoadRequest` allowed, which used any window grant; the shell checks again
+         * that this page may open one. GeckoView opens the popup's session itself.
+         */
         @Override public GeckoResult<GeckoSession> onNewSession(GeckoSession s, String uri) {
-            if (page.opener != null || !SitePolicy.mayShowUi(page)) return null;
+            if (page.opener != null) return null;
             Views.Page popup = listener.openWindow(page);
             if (popup == null) return null;
             // A Gecko opener's popup is always a Gecko page (Views.popup follows the opener's engine).
@@ -405,12 +423,17 @@ final class GeckoPage implements WebsitePage {
 
         /**
          * The website's element fills the page's own view, so the view itself goes full screen and
-         * returns to its container afterwards. Only the shown website goes full screen.
+         * returns to its container afterwards. Only the shown website goes full screen, or a hidden
+         * context with a fullscreen grant; a refused request exits after this call returns.
          */
         @Override public void onFullScreen(GeckoSession s, boolean full) {
             if (!full) { leaveFullScreen(); return; }
             if (fullParent != null) return;
-            if (!SitePolicy.mayShowUi(page) || !(view.getParent() instanceof ViewGroup)) { session.exitFullScreen(); return; }
+            if (!SitePolicy.mayUse(page, SitePolicy.FULLSCREEN) || !(view.getParent() instanceof ViewGroup)) {
+                main.post(() -> { if (!destroyed) session.exitFullScreen(); });
+                return;
+            }
+            listener.useGrant(page);
             fullParent = (ViewGroup) view.getParent();
             fullIndex = fullParent.indexOfChild(view);
             fullParams = view.getLayoutParams();
@@ -566,17 +589,42 @@ final class GeckoPage implements WebsitePage {
         return result;
     }
 
+    /**
+     * A hidden context's dialog shows as Genesis's own dialog over the applet UI, and the website
+     * stays hidden, as in WebView. Returns null for any other page, which shows its own.
+     */
+    private GeckoResult<GeckoSession.PromptDelegate.PromptResponse> hiddenDialog(GeckoSession.PromptDelegate.BasePrompt prompt,
+            String kind, String message, String defaultValue, Function<String, GeckoSession.PromptDelegate.PromptResponse> ok) {
+        if (!page.isContext() || page.isRevealed()) return null;
+        GeckoResult<GeckoSession.PromptDelegate.PromptResponse> result = new GeckoResult<>();
+        listener.jsDialog(page, kind, message == null ? "" : message, defaultValue, new Requests.DialogResult() {
+            @Override public void confirm(String value) { if (!prompt.isComplete()) result.complete(ok.apply(value)); }
+
+            @Override public void cancel() { if (!prompt.isComplete()) result.complete(prompt.dismiss()); }
+        });
+        return result;
+    }
+
     private final class Prompts implements GeckoSession.PromptDelegate {
         @Override public GeckoResult<PromptResponse> onAlertPrompt(GeckoSession s, AlertPrompt prompt) {
-            return showDialog(prompt, prompt.message, null, false, text -> prompt.dismiss());
+            GeckoResult<PromptResponse> hidden = hiddenDialog(prompt, "alert", prompt.message, null, text -> prompt.dismiss());
+            return hidden != null ? hidden : showDialog(prompt, prompt.message, null, false, text -> prompt.dismiss());
         }
 
         @Override public GeckoResult<PromptResponse> onButtonPrompt(GeckoSession s, ButtonPrompt prompt) {
-            return showDialog(prompt, prompt.message, null, true, text -> prompt.confirm(ButtonPrompt.Type.POSITIVE));
+            GeckoResult<PromptResponse> hidden = hiddenDialog(prompt, "confirm", prompt.message, null, text -> prompt.confirm(ButtonPrompt.Type.POSITIVE));
+            return hidden != null ? hidden : showDialog(prompt, prompt.message, null, true, text -> prompt.confirm(ButtonPrompt.Type.POSITIVE));
         }
 
         @Override public GeckoResult<PromptResponse> onTextPrompt(GeckoSession s, TextPrompt prompt) {
-            return showDialog(prompt, prompt.message, prompt.defaultValue == null ? "" : prompt.defaultValue, true, prompt::confirm);
+            String start = prompt.defaultValue == null ? "" : prompt.defaultValue;
+            GeckoResult<PromptResponse> hidden = hiddenDialog(prompt, "prompt", prompt.message, prompt.defaultValue, prompt::confirm);
+            return hidden != null ? hidden : showDialog(prompt, prompt.message, start, true, prompt::confirm);
+        }
+
+        /** A hidden context asks through the shell; the shown page keeps GeckoView's default, which leaves. */
+        @Override public GeckoResult<PromptResponse> onBeforeUnloadPrompt(GeckoSession s, BeforeUnloadPrompt prompt) {
+            return hiddenDialog(prompt, "beforeunload", "", null, text -> prompt.confirm(AllowOrDeny.ALLOW));
         }
 
         /** The same file selection as WebView's chooser; a hidden page gets none. */
@@ -639,7 +687,8 @@ final class GeckoPage implements WebsitePage {
                 case PERMISSION_AUTOPLAY_INAUDIBLE:
                     return GeckoResult.fromValue(ContentPermission.VALUE_ALLOW);
                 case PERMISSION_GEOLOCATION: {
-                    if (!SitePolicy.mayShowUi(page)) return GeckoResult.fromValue(ContentPermission.VALUE_DENY);
+                    if (!SitePolicy.mayUse(page, SitePolicy.LOCATION)) return GeckoResult.fromValue(ContentPermission.VALUE_DENY);
+                    listener.useGrant(page);
                     GeckoResult<Integer> result = new GeckoResult<>();
                     listener.askSite(page, Views.origin(permission.uri), List.of(SiteGrants.LOCATION), allowed ->
                         result.complete(allowed.contains(SiteGrants.LOCATION) ? ContentPermission.VALUE_ALLOW : ContentPermission.VALUE_DENY));
@@ -663,7 +712,9 @@ final class GeckoPage implements WebsitePage {
                 if (grant == null) { callback.reject(); return; }
                 wanted.add(grant);
             }
-            if (!SitePolicy.mayShowUi(page)) { callback.reject(); return; }
+            // A hidden context's location grant is used by the website's own question, which follows.
+            boolean located = wanted.equals(Set.of(SiteGrants.LOCATION)) && SitePolicy.granted(page, SitePolicy.LOCATION);
+            if (!SitePolicy.mayShowUi(page) && !located) { callback.reject(); return; }
             listener.askSite(page, Views.origin(url == null ? "" : url), new ArrayList<>(wanted), allowed -> {
                 if (allowed.containsAll(wanted)) callback.grant();
                 else callback.reject();

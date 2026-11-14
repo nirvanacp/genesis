@@ -10,7 +10,9 @@ When customizing, keep the applet's id, launcher entry, working features, stored
 
 ## Start from the website
 
-A domain and a description are enough to start. Resolve the domain to its canonical `https://` origin. Inspect the mobile website, signed in where the user has given access: the entry page, lists, details, profiles, search, account pages, forms, loading and failure states. Derive the everyday journeys yourself; the user does not have to list screens or selectors. Choose a readable name and an id when none was given.
+A domain and a description are enough to start. Resolve the domain to its canonical `https://` origin. Inspect the mobile website, signed in where the user has given access: the entry page, lists, details, profiles, search, account pages, forms, loading and failure states. Also find the website features that need visible UI: composers with photo, video or file attachments, images and videos, fullscreen players, download and save buttons, share buttons, links that open another app, `confirm` questions before deleting or leaving, permission prompts and "Sign in with ..." buttons. Derive the everyday journeys yourself; the user does not have to list screens or selectors. Choose a readable name and an id when none was given.
+
+For each website feature you found, choose its handling from [website features](website-features.md) and record it in the Website features table of the current spec. These features stay in the applet; only camera and microphone, server sign-in prompts and client certificates, protected fields, payments and challenges show the website. A request such as "let me post with photos", "save this video", "share a post" or "play fullscreen" names one of them: build it in the applet.
 
 ## The product brief
 
@@ -20,6 +22,7 @@ Write a short brief in `.specs/current.md`:
 - The user's explicit requirements and the workflows and data to preserve.
 - The core journeys: where each starts, what the user does, what is stored, and how they get back.
 - What the website supplies, what the applet renders, and which store owns each record type.
+- The website features the site offers and how the applet handles each.
 - The design reference and any explicit overrides.
 - Exclusions the user approved, assumptions you made, and open questions.
 
@@ -45,7 +48,7 @@ Ask when two reasonable readings would give the user a materially different app 
 | "Make a saved-posts app" without saying whether it replaces the client | Ask whether they want the full client with Saved, or a separate collection app. |
 | Two stores could stay independent or sync | Ask what saving and removing should do in each. |
 | A personal single-account backend would exclude other intended accounts | Establish who will use it first. |
-| A feature needs a capability the host lacks | Explain the gap; ask about a fallback if one changes the product. |
+| A feature needs a capability the host lacks | First check [website features](website-features.md): files, downloads, sharing, other apps, fullscreen, windows, dialogs and location already work from the applet. Otherwise explain the gap; ask about a fallback if one changes the product. |
 | Module names, file layout, selector choice | Decide yourself. |
 
 Continue work that does not depend on the answer. No answer is not approval.

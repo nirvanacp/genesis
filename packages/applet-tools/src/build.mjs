@@ -3,7 +3,7 @@ import { lstat, mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile 
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { BUNDLE_FORMAT, COMPAT, isBundlePath, REQUIRED_BUNDLE_FILES } from '@genesis/core';
-import { checkApplet, noReactInPage, PAGE_ENTRY, pageEntry, runCommand } from './check.mjs';
+import { checkApplet, noReactInPage, PAGE_ENTRY, pageEntry, runCommand, uiWarnings } from './check.mjs';
 import { bundleCompat, installedSdk } from './compat.mjs';
 import { containedFile, requireValue, sha256 } from './manifest.mjs';
 
@@ -166,7 +166,8 @@ export async function buildApplet(directory, output, { debug = false, builtAt } 
   const time = builtAt === undefined ? new Date() : new Date(builtAt);
   requireValue(builtAt === undefined || (typeof builtAt === 'string' && !Number.isNaN(time.getTime())
     && [time.toISOString(), time.toISOString().replace(/\.\d{3}Z$/, 'Z')].includes(builtAt)), `builtAt must be an ISO time such as 2026-11-09T16:00:00Z, not ${builtAt}`);
-  const { base, manifest, build: config } = await checkApplet(directory);
+  const checked = await checkApplet(directory);
+  const { base, manifest, build: config } = checked;
   const destination = await prepareOutput(base, output ?? path.join(base, 'dist'));
   const outdir = path.join(destination, REVISION);
   const files = new Map();
@@ -176,7 +177,9 @@ export async function buildApplet(directory, output, { debug = false, builtAt } 
     files.set(name, bytes);
   };
 
-  for (const [name, bytes] of await buildForeground(base, config.foreground, manifest, { outdir, debug })) add(name, bytes);
+  const foreground = await buildForeground(base, config.foreground, manifest, { outdir, debug });
+  for (const [name, bytes] of foreground) add(name, bytes);
+  const warnings = [...checked.warnings, ...uiWarnings(foreground)];
   const page = await bundle(base, 'page', PAGE_ENTRY, config.page ?? 'the page agent',
     { outdir, debug, plugins: [pageEntry(base, config.page), noReactInPage] });
   for (const [name, bytes] of page) {
@@ -213,7 +216,7 @@ export async function buildApplet(directory, output, { debug = false, builtAt } 
   } finally {
     await rm(staging, { recursive: true, force: true });
   }
-  return { appletId: manifest.id, output: destination, importFile: path.join(destination, importName), files: names.length, compat: bundleJson.compat, debug };
+  return { appletId: manifest.id, output: destination, importFile: path.join(destination, importName), files: names.length, compat: bundleJson.compat, debug, warnings };
 }
 
 /** Reads a built `dist/` directory and returns its import file path and applet id. */

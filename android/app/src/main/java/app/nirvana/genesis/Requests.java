@@ -59,4 +59,11 @@ final class Requests {
         void proceed(String user, String password);
         void cancel();
     }
+
+    /** A website's JavaScript dialog (`alert`, `confirm`, `prompt` or `beforeunload`) waiting for its answer. */
+    interface DialogResult {
+        /** OK; `value` is a prompt's text and null for the other kinds. */
+        void confirm(String value);
+        void cancel();
+    }
 }
