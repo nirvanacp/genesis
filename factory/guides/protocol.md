@@ -499,7 +499,7 @@ A page's `alert`, `confirm`, `prompt` and `beforeunload` dialogs block the page 
 
 - `kind` is `alert`, `confirm`, `prompt` or `beforeunload`. `message` and `defaultValue` (a prompt's prefilled value) are cut to 2000 characters. `origin` is the page's origin, not its URL.
 - A context has at most one open dialog. The foreground that shows it sends `context.dialog.claim` within 1 second, then `context.dialog.answer` with the user's choice. Answer only with what the user chose.
-- Without a claim within 1 second, the host reveals the context, sends `user.showContext`, and the shell shows the dialog over the website, titled with its origin. Once the user answers it there, the foreground receives `context.dialogClosed`.
+- Without a claim within 1 second, the host reveals the context, sends `user.showContext`, and the shell shows the dialog over the website, titled with its origin. Once the user answers it there, the foreground receives `context.dialogClosed`. The website stays revealed until the user taps Done; a foreground that keeps its UI shown for that page answers `user.done` with `context.cover`.
 - `context.dialog.answer` takes `value` only for a `prompt`, at most 2000 characters, else `INVALID_ARGUMENT`. A prompt accepted without `value` gets its default value. Claim and answer answer `NOT_FOUND` when `dialogId` is not the context's open dialog or the shell already shows it.
 - When the page navigates or goes away while the dialog is open, the dialog is cancelled and the foreground receives `context.dialogClosed`.
 - A new foreground receives `context.dialog` again for each open dialog that the shell does not show yet, with a new claim window.
