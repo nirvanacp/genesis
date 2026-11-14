@@ -57,6 +57,8 @@ public final class Ui {
         /** Whether this phone's WebView can keep a separate sign-in per applet. */
         boolean separateSignInAvailable();
         boolean separateSignIn(String appletId);
+        /** Offers to move the applet to GeckoView, where a separate sign-in works on every phone. */
+        void offerSeparateSignIn(String appletId);
         void setSeparateSignIn(String appletId, boolean on);
         /** The engine the applet's websites run in: "webview" (the default) or "gecko". */
         String engine(String appletId);

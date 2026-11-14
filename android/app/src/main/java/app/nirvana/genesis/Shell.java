@@ -242,6 +242,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         applet.setVisibility(View.VISIBLE);
         splash.show(name, accent, icon);
         if (activity instanceof AppletActivity) ((AppletActivity) activity).describeTask(name, accent, icon);
+        askWaitingFeature();
     }
 
     void createView(JSONObject ref, String url, JSONArray origins, String startScript) throws JSONException {
@@ -1147,6 +1148,95 @@ final class Shell implements Views.Listener, Ui.Actions {
         ui.pages.refresh();
     }
 
+    // -----------------------------------------------------------------------------------------
+    // Engine features
+
+    /** Features an applet needed while it was not in front, keyed by applet id and feature; shared by every window. */
+    private static final Map<String, EngineFeatures.Feature> featuresWaiting = new java.util.LinkedHashMap<>();
+    /** Applet and feature pairs already asked about in this process: each is asked at most once. */
+    private static final Set<String> featuresAsked = new java.util.HashSet<>();
+    /** True between the window's resume and pause. */
+    private boolean inFront;
+    /** The open engine-switch question, or null. */
+    private android.app.Dialog featureDialog;
+
+    private static String featureKey(String appletId, EngineFeatures.Feature feature) { return appletId + "\n" + feature.key; }
+
+    private static String engineAskKey(String appletId, EngineFeatures.Feature feature) { return "engineAsk:" + appletId + ":" + feature.key; }
+
+    /**
+     * The applet ran into a feature its engine lacks. The switch question waits until the applet is
+     * in front, and is asked at most once per process; "Don't ask again" keeps it from coming back.
+     */
+    static void featureNeeded(android.content.Context context, String appletId, EngineFeatures.Feature feature) {
+        if (appletId == null || appletId.isEmpty()) return;
+        android.content.SharedPreferences state = state(context);
+        if (EngineFeatures.switchTarget(feature, engine(state, appletId)) == null || state.getBoolean(engineAskKey(appletId, feature), false)) return;
+        String key = featureKey(appletId, feature);
+        if (featuresAsked.contains(key)) return;
+        featuresWaiting.put(key, feature);
+    }
+
+    @Override public void featureNeeded(Views.Page page, EngineFeatures.Feature feature) {
+        featureNeeded(activity, page.ref.optString("appletId"), feature);
+        askWaitingFeature();
+    }
+
+    void frontChanged(boolean front) {
+        inFront = front;
+        askWaitingFeature();
+    }
+
+    /** Asks about the first feature the applet in front is waiting on, one question at a time. */
+    void askWaitingFeature() {
+        if (!inFront || appletId == null || featureDialog != null || activity.isFinishing()) return;
+        for (Map.Entry<String, EngineFeatures.Feature> waiting : featuresWaiting.entrySet()) {
+            if (!waiting.getKey().equals(featureKey(appletId, waiting.getValue()))) continue;
+            featuresWaiting.remove(waiting.getKey());
+            String to = EngineFeatures.switchTarget(waiting.getValue(), engine(appletId));
+            if (to == null) { askWaitingFeature(); return; }
+            featuresAsked.add(waiting.getKey());
+            askSwitch(appletId, appletName, waiting.getValue(), to, true);
+            return;
+        }
+    }
+
+    /** Applet info's "Needs GeckoView on this phone" row: the user asked, so it always shows. */
+    @Override public void offerSeparateSignIn(String id) {
+        JSONObject entry = ui.entry(id);
+        String to = EngineFeatures.switchTarget(EngineFeatures.Feature.SEPARATE_SIGN_IN, engine(id));
+        if (entry == null || to == null || featureDialog != null) return;
+        askSwitch(id, entry.optString("name"), EngineFeatures.Feature.SEPARATE_SIGN_IN, to, false);
+    }
+
+    private void askSwitch(String id, String name, EngineFeatures.Feature feature, String to, boolean offerQuiet) {
+        boolean gecko = GeckoEngine.ID.equals(to);
+        String from = gecko ? "WebView" : "GeckoView", target = gecko ? "GeckoView" : "Android WebView";
+        String title = feature == EngineFeatures.Feature.SEPARATE_SIGN_IN
+            ? "A separate sign-in needs GeckoView on this phone" : feature.title + " doesn't work in " + from;
+        MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(activity).setTitle(title)
+            .setMessage("Run " + name + " in " + target + " instead? You will need to sign in to its websites again.");
+        com.google.android.material.checkbox.MaterialCheckBox quiet = null;
+        if (offerQuiet) {
+            quiet = new com.google.android.material.checkbox.MaterialCheckBox(activity);
+            quiet.setText("Don't ask again for this applet");
+            FrameLayout box = new FrameLayout(activity);
+            box.setPadding(tokens.dp(20), tokens.dp(8), tokens.dp(24), 0);
+            box.addView(quiet);
+            builder.setView(box);
+        }
+        com.google.android.material.checkbox.MaterialCheckBox remember = quiet;
+        featureDialog = builder
+            .setNegativeButton("Not now", null)
+            .setPositiveButton("Switch to " + target, (dialog, which) -> setEngine(id, to))
+            .setOnDismissListener(dialog -> {
+                if (remember != null && remember.isChecked()) state.edit().putBoolean(engineAskKey(id, feature), true).apply();
+                featureDialog = null;
+                askWaitingFeature();
+            })
+            .show();
+    }
+
     @Override public void addToHomeScreen(String appletId) {
         GenesisApp.runtime(activity).shortcuts.pin(activity, ui.entry(appletId),
             () -> showInfo("Add to home screen", "Your launcher can't add icons. Open the applet from Genesis."));
@@ -1264,7 +1354,10 @@ final class Shell implements Views.Listener, Ui.Actions {
     /** A removed or erased applet's Genesis choices go with it. */
     static void forgetApplet(android.content.Context context, String appletId) {
         forgetProfile(context, appletId);
-        state(context).edit().remove(privacyKey(appletId)).remove(engineKey(appletId)).remove(geckoUsedKey(appletId)).apply();
+        android.content.SharedPreferences.Editor edit = state(context).edit()
+            .remove(privacyKey(appletId)).remove(engineKey(appletId)).remove(geckoUsedKey(appletId));
+        for (EngineFeatures.Feature feature : EngineFeatures.Feature.values()) edit.remove(engineAskKey(appletId, feature));
+        edit.apply();
     }
 
     /**

@@ -200,6 +200,8 @@ public final class Manage {
             for (String origin : origins) content.addView(t.row(R.drawable.ic_website, Ui.host(origin), use, null, false, t.onSurface, null));
             // GeckoView keeps a separate sign-in on every phone; WebView only where it supports profiles.
             if (ui.actions.separateSignInAvailable() || GECKO.equals(ui.actions.engine(appletId))) content.addView(separateSignIn(entry, separate));
+            else content.addView(t.row(R.drawable.ic_lock, "Use a separate sign-in", "Needs GeckoView on this phone", null, true, t.onSurface,
+                () -> ui.actions.offerSeparateSignIn(appletId)));
             content.addView(websiteEngine(entry));
         }
         List<String> services = Ui.strings(entry.optJSONArray("services"));

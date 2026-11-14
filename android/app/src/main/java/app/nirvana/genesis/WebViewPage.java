@@ -296,6 +296,7 @@ final class WebViewPage implements WebsitePage {
 
         // The callback's isReload is wrong for reloads; committed() takes the flags from the listener.
         @Override public void doUpdateVisitedHistory(WebView view, String url, boolean isReload) {
+            if (EngineFeatures.googleRefused(url)) listener.featureNeeded(page, EngineFeatures.Feature.GOOGLE_SIGN_IN);
             if (page.opener != null) { listener.popupNavigated(page, url); return; }
             if (!page.isContext()) return;
             moves++;

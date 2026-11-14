@@ -596,6 +596,20 @@ final class GeckoPage implements WebsitePage {
             return result;
         }
 
+        /**
+         * The site asks for a client certificate from Android's key store, as WebView does. A hidden
+         * page gets none and the handshake fails; Reload asks once the page is shown.
+         */
+        @Override public GeckoResult<PromptResponse> onRequestCertificate(GeckoSession s, CertificateRequest request) {
+            if (!SitePolicy.mayShowUi(page)) return GeckoResult.fromValue(request.dismiss());
+            GeckoResult<PromptResponse> result = new GeckoResult<>();
+            android.security.KeyChain.choosePrivateKeyAlias(activity, alias -> main.post(() -> {
+                if (request.isComplete()) return;
+                result.complete(alias == null ? request.dismiss() : request.confirm(alias));
+            }), null, request.issuers, request.host, -1, null);
+            return result;
+        }
+
         /** A hidden page can't ask; its server's error page shows, as in WebView. */
         @Override public GeckoResult<PromptResponse> onAuthPrompt(GeckoSession s, AuthPrompt prompt) {
             if (!SitePolicy.mayShowUi(page)) return GeckoResult.fromValue(prompt.dismiss());

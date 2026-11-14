@@ -48,6 +48,8 @@ final class Views {
         void download(Page page, String url, String userAgent, String disposition, String mimeType);
         /** The shown website's server asks for a username and password. */
         void httpAuth(Page page, Requests.AuthRequest request, String host, String realm);
+        /** The page ran into a feature its engine lacks; the shell may offer the other engine. */
+        void featureNeeded(Page page, EngineFeatures.Feature feature);
     }
 
     /** The container a revealed context is reparented into, above the foreground. */
