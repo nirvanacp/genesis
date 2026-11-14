@@ -128,6 +128,7 @@ impl Host {
             ShellEvent::JsDialogClosed { view, token } => self.js_dialog_closed(&view, token, now),
             ShellEvent::UserActionDone { token, ok, code, message, result } => self.user_action_done(token, ok, code, message, result),
             ShellEvent::FilesSent { token, ok, code, message } => self.files_sent(token, ok, code, message),
+            ShellEvent::GrantEnded { view, grant, used } => self.grant_ended(&view, grant, used),
         }
         Ok(std::mem::take(&mut self.out))
     }

@@ -8,7 +8,7 @@ use crate::{
 use genesis_contracts::*;
 use serde_json::{Value, json};
 
-const FOREGROUND_METHODS: [&str; 25] = [
+const FOREGROUND_METHODS: [&str; 26] = [
     "ui.ready",
     "storage.get",
     "storage.list",
@@ -28,6 +28,7 @@ const FOREGROUND_METHODS: [&str; 25] = [
     "page.cancel",
     "context.dialog.claim",
     "context.dialog.answer",
+    "context.grant",
     "files.pick",
     "files.release",
     "downloads.save",
@@ -330,6 +331,17 @@ impl Host {
                     return error(ErrorCode::ConfigurationRequired, "Notifications are not declared in applet.json");
                 }
                 self.user_action(view, document_id, request_id, None, UserAction::EnableNotifications, now)
+            }
+            Call::ContextGrant { id, grant } => {
+                let Some(target) = self.context_view(applet_id, &id) else { return unknown_context(&id) };
+                if !self.limits.grants {
+                    return error(ErrorCode::UnknownMethod, "Grants are not available in this Genesis");
+                }
+                // The user taps a revealed website itself, so it needs no grant.
+                if self.session(applet_id).is_some_and(|s| s.revealed.as_deref() == Some(id.as_str())) {
+                    return Outcome::Now(Ok(json!({ "granted": true, "expiresInMs": 0 })));
+                }
+                self.user_action(view, document_id, request_id, Some(target), UserAction::Grant { grant }, now)
             }
             Call::PageFiles { call_id, ids } => match self.page_files(view, document_id, request_id, call_id, ids) {
                 Ok(()) => Outcome::Later,

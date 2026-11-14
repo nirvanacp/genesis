@@ -197,6 +197,15 @@ impl Host {
         Ok(())
     }
 
+    /// The shell ended a context's one-time grant; the foreground learns whether the page used it.
+    pub fn grant_ended(&mut self, view: &ViewRef, grant: GrantKind, used: bool) {
+        let Role::Context(id) = &view.role else { return };
+        if self.context_view(&view.applet_id, id).is_none() {
+            return;
+        }
+        self.foreground_event(&view.applet_id, "context.grantEnded", json!({ "id": id, "grant": grant, "used": used }));
+    }
+
     /// The shell's answer to `SendFiles`: ends the `page.files` request with the file count.
     pub fn files_sent(&mut self, token: u64, succeeded: bool, code: Option<ErrorCode>, message: Option<String>) {
         let sender = self.contexts.sessions.values_mut().find(|s| s.files.sends.contains_key(&token));
