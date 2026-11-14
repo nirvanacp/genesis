@@ -4,7 +4,8 @@ export type { Bound, Limits } from "@genesis/core";
 
 /** The object `addWebMessageListener` installs as `window.__genesisBridge`. */
 export interface BridgeObject {
-  postMessage(message: string): void;
+  /** Text for the host; an `ArrayBuffer` only for the shell's `genesis.*` transfers. */
+  postMessage(message: string | ArrayBuffer): void;
   addEventListener(type: "message", listener: (event: { data: unknown }) => void): void;
 }
 
@@ -32,8 +33,8 @@ export interface Connection {
   on(name: string, handler: (data: any) => void): () => void;
 }
 
-/** The start of a picked-file message from the shell (see `page/files.ts`). */
-const FILE_MESSAGE_PREFIX = '{"type":"genesis.file';
+/** The start of a shell transfer message: picked files (`page/files.ts`) or downloads (`page/downloads.ts`). */
+const SHELL_MESSAGE_PREFIX = '{"type":"genesis.';
 
 /** Time the SDK waits past the host deadline before it gives up on a response itself. */
 const DEADLINE_GRACE_MS = 2000;
@@ -97,8 +98,8 @@ export function connect(bridge: BridgeObject, url: string): Promise<Connection> 
     }
 
     bridge.addEventListener("message", event => {
-      // Picked files from the shell go to the page agent's own listener; they never parse here.
-      if (retired || typeof event.data !== "string" || event.data.startsWith(FILE_MESSAGE_PREFIX)) return;
+      // Shell transfers go to the page agent's own listeners; they never parse here.
+      if (retired || typeof event.data !== "string" || event.data.startsWith(SHELL_MESSAGE_PREFIX)) return;
       let message: any;
       try { message = JSON.parse(event.data); } catch { return; }
       if (message?.type === "refused" && !bound) {

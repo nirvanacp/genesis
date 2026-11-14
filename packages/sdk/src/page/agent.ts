@@ -14,6 +14,7 @@ import {
 import { connect, GenesisError, type BridgeObject, type Connection } from "../bridge.js";
 import { waitUntil } from "./actionable.js";
 import { errorBody, messageOf, PageError } from "./errors.js";
+import { createBlobSender } from "./downloads.js";
 import { createFileReceiver, type FileReceiver } from "./files.js";
 import { scroll, scrollPosition } from "./input.js";
 import { locate, locateAll, type RecordLookup } from "./locate.js";
@@ -47,6 +48,8 @@ export function startAgent(module?: PageModule): void {
   // Picked files come from the shell on the same bridge, beside the host's messages.
   const files = createFileReceiver();
   bridge.addEventListener("message", files.handle);
+  // The website's own blob: downloads, which only this document can read.
+  bridge.addEventListener("message", createBlobSender(bridge));
   let current: Session | null = null;
   view.onChange(() => current?.viewChanged());
   const bind = () => connect(bridge, location.href).then(
