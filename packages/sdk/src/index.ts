@@ -9,6 +9,7 @@ export type { Transport } from "./client/transport.js";
 export type {
   CallOptions,
   ContextHandle,
+  Dialog,
   ContextState,
   Expect,
   InputCallOptions,
@@ -29,6 +30,7 @@ export type {
   ActionOutcome,
   ActionResult,
   CallDetails,
+  DialogKind,
   ElementState,
   ErrorBody,
   ErrorCode,

@@ -5,6 +5,9 @@ import {
   type ActionResult,
   type ContextBound,
   type ContextNavigated,
+  type DialogClosed,
+  type DialogEvent,
+  type DialogKind,
   type ElementState,
   type ErrorBody,
   type ErrorCode,
@@ -46,6 +49,29 @@ export interface ContextState {
   canGoForward: boolean;
   /** Why the context's document is gone, until the next one binds. */
   error: ErrorBody | null;
+}
+
+/**
+ * A JavaScript dialog (`alert`, `confirm`, `prompt` or `beforeunload`) of a hidden context's page.
+ * The page waits until the user answers it through the applet.
+ */
+export interface Dialog {
+  /** The context whose page opened it. */
+  readonly context: string;
+  readonly kind: DialogKind;
+  /** The page's text, at most 2000 characters. */
+  readonly message: string;
+  /** A prompt's prefilled value. */
+  readonly defaultValue?: string;
+  /** The page's origin, such as `https://example.com`. */
+  readonly origin: string;
+  /**
+   * The user's answer: OK when `accept`, else Cancel. `value` is a prompt's text (only a prompt
+   * takes one). Resolves without sending once the dialog has closed.
+   */
+  answer(accept: boolean, value?: string): Promise<void>;
+  /** Resolves once the dialog was answered, or closed because its page navigated or went away. */
+  readonly closed: Promise<void>;
 }
 
 /** How an input's destination is judged when it leaves the page. */
@@ -140,6 +166,16 @@ export interface ContextHandle {
   /** Cancels the inputs that have not reached the page yet. */
   cancel(): void;
 
+  /** The page's open dialog that this applet shows, or null. */
+  readonly dialog: Dialog | null;
+  /**
+   * Shows the hidden page's JavaScript dialogs in the applet. While at least one handler is
+   * registered, the client claims each dialog at once and passes it to every handler; the applet
+   * must show it and answer with the user's choice. Without a handler, Genesis reveals the
+   * website about a second later and shows the dialog there.
+   */
+  onDialog(handler: (dialog: Dialog) => void): () => void;
+
   /**
    * Opens a watch. The same `id` with an equal specification returns the same watch; another
    * specification throws `CONFLICT` while the watch is open. A closed watch keeps its copies of
@@ -164,6 +200,8 @@ export interface ContextControl {
   started(url: string): void;
   gone(data: { code?: string; message?: string }): void;
   emit(data: PageEmitEvent): void;
+  dialog(data: DialogEvent): void;
+  dialogClosed(data: DialogClosed): void;
   resumed(): void;
   retired(): void;
 }
@@ -218,6 +256,53 @@ export function createContext(id: string, startUrl: string, session: Session): C
   /** Clears `loading` when a started navigation never commits, such as a download or a cancelled load. */
   let loadingTimer: ReturnType<typeof setTimeout> | null = null;
   const navigationListeners = new Set<(navigation: ContextNavigated) => void>();
+  const dialogHandlers = new Set<(dialog: Dialog) => void>();
+  /** The claimed open dialog, with its id and the function that marks it closed. */
+  let openDialog: { id: number; dialog: Dialog; close(): void } | null = null;
+
+  function closeDialog(dialogId: number) {
+    if (openDialog?.id !== dialogId) return;
+    const { close } = openDialog;
+    openDialog = null;
+    close();
+  }
+
+  function showDialog(data: DialogEvent) {
+    if (data.id !== id || dialogHandlers.size === 0) return;
+    if (openDialog) closeDialog(openDialog.id);
+    let close!: () => void;
+    const closed = new Promise<void>(resolve => { close = resolve; });
+    const dialogId = data.dialogId;
+    const dialog: Dialog = {
+      context: id,
+      kind: data.kind,
+      message: data.message,
+      ...(data.defaultValue !== undefined ? { defaultValue: data.defaultValue } : {}),
+      origin: data.origin,
+      closed,
+      async answer(accept, value) {
+        if (openDialog?.id !== dialogId) return;
+        const params = value === undefined ? { id, dialogId, accept } : { id, dialogId, accept, value };
+        try {
+          await session.request("context.dialog.answer", params);
+        } catch (error) {
+          // The dialog closed while the answer was on its way.
+          if (!(error instanceof GenesisError && error.code === "NOT_FOUND")) throw error;
+        }
+        closeDialog(dialogId);
+      },
+    };
+    openDialog = { id: dialogId, dialog, close };
+    // A claim that comes too late finds the dialog shown over the website instead.
+    session.request("context.dialog.claim", { id, dialogId }).catch(() => closeDialog(dialogId));
+    for (const handler of [...dialogHandlers]) {
+      try {
+        handler(dialog);
+      } catch (error) {
+        console.error("Genesis dialog handler failed", error);
+      }
+    }
+  }
 
   function set(patch: Partial<ContextState>) {
     const next = { ...state, ...patch };
@@ -589,6 +674,12 @@ export function createContext(id: string, startUrl: string, session: Session): C
       session.request("page.cancel", { context: id }).catch(fail("page.cancel"));
     },
 
+    get dialog() { return openDialog?.dialog ?? null; },
+    onDialog(handler) {
+      dialogHandlers.add(handler);
+      return () => { dialogHandlers.delete(handler); };
+    },
+
     watch: watch as ContextHandle["watch"],
     resync: resyncAll,
     forget,
@@ -641,8 +732,11 @@ export function createContext(id: string, startUrl: string, session: Session): C
       if (!entry || entry.openIn !== data.generation) return;
       if (entry.store.emit(data) === "resync") resyncWatch(entry);
     },
+    dialog: showDialog,
+    dialogClosed: data => { if (data.id === id) closeDialog(data.dialogId); },
     resumed: resyncAll,
     retired() {
+      if (openDialog) closeDialog(openDialog.id);
       for (const record of [...inputs.values()]) {
         record.abort?.();
         settle(record, { outcome: "unknown", code: "RETIRED", message: "This page was closed" });

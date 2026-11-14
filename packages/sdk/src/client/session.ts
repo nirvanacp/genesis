@@ -4,6 +4,8 @@ import {
   type Compat,
   type ContextBound,
   type ContextNavigated,
+  type DialogClosed,
+  type DialogEvent,
   type Hello,
   type Limits,
   type Manifest,
@@ -199,6 +201,8 @@ function createGenesis(session: Session): Genesis {
   session.on("context.started", (data: { id: string; url: string }) => of(data.id)?.started(data.url));
   session.on("context.gone", (data: { id: string; code?: string; message?: string }) => of(data.id)?.gone(data));
   session.on("page.emit", (data: PageEmitEvent) => of(data.context)?.emit(data));
+  session.on("context.dialog", (data: DialogEvent) => of(data.id)?.dialog(data));
+  session.on("context.dialogClosed", (data: DialogClosed) => of(data.id)?.dialogClosed(data));
 
   const listeners = { resume: new Set<() => void>(), suspend: new Set<() => void>(), retired: new Set<() => void>() };
   const call = (set: Set<() => void>) => { for (const listener of [...set]) listener(); };
