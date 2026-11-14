@@ -122,9 +122,7 @@ impl Host {
             ShellEvent::RemoveApplet { applet_id } => self.remove_applet(&applet_id),
             ShellEvent::ClearData { applet_id } => self.clear_data(&applet_id),
             ShellEvent::KeepVersion { applet_id } => self.keep_version(&applet_id),
-            ShellEvent::JsDialog { view, token, kind, message, default_value, url } => {
-                self.js_dialog(view, token, kind, message, default_value, url, now)
-            }
+            ShellEvent::JsDialog { view, token } => self.js_dialog(&view, token, now),
             ShellEvent::JsDialogClosed { view, token } => self.js_dialog_closed(&view, token, now),
             ShellEvent::UserActionDone { token, ok, code, message, result } => self.user_action_done(token, ok, code, message, result),
             ShellEvent::FilesSent { token, ok, code, message } => self.files_sent(token, ok, code, message),
@@ -667,7 +665,7 @@ impl Host {
             return;
         }
         // The old page's dialog went with it.
-        self.end_dialog(&view.applet_id, id, None, true, now);
+        self.end_dialog(&view.applet_id, id, None, now);
         let origin = |u: &str| url::Url::parse(u).map(|u| u.origin().ascii_serialization()).ok();
         match self.documents.current_mut(&view) {
             Some(document) if !document.started && origin(&document.url).is_some_and(|o| Some(o) == origin(&url)) => {
@@ -807,7 +805,7 @@ impl Host {
         }
     }
 
-    /// One live applet's deadlines: its page calls, its dialogs' claims, its Back slot, its
+    /// One live applet's deadlines: its page calls, its Back slot, its
     /// unbound documents and its suspension. A call whose context has a dialog open waits.
     fn tick_session(&mut self, applet_id: &str, now: u64) {
         let Some(session) = self.session_mut(applet_id) else { return };
@@ -816,7 +814,6 @@ impl Host {
         for (_, handle) in expired {
             self.fail_call(applet_id, &handle, ErrorBody::new(ErrorCode::Deadline, "The page did not answer the call in time"));
         }
-        self.expire_dialog_claims(applet_id, now);
         let Some(session) = self.session_mut(applet_id) else { return };
         if session.back.as_ref().is_some_and(|slot| slot.deadline_ms <= now) {
             session.back = None;

@@ -8,7 +8,7 @@ use crate::{
 use genesis_contracts::*;
 use serde_json::{Value, json};
 
-const FOREGROUND_METHODS: [&str; 26] = [
+const FOREGROUND_METHODS: [&str; 24] = [
     "ui.ready",
     "storage.get",
     "storage.list",
@@ -26,8 +26,6 @@ const FOREGROUND_METHODS: [&str; 26] = [
     "back.leave",
     "page.call",
     "page.cancel",
-    "context.dialog.claim",
-    "context.dialog.answer",
     "context.grant",
     "files.pick",
     "files.release",
@@ -142,10 +140,7 @@ impl Host {
                 self.foreground_event(&view.applet_id, "context.bound", data);
             }
             // A new foreground knows none of the old one's watches and calls; the pages drop them.
-            Role::Foreground => {
-                self.reset_contexts(&view.applet_id);
-                self.resend_dialogs(&view.applet_id, crate::host::now_ms());
-            }
+            Role::Foreground => self.reset_contexts(&view.applet_id),
         }
         // An opened link started the applet; the foreground shows that context once bound, and
         // its routes decide between the applet's screen and the website.
@@ -308,10 +303,6 @@ impl Host {
                 self.page_emit(view, stream, kind, seq, page_view, url, data)
             }
             Call::PageInput { call_id, events } => self.page_input(view, document_id, request_id, call_id, events),
-            Call::DialogClaim { id, dialog_id } => Outcome::Now(self.claim_dialog(applet_id, &id, dialog_id)),
-            Call::DialogAnswer { id, dialog_id, accept, value } => {
-                Outcome::Now(self.answer_dialog(applet_id, &id, dialog_id, accept, value, now))
-            }
             Call::FilesPick { accept, multiple } => {
                 let accept = accept.into_iter().map(|a| a.trim().to_ascii_lowercase()).collect();
                 self.user_action(view, document_id, request_id, None, UserAction::PickFiles { accept, multiple }, now)

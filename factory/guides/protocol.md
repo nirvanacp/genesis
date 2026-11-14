@@ -128,8 +128,6 @@ Params and results use the field names shown.
 | `back.leave` | `{}` | `{}`. Leaves the applet. |
 | `page.call` | `{ context, generation, op, args, timeoutMs? }` | The operation's value (see [Page operations](#page-operations)). |
 | `page.cancel` | `{ context, callId? }` | `{}` |
-| `context.dialog.claim` | `{ id, dialogId }` | `{}`. The foreground shows the dialog itself (see [Website dialogs](#website-dialogs)). |
-| `context.dialog.answer` | `{ id, dialogId, accept, value? }` | `{}`. The user's answer: OK when `accept`, else Cancel. |
 | `context.grant` | `{ id, grant }` | `{ granted: true, expiresInMs }`. Lets a hidden context's page use one website feature once (see [Grants](#grants)). |
 | `files.pick` | `{ accept?, multiple? }` | `{ files: [{ id, name, type, size }] }`, empty when the user cancels (see [User actions](#user-actions)). |
 | `files.release` | `{ ids }` | `{}`. Lets go of picked files. |
@@ -179,9 +177,7 @@ Events the foreground receives:
 | `context.gone` | `{ id, code, message }`. The context's document is gone without a replacement, for example `NOT_READY` when a page on a declared origin did not bind within `limits.documentReadyMs`. |
 | `user.viewWebsite` | `{ id }`. The user chose View website in the Genesis menu. `id` is the revealed context, or null when none is revealed (the foreground then picks its active context). |
 | `user.done` | `{ id }`. The user tapped Done on the website bar. `id` is the revealed context or null. |
-| `user.showContext` | `{ id }`. A link opened the applet in this context, or Genesis revealed it for an unclaimed dialog; show it. |
-| `context.dialog` | `{ id, dialogId, kind, message, defaultValue?, origin }`. A hidden context's page opened a JavaScript dialog (see [Website dialogs](#website-dialogs)). |
-| `context.dialogClosed` | `{ id, dialogId }`. The dialog ended without the foreground's answer. |
+| `user.showContext` | `{ id }`. A link opened the applet in this context; show it. |
 | `context.grantEnded` | `{ id, grant, used }`. A grant from `context.grant` was used, or ended unused (see [Grants](#grants)). |
 | `back` | `{}`. The user pressed Back; answer with `back.handled` or `back.leave`. |
 | `retired` | `{}`. The document will get no more answers. |
@@ -491,20 +487,11 @@ The agent never reads or writes the value of a password field, a hidden input, o
 
 ## Website dialogs
 
-A page's `alert`, `confirm`, `prompt` and `beforeunload` dialogs block the page until they are answered. On a revealed context, its popup and the foreground, they are WebView's own dialogs. On a hidden context, the host sends the foreground `context.dialog`:
+A page's `alert`, `confirm`, `prompt` and `beforeunload` dialogs block the page until they are answered. On a revealed context, its popup and the foreground, they are WebView's own dialogs. On a hidden context, the shell shows Genesis's own dialog at once, over the applet UI and titled with the page's origin; the website stays hidden and the foreground receives no message. The user's answer goes straight to the page.
 
-```json
-{ "type": "event", "documentId": "d3", "name": "context.dialog", "data": { "id": "main", "dialogId": 7, "kind": "confirm", "message": "Delete this item?", "origin": "https://example.com" } }
-```
-
-- `kind` is `alert`, `confirm`, `prompt` or `beforeunload`. `message` and `defaultValue` (a prompt's prefilled value) are cut to 2000 characters. `origin` is the page's origin, not its URL.
-- A context has at most one open dialog. The foreground that shows it sends `context.dialog.claim` within 1 second, then `context.dialog.answer` with the user's choice. Answer only with what the user chose.
-- Without a claim within 1 second, the host reveals the context, sends `user.showContext`, and the shell shows the dialog over the website, titled with its origin. Once the user answers it there, the foreground receives `context.dialogClosed`. The website stays revealed until the user taps Done; a foreground that keeps its UI shown for that page answers `user.done` with `context.cover`.
-- `context.dialog.answer` takes `value` only for a `prompt`, at most 2000 characters, else `INVALID_ARGUMENT`. A prompt accepted without `value` gets its default value. Claim and answer answer `NOT_FOUND` when `dialogId` is not the context's open dialog or the shell already shows it.
-- When the page navigates or goes away while the dialog is open, the dialog is cancelled and the foreground receives `context.dialogClosed`.
-- A new foreground receives `context.dialog` again for each open dialog that the shell does not show yet, with a new claim window.
+- The dialog shows the site's exact message, a field for a prompt, OK, and Cancel for every kind but `alert`. Android Back cancels it.
+- When the page navigates or goes away while the dialog is open, the dialog is cancelled.
 - While a dialog is open, the context's page calls do not use up their budget: when the dialog ends, the host adds the time it was open to each of their deadlines. The page agent keeps its own clock for waits and evidence, so an effect that appears only later after a long dialog can still end as `unknown` with `DEADLINE`.
-- `limits.dialogs` is true when the host sends `context.dialog`. It is absent in an older Genesis.
 
 ## User actions
 
@@ -613,7 +600,6 @@ A hidden context's page cannot show UI of its own: it may not go fullscreen, dow
 | `historyEntriesMax` | History entries per watch whose last copy the client keeps. |
 | `watchesMax` | Open watches per context document. |
 | `trustedInput` | True when the shell can send real input to a hidden context. Absent in an older Genesis. |
-| `dialogs` | True when a hidden page's JavaScript dialogs reach the foreground as `context.dialog`. Absent in an older Genesis. |
 | `userActions` | True when the foreground can pick files, save, share, open links in apps and turn on notifications, and attach picked files with `attachFiles`. Absent in an older Genesis. |
 | `grants` | True when the foreground can let a hidden page use one website feature once with `context.grant`. Absent in an older Genesis. |
 | `inputBurst`, `inputRefillMs` | A context's input budget: input page calls at once (20), and milliseconds for one to come back (1000). Absent in an older Genesis, which has no budget. |
