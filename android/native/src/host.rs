@@ -11,7 +11,8 @@ use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, HashMap},
     path::{Path, PathBuf},
-    time::{SystemTime, UNIX_EPOCH},
+    sync::OnceLock,
+    time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
 /// An applet in the background longer than this is retired and recreated on resume.
@@ -44,13 +45,22 @@ pub struct Host {
     pub deletions: HashMap<u64, Deletion>,
 }
 
+/// Wall-clock milliseconds since the Unix epoch, for times that are saved, sent out of the host or
+/// compared with a time from outside it.
 pub fn now_ms() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
 }
 
+/// Milliseconds since the host first asked, from a clock that a change of the phone's time does
+/// not move. For deadlines, timers and budgets compared only inside this process.
+pub fn mono_ms() -> u64 {
+    static START: OnceLock<Instant> = OnceLock::new();
+    START.get_or_init(Instant::now).elapsed().as_millis() as u64
+}
+
 impl Host {
     pub fn dispatch(&mut self, event: ShellEvent) -> Result<Vec<ShellCommand>, String> {
-        let now = now_ms();
+        let now = mono_ms();
         match event {
             ShellEvent::Attach { files_dir, debuggable } => {
                 self.end_flow();
@@ -230,7 +240,7 @@ impl Host {
         // pages stopped, starts the applet now.
         let resumed = self.contexts.resumed_window.as_deref() == Some(applet_id);
         if resumed && (opens_link || !self.is_live(applet_id)) {
-            self.window_resumed(applet_id, now_ms());
+            self.window_resumed(applet_id, mono_ms());
         }
     }
 

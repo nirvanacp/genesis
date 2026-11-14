@@ -1,6 +1,6 @@
 //! Document messages: handshake, role authorization and method dispatch.
 use crate::{
-    contexts::{CallHandle, InputBudget, PACED_OPS},
+    contexts::{CallHandle, InputBudget, CALL_INPUTS_MAX, PACED_OPS},
     documents::PendingOp,
     host::Host,
     services::{self, ServiceCall},
@@ -62,24 +62,43 @@ impl Host {
         if !self.is_live(&view.applet_id) {
             return;
         }
+        if payload.len() > self.limits.message_max_bytes {
+            return self.refuse_too_large(&view, payload);
+        }
         let Ok(message) = serde_json::from_str::<DocumentMessage>(payload) else { return };
         match message {
             DocumentMessage::Hello { protocol, url } => self.hello(view, protocol, url),
             DocumentMessage::Request { document_id, request_id, method, params } => {
                 let Some(current) = self.documents.current(&view).map(|d| d.id.clone()) else { return };
-                if document_id.is_some_and(|id| id != current) {
-                    return; // From a retired document.
+                // Every request of a bound document names it; one that does not is from a
+                // retired document, or from a page script posting on its own.
+                if document_id.is_none_or(|id| id != current) {
+                    return;
                 }
-                let outcome = if payload.len() > self.limits.message_max_bytes {
-                    error(ErrorCode::MessageTooLarge, "The message is too large")
-                } else {
-                    self.call(&view, &current, request_id, &method, params, now)
-                };
-                if let Outcome::Now(result) = outcome {
+                if let Outcome::Now(result) = self.call(&view, &current, request_id, &method, params, now) {
                     self.respond(&view, &current, request_id, result);
                 }
             }
         }
+    }
+
+    /// Answers a request over the size limit with `MESSAGE_TOO_LARGE`, reading only its type and
+    /// ids so the large parameters are never built. Anything else that large is dropped.
+    fn refuse_too_large(&mut self, view: &ViewRef, payload: &str) {
+        #[derive(serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Envelope {
+            #[serde(rename = "type")]
+            kind: String,
+            document_id: Option<String>,
+            request_id: Option<u64>,
+        }
+        let Ok(Envelope { kind, document_id, request_id: Some(request_id) }) = serde_json::from_str::<Envelope>(payload) else { return };
+        let Some(current) = self.documents.current(view).map(|d| d.id.clone()) else { return };
+        if kind != "request" || document_id.is_none_or(|id| id != current) {
+            return;
+        }
+        self.respond(view, &current, request_id, Err(ErrorBody::new(ErrorCode::MessageTooLarge, "The message is too large")));
     }
 
     /// Binds a new document. A context document takes the context's next generation and
@@ -405,7 +424,8 @@ impl Host {
         if session.calls.values().filter(|c| c.context_id == context).count() >= self.limits.pending_requests_max {
             return error(ErrorCode::QuotaExceeded, "Too many open calls in this context");
         }
-        if PACED_OPS.contains(&op.as_str()) {
+        let paced = PACED_OPS.contains(&op.as_str());
+        if paced {
             let (burst, refill_ms) = (self.limits.input_burst, u64::from(self.limits.input_refill_ms));
             let budget = session.input_budgets.entry(context.clone()).or_insert_with(|| InputBudget::full(burst, now));
             if let Err(retry_after_ms) = budget.take(now, burst, refill_ms) {
@@ -424,6 +444,8 @@ impl Host {
             navigating: false,
             completed_steps: None,
             deadline_ms: now + budget_ms,
+            paced,
+            inputs: 0,
         };
         let call_id = session.begin_call(handle);
         self.event(&target, "call", json!({ "callId": call_id, "op": op, "args": args, "deadlineMs": budget_ms }));
@@ -509,7 +531,7 @@ impl Host {
             return error(ErrorCode::InvalidArgument, format!("page.input types at most {INPUT_TEXT_MAX} characters"));
         }
         let Role::Context(id) = &view.role else { unreachable!() };
-        let Some(session) = self.session(&view.applet_id) else {
+        let Some(session) = self.contexts.sessions.get_mut(&view.applet_id) else {
             return error(ErrorCode::Retired, "The applet is not active");
         };
         // The view already committed another document, which this one's input would reach. The
@@ -517,12 +539,23 @@ impl Host {
         if session.contexts.get(id).is_some_and(|c| c.navigating_since.is_some()) {
             return error(ErrorCode::ContextReplaced, "The page changed before the input");
         }
-        let Some(handle) = session.calls.get(&call_id).filter(|c| c.context_document == document_id) else {
+        let revealed = session.revealed.as_ref() == Some(id);
+        let Some(handle) = session.calls.get_mut(&call_id).filter(|c| c.context_document == document_id) else {
             return error(ErrorCode::NotFound, "page.input needs an open call of this page");
         };
-        if session.revealed.as_ref() == Some(id) {
+        if revealed {
             return error(ErrorCode::InputUnavailable, "Trusted input goes only to a hidden page");
         }
+        // Taps, keys and text act on the website, so only a call that spent the input budget sends
+        // them. Any call may move the pointer, for a trusted hover.
+        let pointer_only = events.iter().all(|e| matches!(e, InputEvent::Hover { .. } | InputEvent::HoverExit));
+        if !handle.paced && !pointer_only {
+            return error(ErrorCode::InputUnavailable, "Trusted taps, keys and text need an input operation");
+        }
+        if handle.inputs >= CALL_INPUTS_MAX {
+            return error(ErrorCode::InputUnavailable, format!("One call sends trusted input at most {CALL_INPUTS_MAX} times"));
+        }
+        handle.inputs += 1;
         let op = PendingOp { view: view.clone(), document_id: document_id.into(), request_id, deadline_ms: handle.deadline_ms };
         let token = self.documents.begin_op(op);
         self.out.push(ShellCommand::Input { view: view.clone(), token, events });

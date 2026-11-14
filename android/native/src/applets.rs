@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
+    io::Write,
     path::{Path, PathBuf},
     time::UNIX_EPOCH,
 };
@@ -72,6 +73,8 @@ pub struct Applets {
     installed: BTreeMap<String, Installed>,
     sources: BTreeMap<String, Source>,
     removed_bundled: BTreeSet<String>,
+    /// `index.json` did not parse and could not be moved aside, so it is never overwritten.
+    index_kept: bool,
 }
 
 impl Applets {
@@ -80,10 +83,7 @@ impl Applets {
     /// longer parses stays as outdated.
     pub fn load(files_dir: &Path) -> Self {
         let root = files_dir.join("applets");
-        let entries: Vec<IndexEntry> = fs::read(root.join("index.json"))
-            .ok()
-            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
-            .unwrap_or_default();
+        let (entries, index_kept) = read_index(&root.join("index.json"));
         let mut sources = BTreeMap::new();
         let installed = entries
             .into_iter()
@@ -109,7 +109,7 @@ impl Applets {
             .ok()
             .and_then(|bytes| serde_json::from_slice(&bytes).ok())
             .unwrap_or_default();
-        let mut applets = Self { root, installed, sources, removed_bundled };
+        let mut applets = Self { root, installed, sources, removed_bundled, index_kept };
         applets.sources.retain(|id, _| applets.installed.contains_key(id));
         applets
     }
@@ -293,6 +293,9 @@ impl Applets {
     }
 
     fn write_index(&self) -> Result<(), String> {
+        if self.index_kept {
+            return Err("The list of installed applets cannot be read. Restart Genesis.".into());
+        }
         let entries: Vec<IndexEntry> = self
             .installed
             .iter()
@@ -313,6 +316,52 @@ impl Applets {
         let encoded = serde_json::to_vec(&entries).map_err(|e| e.to_string())?;
         write_atomic(&self.root.join("index.json"), &encoded)
     }
+}
+
+/// Reads `index.json` entry by entry, so one entry this Genesis cannot read loses only itself.
+/// An entry whose source does not parse is kept without one, as an entry from before sources.
+/// A file that is not a JSON array is moved to `index.json.bad`, so the next write cannot replace
+/// the only copy, and the index starts empty. A missing file is an empty index. The flag is set
+/// when an unreadable file could not be moved, so it must not be written over.
+fn read_index(path: &Path) -> (Vec<IndexEntry>, bool) {
+    let Ok(bytes) = fs::read(path) else { return (Vec::new(), false) };
+    let Ok(values) = serde_json::from_slice::<Vec<serde_json::Value>>(&bytes) else {
+        let bad = path.with_extension("json.bad");
+        let kept = match fs::rename(path, &bad) {
+            Ok(()) => {
+                eprintln!("genesis-host: {} is not a list of applets; moved it to {}", path.display(), bad.display());
+                false
+            }
+            Err(error) => {
+                eprintln!("genesis-host: {} is not a list of applets and cannot be moved: {error}", path.display());
+                true
+            }
+        };
+        return (Vec::new(), kept);
+    };
+    let entries = values
+        .into_iter()
+        .filter_map(|mut value| {
+            if let Ok(entry) = serde_json::from_value::<IndexEntry>(value.clone()) {
+                return Some(entry);
+            }
+            if let Some(object) = value.as_object_mut() {
+                object.remove("source");
+            }
+            let id = value.get("appletId").and_then(|id| id.as_str()).unwrap_or("?").to_string();
+            match serde_json::from_value::<IndexEntry>(value) {
+                Ok(entry) => {
+                    eprintln!("genesis-host: index entry {id} has a source this Genesis cannot read; kept without it");
+                    Some(entry)
+                }
+                Err(error) => {
+                    eprintln!("genesis-host: skipped index entry {id}: {error}");
+                    None
+                }
+            }
+        })
+        .collect();
+    (entries, false)
 }
 
 /// Reads a revision's `bundle.json` without assuming its format, then parses it fully when current.
@@ -417,16 +466,26 @@ fn write_revision(directory: &Path, bundle: &Bundle, files: VerifiedFiles) -> Re
         fs::write(&target, bytes).map_err(|e| format!("Cannot write {path}: {e}"))?;
     }
     let metadata = serde_json::to_vec(bundle).map_err(|e| e.to_string())?;
-    fs::write(directory.join("bundle.json"), metadata).map_err(|e| format!("Cannot write bundle.json: {e}"))
+    write_atomic(&directory.join("bundle.json"), &metadata).map_err(|e| format!("Cannot write bundle.json: {e}"))
 }
 
+/// Replaces the file so that, after a power loss, it holds either the old or the new bytes.
 pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
-    if let Some(parent) = path.parent() {
+    let parent = path.parent();
+    if let Some(parent) = parent {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     let temporary = path.with_extension("tmp");
-    fs::write(&temporary, bytes).map_err(|e| e.to_string())?;
-    fs::rename(&temporary, path).map_err(|e| e.to_string())
+    let mut file = fs::File::create(&temporary).map_err(|e| e.to_string())?;
+    file.write_all(bytes).and_then(|()| file.sync_all()).map_err(|e| e.to_string())?;
+    drop(file);
+    fs::rename(&temporary, path).map_err(|e| e.to_string())?;
+    // The rename itself is durable once the directory is synced. Some file systems refuse to
+    // sync a directory; the file is written either way.
+    if let Some(directory) = parent.and_then(|p| fs::File::open(p).ok()) {
+        let _ = directory.sync_all();
+    }
+    Ok(())
 }
 
 /// The ASCII origin of a URL, such as `https://news.ycombinator.com`.

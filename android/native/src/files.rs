@@ -58,7 +58,7 @@ pub fn action_problem(action: &UserAction) -> Result<(), ErrorBody> {
             }
         }
         UserAction::Save { url, filename } => {
-            let data = url.len() >= 5 && url[..5].eq_ignore_ascii_case("data:");
+            let data = url.get(..5).is_some_and(|scheme| scheme.eq_ignore_ascii_case("data:"));
             if data && url.len() > SAVE_DATA_URL_MAX {
                 return Err(invalid("downloads.save takes a data: URL of at most 2 MiB"));
             }
