@@ -490,6 +490,9 @@ final class Shell implements Views.Listener, Ui.Actions {
         actions.run(appletId, token, view, action);
     }
 
+    /** Posts picked files to the page agent of `ref`'s page, for its `attachFiles`. */
+    void sendFiles(JSONObject ref, long token, JSONArray files) { actions.send(pages.get(key(ref)), token, files); }
+
     /** The applet let go of these picked files. */
     void releaseFiles(JSONArray ids) { actions.release(ids); }
 

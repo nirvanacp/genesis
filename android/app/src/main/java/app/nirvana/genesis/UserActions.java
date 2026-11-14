@@ -28,9 +28,15 @@ import java.security.SecureRandom;
 import java.util.Collections;
 import java.util.Locale;
 import java.util.Map;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import androidx.webkit.JavaScriptReplyProxy;
+import androidx.webkit.WebViewFeature;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -49,6 +55,8 @@ final class UserActions {
     /** Reads picked files off the UI thread. */
     static final ExecutorService IO = Executors.newSingleThreadExecutor();
     private static final SecureRandom RANDOM = new SecureRandom();
+    /** Bytes per base64 chunk when the WebView cannot post an ArrayBuffer. */
+    private static final int CHUNK_BYTES = 128 * 1024;
 
     /** One picked file. */
     static final class PickedFile {
@@ -283,6 +291,126 @@ final class UserActions {
         }
         if (in == null) return new WebResourceResponse("text/plain", "utf-8", 404, "Not Found", Collections.emptyMap(), new ByteArrayInputStream(new byte[0]));
         return new WebResourceResponse(file.mime, null, 200, "OK", Collections.singletonMap("Cache-Control", "no-store"), in);
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Sending files to a page
+
+    /** Thrown when a transfer stops; `code` is the error code `filesSent` reports. */
+    private static final class Stopped extends Exception {
+        final String code;
+
+        Stopped(String code, String message) {
+            super(message);
+            this.code = code;
+        }
+    }
+
+    /**
+     * Posts picked files to the page agent through the page's reply proxy, then answers `filesSent`.
+     * The bytes never pass the host. Each file is a header, then one ArrayBuffer message, or base64
+     * chunks where the WebView cannot post one, and the transfer ends with `genesis.filesEnd`.
+     * Files are read on `IO`, one piece at a time; only posting runs on the UI thread.
+     */
+    void send(Views.Page page, long token, JSONArray refs) {
+        JavaScriptReplyProxy reply = page == null ? null : page.reply;
+        if (reply == null) { answer(sent(token, "CONTEXT_REPLACED", "The page is gone")); return; }
+        List<PickedFile> picked = new ArrayList<>();
+        for (int i = 0; i < refs.length(); i++) {
+            PickedFile file = file(refs.optJSONObject(i) == null ? "" : refs.optJSONObject(i).optString("id"));
+            if (file == null) { answer(sent(token, "FILE_UNAVAILABLE", "A picked file expired or was released")); return; }
+            picked.add(file);
+        }
+        boolean buffers = WebFeatures.has(WebViewFeature.WEB_MESSAGE_ARRAY_BUFFER);
+        IO.execute(() -> {
+            try {
+                for (int index = 0; index < picked.size(); index++) sendFile(page, reply, token, index, picked.get(index), buffers);
+                post(page, reply, message("genesis.filesEnd", token));
+                answer(sent(token, null, null));
+            } catch (Stopped stopped) {
+                answer(sent(token, stopped.code, stopped.getMessage()));
+            }
+        });
+    }
+
+    private void sendFile(Views.Page page, JavaScriptReplyProxy reply, long token, int index, PickedFile file, boolean buffers) throws Stopped {
+        try (InputStream in = activity.getContentResolver().openInputStream(file.uri)) {
+            if (in == null) throw new Stopped("FILE_UNAVAILABLE", file.name + " can no longer be read");
+            JSONObject header = message("genesis.file", token).put("index", index).put("name", file.name).put("mime", file.mime).put("size", file.size);
+            if (buffers) {
+                byte[] bytes = read(in, file.size);
+                post(page, reply, header.toString());
+                post(page, reply, bytes);
+                return;
+            }
+            int chunks = (int) ((file.size + CHUNK_BYTES - 1) / CHUNK_BYTES);
+            post(page, reply, header.put("chunks", chunks).toString());
+            long left = file.size;
+            for (int seq = 0; seq < chunks; seq++) {
+                byte[] piece = read(in, Math.min(CHUNK_BYTES, left));
+                left -= piece.length;
+                String data = Base64.encodeToString(piece, Base64.NO_WRAP);
+                post(page, reply, message("genesis.fileChunk", token).put("index", index).put("seq", seq).put("data", data).toString());
+            }
+            if (in.read() != -1) throw new Stopped("FILE_UNAVAILABLE", file.name + " changed after it was picked");
+        } catch (IOException | SecurityException | JSONException error) {
+            throw new Stopped("FILE_UNAVAILABLE", file.name + " can no longer be read");
+        }
+    }
+
+    /** Exactly `length` bytes, or FILE_UNAVAILABLE when the file is shorter than when it was picked. */
+    private static byte[] read(InputStream in, long length) throws IOException, Stopped {
+        byte[] bytes = new byte[(int) length];
+        int done = 0;
+        while (done < bytes.length) {
+            int count = in.read(bytes, done, bytes.length - done);
+            if (count < 0) throw new Stopped("FILE_UNAVAILABLE", "A picked file changed after it was picked");
+            done += count;
+        }
+        return bytes;
+    }
+
+    /** Posts on the UI thread and waits, so pieces go out in order and one at a time. */
+    private void post(Views.Page page, JavaScriptReplyProxy reply, Object payload) throws Stopped {
+        boolean[] posted = { false };
+        CountDownLatch latch = new CountDownLatch(1);
+        main.post(() -> {
+            // A new document has a new reply proxy: the files were meant for the old one.
+            if (page.reply == reply) {
+                if (payload instanceof byte[]) reply.postMessage((byte[]) payload);
+                else reply.postMessage((String) payload);
+                posted[0] = true;
+            }
+            latch.countDown();
+        });
+        try {
+            if (!latch.await(30, TimeUnit.SECONDS)) throw new Stopped("DEADLINE", "The page did not take the files in time");
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+            throw new Stopped("DEADLINE", "The transfer was interrupted");
+        }
+        if (!posted[0]) throw new Stopped("CONTEXT_REPLACED", "The page changed while the files were sent");
+    }
+
+    /** A transfer message; `type` comes first so the page tells it from the host's messages without parsing. */
+    private static JSONObject message(String type, long token) throws Stopped {
+        try { return new JSONObject().put("type", type).put("token", token); }
+        catch (JSONException error) { throw new Stopped("FILE_UNAVAILABLE", "The transfer could not start"); }
+    }
+
+    private void post(Views.Page page, JavaScriptReplyProxy reply, JSONObject message) throws Stopped {
+        post(page, reply, message.toString());
+    }
+
+    /** A `filesSent` event: ok when `code` is null. */
+    static JSONObject sent(long token, String code, String message) {
+        try {
+            JSONObject event = Bridge.event("filesSent").put("token", token).put("ok", code == null);
+            if (code != null) event.put("code", code).put("message", message);
+            return event;
+        } catch (JSONException error) {
+            throw new IllegalStateException(error);
+        }
     }
 
     // -----------------------------------------------------------------------------------------

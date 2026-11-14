@@ -146,6 +146,12 @@ final class Router {
                 else later(UserActions.done(command.getLong("token"), "NOT_FOUND", "The applet's window is closed", null));
                 break;
             }
+            case "sendFiles": {
+                Shell shell = view(command, type);
+                if (shell != null) shell.sendFiles(command.getJSONObject("view"), command.getLong("token"), command.getJSONArray("files"));
+                else later(UserActions.sent(command.getLong("token"), "CONTEXT_REPLACED", "The applet's window is closed"));
+                break;
+            }
             case "releaseFiles": { Shell shell = applets.get(command.getString("appletId")); if (shell != null) shell.releaseFiles(command.getJSONArray("ids")); break; }
             case "showWindow": { Shell shell = view(command, type); if (shell != null) shell.showWindow(command.getJSONObject("view"), command.getString("url")); break; }
             case "revealForeground": { Shell shell = named(command, type); if (shell != null) shell.revealForeground(); break; }
