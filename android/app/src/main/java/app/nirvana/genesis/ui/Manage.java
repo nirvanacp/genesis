@@ -328,9 +328,13 @@ public final class Manage {
         String appletId = entry.optString("appletId"), name = entry.optString("name");
         String to = GECKO.equals(engine) ? "GeckoView" : "Android WebView";
         String from = GECKO.equals(engine) ? "WebView" : "GeckoView";
+        // Only GeckoView keeps a separate sign-in on every phone; WebView needs multi-profile support.
+        boolean losesSeparate = ui.actions.separateSignIn(appletId) && !GECKO.equals(engine) && !ui.actions.separateSignInAvailable();
+        String shared = losesSeparate
+            ? " This phone's WebView can't keep a separate sign-in, so " + name + " will share the sign-in other applets use there." : "";
         new MaterialAlertDialogBuilder(ui.activity)
             .setTitle("Switch " + name + " to " + to + "?")
-            .setMessage(name + " reloads, and you'll sign in to its websites again in " + to + ". Your sign-ins in " + from + " stay.")
+            .setMessage(name + " reloads, and you'll sign in to its websites again in " + to + ". Your sign-ins in " + from + " stay." + shared)
             .setNegativeButton("Cancel", null)
             .setPositiveButton("Switch", (dialog, which) -> ui.actions.setEngine(appletId, engine))
             .show();

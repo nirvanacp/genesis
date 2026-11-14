@@ -51,8 +51,10 @@ final class GeckoSites extends SiteData {
     /** GeckoView reads no cookies outside a page; a download reaches the shell with its body instead. */
     @Override String cookies(String url) { return null; }
 
-    /** GeckoView reads no cookies outside a page, so Settings cannot tell; it shows the site signed out. */
+    /** GeckoView reads no cookies outside a page, so Settings cannot tell. */
     @Override public boolean hasCookies(String origin) { return false; }
+
+    @Override public boolean readsCookies() { return false; }
 
     /**
      * GeckoView clears by host and by site (base domain), across every jar, which is coarser than

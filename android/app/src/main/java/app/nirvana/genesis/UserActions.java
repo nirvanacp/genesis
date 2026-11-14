@@ -2,7 +2,6 @@ package app.nirvana.genesis;
 
 import android.app.Activity;
 import android.content.ContentResolver;
-import android.content.ContentValues;
 import android.content.Intent;
 import android.database.Cursor;
 import android.net.Uri;
@@ -10,7 +9,6 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
-import android.provider.MediaStore;
 import android.provider.OpenableColumns;
 import android.util.Base64;
 import android.webkit.MimeTypeMap;
@@ -18,11 +16,8 @@ import android.webkit.URLUtil;
 import android.webkit.WebResourceResponse;
 import android.widget.Toast;
 import java.io.ByteArrayInputStream;
-import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.Collections;
@@ -109,10 +104,12 @@ final class UserActions {
     void run(String appletId, long token, JSONObject view, JSONObject action) {
         String kind = action.optString("kind");
         if (kind.equals("share") && view != null) {
-            // The website's own Share button: the host checked the page's user activation; the
-            // shell checks that the user still sees that website.
+            // The website's own Share button: the user sees that website and just lifted a finger
+            // on it. The page's own claim of user activation is not trusted; one touch shares once.
             Views.Page page = shell.page(view);
             if (page == null || !page.isRevealed()) { answer(done(token, "USER_ACTION_REQUIRED", "The website shares only while it is shown", null)); return; }
+            if (!SitePolicy.touchedRecently(page)) { answer(done(token, "USER_ACTION_REQUIRED", "The website shares only after a tap on it", null)); return; }
+            page.touchedAt = 0;
             share(token, text(action, "title"), text(action, "text"), text(action, "url"));
             return;
         }
@@ -197,7 +194,7 @@ final class UserActions {
         }
         String name = filename != null ? filename : data.name();
         try {
-            write(name, data.mime, data.bytes);
+            Downloads.write(activity, name, data.mime, new ByteArrayInputStream(data.bytes), data.bytes.length);
         } catch (IOException | RuntimeException error) {
             answer(done(token, "STORAGE_FAILURE", "The file couldn't be saved: " + error.getMessage(), null));
             return;
@@ -206,33 +203,8 @@ final class UserActions {
         answer(done(token, null, null, object("started", true)));
     }
 
-    /** A website's own `data:` download, which the shell already allowed. `filename` may be null. */
-    void saveDownload(String url, String filename) {
-        IO.execute(() -> {
-            try {
-                Data data = decode(url);
-                saveBytes(filename != null ? filename : data.name(), data.mime, data.bytes);
-            } catch (IllegalArgumentException error) {
-                main.post(() -> Toast.makeText(activity, "The download couldn't be read", Toast.LENGTH_SHORT).show());
-            }
-        });
-    }
-
-    /** Writes a website's download to Downloads and tells the user how it went. Runs on `IO`. */
-    void saveBytes(String name, String mime, byte[] bytes) {
-        String message;
-        try {
-            write(name, mime, bytes);
-            message = "Saved " + name + " to Downloads";
-        } catch (IOException | RuntimeException error) {
-            message = "The file couldn't be saved";
-        }
-        String text = message;
-        main.post(() -> Toast.makeText(activity, text, Toast.LENGTH_SHORT).show());
-    }
-
     /** A decoded `data:` URL. */
-    private static final class Data {
+    static final class Data {
         final String mime;
         final byte[] bytes;
 
@@ -242,17 +214,11 @@ final class UserActions {
         }
 
         /** `download`, with the extension of the type when Android knows one. */
-        String name() { return defaultName(mime); }
-    }
-
-    /** `download`, with the extension of `mime` when Android knows one. */
-    static String defaultName(String mime) {
-        String extension = MimeTypeMap.getSingleton().getExtensionFromMimeType(mime);
-        return "download" + (extension == null ? "" : "." + extension);
+        String name() { return Downloads.defaultName(mime); }
     }
 
     /** Throws IllegalArgumentException with the reason when the URL has no data or bad base64. */
-    private static Data decode(String url) {
+    static Data decode(String url) {
         int comma = url.indexOf(',');
         if (comma < 0) throw new IllegalArgumentException("The data: URL has no data");
         String meta = url.substring(5, comma);
@@ -265,33 +231,6 @@ final class UserActions {
         } catch (IllegalArgumentException error) {
             throw new IllegalArgumentException("The data: URL is not valid base64");
         }
-    }
-
-    /** Android 10+ writes to the public Downloads folder; 8 and 9 to Genesis's own, as `startDownload` does. */
-    private void write(String name, String mime, byte[] bytes) throws IOException {
-        if (Build.VERSION.SDK_INT >= 29) {
-            ContentResolver resolver = activity.getContentResolver();
-            ContentValues values = new ContentValues();
-            values.put(MediaStore.Downloads.DISPLAY_NAME, name);
-            values.put(MediaStore.Downloads.MIME_TYPE, mime);
-            values.put(MediaStore.Downloads.IS_PENDING, 1);
-            Uri item = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
-            if (item == null) throw new IOException("Downloads is not available");
-            try (OutputStream out = resolver.openOutputStream(item)) {
-                if (out == null) throw new IOException("Downloads is not available");
-                out.write(bytes);
-            } catch (IOException | RuntimeException error) {
-                resolver.delete(item, null, null);
-                throw error;
-            }
-            values.clear();
-            values.put(MediaStore.Downloads.IS_PENDING, 0);
-            resolver.update(item, values, null, null);
-            return;
-        }
-        File folder = activity.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS);
-        if (folder == null || (!folder.isDirectory() && !folder.mkdirs())) throw new IOException("Downloads is not available");
-        try (OutputStream out = new FileOutputStream(new File(folder, name))) { out.write(bytes); }
     }
 
     private void share(long token, String title, String text, String url) {

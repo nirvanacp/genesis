@@ -46,7 +46,7 @@ Copy the templates from [templates/github](../templates/github/) into the reposi
 | `dependabot.yml` | `.github/dependabot.yml` |
 | `gitattributes` | `.gitattributes` |
 
-In both workflows, replace each `<genesis-sha>` with the same full commit sha of a Genesis commit on GitHub. The check workflow runs on pull requests and pushes to `main`; the release workflow runs on `v*` and `*/v*` tags. `.gitattributes` keeps published builds byte for byte, so a checkout on another system never changes a bundle's hash. Make sure no `.gitignore` rule covers `published/`.
+In both workflows, replace each `<genesis-sha>` with the same full commit sha of a Genesis commit on GitHub. The check workflow runs on pull requests and on pushes to `main` and `develop`; the release workflow runs on `v*` and `*/v*` tags. `.gitattributes` keeps published builds byte for byte, so a checkout on another system never changes a bundle's hash. Make sure no `.gitignore` rule covers `published/`.
 
 The repository must be public: Genesis reads releases without an account.
 

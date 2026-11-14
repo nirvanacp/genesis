@@ -16,7 +16,9 @@ import android.net.Uri;
  *
  * Not detectable, so not listed: full screen from a context page (GeckoView lets only the active
  * session go full screen; the page gets no error), protected media (both answer key-system
- * requests; a refusal shows only as the site's own error) and passkeys (no engine callback).
+ * requests; a refusal shows only as the site's own error), passkeys (no engine callback) and
+ * colour inputs (GeckoView draws no colour picker and Genesis offers none there, so a colour
+ * input keeps its value; the page gets no error).
  */
 final class EngineFeatures {
     private EngineFeatures() {}

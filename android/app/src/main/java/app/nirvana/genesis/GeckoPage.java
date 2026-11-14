@@ -110,6 +110,9 @@ final class GeckoPage implements WebsitePage {
             List<Runnable> loads = waiting;
             waiting = null;
             for (Runnable load : loads) load.run();
+        }, () -> {
+            // Without its bridge the page can't run; the host offers Reload, which opens it again.
+            if (!destroyed) listener.rendererGone(page);
         });
     }
 
@@ -217,6 +220,8 @@ final class GeckoPage implements WebsitePage {
         main.removeCallbacksAndMessages(null);
         port = null;
         closeDialog();
+        page.fullScreen = false;
+        forgetAnswers();
         if (fullParent != null) {
             fullParent = null;
             listener.hideFullScreen();
@@ -438,7 +443,8 @@ final class GeckoPage implements WebsitePage {
             fullIndex = fullParent.indexOfChild(view);
             fullParams = view.getLayoutParams();
             fullParent.removeView(view);
-            listener.showFullScreen(new Requests.FullScreen(view, () -> {
+            page.fullScreen = true;
+            listener.showFullScreen(new Requests.FullScreen(page, view, () -> {
                 restoreView();
                 if (!destroyed) session.exitFullScreen();
             }));
@@ -446,16 +452,27 @@ final class GeckoPage implements WebsitePage {
 
         /**
          * A response GeckoView does not show, such as an attachment, goes to the shell's download.
-         * GeckoView has no cookie read yet, so the download goes without the site's cookies.
+         * The body GeckoView already fetched with the page's session is saved as is, so the file
+         * comes with the site's cookies; GeckoView has no cookie read for a second fetch.
          */
         @Override public void onExternalResponse(GeckoSession s, org.mozilla.geckoview.WebResponse response) {
-            if (response.body != null) {
-                try { response.body.close(); } catch (java.io.IOException ignored) { /* The shell fetches the URL again. */ }
-            }
             String type = header(response.headers, "Content-Type");
             if (type != null && type.contains(";")) type = type.substring(0, type.indexOf(';')).trim();
-            listener.download(page, response.uri, GeckoSession.getDefaultUserAgent(), header(response.headers, "Content-Disposition"), type);
+            String disposition = header(response.headers, "Content-Disposition");
+            if (response.body == null) {
+                listener.download(page, response.uri, GeckoSession.getDefaultUserAgent(), disposition, type);
+                return;
+            }
+            // The body arrives decoded, so a `Content-Length` of an encoded response is not its size.
+            long length = header(response.headers, "Content-Encoding") != null ? -1 : length(header(response.headers, "Content-Length"));
+            listener.downloadResponse(page, response.uri, response.body, disposition, type, length);
         }
+    }
+
+    /** A `Content-Length` value, or -1 when it is missing or not a number. */
+    private static long length(String value) {
+        if (value == null) return -1;
+        try { return Long.parseLong(value.trim()); } catch (NumberFormatException error) { return -1; }
     }
 
     private static String header(Map<String, String> headers, String name) {
@@ -523,6 +540,7 @@ final class GeckoPage implements WebsitePage {
 
     /** Puts the view back where it was before the full screen. */
     private void restoreView() {
+        page.fullScreen = false;
         ViewGroup parent = fullParent;
         fullParent = null;
         if (parent == null || destroyed) return;
@@ -538,15 +556,63 @@ final class GeckoPage implements WebsitePage {
     }
 
     /**
-     * One website dialog, shown only while the page is; a hidden page's dialog is dismissed, as
-     * the page's own navigation dismisses an open one. `field` is the text field's start value,
-     * or null for none; `ok` turns the field's text into the answer.
+     * One website prompt on screen, in one dialog or several in turn. The prompt is answered once:
+     * by `answer`, or with a dismissal when its last dialog closes unanswered, as when the page is
+     * hidden or destroyed. When GeckoView withdraws the prompt, its dialog closes.
+     */
+    private final class Asking {
+        private final GeckoSession.PromptDelegate.BasePrompt prompt;
+        final GeckoResult<GeckoSession.PromptDelegate.PromptResponse> result = new GeckoResult<>();
+        private boolean answered;
+        /** The prompt's dialog on screen; one that a following dialog replaced no longer answers. */
+        private android.app.Dialog current;
+
+        Asking(GeckoSession.PromptDelegate.BasePrompt prompt) {
+            this.prompt = prompt;
+            prompt.setDelegate(new GeckoSession.PromptDelegate.PromptInstanceDelegate() {
+                @Override public void onPromptDismiss(GeckoSession.PromptDelegate.BasePrompt dismissed) {
+                    answered = true;
+                    if (current != null) current.dismiss();
+                }
+            });
+        }
+
+        void answer(GeckoSession.PromptDelegate.PromptResponse response) {
+            if (answered) return;
+            answered = true;
+            result.complete(response);
+        }
+
+        /** Shows `next` as the prompt's dialog, in place of the one before. */
+        void show(android.app.Dialog next) {
+            current = next;
+            dialog = next;
+            next.setOnDismissListener(d -> {
+                if (dialog == next) dialog = null;
+                if (current == next && !answered) answer(prompt.dismiss());
+            });
+            next.show();
+        }
+    }
+
+    /**
+     * Starts a prompt's dialogs, only while the page is shown; a hidden page's prompt is dismissed,
+     * as the page's own navigation dismisses an open one. Returns null when it was dismissed.
+     */
+    private Asking ask(GeckoSession.PromptDelegate.BasePrompt prompt) {
+        if (!SitePolicy.mayShowUi(page)) return null;
+        closeDialog();
+        return new Asking(prompt);
+    }
+
+    /**
+     * One website dialog. `field` is the text field's start value, or null for none; `ok` turns
+     * the field's text into the answer.
      */
     private GeckoResult<GeckoSession.PromptDelegate.PromptResponse> showDialog(GeckoSession.PromptDelegate.BasePrompt prompt,
             String message, String field, boolean cancel, Function<String, GeckoSession.PromptDelegate.PromptResponse> ok) {
-        if (!SitePolicy.mayShowUi(page)) return GeckoResult.fromValue(prompt.dismiss());
-        closeDialog();
-        GeckoResult<GeckoSession.PromptDelegate.PromptResponse> result = new GeckoResult<>();
+        Asking asking = ask(prompt);
+        if (asking == null) return GeckoResult.fromValue(prompt.dismiss());
         android.widget.EditText input = null;
         if (field != null) {
             input = new android.widget.EditText(activity);
@@ -554,15 +620,10 @@ final class GeckoPage implements WebsitePage {
             input.setText(field);
         }
         android.widget.EditText text = input;
-        boolean[] answered = { false };
         MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(activity)
             .setTitle(Ui.host(Views.origin(url == null ? "" : url)) + " says")
             .setMessage(message)
-            .setPositiveButton(android.R.string.ok, (d, w) -> {
-                if (answered[0]) return;
-                answered[0] = true;
-                result.complete(ok.apply(text == null ? null : text.getText().toString()));
-            });
+            .setPositiveButton(android.R.string.ok, (d, w) -> asking.answer(ok.apply(text == null ? null : text.getText().toString())));
         if (cancel) builder.setNegativeButton(android.R.string.cancel, null);
         if (text != null) {
             android.widget.FrameLayout frame = new android.widget.FrameLayout(activity);
@@ -571,22 +632,166 @@ final class GeckoPage implements WebsitePage {
             frame.addView(text);
             builder.setView(frame);
         }
-        android.app.Dialog shown = builder.create();
-        shown.setOnDismissListener(d -> {
-            if (dialog == shown) dialog = null;
-            if (answered[0]) return;
-            answered[0] = true;
-            result.complete(prompt.dismiss());
-        });
-        prompt.setDelegate(new GeckoSession.PromptDelegate.PromptInstanceDelegate() {
-            @Override public void onPromptDismiss(GeckoSession.PromptDelegate.BasePrompt dismissed) {
-                answered[0] = true;
-                shown.dismiss();
+        asking.show(builder.create());
+        return asking.result;
+    }
+
+    /**
+     * A `<select>`: single and menu choices answer on a tap, a multiple choice with OK. Group
+     * labels show as disabled rows above their options; separators are left out.
+     */
+    private GeckoResult<GeckoSession.PromptDelegate.PromptResponse> choose(GeckoSession.PromptDelegate.ChoicePrompt prompt) {
+        Asking asking = ask(prompt);
+        if (asking == null) return GeckoResult.fromValue(prompt.dismiss());
+        List<GeckoSession.PromptDelegate.ChoicePrompt.Choice> rows = new ArrayList<>();
+        List<Boolean> enabled = new ArrayList<>();
+        addChoices(prompt.choices, false, rows, enabled);
+        boolean multiple = prompt.type == GeckoSession.PromptDelegate.ChoicePrompt.Type.MULTIPLE;
+        boolean single = prompt.type == GeckoSession.PromptDelegate.ChoicePrompt.Type.SINGLE;
+        List<String> labels = new ArrayList<>();
+        for (GeckoSession.PromptDelegate.ChoicePrompt.Choice choice : rows) labels.add(choice.label == null ? "" : choice.label);
+        int layout = multiple ? android.R.layout.simple_list_item_multiple_choice
+            : single ? android.R.layout.simple_list_item_single_choice : android.R.layout.simple_list_item_1;
+        android.widget.ArrayAdapter<String> adapter = new android.widget.ArrayAdapter<>(activity, layout, labels) {
+            @Override public boolean areAllItemsEnabled() { return false; }
+
+            @Override public boolean isEnabled(int position) { return enabled.get(position); }
+
+            @Override public View getView(int position, View convert, ViewGroup parent) {
+                View row = super.getView(position, convert, parent);
+                row.setEnabled(enabled.get(position));
+                return row;
             }
-        });
-        dialog = shown;
-        shown.show();
-        return result;
+        };
+        android.widget.ListView list = new android.widget.ListView(activity);
+        list.setAdapter(adapter);
+        list.setChoiceMode(multiple ? android.widget.ListView.CHOICE_MODE_MULTIPLE
+            : single ? android.widget.ListView.CHOICE_MODE_SINGLE : android.widget.ListView.CHOICE_MODE_NONE);
+        for (int i = 0; i < rows.size(); i++) if (rows.get(i).selected && enabled.get(i)) list.setItemChecked(i, true);
+        MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(activity).setView(list);
+        String title = prompt.title != null && !prompt.title.isEmpty() ? prompt.title : prompt.message;
+        if (title != null && !title.isEmpty()) builder.setTitle(title);
+        if (multiple) {
+            builder.setNegativeButton(android.R.string.cancel, null).setPositiveButton(android.R.string.ok, (d, w) -> {
+                List<GeckoSession.PromptDelegate.ChoicePrompt.Choice> chosen = new ArrayList<>();
+                // A disabled option the website selected stays selected; the user cannot change it.
+                for (int i = 0; i < rows.size(); i++) {
+                    GeckoSession.PromptDelegate.ChoicePrompt.Choice row = rows.get(i);
+                    boolean kept = enabled.get(i) ? list.isItemChecked(i) : row.items == null && row.selected;
+                    if (kept) chosen.add(row);
+                }
+                asking.answer(prompt.confirm(chosen.toArray(new GeckoSession.PromptDelegate.ChoicePrompt.Choice[0])));
+            });
+        }
+        android.app.Dialog shown = builder.create();
+        if (!multiple) {
+            list.setOnItemClickListener((parent, row, position, id) -> {
+                asking.answer(prompt.confirm(rows.get(position)));
+                shown.dismiss();
+            });
+        }
+        asking.show(shown);
+        return asking.result;
+    }
+
+    /** Flattens choices into rows; a group's label is a disabled row, and a disabled group disables its options. */
+    private static void addChoices(GeckoSession.PromptDelegate.ChoicePrompt.Choice[] choices, boolean disabled,
+            List<GeckoSession.PromptDelegate.ChoicePrompt.Choice> rows, List<Boolean> enabled) {
+        if (choices == null) return;
+        for (GeckoSession.PromptDelegate.ChoicePrompt.Choice choice : choices) {
+            if (choice.separator) continue;
+            boolean off = disabled || choice.disabled;
+            rows.add(choice);
+            enabled.add(choice.items == null && !off);
+            if (choice.items != null) addChoices(choice.items, off, rows, enabled);
+        }
+    }
+
+    /**
+     * A date, month, time or local date and time input: Android's date picker, then its time
+     * picker for a date and time. The pickers start at the input's value and keep within its
+     * minimum and maximum dates. Clear empties the input. A week input has no Android picker and
+     * is dismissed.
+     */
+    private GeckoResult<GeckoSession.PromptDelegate.PromptResponse> pickDateTime(GeckoSession.PromptDelegate.DateTimePrompt prompt) {
+        int type = prompt.type;
+        if (type == GeckoSession.PromptDelegate.DateTimePrompt.Type.WEEK) return GeckoResult.fromValue(prompt.dismiss());
+        Asking asking = ask(prompt);
+        if (asking == null) return GeckoResult.fromValue(prompt.dismiss());
+        String value = prompt.defaultValue == null ? "" : prompt.defaultValue;
+        int[] date = parseDate(type == GeckoSession.PromptDelegate.DateTimePrompt.Type.TIME ? "" : value);
+        int[] time = parseTime(type == GeckoSession.PromptDelegate.DateTimePrompt.Type.TIME ? value
+            : value.indexOf('T') >= 0 ? value.substring(value.indexOf('T') + 1) : "");
+        if (type == GeckoSession.PromptDelegate.DateTimePrompt.Type.TIME) { asking.show(timeDialog(asking, prompt, time, null)); return asking.result; }
+        android.app.DatePickerDialog picker = new android.app.DatePickerDialog(activity, (view, year, month, day) -> {
+            int[] picked = { year, month, day };
+            if (type == GeckoSession.PromptDelegate.DateTimePrompt.Type.DATETIME_LOCAL) asking.show(timeDialog(asking, prompt, time, picked));
+            else if (type == GeckoSession.PromptDelegate.DateTimePrompt.Type.MONTH) asking.answer(prompt.confirm(String.format(java.util.Locale.ROOT, "%04d-%02d", year, month + 1)));
+            else asking.answer(prompt.confirm(formatDate(picked)));
+        }, date[0], date[1], date[2]);
+        int[] min = parseDateOrNull(prompt.minValue), max = parseDateOrNull(prompt.maxValue);
+        try {
+            if (min != null) picker.getDatePicker().setMinDate(millis(min));
+            if (max != null) picker.getDatePicker().setMaxDate(millis(max));
+        } catch (IllegalArgumentException ignored) { /* A minimum after the maximum; the picker keeps its full range. */ }
+        picker.setButton(android.content.DialogInterface.BUTTON_NEUTRAL, "Clear", (d, w) -> asking.answer(prompt.confirm("")));
+        asking.show(picker);
+        return asking.result;
+    }
+
+    /** The time picker; with `date`, it completes a local date and time. */
+    private android.app.Dialog timeDialog(Asking asking, GeckoSession.PromptDelegate.DateTimePrompt prompt, int[] time, int[] date) {
+        android.app.TimePickerDialog picker = new android.app.TimePickerDialog(activity, (view, hour, minute) -> {
+            String picked = String.format(java.util.Locale.ROOT, "%02d:%02d", hour, minute);
+            asking.answer(prompt.confirm(date == null ? picked : formatDate(date) + "T" + picked));
+        }, time[0], time[1], android.text.format.DateFormat.is24HourFormat(activity));
+        picker.setButton(android.content.DialogInterface.BUTTON_NEUTRAL, "Clear", (d, w) -> asking.answer(prompt.confirm("")));
+        return picker;
+    }
+
+    private static String formatDate(int[] date) {
+        return String.format(java.util.Locale.ROOT, "%04d-%02d-%02d", date[0], date[1] + 1, date[2]);
+    }
+
+    /** `yyyy-MM-dd` or `yyyy-MM` (the start of an input's value) as year, zero-based month and day; today when unreadable. */
+    private static int[] parseDate(String value) {
+        int[] date = parseDateOrNull(value);
+        if (date != null) return date;
+        java.util.Calendar now = java.util.Calendar.getInstance();
+        return new int[] { now.get(java.util.Calendar.YEAR), now.get(java.util.Calendar.MONTH), now.get(java.util.Calendar.DAY_OF_MONTH) };
+    }
+
+    private static int[] parseDateOrNull(String value) {
+        if (value == null) return null;
+        java.util.regex.Matcher match = java.util.regex.Pattern.compile("^(\\d{4,})-(\\d{2})(?:-(\\d{2}))?").matcher(value);
+        if (!match.find()) return null;
+        try {
+            int month = Integer.parseInt(match.group(2)) - 1;
+            int day = match.group(3) == null ? 1 : Integer.parseInt(match.group(3));
+            if (month < 0 || month > 11 || day < 1 || day > 31) return null;
+            return new int[] { Integer.parseInt(match.group(1)), month, day };
+        } catch (NumberFormatException error) {
+            return null;
+        }
+    }
+
+    /** `HH:mm`, with optional seconds, as hour and minute; the current time when unreadable. */
+    private static int[] parseTime(String value) {
+        java.util.regex.Matcher match = java.util.regex.Pattern.compile("^(\\d{2}):(\\d{2})").matcher(value);
+        if (match.find()) {
+            int hour = Integer.parseInt(match.group(1)), minute = Integer.parseInt(match.group(2));
+            if (hour < 24 && minute < 60) return new int[] { hour, minute };
+        }
+        java.util.Calendar now = java.util.Calendar.getInstance();
+        return new int[] { now.get(java.util.Calendar.HOUR_OF_DAY), now.get(java.util.Calendar.MINUTE) };
+    }
+
+    /** The start of the local day, as the date picker's limits take it. */
+    private static long millis(int[] date) {
+        java.util.Calendar day = java.util.Calendar.getInstance();
+        day.clear();
+        day.set(date[0], date[1], date[2]);
+        return day.getTimeInMillis();
     }
 
     /**
@@ -626,6 +831,12 @@ final class GeckoPage implements WebsitePage {
         @Override public GeckoResult<PromptResponse> onBeforeUnloadPrompt(GeckoSession s, BeforeUnloadPrompt prompt) {
             return hiddenDialog(prompt, "beforeunload", "", null, text -> prompt.confirm(AllowOrDeny.ALLOW));
         }
+
+        /** A `<select>`'s options; a hidden page's is dismissed, as its file input is. */
+        @Override public GeckoResult<PromptResponse> onChoicePrompt(GeckoSession s, ChoicePrompt prompt) { return choose(prompt); }
+
+        /** A date or time input's picker; a hidden page's is dismissed, as its file input is. */
+        @Override public GeckoResult<PromptResponse> onDateTimePrompt(GeckoSession s, DateTimePrompt prompt) { return pickDateTime(prompt); }
 
         /** The same file selection as WebView's chooser; a hidden page gets none. */
         @Override public GeckoResult<PromptResponse> onFilePrompt(GeckoSession s, FilePrompt prompt) {
@@ -678,7 +889,9 @@ final class GeckoPage implements WebsitePage {
     /**
      * Permissions follow WebView's: website pages get protected media (EME) without asking, shown
      * or hidden; location, camera and microphone only for the shown website, through `SiteGrants`.
-     * Everything else is refused.
+     * Everything else is refused. A refusal by policy answers "ask again", so Gecko stores no denial
+     * for a page that never asked the user, and the user's location answers last only as long as the
+     * page, as WebView's do: `destroy` resets them. One the process ends before resetting stays.
      */
     private final class Permissions implements GeckoSession.PermissionDelegate {
         @Override public GeckoResult<Integer> onContentPermissionRequest(GeckoSession s, ContentPermission permission) {
@@ -687,34 +900,47 @@ final class GeckoPage implements WebsitePage {
                 case PERMISSION_AUTOPLAY_INAUDIBLE:
                     return GeckoResult.fromValue(ContentPermission.VALUE_ALLOW);
                 case PERMISSION_GEOLOCATION: {
-                    if (!SitePolicy.mayUse(page, SitePolicy.LOCATION)) return GeckoResult.fromValue(ContentPermission.VALUE_DENY);
+                    if (!SitePolicy.mayUse(page, SitePolicy.LOCATION)) return GeckoResult.fromValue(ContentPermission.VALUE_PROMPT);
                     listener.useGrant(page);
                     GeckoResult<Integer> result = new GeckoResult<>();
-                    listener.askSite(page, Views.origin(permission.uri), List.of(SiteGrants.LOCATION), allowed ->
-                        result.complete(allowed.contains(SiteGrants.LOCATION) ? ContentPermission.VALUE_ALLOW : ContentPermission.VALUE_DENY));
+                    String origin = Views.origin(permission.uri);
+                    listener.askSite(page, origin, List.of(SiteGrants.LOCATION), allowed -> {
+                        // Only the user's own Allow or Don't allow is an answer Gecko keeps, until
+                        // `destroy` resets it. A cancelled or interrupted question asks again.
+                        int answer = allowed.contains(SiteGrants.LOCATION) ? ContentPermission.VALUE_ALLOW
+                            : Boolean.FALSE.equals(page.site.grants().get(origin, SiteGrants.LOCATION)) ? ContentPermission.VALUE_DENY
+                            : ContentPermission.VALUE_PROMPT;
+                        if (destroyed) answer = ContentPermission.VALUE_PROMPT;
+                        if (answer != ContentPermission.VALUE_PROMPT) answers.add(permission);
+                        result.complete(answer);
+                    });
                     return result;
                 }
                 default:
-                    return GeckoResult.fromValue(ContentPermission.VALUE_DENY);
+                    return GeckoResult.fromValue(ContentPermission.VALUE_PROMPT);
             }
         }
 
         /**
-         * GeckoView asks for Android's permission before the website's own question. One Genesis
-         * already holds is granted; otherwise the shown website asks through `SiteGrants`, whose
-         * question includes Android's request, and a hidden page is refused.
+         * GeckoView asks for Android's permission before the website's own question. A hidden page is
+         * refused first, even for a permission Genesis already holds, unless its location grant
+         * covers the request. One Genesis holds is then granted; otherwise the shown website asks
+         * through `SiteGrants`, whose question includes Android's request.
          */
         @Override public void onAndroidPermissionsRequest(GeckoSession s, String[] permissions, Callback callback) {
-            if (permissions == null || permissions.length == 0 || held(permissions)) { callback.grant(); return; }
+            if (permissions == null || permissions.length == 0) { callback.grant(); return; }
             Set<String> wanted = new LinkedHashSet<>();
+            boolean unknown = false;
             for (String name : permissions) {
                 String grant = siteGrant(name);
-                if (grant == null) { callback.reject(); return; }
-                wanted.add(grant);
+                if (grant == null) unknown = true;
+                else wanted.add(grant);
             }
             // A hidden context's location grant is used by the website's own question, which follows.
-            boolean located = wanted.equals(Set.of(SiteGrants.LOCATION)) && SitePolicy.granted(page, SitePolicy.LOCATION);
+            boolean located = !unknown && wanted.equals(Set.of(SiteGrants.LOCATION)) && SitePolicy.granted(page, SitePolicy.LOCATION);
             if (!SitePolicy.mayShowUi(page) && !located) { callback.reject(); return; }
+            if (held(permissions)) { callback.grant(); return; }
+            if (unknown) { callback.reject(); return; }
             listener.askSite(page, Views.origin(url == null ? "" : url), new ArrayList<>(wanted), allowed -> {
                 if (allowed.containsAll(wanted)) callback.grant();
                 else callback.reject();
@@ -736,6 +962,18 @@ final class GeckoPage implements WebsitePage {
                 callback.grant(grantVideo, grantAudio);
             });
         }
+    }
+
+    /** The user's location answers for this page, which `destroy` turns back to "ask". */
+    private final List<GeckoSession.PermissionDelegate.ContentPermission> answers = new ArrayList<>();
+
+    private void forgetAnswers() {
+        if (answers.isEmpty()) return;
+        org.mozilla.geckoview.StorageController storage = GeckoEngine.runtime(activity).getStorageController();
+        for (GeckoSession.PermissionDelegate.ContentPermission answer : answers) {
+            storage.setPermission(answer, GeckoSession.PermissionDelegate.ContentPermission.VALUE_PROMPT);
+        }
+        answers.clear();
     }
 
     private boolean held(String[] permissions) {

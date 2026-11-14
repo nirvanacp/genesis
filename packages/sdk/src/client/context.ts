@@ -106,6 +106,7 @@ export interface ContextHandle {
   /** Runs after each committed navigation, once `state` reflects it. */
   onNavigated(listener: (navigation: ContextNavigated) => void): () => void;
 
+  /** Navigations reject with a `GenesisError` when Genesis refuses them, such as a URL outside the declared origins. */
   navigate(url: string, options?: { mode?: NavigateMode }): Promise<void>;
   back(steps?: number): Promise<void>;
   forward(): Promise<void>;
@@ -191,6 +192,15 @@ export interface ContextControl {
   retired(): void;
 }
 
+/** Runs one subscriber, so a subscriber that throws does not stop the others. */
+function call(listener: () => void) {
+  try {
+    listener();
+  } catch (error) {
+    console.error("Genesis context listener failed", error);
+  }
+}
+
 /** Answers that mean "try again on the next document". */
 const RETRY = new Set(["CONTEXT_REPLACED", "NOT_READY"]);
 /** The shortest time between two resyncs of one watch. */
@@ -246,7 +256,7 @@ export function createContext(id: string, startUrl: string, session: Session): C
     const next = { ...state, ...patch };
     if ((Object.keys(patch) as (keyof ContextState)[]).every(key => next[key] === state[key])) return;
     state = next;
-    for (const listener of [...listeners]) listener();
+    for (const listener of [...listeners]) call(listener);
   }
 
   /** Resolves true once `condition` holds, false after `ms` or on `abort`. */
@@ -308,7 +318,7 @@ export function createContext(id: string, startUrl: string, session: Session): C
 
   function pendingChanged() {
     pendingCache = new Map();
-    for (const listener of [...pendingListeners]) listener();
+    for (const listener of [...pendingListeners]) call(listener);
   }
 
   function pending(target?: Locator): readonly PendingInput[] {
@@ -537,9 +547,10 @@ export function createContext(id: string, startUrl: string, session: Session): C
   const fail = (method: string) => (error: unknown) => {
     if (!(error instanceof GenesisError && error.code === "RETIRED")) console.error(`Genesis ${method} failed`, error);
   };
+  /** Rejects with the host's `GenesisError` when Genesis refuses the navigation. */
   const navigation = (method: "context.navigate" | "context.back" | "context.forward" | "context.reload", params: Record<string, unknown>) => {
     leftBy();
-    return session.request(method, { id, ...params }).then(() => {}, fail(method));
+    return session.request(method, { id, ...params }).then(() => {});
   };
 
   const handle: ContextHandle = {
@@ -552,7 +563,8 @@ export function createContext(id: string, startUrl: string, session: Session): C
       return () => { navigationListeners.delete(listener); };
     },
     navigate(url, options = {}) {
-      const absolute = new URL(url, state.url).href;
+      let absolute: string;
+      try { absolute = new URL(url, state.url).href; } catch { return Promise.reject(new GenesisError("INVALID_ARGUMENT", `Not a URL: ${url}`)); }
       return navigation("context.navigate", { url: absolute, mode: options.mode ?? "push" });
     },
     back: steps => navigation("context.back", steps === undefined ? {} : { steps }),
@@ -651,7 +663,7 @@ export function createContext(id: string, startUrl: string, session: Session): C
         ...(newer ? { bound: false, view: null } : {}),
       });
       lastNavigation = data;
-      for (const listener of [...navigationListeners]) listener(data);
+      for (const listener of [...navigationListeners]) call(() => listener(data));
     },
     started() {
       stopLoading();

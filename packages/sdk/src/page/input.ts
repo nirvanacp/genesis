@@ -136,7 +136,7 @@ export async function prepare(step: Step, context: InputContext): Promise<Prepar
       // File inputs are usually hidden on purpose, so an input needs only to exist and be enabled.
       const element = await target(step.target, via === "input" ? { ...step, force: true } : step);
       if (via === "input") {
-        if (!(element instanceof HTMLInputElement) || element.type !== "file") {
+        if (!isInput(element) || element.type !== "file") {
           throw new PageError("NOT_ACTIONABLE", "attachFiles needs an <input type=\"file\">", { reason: "not-a-file-input" });
         }
         if (element.disabled) throw new PageError("NOT_ACTIONABLE", "The file input is disabled", { reason: "disabled" });

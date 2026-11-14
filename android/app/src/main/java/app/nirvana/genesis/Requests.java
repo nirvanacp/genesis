@@ -39,10 +39,13 @@ final class Requests {
 
     /** A website's element shown full screen, such as a video. `exit` tells the website it closed. */
     static final class FullScreen {
+        /** The page whose website went full screen. */
+        final Views.Page page;
         final View view;
         private Runnable hidden;
 
-        FullScreen(View view, Runnable hidden) {
+        FullScreen(Views.Page page, View view, Runnable hidden) {
+            this.page = page;
             this.view = view;
             this.hidden = hidden;
         }

@@ -23,12 +23,17 @@ final class GeckoEngine {
     private static final String EXTENSION_ID = "gecko@genesis.nirvana.app";
     private static GeckoRuntime runtime;
     private static WebExtension extension;
-    /** Pages waiting for the extension, which installs once per process. */
+    /** Pages waiting for the extension, which installs once per process, with what each runs if it fails. */
     private static List<Consumer<WebExtension>> waiting;
+    private static List<Runnable> failing;
 
     private GeckoEngine() {}
 
-    /** The runtime, created on first use. Text follows Android's font size and pages follow its dark theme. */
+    /**
+     * The runtime, created on first use. Text follows Android's font size and pages follow its dark
+     * theme. Pages load over HTTPS only, as WebView's cleartext block keeps them: Gecko upgrades an
+     * `http:` load to HTTPS and shows its error page when the site has none.
+     */
     static GeckoRuntime runtime(Context context) {
         if (runtime != null) return runtime;
         boolean debuggable = (context.getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0;
@@ -38,27 +43,33 @@ final class GeckoEngine {
             .automaticFontSizeAdjustment(true)
             .preferredColorScheme(GeckoRuntimeSettings.COLOR_SCHEME_SYSTEM)
             .loginAutofillEnabled(false)
+            .allowInsecureConnections(GeckoRuntimeSettings.HTTPS_ONLY)
             .build());
         return runtime;
     }
 
     /**
      * Runs `ready` on the main thread with the bridge extension, installing it first if needed. A page
-     * loads nothing before then, since its documents could start without their bridge.
+     * loads nothing before then, since its documents could start without their bridge. When the
+     * install fails, every waiting page's `failed` runs instead, and the next page tries again.
      */
-    static void extension(Context context, Consumer<WebExtension> ready) {
+    static void extension(Context context, Consumer<WebExtension> ready, Runnable failed) {
         if (extension != null) { ready.accept(extension); return; }
-        if (waiting != null) { waiting.add(ready); return; }
+        if (waiting != null) { waiting.add(ready); failing.add(failed); return; }
         waiting = new ArrayList<>(List.of(ready));
+        failing = new ArrayList<>(List.of(failed));
         runtime(context).getWebExtensionController().ensureBuiltIn(EXTENSION, EXTENSION_ID).accept(installed -> {
             extension = installed;
             List<Consumer<WebExtension>> pages = waiting;
             waiting = null;
+            failing = null;
             for (Consumer<WebExtension> page : pages) page.accept(installed);
         }, error -> {
-            // Pages stay blank; nothing else can run them in GeckoView.
             Log.e("Genesis", "The GeckoView bridge did not install", error);
+            List<Runnable> pages = failing;
             waiting = null;
+            failing = null;
+            for (Runnable page : pages) page.run();
         });
     }
 

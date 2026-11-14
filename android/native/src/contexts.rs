@@ -35,6 +35,10 @@ pub struct CallHandle {
     pub navigating: bool,
     pub completed_steps: Option<u64>,
     pub deadline_ms: u64,
+    /// The operation is in `PACED_OPS`, so its trusted input may tap, press keys and type.
+    pub paced: bool,
+    /// The `page.input` requests this call has made.
+    pub inputs: u32,
 }
 
 impl CallHandle {
@@ -72,7 +76,8 @@ pub struct Session {
     pub saved: Option<Value>,
     /// The context an opened link loaded in; the foreground shows it once it binds.
     pub open_context: Option<String>,
-    /// When the applet's window suspended; None while it is resumed.
+    /// When the applet's window suspended, in wall-clock milliseconds (`now_ms`), so time the
+    /// phone sleeps counts; None while it is resumed.
     pub suspended_at_ms: Option<u64>,
     /// Each context's input budget, by context id, created on its first input call.
     pub input_budgets: HashMap<String, InputBudget>,
@@ -81,6 +86,9 @@ pub struct Session {
 /// Page operations that act on the website, so they spend the context's input budget. Reads,
 /// watches, waits, scrolling, focus and hover do not.
 pub const PACED_OPS: [&str; 11] = ["click", "longPress", "fill", "type", "press", "select", "check", "submit", "attachFiles", "run", "invoke"];
+/// `page.input` requests one page call may make. Each trusted step sends one, so this is also the
+/// most trusted steps one `run` or command can hold.
+pub const CALL_INPUTS_MAX: u32 = 64;
 
 /// A token bucket: `burst` input calls at once, then one more every `refill_ms`.
 #[derive(Debug)]

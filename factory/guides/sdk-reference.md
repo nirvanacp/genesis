@@ -124,7 +124,7 @@ genesis.ready();
 
 A closed watch keeps its copies: the context keeps up to 32 closed watches, dropping the one closed longest ago. Opening the same id with the same specification again shows the kept data at once, marked `stale` with `status: "loading"`, until the page sends a snapshot.
 
-Inputs resolve to an `ActionResult` and never reject for a page failure. Reads reject with a `GenesisError`. Only `click` (a single tap), `hover`, `unhover`, `type` and `press` take `input: "trusted"`. It needs `limits.trustedInput`, and a context whose website is shown refuses it with `INPUT_UNAVAILABLE`. Input calls spend the context's input budget (`limits.inputBurst`, `limits.inputRefillMs`); one over it is `failed` with `RATE_LIMITED` and never reaches the page.
+`navigate`, `back`, `forward` and `reload` reject with a `GenesisError` when Genesis refuses them, such as a URL outside the declared origins or a retired context. Inputs resolve to an `ActionResult` and never reject for a page failure. Reads reject with a `GenesisError`. Only `click` (a single tap), `hover`, `unhover`, `type` and `press` take `input: "trusted"`. It needs `limits.trustedInput`, and a context whose website is shown refuses it with `INPUT_UNAVAILABLE`. A trusted tap, key or text is accepted only from a call whose operation is `click`, `longPress`, `fill`, `type`, `press`, `select`, `check`, `submit`, `attachFiles`, `run` or `invoke`; from any other call it fails with `INPUT_UNAVAILABLE`. Trusted hover works from any call. One call sends trusted input at most 64 times, hover included, and the next one fails with `INPUT_UNAVAILABLE`. Input calls spend the context's input budget (`limits.inputBurst`, `limits.inputRefillMs`); one over it is `failed` with `RATE_LIMITED` and never reaches the page.
 
 ```ts
 import { connect, css, field } from "@genesis/sdk";
@@ -202,13 +202,16 @@ A locator's `options` take the other locator fields `within`, `has`, `nth`, `fra
 | `ShareInput` | `{ title?, text?, url? }`, as `genesis.share` takes it. |
 | `Links` | `genesis.links`, with `openExternal(url): Promise<void>`. |
 | `AttachVia` | `"input" \| "drop" \| "paste"`, how `attachFiles` hands files to the page. |
+| `GrantKind` | `"fullscreen" \| "download" \| "window" \| "handoff" \| "location"`, the website feature a one-time grant allows. |
+| `GrantResult` | `{ granted: true, expiresInMs }`, what `context.allow` resolves with; `expiresInMs` is 0 for a revealed context, which needs no grant. |
+| `GrantEnded` | `{ id, grant, used }`, what `onGrantEnded` hears: `used` when the page used the grant, otherwise it expired or a navigation, reveal, cover or popup cleared it. |
 
 ### Errors
 
 | Export | Purpose |
 | --- | --- |
 | `GenesisError` | An `Error` with a `code` from `ErrorCode`. |
-| `ServiceError` | A service request the shell could not complete, with `CONFIGURATION_REQUIRED`, `AUTHENTICATION_FAILED`, `CERTIFICATE_FAILED`, `SERVICE_UNREACHABLE`, `DEADLINE` or `SERVICE_FAILURE`. |
+| `ServiceError` | A service request the shell could not complete, with `CONFIGURATION_REQUIRED`, `AUTHENTICATION_FAILED`, `CERTIFICATE_FAILED`, `SERVICE_UNREACHABLE`, `DEADLINE`, `QUOTA_EXCEEDED` (while `limits.pendingRequestsMax` requests are open) or `SERVICE_FAILURE`. |
 | `serviceMessage` | `serviceMessage(error): string` turns a service error into a sentence for people. |
 
 ### Shared types

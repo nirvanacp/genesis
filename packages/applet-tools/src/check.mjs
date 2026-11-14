@@ -135,32 +135,153 @@ function describePageModule(definition) {
   };
 }
 
-/** What a page module's own files must not use, each with the reason it is refused. */
+/** Names a page module may not reach into: the website's framework state and the extension world of an engine. */
+const PAGE_WORLD = "page modules read the DOM, not the website's JavaScript";
+const SAME_ON_BOTH = 'page modules run the same in WebView and GeckoView and do not branch on the browser';
+
+/**
+ * What a page module's own files must not use, each with the reason it is refused. Rules match
+ * the code with comments and the contents of strings, templates and regular expressions blanked,
+ * so a selector or a message that names one of these words passes. A rule with `strings` also
+ * matches inside strings, because its name is read by a string key, such as `el["__reactFiber$x"]`.
+ */
 const PAGE_MODULE_RULES = [
-  { pattern: /(?:\bfrom\s*|\bimport\s*\(?\s*|\brequire\s*\(\s*)["'](react|react-dom|vue|svelte|solid-js|preact|@genesis\/sdk\/react)(?:\/[^"']*)?["']/, reason: name => `imports ${name}; page modules run in the website page and use no UI framework` },
+  { strings: true, pattern: /(?:\bfrom\s*|\bimport\s*\(?\s*|\brequire\s*\(\s*)["'](react|react-dom|vue|svelte|solid-js|preact|@genesis\/sdk\/react)(?:\/[^"']*)?["']/, reason: name => `imports ${name}; page modules run in the website page and use no UI framework` },
   { pattern: /\beval\s*\(/, reason: () => 'calls eval' },
   { pattern: /\bnew\s+Function\b/, reason: () => 'uses new Function' },
   { pattern: /\bfetch\s*\(/, reason: () => 'calls fetch; page modules make no network calls' },
   { pattern: /\bXMLHttpRequest\b/, reason: () => 'uses XMLHttpRequest; page modules make no network calls' },
   { pattern: /\bdocument\.cookie\b/, reason: () => 'reads document.cookie' },
   { pattern: /\b(localStorage|sessionStorage|indexedDB)\b/, reason: name => `uses ${name}; page modules keep no storage` },
-  { pattern: /\b(wrappedJSObject|unsafeWindow)\b/, reason: name => `uses ${name}; page modules read the DOM, not the website's JavaScript` },
-  { pattern: /\bnavigator\.(userAgent|vendor)\b/, reason: name => `reads navigator.${name}; page modules run the same in WebView and GeckoView and do not branch on the browser` },
+  { pattern: /\b(wrappedJSObject|unsafeWindow|cloneInto|exportFunction)\b/, reason: name => `uses ${name}; ${PAGE_WORLD}` },
+  // React's keys end in a random suffix, so they are found by a string; `#__NEXT_DATA__` is also a script element's id, which a module may read.
+  { strings: true, pattern: /(__reactFiber|__reactProps|__reactInternalInstance)/, reason: name => `reads ${name}; ${PAGE_WORLD}` },
+  { pattern: /\b(__vue__|__NEXT_DATA__|__NUXT__)\b/, reason: name => `reads ${name}; ${PAGE_WORLD}` },
+  { pattern: /\b((?:browser|chrome)\s*\.\s*(?:runtime|storage))\b/, reason: name => `uses ${name.replace(/\s/g, '')}; page modules use no browser extension APIs` },
+  { pattern: /\bnavigator\s*\.\s*(userAgent|userAgentData|vendor|platform|appVersion)\b/, reason: name => `reads navigator.${name}; ${SAME_ON_BOTH}` },
+  { strings: true, pattern: /\bnavigator\s*\[\s*["'`](userAgent|userAgentData|vendor|platform|appVersion)["'`]\s*\]/, reason: name => `reads navigator.${name}; ${SAME_ON_BOTH}` },
+  { pattern: /\b(userAgentData)\b/, reason: name => `reads navigator.${name}; ${SAME_ON_BOTH}` },
+  { pattern: /\{[^}]*\b(userAgent)\b[^}]*\}\s*=\s*(?:(?:window|globalThis|self)\s*\.\s*)?navigator\b/, reason: name => `reads navigator.${name}; ${SAME_ON_BOTH}` },
 ];
 
+/** Words before which a `/` starts a regular expression rather than a division. */
+const REGEX_KEYWORDS = new Set(['return', 'typeof', 'case', 'do', 'else', 'in', 'of', 'void', 'yield', 'await', 'delete', 'throw', 'new', 'instanceof']);
+
 /**
- * Checks the applet's own page module files line by line; comment lines are skipped. A text lint,
- * not a sandbox: files outside the applet directory and indirect uses are not seen.
+ * Two copies of a source file with the same length and line breaks: `text` has comments blanked,
+ * and `code` also has the contents of strings, templates (outside `${}`) and regular expressions
+ * blanked. A small scanner, not a parser: it tells a regular expression from a division by the
+ * code before it.
+ */
+function maskSource(source) {
+  const code = source.split(''), text = source.split('');
+  const n = source.length;
+  const blank = (array, i) => { if (i < n && array[i] !== '\n') array[i] = ' '; };
+  const comment = i => { blank(code, i); blank(text, i); };
+  /** Open `${` expressions inside templates, each with its count of open braces. */
+  const braces = [];
+  let last = -1; // index of the last code character that is not a space
+
+  function regexAllowed() {
+    if (last < 0) return true;
+    const c = source[last];
+    if (/[\w$]/.test(c)) {
+      let start = last;
+      while (start > 0 && /[\w$]/.test(source[start - 1])) start--;
+      return REGEX_KEYWORDS.has(source.slice(start, last + 1));
+    }
+    // After `x++`, `x--` or a TypeScript non-null `x!`, a `/` divides.
+    if ((c === '+' || c === '-') && source[last - 1] === c) return false;
+    if (c === '!' && last > 0 && /[\w$)\]]/.test(source[last - 1])) return false;
+    return /[(,=:[!&|?{};+\-*%<>~^]/.test(c);
+  }
+  /**
+   * Blanks a quoted string's contents from `i`, its opening quote; returns the index after it.
+   * A quote without its closing quote on the same line was misread (it sits in a regular
+   * expression read as a division), so it is left as code and scanning continues after it.
+   */
+  function string(i, quote) {
+    let j = i + 1;
+    while (j < n && source[j] !== quote && source[j] !== '\n') j += source[j] === '\\' ? 2 : 1;
+    if (j >= n || source[j] !== quote) return i + 1;
+    for (let k = i + 1; k < j; k++) blank(code, k);
+    return j + 1;
+  }
+  /** Blanks template text from `i` until its end or a `${`; returns the index after the delimiter. */
+  function template(i) {
+    let j = i;
+    while (j < n) {
+      if (source[j] === '\\') { blank(code, j); blank(code, j + 1); j += 2; continue; }
+      if (source[j] === '`') return j + 1;
+      if (source[j] === '$' && source[j + 1] === '{') { braces.push(0); return j + 2; }
+      blank(code, j++);
+    }
+    return j;
+  }
+  /**
+   * Blanks a regular expression's body from `i`, its opening slash; returns the index after it.
+   * A slash without its closing slash on the same line was a division, so scanning continues
+   * after it.
+   */
+  function regex(i) {
+    let j = i + 1, inClass = false;
+    while (j < n && source[j] !== '\n') {
+      const c = source[j];
+      if (c === '\\') { if (source[j + 1] === '\n') break; j += 2; continue; }
+      if (c === '/' && !inClass) break;
+      if (c === '[') inClass = true;
+      else if (c === ']') inClass = false;
+      j++;
+    }
+    if (j >= n || source[j] !== '/') return i + 1;
+    for (let k = i + 1; k < j; k++) blank(code, k);
+    return j + 1;
+  }
+
+  let i = 0;
+  while (i < n) {
+    const c = source[i], next = source[i + 1];
+    if (c === '/' && next === '/') {
+      while (i < n && source[i] !== '\n') comment(i++);
+      continue;
+    }
+    if (c === '/' && next === '*') {
+      comment(i++); comment(i++);
+      while (i < n && !(source[i] === '*' && source[i + 1] === '/')) comment(i++);
+      comment(i++); comment(i++);
+      continue;
+    }
+    if (c === '"' || c === "'") { last = i; i = string(i, c); continue; }
+    if (c === '`') { last = i; i = template(i + 1); continue; }
+    if (c === '/' && regexAllowed()) { last = i; i = regex(i); continue; }
+    if (braces.length > 0 && c === '{') braces[braces.length - 1]++;
+    if (braces.length > 0 && c === '}') {
+      if (braces[braces.length - 1] === 0) {
+        braces.pop();
+        last = i;
+        i = template(i + 1);
+        continue;
+      }
+      braces[braces.length - 1]--;
+    }
+    if (!/\s/.test(c)) last = i;
+    i++;
+  }
+  return { code: code.join(''), text: text.join('') };
+}
+
+/**
+ * Checks the applet's own page module files line by line against `PAGE_MODULE_RULES`. A text
+ * lint, not a sandbox: files outside the applet directory and indirect uses are not seen.
  */
 async function checkPageModuleFiles(base, files) {
   const problems = [];
   for (const file of files) {
-    const lines = (await readFile(path.join(base, file), 'utf8')).split('\n');
-    lines.forEach((line, i) => {
-      const code = line.trim();
-      if (code.startsWith('//') || code.startsWith('*') || code.startsWith('/*')) return;
+    const { code, text } = maskSource(await readFile(path.join(base, file), 'utf8'));
+    const codeLines = code.split('\n'), textLines = text.split('\n');
+    codeLines.forEach((line, i) => {
       for (const rule of PAGE_MODULE_RULES) {
-        const match = rule.pattern.exec(line);
+        const match = rule.pattern.exec(rule.strings ? textLines[i] : line);
         if (match) problems.push(`  ${file}:${i + 1}: ${rule.reason(match[1] ?? match[0])}`);
       }
     });

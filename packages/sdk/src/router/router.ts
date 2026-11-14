@@ -182,13 +182,17 @@ export function createRouter(genesis: Genesis, options: RouterOptions): Router {
 
   // ---- Coordinator ------------------------------------------------------------------------------
 
-  function presentationOf(id: string): Presentation {
-    const context = state.contexts[id];
-    if (!context) return "website";
+  /** The presentation rule: the applet's `decide` when it gives one, otherwise the default. */
+  function presentationFor(context: CoordinatorContext): Presentation {
     if (!options.decide) return presentation(context, table);
     const match = context.url === null ? null : matchRoute(table, context.url);
     const route = match?.kind === "route" ? table.routes.find(r => r.id === match.routeId) ?? null : null;
     return options.decide(context, route);
+  }
+
+  function presentationOf(id: string): Presentation {
+    const context = state.contexts[id];
+    return context ? presentationFor(context) : "website";
   }
 
   function revealedNow(): string | null {
@@ -197,7 +201,7 @@ export function createRouter(genesis: Genesis, options: RouterOptions): Router {
 
   function dispatch(event: CoordinatorEvent): CoordinatorEffect[] {
     if (destroyed) return [];
-    const result = reduce(state, event, table);
+    const result = reduce(state, event, table, presentationFor);
     const changed = result.state !== state;
     state = result.state;
     const rest = result.effects.filter(effect => !run(effect));
@@ -224,13 +228,13 @@ export function createRouter(genesis: Genesis, options: RouterOptions): Router {
       case "cover":
         return true; // `show` follows the rules after each event.
       case "context.navigate":
-        void genesis.context(effect.id).navigate(effect.url, { mode: effect.mode });
+        genesis.context(effect.id).navigate(effect.url, { mode: effect.mode }).catch(failed("navigate"));
         return true;
       case "context.back":
-        void genesis.context(effect.id).back(effect.steps);
+        genesis.context(effect.id).back(effect.steps).catch(failed("back"));
         return true;
       case "context.reload":
-        void genesis.context(effect.id).reload();
+        genesis.context(effect.id).reload().catch(failed("reload"));
         return true;
       case "schedule":
         schedule(effect.id, effect.token);
@@ -485,7 +489,7 @@ export function createRouter(genesis: Genesis, options: RouterOptions): Router {
         context.resync();
       } else {
         context.forget({ current: true });
-        void context.reload();
+        context.reload().catch(failed("reload"));
       }
     }
   }
@@ -537,7 +541,7 @@ export function createRouter(genesis: Genesis, options: RouterOptions): Router {
     navigate,
     select,
     back: () => { back(false); },
-    reload: id => { void genesis.context(id ?? state.active).reload(); },
+    reload: id => { genesis.context(id ?? state.active).reload().catch(failed("reload")); },
     viewWebsite: id => { viewWebsite(id ?? state.active); },
     done: id => { done(id ?? state.active); },
     setLeaveGuard: message => { dispatch({ type: "guard", guard: message === null ? null : { message } }); },
@@ -568,6 +572,11 @@ export function createRouter(genesis: Genesis, options: RouterOptions): Router {
     },
   };
 }
+
+/** Reports a navigation the router started and Genesis refused; a retired applet needs no report. */
+const failed = (method: string) => (error: unknown) => {
+  if (!(error instanceof GenesisError && error.code === "RETIRED")) console.error(`Genesis router: ${method} failed`, error);
+};
 
 function tableRoute(route: RouterRoute): TableRoute {
   const out: TableRoute = { id: route.id, pattern: route.pattern, screen: route.screen ?? route.id };

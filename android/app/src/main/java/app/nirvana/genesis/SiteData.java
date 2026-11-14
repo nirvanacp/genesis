@@ -30,6 +30,9 @@ public abstract class SiteData {
     /** Whether the origin has any cookie at its root, which Settings shows as signed in. */
     public abstract boolean hasCookies(String origin);
 
+    /** Whether `hasCookies` can tell; when it can't, Settings offers sign-out for every site. */
+    public boolean readsCookies() { return true; }
+
     /**
      * Deletes the cookies, web storage and permission answers of these origins for every applet
      * that uses them, then runs `done` on the main thread. `visitedUrls` are the pages visited on

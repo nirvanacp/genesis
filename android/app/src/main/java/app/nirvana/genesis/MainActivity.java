@@ -29,7 +29,9 @@ public final class MainActivity extends WindowActivity {
         super.onCreate(savedInstanceState);
         if (!createWindow()) return;
         send(Bridge.event("managerAttached"));
-        runtime.main.post(() -> openedFile(getIntent()));
+        // A recreated window, or one reopened from Recents, carries the intent it already handled.
+        boolean handled = savedInstanceState != null || (getIntent().getFlags() & Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0;
+        if (!handled) runtime.main.post(() -> openedFile(getIntent()));
     }
 
     @Override public void pickAppletFile() {

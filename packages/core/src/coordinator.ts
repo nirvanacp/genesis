@@ -162,15 +162,19 @@ export function revealed(state: CoordinatorState, table: Pick<RouteTable, "origi
   return state.overlay.length === 0 && active && presentation(active, table) === "website" ? state.active : null;
 }
 
-export function reduce(state: CoordinatorState, event: CoordinatorEvent, table: RouteTable): Result {
-  const result = apply(state, event, table);
+/** How a context presents: `presentation` by default, or the applet's own rule. */
+export type PresentationRule = (context: ContextState, table: RouteTable) => Presentation;
+
+/** Runs one event. `present` decides whether Done leaves a page that still shows as website. */
+export function reduce(state: CoordinatorState, event: CoordinatorEvent, table: RouteTable, present: PresentationRule = presentation): Result {
+  const result = apply(state, event, table, present);
   const before = revealed(state, table);
   const after = revealed(result.state, table);
   if (after !== before) result.effects.push(after === null ? { type: "cover" } : { type: "reveal", id: after });
   return result;
 }
 
-function apply(state: CoordinatorState, event: CoordinatorEvent, table: RouteTable): Result {
+function apply(state: CoordinatorState, event: CoordinatorEvent, table: RouteTable, present: PresentationRule): Result {
   const effects: CoordinatorEffect[] = [];
   const unchanged = { state, effects };
   switch (event.type) {
@@ -257,7 +261,7 @@ function apply(state: CoordinatorState, event: CoordinatorEvent, table: RouteTab
       const unpinned = context.pin === "none" ? context : { ...context, pin: "none" as const };
       const next = unpinned === context ? state : withContext(state, unpinned);
       // A page that still shows as website (one no route maps, such as a reply form) leaves for the page before it.
-      if (presentation(unpinned, table) !== "website") return { state: next, effects };
+      if (present(unpinned, table) !== "website") return { state: next, effects };
       if (unpinned.canGoBack) effects.push({ type: "context.back", id: context.id });
       else {
         const start = table.contexts.find(c => c.id === context.id)?.startUrl;
