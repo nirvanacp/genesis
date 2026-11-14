@@ -33,6 +33,11 @@ export interface Limits {
   trustedInput?: boolean;
   /** A hidden page's JavaScript dialogs reach the foreground (`context.dialog`). Absent in an older Genesis. */
   dialogs?: boolean;
+  /**
+   * The foreground can pick files, save, share, open links in apps and turn on notifications
+   * after a tap, and attach picked files to a page (`attachFiles`). Absent in an older Genesis.
+   */
+  userActions?: boolean;
 }
 
 /** The first message a document sends. */
@@ -125,8 +130,9 @@ export type ForegroundMethod =
   | "session.save"
   | "back.handled" | "back.leave"
   | "page.call" | "page.cancel"
-  | "context.dialog.claim" | "context.dialog.answer";
-export type ContextMethod = "page.result" | "page.progress" | "page.emit" | "page.input";
+  | "context.dialog.claim" | "context.dialog.answer"
+  | "files.pick" | "files.release" | "downloads.save" | "share.open" | "links.openExternal" | "notifications.enable";
+export type ContextMethod = "page.result" | "page.progress" | "page.emit" | "page.input" | "page.files";
 export type Method = ForegroundMethod | ContextMethod;
 
 export type ForegroundEventName =
@@ -154,6 +160,64 @@ export interface NotificationInput {
 /** `posted` is true when Genesis accepted it; the user decides in Applet info whether it shows. */
 export interface NotificationResult {
   posted: boolean;
+}
+
+/** How long the shell has for a user action, which can wait on the user in a picker or a prompt. */
+export const USER_ACTION_DEADLINE_MS = 600_000;
+/** The most `accept` entries of `files.pick`. */
+export const ACCEPT_MAX = 16;
+/** The most files one `files.pick` returns and one `attachFiles` attaches. */
+export const FILES_MAX = 16;
+/** The largest picked file, in bytes. */
+export const FILE_BYTES_MAX = 64 * 1024 * 1024;
+/** The most bytes one `attachFiles` sends. */
+export const FILES_BYTES_MAX = 128 * 1024 * 1024;
+/** The longest `data:` URL `downloads.save` takes. */
+export const SAVE_DATA_URL_MAX = 2 * 1024 * 1024;
+
+/**
+ * Params of `files.pick`. `accept` holds up to 16 MIME types (`image/*`) or `.ext` suffixes;
+ * empty accepts any file.
+ */
+export interface FilesPick {
+  accept?: string[];
+  multiple?: boolean;
+}
+
+/** One picked file. `id` is 32 hex characters and stays valid until released, for at most 30 minutes. */
+export interface FileHandle {
+  id: string;
+  name: string;
+  type: string;
+  size: number;
+}
+
+/** Result of `files.pick`: empty when the user cancelled. At most 16 files of 64 MiB each. */
+export interface FilesPicked {
+  files: FileHandle[];
+}
+
+/**
+ * Params of `downloads.save`: `url` is https, or a `data:` URL up to 2 MiB, without credentials;
+ * the https download carries the cookies of `context`. `filename` is 1 to 128 characters without `/`.
+ */
+export interface DownloadSave {
+  context: string;
+  url: string;
+  filename?: string;
+}
+
+/** Params of `share.open`: at least one field; `title` up to 200 characters, `text` 4000, `url` http or https. */
+export interface ShareInput {
+  title?: string;
+  text?: string;
+  url?: string;
+}
+
+/** Params of `page.files`, sent by the page agent for an open call. Answers `{count}`. */
+export interface PageFiles {
+  callId: string;
+  ids: string[];
 }
 
 /** The kind of a website's JavaScript dialog. */

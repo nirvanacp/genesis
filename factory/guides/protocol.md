@@ -130,6 +130,12 @@ Params and results use the field names shown.
 | `page.cancel` | `{ context, callId? }` | `{}` |
 | `context.dialog.claim` | `{ id, dialogId }` | `{}`. The foreground shows the dialog itself (see [Website dialogs](#website-dialogs)). |
 | `context.dialog.answer` | `{ id, dialogId, accept, value? }` | `{}`. The user's answer: OK when `accept`, else Cancel. |
+| `files.pick` | `{ accept?, multiple? }` | `{ files: [{ id, name, type, size }] }`, empty when the user cancels (see [User actions](#user-actions)). |
+| `files.release` | `{ ids }` | `{}`. Lets go of picked files. |
+| `downloads.save` | `{ context, url, filename? }` | `{ started: true }` |
+| `share.open` | `{ title?, text?, url? }` | `{ shown: true }` |
+| `links.openExternal` | `{ url }` | `{ opened: true }`; `NOT_FOUND` when no app takes it. |
+| `notifications.enable` | `{}` | `{ enabled }` |
 
 Rules the host applies:
 
@@ -149,6 +155,7 @@ Only a context document sends these, and only about calls the host gave it.
 | `page.progress` | `{ callId, state, completedSteps? }` | `{}`. `state` is `dispatched` or `navigating`. |
 | `page.emit` | `{ stream, kind, seq, view, url, data }` | `{}`. One message of a watch stream. |
 | `page.input` | `{ callId, events }` | `{}` once the shell dispatched the events. |
+| `page.files` | `{ callId, ids }` | `{ count }` once the shell posted the files to the page (see [User actions](#user-actions)). |
 
 - `page.result` and `page.progress` about a call that is not this document's, or that has already ended, are accepted and ignored. `page.result` with `ok: false` and no `error` ends the call with `INVALID_ARGUMENT`. The page agent checks a value before it answers: a value that is not JSON data (a BigInt, a cycle) answers `INVALID_ARGUMENT`, and one over `limits.pageMaxBytes` answers `PAGE_TOO_LARGE`.
 - `page.progress` marks the call `dispatched`, and `navigating` when that is the state. The host forwards it to the foreground as the event `page.progress`.
@@ -492,6 +499,26 @@ A page's `alert`, `confirm`, `prompt` and `beforeunload` dialogs block the page 
 - While a dialog is open, the context's page calls do not use up their budget: when the dialog ends, the host adds the time it was open to each of their deadlines. The page agent keeps its own clock for waits and evidence, so an effect that appears only later after a long dialog can still end as `unknown` with `DEADLINE`.
 - `limits.dialogs` is true when the host sends `context.dialog`. It is absent in an older Genesis.
 
+## User actions
+
+`files.pick`, `downloads.save`, `share.open`, `links.openExternal` and `notifications.enable` are things only the user may start. The host passes each to the shell, which carries it out only after a tap on the applet UI in the last 3 seconds, once per tap. Without one it does nothing and answers `USER_ACTION_REQUIRED`; the foreground then asks the user to tap again. A tap on the website, the website bar or a popup does not count, and neither does trusted input. The host's deadline for these methods is 10 minutes, because the user may stay in a picker or a permission prompt; the client waits as long.
+
+```json
+{ "type": "request", "documentId": "d3", "requestId": 51, "method": "files.pick", "params": { "accept": ["image/*", "video/*"], "multiple": true } }
+```
+
+```json
+{ "type": "response", "documentId": "d3", "requestId": 51, "result": { "files": [{ "id": "9f0c2e6a41d8b7735c1e0a9d2f4b6c18", "name": "beach.jpg", "type": "image/jpeg", "size": 482113 }] } }
+```
+
+- `files.pick`: `accept` holds up to 16 MIME types (`image/*`) or `.ext` suffixes; anything else is `INVALID_ARGUMENT`. Image and video types open Android's photo picker, others the document picker. At most 16 files of 64 MiB each; a larger file is left out. An `id` is 32 hex characters and stays valid until `files.release`, until the applet is retired or its window closes, or for 30 minutes. The foreground shows a picked file at `https://appassets.androidplatform.net/genesis-files/<id>`, for example as an `<img>` or `<video>` source; only the foreground can load it. The file stays with Genesis: never put an `id` in storage, because it means nothing after it expires.
+- `downloads.save`: `url` is `https`, or a `data:` URL up to 2 MiB, with no user name or password, else `INVALID_ARGUMENT`. The https download carries the cookies and User-Agent of `context` (`NOT_FOUND` when it is not a running context of the manifest). `filename` is 1 to 128 characters without `/`. The file goes to Downloads.
+- `share.open` needs at least one field. `title` is at most 200 characters, `text` 4000, and `url` is `http` or `https`. The answer means the share sheet showed, not that the user shared.
+- `links.openExternal` takes `mailto`, `tel`, `sms`, `smsto`, `geo`, `intent` and `https`. An `https` link opens only in an app that claims it, never in a browser; on Android 10 and earlier, and when no app claims it, the answer is `NOT_FOUND`.
+- `notifications.enable` needs `capabilities.notifications`, else `CONFIGURATION_REQUIRED`. It turns on the applet's notifications as the Applet info switch does, asking Android first on Android 13 and later. `enabled` is false when the user or Android refused.
+- `page.files` carries picked files to the page for the page agent's `attachFiles` operation. It needs an open call of the asking document (`NOT_FOUND`), a context that is not already loading another document (`CONTEXT_REPLACED`), and ids the applet still holds (`FILE_UNAVAILABLE`). The shell posts the bytes straight to the page, not through the host.
+- `limits.userActions` is true when the host takes these methods and `attachFiles`. It is absent in an older Genesis.
+
 ## Error codes
 
 | Code | Meaning |
@@ -530,6 +557,8 @@ A page's `alert`, `confirm`, `prompt` and `beforeunload` dialogs block the page 
 | `PROTECTED_FIELD` | The input would write into a protected field. |
 | `INPUT_UNAVAILABLE` | Trusted input is not available, or the shell could not dispatch it. |
 | `UNKNOWN_OPERATION` | The page agent has no such operation. |
+| `USER_ACTION_REQUIRED` | The action needs a fresh tap on the applet UI, and there was none or it was already used. Nothing happened. |
+| `FILE_UNAVAILABLE` | A file id is unknown, expired or released, or its file can no longer be read. |
 
 `packages/core/src/errors.ts` and `crates/contracts` list the same codes.
 
@@ -556,6 +585,7 @@ A page's `alert`, `confirm`, `prompt` and `beforeunload` dialogs block the page 
 | `watchesMax` | Open watches per context document. |
 | `trustedInput` | True when the shell can send real input to a hidden context. Absent in an older Genesis. |
 | `dialogs` | True when a hidden page's JavaScript dialogs reach the foreground as `context.dialog`. Absent in an older Genesis. |
+| `userActions` | True when the foreground can pick files, save, share, open links in apps and turn on notifications, and attach picked files with `attachFiles`. Absent in an older Genesis. |
 
 ## Versions
 

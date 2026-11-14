@@ -34,6 +34,8 @@ export const ERROR_CODES = [
   "PROTECTED_FIELD",
   "INPUT_UNAVAILABLE",
   "UNKNOWN_OPERATION",
+  "USER_ACTION_REQUIRED",
+  "FILE_UNAVAILABLE",
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
