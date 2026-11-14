@@ -7,5 +7,5 @@
   "content_scripts": [
     { "matches": ["http://*/*", "https://*/*"], "js": ["bridge.js"], "run_at": "document_start", "all_frames": false }
   ],
-  "permissions": ["nativeMessaging", "nativeMessagingFromContent", "geckoViewAddons", "<all_urls>"]
+  "permissions": ["nativeMessaging", "nativeMessagingFromContent", "geckoViewAddons"]
 }
