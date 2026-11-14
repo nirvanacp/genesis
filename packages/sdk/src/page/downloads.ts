@@ -12,6 +12,12 @@ const BLOB_MESSAGE_PREFIX = '{"type":"genesis.blob';
 /** How long a clicked `data:` link's `download` name still names the download that follows. */
 const DATA_NAME_MS = 5000;
 
+/** How long the agent holds a clicked `blob:` link's bytes, read at the click before the page can revoke the URL. */
+const HELD_BLOB_MS = 60_000;
+
+/** The most clicked `blob:` links held at once; the oldest goes first. */
+const HELD_BLOBS_MAX = 4;
+
 /**
  * Hands the website's own `blob:` downloads to the shell, which cannot read a page's blob URLs
  * itself. The shell asks with `{"type":"genesis.blob", token, url, buffers}` after it allowed the
@@ -21,7 +27,8 @@ const DATA_NAME_MS = 5000;
  * cannot read or that is over `BLOB_DOWNLOAD_LIMIT` gets `{"type":"genesis.blob", token, error}`.
  * For a `data:` download, which the shell reads itself, it asks with `nameOnly` and the agent
  * answers `{"type":"genesis.blob", token, name?}`. `name` is the `download` attribute of the link
- * the user clicked, since Android's download callback does not carry it.
+ * the user clicked, since Android's download callback does not carry it. A clicked `blob:` link
+ * is read at the click, because pages often revoke the URL right after `click()`.
  * Returns the bridge's `message` listener.
  */
 export function createBlobSender(bridge: BridgeObject): (event: { data: unknown }) => void {
@@ -43,7 +50,7 @@ export function createBlobSender(bridge: BridgeObject): (event: { data: unknown 
     const name = links.nameFor(url);
     void (async () => {
       try {
-        const blob = await (await fetch(url)).blob();
+        const blob = await links.blobFor(url);
         if (blob.size > BLOB_DOWNLOAD_LIMIT) {
           post({ type: "genesis.blob", token, error: "The file is too large" });
           return;
@@ -72,13 +79,30 @@ export function createBlobSender(bridge: BridgeObject): (event: { data: unknown 
  * Remembers the last clicked link with a `download` attribute and a `blob:` or `data:` address.
  * `nameFor(url)` is its name for the download of `url`: a blob URL must match exactly, and a
  * `data:` download (the shell sends only `data:`) must follow the click within `DATA_NAME_MS`.
+ * A clicked `blob:` link starts its read at once; `blobFor(url)` uses that read when there is one,
+ * and reads the URL now otherwise.
  */
-function rememberDownloadLinks(): { nameFor(url: string): string | null } {
+function rememberDownloadLinks(): { nameFor(url: string): string | null; blobFor(url: string): Promise<Blob> } {
   let last: { href: string; name: string; at: number } | null = null;
+  const held = new Map<string, { blob: Promise<Blob>; timer: ReturnType<typeof setTimeout> }>();
+  const drop = (url: string) => {
+    const entry = held.get(url);
+    if (!entry) return;
+    clearTimeout(entry.timer);
+    held.delete(url);
+  };
+  const hold = (url: string) => {
+    drop(url);
+    const blob = fetch(url).then(response => response.blob());
+    blob.catch(() => {}); // A read that fails is reported when the shell asks for it.
+    held.set(url, { blob, timer: setTimeout(() => drop(url), HELD_BLOB_MS) });
+    while (held.size > HELD_BLOBS_MAX) drop(held.keys().next().value!);
+  };
   window.addEventListener("click", event => {
     const target = event.target as Element | null;
     const link = target?.closest?.("a[download]") as HTMLAnchorElement | null;
     if (!link || !/^(blob|data):/i.test(link.href)) return;
+    if (/^blob:/i.test(link.href)) hold(link.href);
     // Only the last path segment, as a browser saves it.
     const name = (link.getAttribute("download") ?? "").split(/[\\/]/).pop()!.trim();
     last = name ? { href: link.href, name, at: Date.now() } : null;
@@ -88,6 +112,11 @@ function rememberDownloadLinks(): { nameFor(url: string): string | null } {
       if (!last) return null;
       if (url.startsWith("blob:")) return last.href === url ? last.name : null;
       return /^data:/i.test(last.href) && Date.now() - last.at < DATA_NAME_MS ? last.name : null;
+    },
+    blobFor(url) {
+      const entry = held.get(url);
+      drop(url);
+      return entry ? entry.blob : fetch(url).then(response => response.blob());
     },
   };
 }

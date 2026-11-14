@@ -96,8 +96,12 @@ export function createWatches(host: WatchHost): Watches {
       if (stopped || overflow) return;
       // Attribute changes outside every watch change no record.
       const indexes = [...watches.values()].map(indexOf);
-      pending.push(...changes.filter(change => change.kind !== "attributes" || indexes.some(index => touches(index, change.target))));
-      if (pending.length > CHANGES_MAX) { pending = []; overflow = true; }
+      for (const change of changes) {
+        if (change.kind === "attributes" && !indexes.some(index => touches(index, change.target))) continue;
+        // Past the cap the page resyncs instead, so a huge batch is never copied whole.
+        if (pending.length >= CHANGES_MAX) { pending = []; overflow = true; break; }
+        pending.push(change);
+      }
       batch.schedule();
     });
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => batch.schedule(), { once: true });
