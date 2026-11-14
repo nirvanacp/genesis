@@ -20,6 +20,8 @@ Read the latest request, local instructions, `.specs/current.md`, relevant decis
 | requirement-loading-evidence | Requirement: a route's `ready` reader returns a truthy value only from content it recognized; a list is empty only when the page says so | [Page modules](page-modules.md) |
 | requirement-real-interactions | Requirement: a control performs the action its label names, against the current entity and account, reports the observed outcome, and never retries an uncertain one | [Interactions](interactions.md) |
 | requirement-user-paced-writes | Requirement: every write to a website comes from one user tap; no loops of writes, no background writes, no writes while the user is not in the applet; bulk work uses the website's own bulk control | [User-paced writes](#user-paced-writes) |
+| requirement-user-tap-actions | Requirement: picking files, saving, sharing, opening another app, enabling notifications and one-time grants start only from the handler of a user's tap on the applet UI, one per tap, never chained or automatic; features that need visible UI stay in the applet as [website features](website-features.md) describes | [User tap actions](#user-tap-actions) |
+| requirement-website-dialogs | Requirement: a hidden page's `alert`, `confirm`, `prompt` or leave question shows in the applet with its origin and exact text, and is answered only with the user's choice | [Website dialogs](#website-dialogs) |
 | requirement-protected-fields | Requirement: the applet never reads or enters passwords, hidden inputs, one-time codes or card data; the user types them on the website | [Protected fields](#protected-fields) |
 | requirement-data-integrity | Requirement: stable keys, one authoritative store per record type, revision checks, credentials outside the bundle, no blind retry of uncertain writes | [Services and data](services-and-data.md) |
 | requirement-accessible-navigation | Authoring requirement: semantic labels, focus, readable contrast, scalable text, 48 dp touch targets and working Back | [Design](design.md) |
@@ -46,10 +48,23 @@ Read the latest request, local instructions, `.specs/current.md`, relevant decis
 
 Genesis is a different face for websites the user already uses, not an automation tool. Websites watch for bot-like input, and an account that looks automated can be locked.
 
-- Every input that changes something on a website (a vote, a post, a follow, a delete, a form submit) comes from one tap on the applet control that names it. One tap may run one input or one sequence (`run`, a command) that does that one thing.
+- Every input that changes something on a website (a vote, a post, a follow, a delete, a form submit) comes from one tap on the applet control that names it. One tap may run one input or one sequence (`run`, a command) that does that one thing. Filling a composer, attaching its files and clicking the site's Post button after one Post tap is one sequence.
 - No loops of writes over a list, no writes from timers, page events, watches or a backend, and no writes while the user is not in the applet.
 - Bulk work uses the website's own bulk control: select all, then one action, as the website offers it. When the website has none, the applet offers the action per item.
 - The host enforces a budget per context: `limits.inputBurst` input calls at once (20), then one more every `limits.inputRefillMs` (1 s). An input over the budget fails with `RATE_LIMITED` and never reaches the page. Treat it as a design error, not as something to wait out; never retry after `retryAfterMs`.
+
+## User tap actions
+
+Some things only the user may start: picking files, saving to Downloads, sharing, opening another app, turning notifications on, and letting a hidden page use a website feature once with `context.allow`.
+
+- Call each straight from the handler of a tap on the applet control that names it, before any other `await`. Genesis carries it out only within 3 seconds of that tap, once per tap.
+- One tap starts one of them. Never chain two, and never start one from a timer, a watch, a page event, a backend or a retry.
+- When one rejects with `USER_ACTION_REQUIRED`, ask the user to tap again.
+- Keep these features in the applet. File attachments, downloads, sharing, links to apps, fullscreen video, windows and location follow [website features](website-features.md); only camera and microphone, server sign-in prompts and client certificates, protected fields, payments and challenges show the website.
+
+## Website dialogs
+
+A hidden page's `alert`, `confirm`, `prompt` or leave question waits for the user. Every screen whose actions can raise one renders `useDialog()`, with the site's origin and its exact message. Answer only with the user's choice: never accept, dismiss or answer a dialog in code, and never answer it for the user from a stored preference. See [interactions](interactions.md#website-dialogs).
 
 ## Protected fields
 

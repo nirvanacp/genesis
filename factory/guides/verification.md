@@ -44,11 +44,12 @@ Use a device that only your task drives. When several agents work at the same ti
    A debug Genesis can also take a laptop browser's sign-in with `dev cookies` (see [getting started](getting-started.md)); it carries the warnings listed there.
 5. Walk the presentation scenarios below on the changed routes.
 6. For links: share a link from another app and confirm the chooser, the screen it opens and that Back returns to that app. Tap a `target="_blank"` link on the revealed website for each case of links that open a new window in [navigation](navigation.md) the applet can reach.
-7. Leave the app and return; reload it from the Genesis menu.
-8. Check light and dark, large text and a narrow width on the changed screens.
-9. For stored data: write it, leave, reopen, and confirm it reads back. For services: confirm the record on the server through the app, not by editing the database.
+7. For each website feature in the current spec's Website features table, from the applet with the website hidden: pick photos and attach them in the composer, a `confirm` dialog, fullscreen video, saving a file, sharing, opening another app, a sign-in window and location, as the applet offers them. Tap once and see the picker, sheet or prompt; cancel it and see the applet unchanged. Confirm the website never shows for these.
+8. Leave the app and return; reload it from the Genesis menu.
+9. Check light and dark, large text and a narrow width on the changed screens.
+10. For stored data: write it, leave, reopen, and confirm it reads back. For services: confirm the record on the server through the app, not by editing the database.
 
-Do not post, comment, message, follow, vote, purchase or change account settings during checks unless the user asked for that action. Opening a form proves the form opens. Use disposable records only where the user allows, and remove only those.
+Do not post, comment, message, follow, vote, purchase or change account settings during checks unless the user asked for that action. Opening a form proves the form opens. To check attachments without posting, attach a file, confirm the site's own thumbnail appears on the hidden page (a read, or Chrome's remote inspector), then discard the draft on the site. Use disposable records only where the user allows, and remove only those.
 
 ## Presentation scenarios
 
@@ -88,6 +89,10 @@ Start from the evidence: what the screen shows, the route's status and error cod
 | `TARGET_NOT_FOUND` | The record left the page before the input ran |
 | `unknown` with `DEADLINE` | `until` never held; check the evidence against the page |
 | `PROTECTED_FIELD` | The input targets a password, one-time code or card field; show the website so the user types it |
+| `USER_ACTION_REQUIRED` | A user action or `allow` ran more than 3 seconds after the tap, after another user action, or outside a tap handler; call it first in the handler |
+| `FILE_UNAVAILABLE` | The picked file was released, expired after 30 minutes or the applet closed; pick it again, and never store file ids |
+| `RATE_LIMITED` | The applet sent more than `limits.inputBurst` inputs at once to one context; find the loop or automatic writes |
+| A tapped download, window, fullscreen or location request does nothing | The hidden page had no grant: call `allow` first in the tap handler, then a trusted click, as [website features](website-features.md) shows; the grant ends after 5 seconds or a navigation |
 | `PROTOCOL_MISMATCH`, `APPLET_INCOMPATIBLE`, "Needs update" | The applet was built for another SDK; rebuild with the current one |
 
 To look at the page itself, open the context's WebView in Chrome's remote inspector (`chrome://inspect`) on a debug build of Genesis. Fix the owner, then rerun the journey that failed and the journeys next to it.

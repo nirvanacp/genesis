@@ -27,7 +27,7 @@ The router's default table:
 | A route with `website: true`, a URL with no route, or another origin | The website |
 | The user chose View website | The website, until Done |
 
-A route's page is ready when its `ready` read is truthy; a route without `ready` is ready once the page is bound. The website appears under a website bar with Done, below the floating menu button. A window the website opens for another site appears as a sheet over the revealed website, only from a tap; hidden contexts never open windows. Overlay screens always render over the active context, whatever it shows. Screens never decide this themselves: `useRouter().presentation(contextId)` reports it, and `useRouter().revealed` names the context whose website is shown.
+A route's page is ready when its `ready` read is truthy; a route without `ready` is ready once the page is bound. The website appears under a website bar with Done, below the floating menu button. A window the website opens for another site appears as a sheet over the revealed website, only from a tap. A hidden context opens one only with a `window` grant from the user's tap on the applet UI; it appears as a sheet over the applet, under the website bar, and closing it returns to the applet (see [website features](website-features.md#sign-in-with-another-provider)). Overlay screens always render over the active context, whatever it shows. Screens never decide this themselves: `useRouter().presentation(contextId)` reports it, and `useRouter().revealed` names the context whose website is shown.
 
 ## Loaders and skeletons
 

@@ -39,6 +39,13 @@ The module file (`build.page`, usually `src/page.ts`), each reader with its kind
 | Screen and control | Result | Input or command, navigation, website or store | Pending, failure and unknown | Status | Evidence |
 | --- | --- | --- | --- | --- | --- |
 
+## Website features
+
+Each feature the website offers that needs visible UI: attachments, saving, sharing, other apps, fullscreen, sign-in windows, dialogs, location, camera. Handling names the [website features](../website-features.md) recipe, or the website for the features that stay there.
+
+| Feature and where the site offers it | Handling | Status | Evidence |
+| --- | --- | --- | --- |
+
 ## Data
 
 | Collection or service path | Owner | Key | Shape version | Notes |

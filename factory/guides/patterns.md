@@ -10,8 +10,9 @@ src/app.tsx               the screen switch and the tabs
 src/page.ts               definePageModule: the readers and commands
 src/adapter/*.ts          one file per sort of page or shared reader, imported by src/page.ts
 src/model.ts              data types shared by the page module and screens
-src/screens/*.tsx         one file per screen
-src/components/*.tsx      shared rows, skeletons, sheets
+src/screens/*.tsx         one file per screen, such as compose.tsx for the applet's composer
+src/components/*.tsx      shared rows, skeletons, sheets, attachment previews, the website dialog
+src/actions.ts            the message for a failed user action
 src/library.ts            record and service access: the service client, hooks and validation
 src/theme.css             tokens and base styles
 backend/                  optional service
@@ -69,6 +70,12 @@ const StoryRow = memo(function StoryRow({ id }: { id: string }) {
 - Read the screen's lists with `useWatch` and each row with `useRecord` in a memoized row component keyed by the record key, so an update to one record renders one row.
 - Read another context with `useWatch(id, spec, { context })` and `useRouter().status(contextId)` only for what the screen needs, such as the account name on a Me tab.
 - Put each screen's scroll container in `ScrollMemory`.
+
+## Composers, attachments and dialogs
+
+A composer is a screen, usually on the route of the site's composer URL. It holds the user's text in component state and the picked files in `useFilePicker`, shows each file with its `previewUrl` and a Remove button, and on Post fills the site's editor, attaches the files and clicks the site's Post button with evidence. Keep the draft after a failure. Put the previews in one component the composer and replies share. [Website features](website-features.md#post-with-photos-or-video) has the full screen.
+
+Render `<WebsiteDialog dialog={useDialog()} />`, styled as the applet's sheet, in each screen whose actions can raise a website dialog, or once in the app shell for the active context. Call every user action (`files.pick`, `downloads.save`, `share`, `links.openExternal`, `notifications.enable`, `allow`) first in its tap handler, and turn its errors into a message with one shared helper.
 
 ## Records and services
 

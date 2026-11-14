@@ -214,14 +214,14 @@ A step can also wait: `{ op: "wait", for: { target, state }, timeoutMs }`, with 
 
 ```ts
 const [photo] = await genesis.files.pick({ accept: ["image/*"] });
-if (photo) await site.attachFiles(css("input[type=file][name=avatar]"), [photo], { expect: { read: { exists: css(".avatar-preview") } } });
+if (photo) await site.attachFiles(css("input[type=file][name=avatar]"), [photo], { until: { target: css(".avatar-preview"), state: "visible" } });
 ```
 
 - `via: "input"` (default) sets the files on an `<input type="file">` and fires `input` and `change`. The input may be hidden, as most sites hide theirs behind a styled button, so the target is not checked for visibility or cover. Anything else fails with `NOT_ACTIONABLE` and the reason `not-a-file-input`; a disabled input with `disabled`; several files on an input without `multiple` with `INVALID_ARGUMENT`; and a file the input's `accept` does not take with the reason `type-not-accepted`.
 - `via: "drop"` drops the files on the target, with `dragenter`, `dragover` and `drop`, for a drop zone.
 - `via: "paste"` pastes them into the target, for an editor that takes pasted images.
 
-The files reach the page before anything is dispatched, so a file that expired or was released fails the input with `FILE_UNAVAILABLE` and nothing happens on the page. Without `limits.userActions` the input fails with `INPUT_UNAVAILABLE`. The site may still refuse a file, for example for its size; judge the result with `until` or `expect` as for any input.
+The files reach the page before anything is dispatched, so a file that expired or was released fails the input with `FILE_UNAVAILABLE` and nothing happens on the page. Without `limits.userActions` the input fails with `INPUT_UNAVAILABLE`. The site may still refuse a file, for example for its size; judge the result with `until` or `expect` as for any input. [Website features](website-features.md#post-with-photos-or-video) shows a whole composer with previews.
 
 ## Actionability
 
@@ -276,7 +276,7 @@ await hn.allow("fullscreen");
 await hn.click(css("button.fullscreen"), { input: "trusted" });
 ```
 
-The page has 5 seconds to use the grant, once; see [One-time grants](interactions.md#one-time-grants).
+The page has 5 seconds to use the grant, once; see [One-time grants](interactions.md#one-time-grants) and the recipes in [website features](website-features.md).
 
 ## Evidence and outcomes
 
@@ -346,5 +346,9 @@ The client waits up to `limits.actionTimeoutMs` for the destination to bind. A d
 | The content is in a cross-origin iframe or a closed shadow root | It cannot be read or targeted; `frame` reports `cross-origin-frame`. |
 | A rich text editor ignores typing | `type` fails with `editor-needs-trusted-input`; use `input: "trusted"`. |
 | A menu opens only on CSS `:hover` | Use `hover` with `input: "trusted"`. |
+| An input makes the page open `alert`, `confirm`, `prompt` or a leave question | The page waits for the answer. The host does not count the time the dialog is open against the call, but the evidence still has its own clock, so a long dialog can end the input as `unknown` with `DEADLINE`. A screen that renders `useDialog()` shows it; otherwise the website is revealed with the dialog over it after about a second. See [Website dialogs](interactions.md#website-dialogs). |
+| Too many inputs at once on one context | `failed` with `RATE_LIMITED`; nothing reached the page. Let the user tap again; never retry on a timer. |
+| A picked file expired, was released or cannot be read | `attachFiles` fails with `FILE_UNAVAILABLE` before anything is dispatched. Ask the user to pick the file again. |
+| The website refuses an attached file | The site's own error shows on the page; `until` does not hold, so the result is `unknown` with `DEADLINE`. Read the site's message and show it. |
 | The website's scripts try to call Genesis | The agent removes the bridge before any website script runs, and the host checks every message's size and role. |
 | The page's renderer stops | Genesis closes the whole applet and shows the launcher; Reload opens it again where it was. |
