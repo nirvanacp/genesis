@@ -78,7 +78,8 @@ final class Shell implements Views.Listener, Ui.Actions {
     /**
      * Offers a navigation to the page as a click on its own link to the URL. A single-page website
      * takes the click and routes inside the document, so its state, such as playing audio, stays.
-     * Answers true when the page's script prevented the click's default; otherwise the click is
+     * Answers true when the page's script prevented the click's default, or stopped the click before
+     * the window, which leaves the page to route or follow the link itself. Otherwise the click is
      * cancelled before the link moves, and the shell loads the URL itself.
      */
     private static final String FOLLOW_LINK = """
@@ -98,13 +99,12 @@ final class Shell implements Views.Listener, Ui.Actions {
               if (!taken) event.preventDefault();
             };
             addEventListener("click", last);
-            var allowed;
             try {
-              allowed = link.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window, button: 0 }));
+              link.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window, button: 0 }));
             } finally {
               removeEventListener("click", last);
             }
-            return reached ? taken : !allowed;
+            return !reached || taken;
           } catch (error) {
             return false;
           }
