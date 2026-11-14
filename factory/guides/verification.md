@@ -90,7 +90,7 @@ Start from the evidence: what the screen shows, the route's status and error cod
 | `PROTECTED_FIELD` | The input targets a password, one-time code or card field; show the website so the user types it |
 | `PROTOCOL_MISMATCH`, `APPLET_INCOMPATIBLE`, "Needs update" | The applet was built for another SDK; rebuild with the current one |
 
-To look at the page itself, open the context's WebView in Chrome's remote inspector (`chrome://inspect`) on a debug build of Genesis. Fix the owner, then rerun the journey that failed and the journeys next to it.
+To look at the page itself, open the context's page on a debug build of Genesis in Chrome's remote inspector (`chrome://inspect`), or in desktop Firefox's `about:debugging` when the applet runs on GeckoView. Verify a journey on the engine the user chose; a page module change that reads differently on the other engine is a bug in the module (see [Website engines](page-modules.md#website-engines)). Fix the owner, then rerun the journey that failed and the journeys next to it.
 
 When the platform is at fault, write down the capability or contract that is missing and a sanitized reproduction; do not work around host internals.
 

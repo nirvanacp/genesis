@@ -13,7 +13,7 @@ const hn = genesis.context("primary");
 
 A context handle always talks to the context's current document. When that document is replaced or not ready yet, reads try again on the next page within their budget, and inputs answer `failed` with `NOT_READY`.
 
-To try locators and reads on a live page, open the website in a debuggable build of Genesis and inspect its WebView from Chrome's remote inspector (`chrome://inspect`).
+To try locators and reads on a live page, open the website in a debuggable build of Genesis and inspect its page from Chrome's remote inspector (`chrome://inspect`) on WebView, or from desktop Firefox's `about:debugging` on GeckoView.
 
 ## Locators
 

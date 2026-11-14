@@ -226,4 +226,4 @@ To type check the Vue files, add `vue-tsc` to `devDependencies`, write the compo
 
 ## Debugging the UI
 
-On a debuggable Genesis build, the UI WebView and the website WebViews appear in Chrome's remote inspector at `chrome://inspect`. Open the UI to read its console and inspect its layout, and open a website page to try locators against the live page.
+On a debuggable Genesis build, the UI WebView and the website WebViews appear in Chrome's remote inspector at `chrome://inspect`. Open the UI to read its console and inspect its layout, and open a website page to try locators against the live page. When the applet's websites run on GeckoView, inspect them from desktop Firefox's `about:debugging` over USB instead.
