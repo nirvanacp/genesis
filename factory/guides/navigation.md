@@ -126,7 +126,7 @@ Menus, sheets and dialogs drawn inside a screen are not history entries. Close t
 
 ## External origins
 
-A context can browse any web page. A link to an origin the manifest does not declare loads in the same context and shows as the website, under the website bar; the page module does not run there. Done or Back returns to the previous entry. Links with other schemes (`mailto:`, `tel:`, `intent:`, app links) open in Android only when the user taps them on the revealed website; a hidden context launches nothing without a `handoff` grant.
+A context can browse any web page. A link to an origin the manifest does not declare loads in the same context and shows as the website, under the website bar; the page module does not run there. Done or Back returns to the previous entry. Links with other schemes (`mailto:`, `tel:`, `intent:`, app links) open in Android only when the user taps them on the revealed website; a hidden context launches nothing without a `handoff` grant. The website's own Share button (`navigator.share` with a title, text or link) opens Android's share sheet on declared origins while the website is revealed and the user just tapped it; a hidden page cannot share, and files are not shared.
 
 ## Links that open a new window
 
