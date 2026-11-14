@@ -118,6 +118,7 @@ genesis.ready();
 | Pending | `pending(target?)`, `subscribePending(listener)`, `cancel()` |
 | Watches | `watch(id, spec, { when? })`, `resync()`, `forget({ current?, keepInputs? })` |
 | Dialogs | `dialog`, `onDialog(handler)`; see [Website dialogs](#website-dialogs) |
+| Grants | `allow(grant): Promise<GrantResult>`, `onGrantEnded(listener)`; see [User actions](#user-actions) |
 | Raw | `call(op, args?, options?)` sends one page agent operation as is. |
 
 `resync()` asks every open watch of the context for a fresh snapshot. `forget()` drops the copies the watches kept of earlier history entries, so none shows after the account changed; with `current: true` it also clears the data shown now. It settles the context's pending inputs as `unknown` with `CONTEXT_REPLACED`, unless `keepInputs` is true. The router calls both when the account changes.
@@ -316,6 +317,7 @@ router.subscribe(() => console.log(router.screen()?.id, router.status().status))
 | `useNotifications` | `useNotifications(): Notifications` | `genesis.notifications`. |
 | `useFilePicker` | `useFilePicker(): { files, pick, remove, clear }` | Picked files held while the component is mounted, released when it unmounts. `pick(options?)` adds to `files` with `multiple` and replaces them without. |
 | `useDialog` | `useDialog(contextId?): Dialog \| null` | The open dialog of a hidden context's page, the active context by default. Using it claims the context's dialogs. |
+| `useGrant` | `useGrant(contextId?): { grant, allow(kind) }` | One-time grants of a context, the active context by default: `grant` is the `GrantKind` the hidden page may use now, or `null` once it ended. |
 | `WebsiteDialog` | `<WebsiteDialog dialog {...divProps}>` | An unstyled, accessible `alertdialog` that answers a `Dialog` with the user's choice. |
 | `useScrollMemory` | `useScrollMemory()` | A ref callback that keeps a scroll container's position per screen. |
 | `ScrollMemory` | `<ScrollMemory {...divProps}>` | A `div` with `useScrollMemory`. |
@@ -404,6 +406,7 @@ return <>
 - `share({ title?, text?, url? })` opens Android's share sheet.
 - `links.openExternal(url)` opens a `mailto`, `tel`, `sms`, `smsto`, `geo`, `intent` or `https` URL in another app. An `https` URL opens only in an app that is not a browser, and rejects with `NOT_FOUND` when none takes it.
 - `notifications.enable()` asks Android for permission to notify when needed and turns the applet's notifications on; it resolves with whether they are on.
+- `context.allow(grant)` lets the context's hidden page use one website feature once within 5 seconds: `fullscreen`, `download`, `window`, `handoff` or `location`. It resolves with `{ granted: true, expiresInMs }`, where `expiresInMs` is 0 for a revealed context, which needs no grant. `context.onGrantEnded(listener)` hears `{ id, grant, used }` when the grant is used, expires or is cleared by a navigation, a reveal, a cover or a window. It needs `limits.grants` and rejects with `UNKNOWN_METHOD` without it. See [One-time grants](interactions.md#one-time-grants).
 
 ## Errors and limits
 
@@ -427,6 +430,7 @@ return <>
 | Stale copies kept for Back | `historyEntriesMax` | 16 history entries per context |
 | Trusted input | `trustedInput` | `true` where the shell can send real input |
 | Website dialogs | `dialogs` | `true` where hidden pages' dialogs reach the applet; 1 s to claim one, text cut to 2000 characters |
+| One-time grants | `grants` | `true` where `context.allow` works; a grant lasts 5 s and is used once |
 | User actions | `userActions` | `true` where the applet UI can pick files, save, share, open links and enable notifications, and `attachFiles` works |
 | Picked files | | 16 per pick of at most 64 MiB each, 128 MiB per `attachFiles`; held for at most 30 minutes |
 | Service request or response body | | 256 KiB, with 3 s to connect and 3 s to read |

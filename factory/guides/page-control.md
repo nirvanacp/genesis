@@ -267,7 +267,16 @@ Trusted input has more limits:
 - One trusted `type` takes at most 2000 characters; a longer text fails with `INVALID_ARGUMENT`.
 - Once another document has started loading in the context, the shell refuses trusted input with `CONTEXT_REPLACED`, so it never reaches the next page. The outcome is `unknown` with that code, like other input cut short by a navigation.
 - An element inside a same-origin frame is tapped at its point on the top page, measured through every frame that contains it.
-- For 5 seconds after trusted input, the page may not open a window or hand a link to another app, even when the user reveals it and taps.
+- For 5 seconds after trusted input, the page may not open a window or hand a link to another app, even when the user reveals it and taps. A `window` or `handoff` grant lifts this block for one request.
+
+A trusted tap gives the page user activation, but a hidden page still may not go fullscreen, download, open a window, hand a link to another app or ask for the location. When the user taps a control in the applet for one of these, ask for a one-time grant from that tap's handler, then make the page do it:
+
+```ts
+await hn.allow("fullscreen");
+await hn.click(css("button.fullscreen"), { input: "trusted" });
+```
+
+The page has 5 seconds to use the grant, once; see [One-time grants](interactions.md#one-time-grants).
 
 ## Evidence and outcomes
 

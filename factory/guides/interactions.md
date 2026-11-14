@@ -21,11 +21,27 @@ Applet code never fills credentials, never solves challenges, and never submits 
 
 Some website features work only while the user is looking at the website, because Android or the user must see them:
 
-- Downloads start only from the revealed website, and the second download from one page asks the user first. A download carries the website's sign-in. `blob:` and `data:` downloads are not saved.
+- Downloads start only from the revealed website, and the second download from one page asks the user first. A download carries the website's sign-in. `data:` downloads are saved, and so are `blob:` downloads on the manifest's origins, where the page agent reads them; other `blob:` downloads are not.
 - Camera, microphone and location prompts appear only on the revealed website, and only after the user allows them in Genesis and in Android. Covering the website reloads a page that was using the camera or microphone, which stops them.
 - Windows, file pickers, `mailto:` and app links, server sign-in prompts and client certificates appear only on the revealed website.
 
-A hidden context gets a refusal for each of these. When a journey needs one, send the user to the website with an explicit control, such as "Download in *website*", that calls `viewWebsite()` from `useRouter`. For files, downloads, sharing and links, the applet UI can also act itself; see [User actions](#user-actions).
+A hidden context gets a refusal for each of these. When a journey needs one, send the user to the website with an explicit control, such as "Download in *website*", that calls `viewWebsite()` from `useRouter`. For files, downloads, sharing and links, the applet UI can also act itself; see [User actions](#user-actions). For fullscreen, a download, a window, a link to another app or the location prompt, the applet can instead give the hidden page a one-time grant.
+
+## One-time grants
+
+`context.allow(grant)` lets a hidden page use one of these features once, within 5 seconds: `fullscreen`, `download`, `window`, `handoff` (a link that opens another app) or `location`. It is a user action, so call it straight from the handler of a tap on the applet control that asks for the feature, then drive the page to it, usually with a trusted click:
+
+```tsx
+<button onClick={async () => {
+  await video.allow("fullscreen");
+  await video.click(css("button.fullscreen"), { input: "trusted" });
+}}>Full screen</button>
+```
+
+- Fullscreen shows over the applet while the context stays hidden; Back or the page's own exit returns to the applet. A window opens in a sheet over the applet, under the website bar; closing it returns to the applet. A download goes to Downloads, and the location prompt shows over the applet.
+- A grant ends when the page uses it, after 5 seconds, and when the page navigates, the context is revealed or covered, or a window opens. A new grant replaces an unused one. `onGrantEnded` and `useGrant` report the end, with `used`.
+- A revealed context needs no grant: `allow` resolves with `expiresInMs: 0`.
+- Ask only for the feature the user's control names, never ahead of time. Without a fresh tap `allow` rejects with `USER_ACTION_REQUIRED`; it needs `limits.grants`.
 
 ## User actions
 
