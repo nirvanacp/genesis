@@ -19,6 +19,7 @@ An applet author uses the public SDK and their own code, and does not need to le
 | `android/app/` | Java shell: activity, launcher, context WebViews, website bar, native Genesis menu, service HTTPS client |
 | `android/native/` | Rust host `genesis-host`: applets, contexts, documents, RPC, storage, services, compatibility, imports (`libgenesis_host.so`) |
 | `crates/contracts/` | `genesis-contracts`: shell events and commands, document messages, bundle types, limits, error codes |
+| `crates/servelet-runtime/` | `genesis-servelet-runtime`: runs a Go servelet (a `wasip1` WebAssembly module) over its SQLite database in a sandbox with fuel, time and memory limits; `servelet-run` sends a request list to a module |
 | `let/` | The Let framework, a separate repository (private for now): `@let/core`, `@let/sdk`, the `let-applet` (also `genesis-applet`) and `let-servelet` tools, the Go servelet library and the builder guidance. Not tracked here |
 | `tools/` | APK asset and native build pipeline, package index check, service helpers |
 | `applets/` | The applets directory: a separate repository ([nirvanacp/applets](https://github.com/nirvanacp/applets)) with the `hn-bookmarks`, `x-bookmarks` and `gmail-only` applets, their port registry and backend launcher. Not tracked here |

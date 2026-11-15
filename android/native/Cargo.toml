@@ -15,4 +15,4 @@ serde_json.workspace = true
 url.workspace = true
 jni = "=0.22.4"
 serde.workspace = true
-rusqlite = { version = "=0.41.0", features = ["bundled"] }
+rusqlite.workspace = true
