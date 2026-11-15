@@ -6,7 +6,7 @@ import { appletCompat, formatMismatches } from '../let/packages/applet-tools/src
 import { checkLayout, readWorkspace } from './workspace.mjs';
 export const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-const PACKAGES = ['let/packages/core', 'let/packages/sdk', 'let/packages/applet-tools'];
+const PACKAGES = ['let/packages/core', 'let/packages/sdk', 'let/packages/applet-tools', 'let/packages/servelet-tools'];
 
 /** `COMPAT` and `FRAMEWORK_VERSION` as written in `let/packages/core/src/compat.ts`. */
 async function typescriptTable() {
