@@ -11,6 +11,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 genesis-contracts = { path = "../../crates/contracts" }
+genesis-servelet-runtime = { path = "../../crates/servelet-runtime" }
 serde_json.workspace = true
 url.workspace = true
 jni = "=0.22.4"

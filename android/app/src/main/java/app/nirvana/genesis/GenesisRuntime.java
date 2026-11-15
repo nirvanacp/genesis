@@ -102,6 +102,12 @@ final class GenesisRuntime implements NativeBridge.StorageResults {
         catch (JSONException error) { throw new IllegalStateException(error); }
     }
 
+    /** Servelet worker results: a service event the host finishes like a remote reply. */
+    @Override public void receiveEvent(String eventJson) {
+        try { send(new JSONObject(eventJson)); }
+        catch (JSONException error) { throw new IllegalStateException(error); }
+    }
+
     // -----------------------------------------------------------------------------------------
     // Window lifecycle
 

@@ -602,8 +602,12 @@ pub struct LauncherEntry {
     /// The installed manifest's origins; empty for an incompatible applet whose files are unknown.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub origins: Vec<String>,
+    /// The remote services, which have Service connections cards and credentials.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub services: Vec<String>,
+    /// The services a bundled servelet answers on the phone; they need no connection.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub local_services: Vec<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub storage: bool,
     /// The installed manifest's `capabilities.notifications`, which the shell schedules from.

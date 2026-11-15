@@ -3,7 +3,8 @@ use crate::{
     contexts::{CallHandle, InputBudget, CALL_INPUTS_MAX, PACED_OPS},
     documents::PendingOp,
     host::Host,
-    services::{self, ServiceCall},
+    servelets,
+    services::{self, Route, ServiceCall},
 };
 use genesis_contracts::*;
 use serde_json::{Value, json};
@@ -232,10 +233,18 @@ impl Host {
                     return error(ErrorCode::QuotaExceeded, "Too many pending requests");
                 }
                 let op_id = begin(self);
-                match services::command(&manifest, op_id, ServiceCall { service_id, path, method, body }) {
-                    Ok(command) => {
-                        self.out.push(command);
+                let local = self.applets.local_servelet(applet_id, &service_id);
+                match services::route(&manifest, local, op_id, ServiceCall { service_id, path, method, body }) {
+                    Ok(Route::Remote(command)) => {
+                        self.out.push(*command);
                         Outcome::Later
+                    }
+                    Ok(Route::Local(job)) => {
+                        if servelets::submit(job) {
+                            return Outcome::Later;
+                        }
+                        self.documents.finish_op(op_id, None);
+                        error(ErrorCode::QuotaExceeded, "Too many pending servelet requests")
                     }
                     Err(failure) => {
                         self.documents.finish_op(op_id, None);

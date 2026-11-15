@@ -5,9 +5,13 @@ import android.os.Looper;
 import java.lang.ref.WeakReference;
 import java.util.concurrent.Semaphore;
 
-/** UI reducer plus a bounded, process-lifetime Rust storage worker. */
+/** UI reducer plus the bounded, process-lifetime Rust storage and servelet workers. */
 public final class NativeBridge {
-    interface StorageResults { void receive(String result); }
+    interface StorageResults {
+        void receive(String result);
+        /** A shell event from the servelet worker, already on the UI thread. */
+        void receiveEvent(String eventJson);
+    }
     static { System.loadLibrary("genesis_host"); }
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static final Semaphore COMPLETIONS = new Semaphore(64);
@@ -21,6 +25,16 @@ public final class NativeBridge {
             COMPLETIONS.acquire();
             MAIN.post(() -> {
                 try { StorageResults target = receiver.get(); if (target != null) target.receive(result); }
+                finally { COMPLETIONS.release(); }
+            });
+        } catch (InterruptedException error) { Thread.currentThread().interrupt(); }
+    }
+    // Called from the servelet worker with the JSON of a `ServiceResponse` or `ServiceFailed` event.
+    public static void onServeletResult(String eventJson) {
+        try {
+            COMPLETIONS.acquire();
+            MAIN.post(() -> {
+                try { StorageResults target = receiver.get(); if (target != null) target.receiveEvent(eventJson); }
                 finally { COMPLETIONS.release(); }
             });
         } catch (InterruptedException error) { Thread.currentThread().interrupt(); }

@@ -11,6 +11,7 @@ mod host;
 mod imports;
 mod rpc;
 mod semver;
+mod servelets;
 mod services;
 mod source;
 mod storage;
@@ -81,13 +82,18 @@ pub extern "system" fn Java_app_nirvana_genesis_NativeBridge_configureStorage<'l
     unowned
         .with_env(|env| -> jni::errors::Result<_> {
             let result = catch_unwind(AssertUnwindSafe(|| -> Result<(), String> {
-                if storage_worker::initialized() {
-                    return Ok(());
+                let files = std::path::PathBuf::from(directory.to_string());
+                if !storage_worker::initialized() {
+                    let vm = env.get_java_vm().map_err(|e| e.to_string())?;
+                    let callback = env.new_global_ref(&class).map_err(|e| e.to_string())?;
+                    storage_worker::start(files.join("genesis.sqlite3"), vm, callback)?;
                 }
-                let path = std::path::PathBuf::from(directory.to_string()).join("genesis.sqlite3");
-                let vm = env.get_java_vm().map_err(|e| e.to_string())?;
-                let callback = env.new_global_ref(&class).map_err(|e| e.to_string())?;
-                storage_worker::start(path, vm, callback)
+                if !servelets::initialized() {
+                    let vm = env.get_java_vm().map_err(|e| e.to_string())?;
+                    let callback = env.new_global_ref(&class).map_err(|e| e.to_string())?;
+                    servelets::start(files.join("servelets"), vm, callback)?;
+                }
+                Ok(())
             }));
             let message = match result {
                 Ok(Ok(())) => "ok".into(),
