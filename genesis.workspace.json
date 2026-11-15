@@ -2,5 +2,12 @@
   "applets": {
     "directory": "applets",
     "repository": "git@github.com:nirvanacp/applets.git"
+  },
+  "let": {
+    "directory": "let",
+    "repository": "git@github.com:nirvanacp/let.git"
+  },
+  "servelets": {
+    "directory": "servelets"
   }
 }

@@ -10,13 +10,16 @@ const CONFIG = 'genesis.workspace.json';
 const ENTRY = path.join(root, 'applets');
 const help = `Usage: npm run workspace -- <command>   (or node tools/workspace.mjs <command>)
 
-  path    print the applets directory named in ${CONFIG}
-  setup   clone the applets repository into that directory when it is missing, then sync
+  path [applets|let|servelets]
+          print a directory named in ${CONFIG} (default applets)
+  setup   clone the applets and Let repositories when they are missing, create an empty
+          servelets repository when it is missing and has no remote, then sync
   sync    when the applets directory is elsewhere, link applets/ to it; when it is outside
           the Genesis root, also link its node_modules to the root install
   check   fail unless the workspace matches ${CONFIG}
 
 Run npm install after setup.`;
+const NESTED = ['let', 'servelets'];
 
 function requireValue(condition, message) {
   if (!condition) throw new Error(message);
@@ -35,7 +38,25 @@ export function readWorkspace() {
   const relative = path.relative(root, appletsDirectory);
   requireValue(relative !== '', `${CONFIG}: applets.directory must not be the Genesis root`);
   const inside = !leavesRoot(relative);
-  return { appletsDirectory, repository, inside, linked: appletsDirectory !== ENTRY };
+  return { appletsDirectory, repository, inside, linked: appletsDirectory !== ENTRY, ...readNested(config) };
+}
+
+/**
+ * The Let framework and servelets directories. Each sits inside the Genesis root as its own
+ * repository; `repository` is the remote that `setup` clones, absent for a local-only one.
+ */
+function readNested(config) {
+  const nested = {};
+  for (const name of NESTED) {
+    const { directory = name, repository } = config[name] ?? {};
+    requireValue(typeof directory === 'string' && directory.trim(), `${CONFIG}: ${name}.directory must be a relative path`);
+    requireValue(repository === undefined || typeof repository === 'string' && repository.trim(), `${CONFIG}: ${name}.repository must be a git remote URL`);
+    const location = path.resolve(root, directory);
+    const relative = path.relative(root, location);
+    requireValue(relative !== '' && !leavesRoot(relative), `${CONFIG}: ${name}.directory must be inside the Genesis root`);
+    nested[name] = { directory: location, repository };
+  }
+  return nested;
 }
 
 function leavesRoot(relative) {
@@ -82,6 +103,12 @@ export function checkLayout() {
   const { appletsDirectory, inside, linked } = workspace;
   const { workspaces } = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
   requireValue(Array.isArray(workspaces) && workspaces.includes('applets/*'), 'package.json workspaces must include applets/*');
+  requireValue(workspaces.includes('let/packages/*'), 'package.json workspaces must include let/packages/*');
+  requireValue(existsSync(path.join(workspace.let.directory, 'packages')), `Missing Let framework in ${workspace.let.directory}. Run npm run workspace -- setup, then npm install.`);
+  for (const name of NESTED) {
+    const { directory } = workspace[name];
+    requireValue(ignoredByRoot(directory), `Add /${path.relative(root, directory).split(path.sep).join('/')} to .gitignore: the ${name} directory is its own repository.`);
+  }
   requireValue(existsSync(appletsDirectory), `Missing applets directory ${appletsDirectory}. Run npm run workspace -- setup, then npm install.`);
   requireValue(realpathOrNull(ENTRY) === realpathSync(appletsDirectory), `applets/ does not lead to ${appletsDirectory}. Run npm run workspace -- sync, then npm install.`);
   requireValue(ignoredByRoot(ENTRY), 'Add /applets to .gitignore: the applets directory is its own repository.');
@@ -111,7 +138,18 @@ function sync() {
 }
 
 function setup() {
-  const { appletsDirectory, repository } = readWorkspace();
+  const { appletsDirectory, repository, let: framework, servelets } = readWorkspace();
+  if (!existsSync(framework.directory)) {
+    requireValue(framework.repository, `${CONFIG}: set let.repository to clone the Let framework`);
+    const result = spawnSync('git', ['clone', framework.repository, framework.directory], { stdio: 'inherit', shell: false });
+    requireValue(!result.error && result.status === 0, `git clone ${framework.repository} failed`);
+  }
+  if (!existsSync(servelets.directory)) {
+    const result = servelets.repository
+      ? spawnSync('git', ['clone', servelets.repository, servelets.directory], { stdio: 'inherit', shell: false })
+      : spawnSync('git', ['init', '-b', 'main', servelets.directory], { stdio: 'inherit', shell: false });
+    requireValue(!result.error && result.status === 0, `Could not create ${servelets.directory}`);
+  }
   if (existsSync(appletsDirectory)) console.log(`Applets directory exists: ${appletsDirectory}`);
   else {
     requireValue(repository, `${CONFIG}: set applets.repository to clone the applets directory`);
@@ -125,7 +163,12 @@ function setup() {
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const command = process.argv[2];
   try {
-    if (command === 'path') console.log(readWorkspace().appletsDirectory);
+    if (command === 'path') {
+      const name = process.argv[3] ?? 'applets';
+      const workspace = readWorkspace();
+      requireValue(name === 'applets' || NESTED.includes(name), `Unknown directory ${name}; use applets, let or servelets`);
+      console.log(name === 'applets' ? workspace.appletsDirectory : workspace[name].directory);
+    }
     else if (command === 'setup') setup();
     else if (command === 'sync') sync();
     else if (command === 'check') { checkLayout(); console.log(`Workspace matches ${CONFIG}.`); }

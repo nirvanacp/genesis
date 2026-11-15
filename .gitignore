@@ -12,5 +12,11 @@
 # Applets directory named in genesis.workspace.json (separate repository)
 /applets
 
+# Let framework (separate repository)
+/let
+
+# Servelets directory (separate repository)
+/servelets
+
 # Private developer workspace (separate repository, maintainers only)
 /.developer/
