@@ -21,11 +21,19 @@ final class Bridge {
     void send(JSONObject event) {
         if (Looper.myLooper() != Looper.getMainLooper()) throw new IllegalStateException("UI thread required");
         JSONArray commands;
+        boolean trace = Perf.trace() && !"tick".equals(event.optString("type"));
+        long start = android.os.SystemClock.uptimeMillis();
         try {
             commands = new JSONArray(NativeBridge.dispatch(event.toString()));
         } catch (JSONException | RuntimeException | LinkageError error) {
             router.showError(null, "Genesis host failed: " + error);
             return;
+        }
+        long dispatched = android.os.SystemClock.uptimeMillis();
+        if (trace) {
+            String payload = event.optString("payload");
+            Perf.log("event " + event.optString("type") + " " + event.optString("view") + " " + payload.substring(0, Math.min(140, payload.length()))
+                + " host=" + (dispatched - start) + "ms commands=" + commands.length());
         }
         for (int i = 0; i < commands.length(); i++) {
             JSONObject command = commands.optJSONObject(i);
@@ -35,5 +43,7 @@ final class Bridge {
                 router.showError(null, "Genesis could not run " + (command == null ? "a command" : command.optString("type")) + ": " + error.getMessage());
             }
         }
+        long ran = android.os.SystemClock.uptimeMillis();
+        if (trace && ran - dispatched > 4) Perf.log("commands " + event.optString("type") + " ran=" + (ran - dispatched) + "ms");
     }
 }
