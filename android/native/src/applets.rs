@@ -450,12 +450,13 @@ fn entry(applet_id: &str, installed: &Installed) -> LauncherEntry {
         Installed::Current { manifest, servelets, .. } => {
             let accent = manifest.shell.as_ref().and_then(|s| s.accent.clone());
             let capabilities = capabilities(manifest);
-            let (local_services, services) = capabilities.services.into_iter().partition(|s| servelets.contains_key(s));
+            let (local_services, services): (Vec<_>, _) = capabilities.services.into_iter().partition(|s| servelets.contains_key(s));
             LauncherEntry {
                 origins: manifest.origins.clone(),
                 services,
+                // A servelet keeps its database on the phone, which Clear data erases.
+                storage: capabilities.storage || !local_services.is_empty(),
                 local_services,
-                storage: capabilities.storage,
                 notifications: manifest.capabilities.notifications.clone().map(Box::new),
                 ..blank(&manifest.name, accent, AppletStatus::Current)
             }
