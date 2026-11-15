@@ -173,9 +173,18 @@ export function createRouter(genesis: Genesis, options: RouterOptions): Router {
   const scrollTopListeners = new Set<(contextId: string) => void>();
   const doneListeners = new Set<(contextId: string) => void>();
 
+  /**
+   * Pushes the router started that the context has not reported yet, by context: the target URL
+   * and the status its screen shows meanwhile. The new screen shows at once, loading, instead of
+   * the previous page's screen until the website starts the new page.
+   */
+  const pending = new Map<string, { screen: string; params: Readonly<Record<string, string>>; status: RouteStatus; timer: ReturnType<typeof setTimeout> }>();
+  let pendingChanged = false;
+
   let version = 0;
   function notify() {
     version++;
+    pendingChanged = false;
     screenCache = undefined;
     for (const listener of [...listeners]) listener();
   }
@@ -206,10 +215,8 @@ export function createRouter(genesis: Genesis, options: RouterOptions): Router {
     state = result.state;
     const rest = result.effects.filter(effect => !run(effect));
     show();
-    if (changed) {
-      genesis.save({ router: serialize(state).state });
-      notify();
-    }
+    if (changed) genesis.save({ router: serialize(state).state });
+    if (changed || pendingChanged) notify();
     return rest;
   }
 
@@ -228,9 +235,14 @@ export function createRouter(genesis: Genesis, options: RouterOptions): Router {
       case "cover":
         return true; // `show` follows the rules after each event.
       case "context.navigate":
-        genesis.context(effect.id).navigate(effect.url, { mode: effect.mode }).catch(failed("navigate"));
+        if (effect.mode === "push") startPending(effect.id, effect.url);
+        genesis.context(effect.id).navigate(effect.url, { mode: effect.mode }).catch(error => {
+          if (endPending(effect.id)) notify();
+          failed("navigate")(error);
+        });
         return true;
       case "context.back":
+        endPending(effect.id);
         genesis.context(effect.id).back(effect.steps).catch(failed("back"));
         return true;
       case "context.reload":
@@ -251,6 +263,38 @@ export function createRouter(genesis: Genesis, options: RouterOptions): Router {
       dispatch({ type: "deadline", id, token });
     }, limits.documentReadyMs);
     timers.add(timer);
+  }
+
+  /**
+   * Marks a push to a URL with an applet screen as pending, so that screen shows loading at once.
+   * A push to a website page, or one the website never starts, ends after the readiness deadline.
+   */
+  function startPending(id: string, url: string) {
+    endPending(id);
+    const match = matchRoute(table, url);
+    if (match.kind !== "route") return;
+    const route = routes.get(match.routeId);
+    const current = tracked.get(id)?.status;
+    if (!route || route.website || !current) return;
+    const status: RouteStatus = { ...current, status: "loading", routeId: route.id, params: match.params, stale: false, error: null, url };
+    const timer = setTimeout(() => {
+      timers.delete(timer);
+      if (pending.get(id)?.timer === timer && endPending(id)) notify();
+    }, limits.documentReadyMs);
+    timers.add(timer);
+    pending.set(id, { screen: match.screen, params: match.params, status, timer });
+    pendingChanged = true;
+  }
+
+  /** Ends the context's pending push. Returns whether one was pending. */
+  function endPending(id: string): boolean {
+    const entry = pending.get(id);
+    if (!entry) return false;
+    clearTimeout(entry.timer);
+    timers.delete(entry.timer);
+    pending.delete(id);
+    pendingChanged = true;
+    return true;
   }
 
   function prompt(message: string, leave: () => void) {
@@ -276,7 +320,11 @@ export function createRouter(genesis: Genesis, options: RouterOptions): Router {
   }
 
   function done(id: string) {
+    const before = state;
     dispatch({ type: "user.done", id });
+    // Declining a sign-in the first context needs at its own page leaves no applet page to return
+    // to, so Done leaves the applet instead of doing nothing.
+    if (state === before && revealedNow() === id && state.contexts[id]?.pin === "auth") genesis.leave();
     for (const listener of [...doneListeners]) listener(id);
   }
 
@@ -304,9 +352,13 @@ export function createRouter(genesis: Genesis, options: RouterOptions): Router {
     if (screenCache !== undefined) return screenCache;
     const top = state.overlay[state.overlay.length - 1];
     const active = state.contexts[state.active];
+    const next = pending.get(state.active);
     let screen: CurrentScreen | null = null;
     if (top) {
       screen = { key: top.key, id: top.id, params: top.params, context: state.active, overlay: true };
+    } else if (active && next) {
+      // A push takes the next history index, so the screen keeps its key when the page arrives.
+      screen = { key: `${active.id}:${active.index + 1}`, id: next.screen, params: next.params, context: active.id, overlay: false };
     } else if (active?.url) {
       const match = matchRoute(table, active.url);
       if (match.kind === "route") {
@@ -510,6 +562,9 @@ export function createRouter(genesis: Genesis, options: RouterOptions): Router {
     }
     stops.push(context.subscribe(() => update(id)));
     stops.push(context.onNavigated(navigation => {
+      // Any navigation ends the push, even a step the previous page takes first: at worst that
+      // page's screen shows again until the new page starts, as it did before pending pushes.
+      endPending(id);
       dispatch({ type: "context.navigated", ...navigation });
       update(id);
     }));
@@ -535,7 +590,7 @@ export function createRouter(genesis: Genesis, options: RouterOptions): Router {
       return () => { listeners.delete(listener); };
     },
     screen: currentScreen,
-    status: (id = state.active) => tracked.get(id)?.status ?? missing(id),
+    status: (id = state.active) => pending.get(id)?.status ?? tracked.get(id)?.status ?? missing(id),
     presentation: (id = state.active) => presentationOf(id),
     revealed: revealedNow,
     navigate,
