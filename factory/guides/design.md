@@ -43,23 +43,9 @@ Write semantic markup, in whichever UI framework the applet uses, from the recor
 
 Show neutral, destination-shaped placeholders while a page loads: avatar and text rows for a feed, title and metadata rows for a news list, banner and avatar for a profile. Keep known headings, tabs and the Cancel or Close control available. Reserve the space content will take. Use neutral grays in light and dark, not the brand accent. Fade the skeleton in after about 120 ms, so a fast load shows nothing, and sweep a soft shimmer across it; under reduced motion it stays still. When the content arrives, fade it in once. [Motion](motion.md#loaders) covers the other loaders.
 
-```tsx
-function FeedSkeleton() {
-  return (
-    <div role="status" aria-busy="true" aria-label="Loading posts">
-      {Array.from({ length: 6 }, (_, i) => <div key={i} className="skeleton-row" aria-hidden="true" />)}
-    </div>
-  );
-}
-```
+One skeleton per destination. A list, a grid, a detail, a profile and a search results page each get their own, with the real row height, media ratio and header, so nothing moves when the content arrives. A search screen whose results are a grid gets a grid skeleton.
 
-```css
-.skeleton { animation: fade .2s .12s both; }
-.skeleton-row { background: linear-gradient(90deg, var(--skeleton) 30%, var(--shimmer) 50%, var(--skeleton) 70%) 0 0 / 300% 100%; animation: shimmer 1.4s linear infinite; }
-@keyframes fade { from { opacity: 0; } } /* --skeleton and --shimmer are theme tokens, lighter in dark mode */
-@keyframes shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
-@media (prefers-reduced-motion: reduce) { .skeleton, .skeleton-row { animation: none; } }
-```
+Build skeletons from the [UI kit](ui-kit.md#states)'s `.sk` shapes. Only `.sk` paints the placeholder and runs the shimmer; shape classes set size and radius only. A rule with a more specific selector that sets `background` or `animation` on a shape silently stops its shimmer, and a still skeleton looks frozen. Check on the device that every skeleton moves, and that it holds still under reduced motion.
 
 Keep existing content visible during refresh and show placeholders only where content is missing. Never cover an error, a sign-in prompt, an empty result or a draft with a skeleton.
 

@@ -118,6 +118,7 @@ An applet's websites run in Android WebView or in GeckoView, the engine of Firef
 - Keep text as text. For rich text, return runs such as `{ text, href?, emphasis? }` built from known elements.
 - Never return HTML, cookies, form tokens or credentials, and never run code taken from the page.
 - Return `null` for a fact the page does not show. A readiness reader returns `true` only from content it recognized, and an account reader returns `false` only when the page shows the person is signed out. The router treats `null` as unknown.
+- Recognize every signed-out page the site serves: the usual login link, a signed-out landing page, a sign-up wall, a consent or onboarding page. A route that `requiresAccount` stays `loading` while the account reads `null`, so a missed variant shows a skeleton for 15 seconds and then the website, instead of the sign-in at once. Narrow each signed-out check so it never matches a signed-in page, for example by also requiring that the signed-in layout's `main` is absent.
 - Keep top-level module code free of side effects. `check` imports the module in Node, where there is no document.
 
 A reader that throws puts its watch in `status: "error"` with the thrown message, and the client keeps the last data it had, marked `stale`. A reader that returns a promise fails the same way with `ASYNC_READ`, and `check` warns about any reader with an `async` function.

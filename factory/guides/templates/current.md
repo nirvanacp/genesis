@@ -51,6 +51,21 @@ Each feature the website offers that needs visible UI: attachments, saving, shar
 | Collection or service path | Owner | Key | Shape version | Notes |
 | --- | --- | --- | --- | --- |
 
+## Native feel
+
+The [acceptance bar](../native-feel.md#acceptance-bar), each item marked verified, failed, not applicable or not checked, with the evidence and the date. Website pages shown on purpose in the core journeys: list them here or mark them in the route table.
+
+- [ ] Cold start signed in and signed out
+- [ ] Landing URLs routed or listed as website pages
+- [ ] Skeleton, error, empty and stale state on every routed screen
+- [ ] Details open at once
+- [ ] Pressed state, busy, outcome and Undo on every control
+- [ ] Back, overlays and scroll restoration
+- [ ] Screen motion, no leftover copy after rapid Back
+- [ ] Refresh
+- [ ] Themes, 200% text, narrow width, reduced motion
+- [ ] Website cue on every control that shows the website
+
 ## Current work and verification
 
 Next steps, blockers and known limits. Status is planned, implemented, verified, failed, blocked or deferred by the user. Record the evidence kind for each verification: static, synthetic, or device with the real website.

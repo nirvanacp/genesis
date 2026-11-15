@@ -13,22 +13,7 @@ Read this with [presentation](presentation.md) for which state to show, [design]
 
 ## Tokens
 
-Define motion tokens in `src/theme.css` next to the color and layout tokens, and use them in every rule:
-
-```css
-:root {
-  --ease-out: cubic-bezier(.2, 0, 0, 1);       /* entrances: fast start, gentle stop */
-  --ease-in: cubic-bezier(.3, 0, .8, .15);     /* exits: leave quickly */
-  --ease-spring: cubic-bezier(.34, 1.4, .64, 1); /* small pops: badges, checks, stars */
-  --dur-short: .15s;   /* pressed states, color changes */
-  --dur-medium: .25s;  /* popovers, toasts, crossfades */
-  --dur-long: .35s;    /* sheets, the drawer */
-  --press: rgba(0, 0, 0, .08); /* the state layer; lighter in dark mode */
-}
-@media (prefers-reduced-motion: reduce) {
-  * { scroll-behavior: auto !important; animation: none !important; transition: none !important; }
-}
-```
+The motion tokens live in `src/theme.css` next to the color and layout tokens, in the [UI kit](ui-kit.md#theme): `--ease-out` for entrances, `--ease-in` for exits, `--ease-spring` for small pops, and `--dur-short` (150 ms), `--dur-medium` (250 ms) and `--dur-long` (350 ms). Use them in every rule. The kit's reduced-motion rule covers `*, *::before, *::after`, because a loader drawn on a pseudo-element, such as a progress bar's `::before`, keeps running under a rule that names only `*`.
 
 Keep durations between 150 and 350 ms. Entrances use `--ease-out` and run a little longer than exits, which use `--ease-in`, so the outgoing screen is gone before the new one settles. Use `--ease-spring` only for small elements.
 
@@ -69,75 +54,13 @@ function motionBetween(from: Place | null, to: Place): Motion {
 
 The UI has no outgoing screen to animate: the router has already moved to the next page, and the previous screen's component unmounts. Animate a copy instead. A `Stage` wraps the screen slot and, during the render where its `id` changes, clones the outgoing DOM while it still exists. After commit it puts the clone in a ghost layer, inert and hidden from accessibility, plays the clone's exit and the live screen's entrance with the Web Animations API, and removes the clone when its animation finishes.
 
-```tsx
-const SETTLE_MS = 90; // the key and the page can change in quick turns; treat them as one change
-
-export function Stage({ id, motion, layer, zIndex, children }: {
-  id: string | null; motion: Motion; layer: RefObject<HTMLDivElement | null>; zIndex: number; children?: ReactNode;
-}) {
-  const host = useRef<HTMLDivElement>(null);
-  const shown = useRef({ id, at: 0 });
-  const change = useRef<{ copy: HTMLElement | null; motion: Motion } | null>(null);
-
-  if (shown.current.id !== id) {                      // during render: the old DOM is still here
-    const now = performance.now();
-    const settling = now - shown.current.at < SETTLE_MS;
-    const still = reducedMotion() || motion === "none" || settling;
-    change.current = still ? null : { copy: host.current && ghostOf(host.current), motion };
-    shown.current = { id, at: settling ? shown.current.at : now };
-  }
-
-  useLayoutEffect(() => {                             // after commit: play both halves
-    const next = change.current;
-    change.current = null;
-    if (!next) return;
-    if (next.copy) playExit(layer.current, next.copy, next.motion, zIndex);
-    const enter = ENTER[next.motion];
-    if (enter && host.current) host.current.animate(enter.frames, { duration: enter.ms, easing: enter.easing });
-  }, [id, layer, zIndex]);
-
-  if (id === null) return null;                       // a closed sheet slot still animates its copy out
-  return <div ref={host} className="stage" style={{ zIndex }}>{children}</div>;
-}
-
-function ghostOf(element: HTMLElement): HTMLElement {
-  const copy = element.cloneNode(true) as HTMLElement;
-  copy.inert = true;
-  copy.setAttribute("aria-hidden", "true");
-  copy.classList.add("ghost");
-  return copy; // copy each scroller's scrollTop and restore it after appending the copy
-}
-
-const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-```
+The [UI kit](ui-kit.md#motion-stage)'s `src/ui/motion.tsx` holds the working `Stage`, the ghost copy, the enter and exit tables and `usePlaceMotion`. Copy it rather than writing a new one. Two details make it work: changes within about 90 ms of each other count as one, so a key change followed by a page change does not play twice, and the copy keeps each scroller's position so it does not jump to the top as it leaves.
 
 `ENTER` and the exit table map each motion to keyframes, a duration and an easing. An exit can name a part of the copy to animate, such as `.sheet` and `.sheet-backdrop`, and whether the copy plays above the live screen (pop, closing sheets, drawer out) or below it (push, fade). Remove the copy on `finished` and again on a timer a little after its duration, so a cancelled animation never leaves one behind.
 
-```css
-.content { position: relative; overflow: hidden; isolation: isolate; }
-.stage, .ghosts, .ghost { position: absolute; inset: 0; }
-.ghosts, .ghost { pointer-events: none; }
-.ghost, .ghost * { animation: none !important; transition: none !important; } /* a frozen picture */
-```
+The copy is a frozen picture: the kit turns off animations and transitions inside `.ghost` and keeps the ghost layer out of pointer events.
 
-Wire it in the screen switch. The stage itself is not keyed, so it survives the change; the screen inside it is keyed by `screen.key`, so a new entry still gets fresh state:
-
-```tsx
-export function App() {
-  const { screen } = useRouter();
-  const layer = useRef<HTMLDivElement>(null);
-  const place = placeOf(screen);         // index, depth, tab and drawer, as above
-  const motion = usePlaceMotion(place);  // remembers the previous place
-  const Screen = screen ? SCREENS[screen.id] : undefined;
-  return <div className="app">
-    <main className="content">
-      <Stage id={place.id} motion={motion} layer={layer} zIndex={1}>{Screen && <Screen key={screen!.key} />}</Stage>
-      <div className="ghosts" ref={layer} aria-hidden="true" />
-    </main>
-    <Tabs />
-  </div>;
-}
-```
+Wire it in the screen switch, as the kit's `src/app.tsx` does. The stage itself is not keyed, so it survives the change; the screen inside it is keyed by `screen.key`, so a new entry still gets fresh state.
 
 ### Sheets keep the screen under them
 
@@ -171,6 +94,8 @@ Every action ends in a visible outcome. Use the [input outcomes](interactions.md
 
 Reverse an Undo through the same path as the original change, so the store and the page agree.
 
+**Minimum busy time.** Work that fails fast, such as a Retry with no network or a service call that is refused at once, can end before a frame shows the busy state, so the tap looks ignored. Keep a control in its ongoing state for at least 800 ms from the tap, and disabled meanwhile, then show the outcome. When no answer comes, give up the busy state after about 4 seconds and let the screen's own state (stale, error) speak. `useBusy` in the [UI kit](ui-kit.md#feedback) does both.
+
 ## Loaders
 
 Choose the loader from what the screen already shows:
@@ -181,7 +106,7 @@ Choose the loader from what the screen already shows:
 | Content, while it reloads or goes stale | The content, with a thin indeterminate progress bar under the header that appears only after about 250 ms. Keep `aria-busy` on the scroll container |
 | Content, while a command on it runs | The same progress bar, and that command's controls disabled |
 | A list loading more at its end | A small spinner inside the Load more control, which stays disabled |
-| A control's own work (Save, Send) | The control's label changes to the ongoing form ("Saving…") and it is disabled |
+| A control's own work (Save, Send, Retry) | The control's label changes to the ongoing form ("Saving…") and it is disabled |
 
 When content replaces a skeleton, fade it in once (about 240 ms). Do not fade in content that was already cached: a stale copy shows at once.
 
@@ -209,6 +134,8 @@ Do not handle the pull on inputs, horizontal scrollers or nested scrollers, and 
 ## Reduced motion
 
 With reduced motion, the stage swaps screens without copies, sheets appear and disappear at once, shimmer and spinners stop (the skeleton and a full, half-opaque progress bar stay), and the completion pause is zero. Pressed states may keep their color change. Read the setting per change, so changing it applies without a restart.
+
+Set durations to zero rather than removing animations, so an animation that sets the final state still lands on it, and cover `::before` and `::after` as the kit's theme does. Check on the device with Settings > Accessibility > Remove animations: nothing turns, slides or shimmers, and every state change still shows.
 
 ## Checking motion
 
