@@ -6,6 +6,7 @@ Read [../AGENTS.md](../AGENTS.md) first. These skills cover applet work, not Gen
 | --- | --- |
 | [genesis-build-applet](genesis-build-applet/SKILL.md) | Creating an applet, or adding a context, route, screen or service to one |
 | [genesis-customize-applet](genesis-customize-applet/SKILL.md) | Changing an applet's appearance or behavior, repairing readers, commands and routes, adding records or backend features |
+| [genesis-polish-applet](genesis-polish-applet/SKILL.md) | Making an existing applet feel native: audit it against the [native feel](../guides/native-feel.md) bar on a device and fix what falls short |
 | [genesis-verify-applet](genesis-verify-applet/SKILL.md) | Checking a change, diagnosing a failure, or preparing a handoff |
 | [genesis-test-accounts](genesis-test-accounts/SKILL.md) | A journey needs a signed-in website session and the device is signed out; sign in with the operator's test accounts, through the site's own form or an OAuth provider such as Google, including several accounts on one site, through scripts, without reading the values |
 

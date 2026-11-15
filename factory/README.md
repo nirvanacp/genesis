@@ -13,6 +13,8 @@ Example request to an agent:
 | Need | Read |
 | --- | --- |
 | Give a coding agent its instructions | [AGENTS.md](AGENTS.md) |
+| Make the applet feel like a native app: the bar, the order of work and the acceptance checklist | [Native feel](guides/native-feel.md) |
+| Start the UI from working theme, motion, feedback, skeleton and refresh code | [UI kit](guides/ui-kit.md) |
 | Requirements, defaults and how to resolve conflicts | [Rules](guides/rules.md), [defaults](guides/defaults.md) |
 | Keep the intended app and resolve ambiguous requests | [Product scope](guides/product-scope.md) |
 | Create, build and install an applet | [Getting started](guides/getting-started.md) |
