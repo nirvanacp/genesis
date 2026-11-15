@@ -64,6 +64,12 @@ Routes match only `https:` URLs on the manifest's origins; any other URL shows t
 
 There is no exclusion syntax: the first route that matches wins, so put a narrower route before a broader one (`/user/settings` before `/user/:name`). `createRouter` warns in the console about a route that an earlier route always matches first, because no URL can reach it.
 
+
+### Route every landing URL
+
+A route covers the URL the site actually shows, not the URL the applet asked for. Sites redirect: `/home` to `/` or the reverse, a locale prefix such as `/en/`, a trailing slash, an `m.` host, an added query such as `?tab=`, or a signed-out landing page in place of the feed. When the landing URL has no route, the user sees the website where a screen should be.
+
+For each core journey, open its start URL on the device signed in and signed out, follow the site's redirects, and note the URL each page settles on (the route status's `url`, or the website bar's host and title). Give every URL the applet customizes a route, with patterns for the variants. Record the pages that show the website on purpose, such as sign-in and settings, in the current spec's route table, so any other website page in a journey reads as a defect.
 ## One history per context
 
 Every route screen is a history entry of its context. Opening an item pushes the item's URL in the context, and Back goes back in the context's history, so the applet and the website share one history and the user can move between them without losing their place. There is no separate screen stack for route screens.
@@ -108,7 +114,7 @@ Content tabs, filters and sort controls belong inside the screen. When they corr
 
 The user can look at the website for any page: the Genesis menu's View website item, or a screen control that calls `viewWebsite()`. The router pins the context to the website and shows it under the website bar. Viewing the website closes any overlay screens above that context; a screen with a leave guard asks first, and Done returns to the context's route screen, not the overlay. Done on the bar (or `done()`) unpins it and shows the applet screen again. When the website page has no route, Done goes back one entry, or to the context's start page when there is none.
 
-The router also pins a context when a route that `requiresAccount` reads signed out, and opens the `account.signInUrl` there. The pin clears when a ready page with an account arrives. If the user leaves that sign-in with Done or Back, the router goes back past the page that needed the account; when that page was the start page, it selects the primary context instead.
+The router also pins a context when a route that `requiresAccount` reads signed out, and opens the `account.signInUrl` there. The pin clears when a ready page with an account arrives. If the user leaves that sign-in with Done or Back, the router goes back past the page that needed the account; when that page was the start page, it selects the primary context instead. When Done changes nothing because the first context's own start page needs the account, Done leaves the applet, so the user is never held on the sign-in.
 
 Open the website only on an explicit action: View website, a control whose label or cue says it opens the website, or a sign-in prompt. Never open it to cover a loading or failed screen; the router does that itself after the deadline.
 

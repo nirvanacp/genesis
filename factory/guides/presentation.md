@@ -29,6 +29,15 @@ The router's default table:
 
 A route's page is ready when its `ready` read is truthy; a route without `ready` is ready once the page is bound. The website appears under a website bar with Done, below the floating menu button. A window the website opens for another site appears as a sheet over the revealed website, only from a tap. A hidden context opens one only with a `window` grant from the user's tap on the applet UI; it appears as a sheet over the applet, under the website bar, and closing it returns to the applet (see [website features](website-features.md#sign-in-with-another-provider)). Overlay screens always render over the active context, whatever it shows. Screens never decide this themselves: `useRouter().presentation(contextId)` reports it, and `useRouter().revealed` names the context whose website is shown.
 
+## Opening a screen
+
+How a screen is opened decides what the user sees while the next page loads:
+
+- `navigate({ url })` with the default `push` mode shows the destination route's screen at once, as a pending entry with status `loading`, its own screen id and params, and the next history key. The screen renders its skeleton until the page arrives. The pending entry ends when the page binds, on any other navigation, or after `limits.documentReadyMs`.
+- A click on the website's own link (`context.click(..., { navigates: true })`) and `replace` mode start no pending entry. The previous screen stays until the new page binds, which reads as a dead tap and can show the website in between when the previous entry was the website.
+
+Open details, profiles and other destinations with `navigate({ url })` from the URL the reader returned. Click the site's link only when the URL is unknown, or when the click does something the URL alone does not.
+
 ## Loaders and skeletons
 
 While a page loads and nothing is cached, the screen renders a skeleton shaped like its destination: rows for a feed, a title and metadata block for a detail, a banner and avatar for a profile. Keep known headings, tabs and the Cancel or Close control available. See [design](design.md#skeletons) for the look.
@@ -44,6 +53,13 @@ if (stories.order.length === 0) {
 ```
 
 `status()` is the route's status for the active context, or for the context you name: `loading`, `ready`, `error`, `auth` or `unsupported`, with `stale`, `error`, `params` and `signedIn`. Between a context's document going away and the next one binding, it is `loading`. Treat empty as a ready page with an empty list, never as "no records yet".
+
+Unknown is not empty either. While the page is loading, a field the reader has not found is missing because the page has not drawn it yet. Show the skeleton for it, and render a fallback such as "(no subject)" or a zero count only once the page is ready and not stale and the field is still missing:
+
+```tsx
+const known = read.messages.length > 0 || (page.status === "ready" && !page.stale);
+return known ? <Thread read={read} /> : <ThreadSkeleton />;
+```
 
 ## Stale pages
 
@@ -61,7 +77,7 @@ A route in `error` carries `status().error` with a code and message, and a watch
 
 When a context starts showing the website, the shell reveals that context's page under the website bar; when it returns to the applet, the shell covers it again. No screen code runs for the switch. Design for it:
 
-- A signed-out user who opens a page that needs an account sees the site's sign-in. Done or Back leaves it and returns past the page that needed the account. After signing in, the applet screen returns on its own.
+- A signed-out user who opens a page that needs an account sees the site's sign-in. Done or Back leaves it and returns past the page that needed the account. When nothing is behind it, because the first context's start page needs the account, Done leaves the applet. After signing in, the applet screen returns on its own.
 - A link to a page the applet does not customize opens the website in the same session, with the same history. Back goes to the previous entry, which shows the applet screen again if it has a route.
 - A link shared from another app shows the applet screen when it matches a route, like any other navigation, and the website otherwise (see [navigation](navigation.md#links-from-other-apps)).
 - A page that never becomes ready shows the website after 15 seconds. Fix the route's `ready` read rather than hiding this.

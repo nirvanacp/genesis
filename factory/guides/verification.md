@@ -58,7 +58,7 @@ Do not post, comment, message, follow, vote, purchase or change account settings
 | Open a routed page | The skeleton, then the screen; no website flash |
 | Back to a previous entry | The last copy at once, marked stale, then the fresh page |
 | A page that needs an account, signed out | The site's sign-in under the website bar; after signing in, the applet screen |
-| Done or Back from that sign-in | The page before the one that needed the account, or the primary tab |
+| Done or Back from that sign-in | The page before the one that needed the account, or the primary tab; Done leaves the applet when the start page itself needs the account |
 | Switch to a second signed-in account, and back | Each account's own pages and data; nothing carries over from the other account |
 | A link to a page without a route, then Done | The website, then the previous entry |
 | A link to another origin | The website in the same context; Back returns |
@@ -72,6 +72,22 @@ Do not post, comment, message, follow, vote, purchase or change account settings
 | A slow load, then a reload of the loaded screen | The skeleton fades in and shimmers, the content fades in once; on reload the content stays with a progress bar |
 | Pull to refresh, a toggle, completing or removing an item | The indicator follows and spins until ready; the toggle changes at once; a toast offers Undo |
 | Reduced motion on (Remove animations) | Screens swap at once, loaders stay still, every state change still shows |
+
+## Native feel scenarios
+
+These check the [native feel](native-feel.md) bar. Fast flashes last one or two frames and are missed by eye and by screenshots: record the screen during each scenario and step through the recording frame by frame (for example, extract frames with `ffmpeg -i run.mp4 -vf fps=30 frames/%04d.png`). Use only the device this task drives, under the device rules of the instructions you follow.
+
+| Scenario | Expected |
+| --- | --- |
+| Cold start, signed in | The start screen's skeleton from the first frame, then the content; no website frame |
+| Cold start, signed out | The site's sign-in at once, not a skeleton that waits out the deadline; Done leaves or returns as [presentation](presentation.md#the-switch-to-the-website) says |
+| Follow each core journey's links and redirects | Every page shows an applet screen, or is listed in the current spec as a website page on purpose |
+| Open a detail, profile or result | The destination's own screen and skeleton in the next frame; not the previous screen, and not the website |
+| Retry or a command with the network off | The control shows its ongoing state for at least 800 ms, then an error or toast |
+| Back five times quickly from a deep screen | Each Back answers; no copy stays on screen and the final screen is live |
+| A slow network (throttled or a weak signal) | Skeletons shimmer, progress bars appear after 250 ms, nothing reads as empty while loading |
+| Reduced motion on | No spinner, shimmer or progress animation runs, including pseudo-element ones |
+| Dark theme, 200% text, the narrowest width | Every changed screen and its skeleton stay readable, with nothing clipped or overlapping |
 
 ## Diagnosing
 
@@ -93,6 +109,12 @@ Start from the evidence: what the screen shows, the route's status and error cod
 | `FILE_UNAVAILABLE` | The picked file was released, expired after 30 minutes or the applet closed; pick it again, and never store file ids |
 | `RATE_LIMITED` | The applet sent more than `limits.inputBurst` inputs at once to one context; find the loop or automatic writes |
 | A tapped download, window, fullscreen or location request does nothing | The hidden page had no grant: call `allow` first in the tap handler, then a trusted click, as [website features](website-features.md) shows; the grant ends after 5 seconds or a navigation |
+| The landing page shows as the website | The site redirected to a URL with no route; route every landing URL ([navigation](navigation.md#route-every-landing-url)) |
+| A signed-out start shows a skeleton for 15 seconds | The account reader returns `null` on that signed-out page; return `false` from it ([page modules](page-modules.md#reading-rules)) |
+| Opening a detail shows the previous screen or the website first | The screen clicked the site's link instead of `navigate({ url })` ([presentation](presentation.md#opening-a-screen)) |
+| A skeleton does not shimmer | Another rule overrides the shimmer's `background` or `animation`; paint and animate from one class ([design](design.md#skeletons)) |
+| "(no subject)", "0" or "No results" flashes before content | A fallback rendered from an incomplete read; keep the skeleton until the page is ready and not stale |
+| A tap shows nothing | No pressed state, or the work failed faster than a frame; add a pressed state and a minimum busy time ([motion](motion.md#feedback-after-an-action)) |
 | `PROTOCOL_MISMATCH`, `APPLET_INCOMPATIBLE`, "Needs update" | The applet was built for another SDK; rebuild with the current one |
 
 To look at the page itself, open the context's page on a debug build of Genesis in Chrome's remote inspector (`chrome://inspect`), or in desktop Firefox's `about:debugging` when the applet runs on GeckoView. Verify a journey on the engine the user chose; a page module change that reads differently on the other engine is a bug in the module (see [Website engines](page-modules.md#website-engines)). Fix the owner, then rerun the journey that failed and the journeys next to it.
