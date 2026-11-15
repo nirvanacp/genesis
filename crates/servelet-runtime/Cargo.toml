@@ -9,6 +9,6 @@ publish.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 rusqlite = { workspace = true, features = ["hooks", "limits"] }
-wasmi = { version = "=2.0.0", default-features = false, features = ["stable", "std", "validate", "auto-dispatch"] }
+wasmi = { version = "=2.0.0", default-features = false, features = ["stable", "std", "validate", "portable-dispatch"] }
 getrandom = "=0.4.3"
 base64 = "=0.22.1"
