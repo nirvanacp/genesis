@@ -46,9 +46,9 @@ async function requireFile(filename, message) {
 async function check() {
   if (process.versions.node !== "24.15.0") throw new Error("Use Node 24.15.0: nvm install && nvm use, or set genesis.node in android/local.properties");
   await requireFile(path.join(root, "node_modules/typescript/lib/tsc.js"), "Missing npm dependencies. Run npm ci from the repository root.");
-  run(process.execPath, ["node_modules/typescript/lib/tsc.js", "-p", "packages/core/tsconfig.json"]);
-  run(process.execPath, ["packages/sdk/build.mjs"]);
-  run(process.execPath, ["node_modules/typescript/lib/tsc.js", "-p", "packages/sdk/tsconfig.json"]);
+  run(process.execPath, ["node_modules/typescript/lib/tsc.js", "-p", "let/packages/core/tsconfig.json"]);
+  run(process.execPath, ["let/packages/sdk/build.mjs"]);
+  run(process.execPath, ["node_modules/typescript/lib/tsc.js", "-p", "let/packages/sdk/tsconfig.json"]);
 }
 
 // The committed release of an applet, when it is current: `published/` holds the bundle and its
@@ -78,9 +78,9 @@ async function publishedRelease(base, id) {
 // the first launch after an install or update. The release variant ships the committed release
 // with its record; the debug variant, and an applet without a current release, is built here.
 async function assets() {
-  // The applet tools import @genesis/core, which check() has just built.
+  // The applet tools import @let/core, which check() has just built.
   const { readPackages } = await import("./check-packages.mjs");
-  const { buildApplet } = await import("../packages/applet-tools/src/build.mjs");
+  const { buildApplet } = await import("../let/packages/applet-tools/src/build.mjs");
   const output = path.join(generated, "assets");
   await rm(output, { recursive: true, force: true });
   await mkdir(path.join(output, "bundles"), { recursive: true });
@@ -118,7 +118,7 @@ async function drawerEntries(packages) {
   await rm(res, { recursive: true, force: true });
   for (const folder of ["values", "drawable", "drawable-nodpi", "mipmap-anydpi-v26"]) await mkdir(path.join(res, folder), { recursive: true });
   await mkdir(path.dirname(overlay), { recursive: true });
-  const { containedFile } = await import("../packages/applet-tools/src/manifest.mjs");
+  const { containedFile } = await import("../let/packages/applet-tools/src/manifest.mjs");
   const values = [], aliases = [];
   for (const { base, manifest } of packages.filter(p => p.drawer)) {
     if (!manifest.shell?.icon) {

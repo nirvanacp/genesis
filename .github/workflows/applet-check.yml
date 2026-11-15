@@ -1,6 +1,6 @@
 # Reusable workflow for applet repositories: rebuilds every applet with the Genesis commit its
 # published release record names, and fails unless the rebuild equals the committed build.
-# Callers: factory/templates/github/genesis-check.yml.
+# Callers: let/factory/applets/templates/github/genesis-check.yml.
 name: Genesis applet check
 
 on:
@@ -35,6 +35,12 @@ jobs:
           ref: ${{ inputs.genesis-ref }}
           path: genesis
           persist-credentials: false
+      # Genesis builds the framework packages from the Let repository, checked out at let/.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: nirvanacp/let
+          path: genesis/let
+          persist-credentials: false
       # Node and npm match `engines` in the Genesis package.json.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -42,7 +48,7 @@ jobs:
       - run: npm install -g npm@11.14.1
       - name: Install Genesis tools
         working-directory: genesis
-        run: npm install --no-audit --no-fund && npm run build -w packages/core
+        run: npm install --no-audit --no-fund && npm run build -w let/packages/core
       - id: plan
         working-directory: genesis
         run: node tools/applet-ci.mjs plan --source ../source
@@ -74,13 +80,19 @@ jobs:
           ref: ${{ matrix.applet.genesisCommit }}
           path: genesis
           persist-credentials: false
+      # Genesis builds the framework packages from the Let repository, checked out at let/.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: nirvanacp/let
+          path: genesis/let
+          persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24.15.0
       - run: npm install -g npm@11.14.1
       - name: Install Genesis tools
         working-directory: genesis
-        run: npm install --no-audit --no-fund && npm run build -w packages/core
+        run: npm install --no-audit --no-fund && npm run build -w let/packages/core
       - name: Rebuild and compare
         working-directory: genesis
         run: node tools/applet-ci.mjs verify --source ../source --path "$APPLET_PATH"

@@ -7,7 +7,8 @@ There are two kinds of work:
 | Layer | Owns | Start here |
 | --- | --- | --- |
 | Genesis platform | The Android shell, the Rust host, the shared packages, build tooling and builder guidance | [AGENTS.md](AGENTS.md) |
-| Applets | Website adapters, screens, application rules, stored data and optional backends | [factory/AGENTS.md](factory/AGENTS.md), [factory README](factory/README.md), [getting started](factory/guides/getting-started.md) |
+| Applets | Website adapters, screens, application rules, stored data and optional backends | `let/factory/applets/AGENTS.md` in the Let repository |
+| Servelets | An applet's own backend: a Go CRUD service with a SQLite database that runs on the phone | `let/factory/servelets/AGENTS.md` in the Let repository |
 
 An applet author uses the public SDK and their own code, and does not need to learn the host implementation.
 
@@ -18,13 +19,11 @@ An applet author uses the public SDK and their own code, and does not need to le
 | `android/app/` | Java shell: activity, launcher, context WebViews, website bar, native Genesis menu, service HTTPS client |
 | `android/native/` | Rust host `genesis-host`: applets, contexts, documents, RPC, storage, services, compatibility, imports (`libgenesis_host.so`) |
 | `crates/contracts/` | `genesis-contracts`: shell events and commands, document messages, bundle types, limits, error codes |
-| `packages/core/` | `@genesis/core`: manifest validation, route matching, presentation coordinator, compatibility table, protocol types, bundle format, error codes |
-| `packages/sdk/` | `@genesis/sdk`: bridge, foreground runtime, record store and React hooks, adapter runtime |
-| `packages/applet-tools/` | `genesis-applet` CLI: create, check (including compatibility), build, device install, services, kit export |
+| `let/` | The Let framework, a separate repository (private for now): `@let/core`, `@let/sdk`, the `let-applet` (also `genesis-applet`) and `let-servelet` tools, the Go servelet library and the builder guidance. Not tracked here |
 | `tools/` | APK asset and native build pipeline, package index check, service helpers |
-| `factory/` | Applet-builder instructions, guides, skills and templates |
 | `applets/` | The applets directory: a separate repository ([nirvanacp/applets](https://github.com/nirvanacp/applets)) with the `hn-bookmarks`, `x-bookmarks` and `gmail-only` applets, their port registry and backend launcher. Not tracked here |
-| `genesis.workspace.json` | Where the workspace's parts live: the applets directory and the repository it is cloned from |
+| `servelets/` | The servelets directory: a separate repository, one directory per servelet. Not tracked here |
+| `genesis.workspace.json` | Where the workspace's parts live: the applets, Let and servelets directories and the repositories they are cloned from |
 | `genesis.packages.json` | Applets bundled into the APK, named by their directory in the applets directory |
 
 ## Build and run
@@ -32,7 +31,7 @@ An applet author uses the public SDK and their own code, and does not need to le
 Requirements: Node 24, Cargo 1.94.0 with `cargo-ndk` 4.1.2, the Android SDK with NDK 28.2.13676358 and `ANDROID_HOME` set, and OpenSSL for the example backends. `tools/build.mjs` checks these versions and names the install command for a missing one. From the repository root:
 
 ```sh
-npm run workspace -- setup   # clone the applets repository into the configured directory
+npm run workspace -- setup   # clone the applets and Let repositories, create the servelets directory
 npm install
 npm run typecheck
 npm run build
@@ -41,12 +40,12 @@ npm run build
 android/gradlew -p android :app:installDebug
 
 # Build an applet and install it on a connected device without reinstalling the APK.
-node packages/applet-tools/src/cli.mjs check applets/x-bookmarks
-node packages/applet-tools/src/cli.mjs build applets/x-bookmarks
-node packages/applet-tools/src/cli.mjs dev install applets/x-bookmarks --device emulator-5554
+node let/packages/applet-tools/src/cli.mjs check applets/x-bookmarks
+node let/packages/applet-tools/src/cli.mjs build applets/x-bookmarks
+node let/packages/applet-tools/src/cli.mjs dev install applets/x-bookmarks --device emulator-5554
 ```
 
-`dev install` sends the last build, so run `build` first. Hacker News is bundled into the APK through `genesis.packages.json`; X is installed with `dev install`. Release builds refuse `dev install`: they bundle each applet's published release, and users add other applets with **Add applet** in the launcher's Genesis menu, from a public GitHub repository or a downloaded bundle file. Genesis reviews every build before installing it and offers updates from the same source. [Publishing](factory/guides/publishing.md) covers versions, tags and the CI workflows that publish a release.
+`dev install` sends the last build, so run `build` first. Hacker News is bundled into the APK through `genesis.packages.json`; X is installed with `dev install`. Release builds refuse `dev install`: they bundle each applet's published release, and users add other applets with **Add applet** in the launcher's Genesis menu, from a public GitHub repository or a downloaded bundle file. Genesis reviews every build before installing it and offers updates from the same source. Publishing, in the Let applet guides, covers versions, tags and the CI workflows that publish a release.
 
 An entry in `genesis.packages.json` can be an object, `{ "id": "hn-bookmarks", "drawer": true }`, to give that bundled applet its own entry in the Android app drawer. The entry shows the applet's name over its accent color, with the icon its manifest names as `shell.icon`; an applet without an icon gets no entry. The entry appears once the applet is installed and runs on this device. Before shipping a build to a store, check that each icon is original artwork and that each name does not claim to be the website's own app.
 
@@ -114,8 +113,8 @@ npx --no-install genesis-applet service status hn-bookmarks --local --json
 npx --no-install genesis-applet service status x-bookmarks --local --json
 ```
 
-These startup scripts are operator commands. Coding agents maintain and check them, but do not run services unless asked. See [services and data](factory/guides/services-and-data.md#local-startup-and-ports) for configuration and the contract for applets with several servers.
+These startup scripts are operator commands. Coding agents maintain and check them, but do not run services unless asked. See services and data, in the Let applet guides, for configuration and the contract for applets with several servers.
 
 ## Current state
 
-One runtime: manifest schema 6, bundle format 3, document protocol 1, adapter API 1, and `@genesis/sdk` and `genesis-applet` 0.0.0. Each applet has a React foreground, one or more website contexts with their own history, an adapter that publishes regions of keyed records and desired-state actions from each page it knows, host storage and optional pinned HTTPS services. Genesis checks every applet against its compatibility table and marks an applet built for another version as needing an update. The Hacker News and X examples are rebuilt on it and checked on an Android emulator; physical phones and several website writes are not yet verified on this runtime. Production publishing, release signing and backends reachable without a computer are separate work.
+One runtime: manifest schema 6, bundle format 3, document protocol 1, adapter API 1, and `@let/sdk` and `genesis-applet` 0.0.0. Each applet has a React foreground, one or more website contexts with their own history, an adapter that publishes regions of keyed records and desired-state actions from each page it knows, host storage and optional pinned HTTPS services. Genesis checks every applet against its compatibility table and marks an applet built for another version as needing an update. The Hacker News and X examples are rebuilt on it and checked on an Android emulator; physical phones and several website writes are not yet verified on this runtime. Production publishing, release signing and backends reachable without a computer are separate work.

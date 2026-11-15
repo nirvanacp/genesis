@@ -1,13 +1,13 @@
 //! Types shared by the Android shell, the Rust host and applet documents.
 //!
-//! JSON names are camelCase so they match `@genesis/core` and `@genesis/sdk`.
+//! JSON names are camelCase so they match `@let/core` and `@let/sdk`.
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 // ---------------------------------------------------------------------------------------------
 // Versions
 
-/// The version of every serialized boundary, the same values as `COMPAT` in `@genesis/core`.
+/// The version of every serialized boundary, the same values as `COMPAT` in `@let/core`.
 /// Only the developer changes them; `tools/check-packages.mjs` compares the two tables.
 pub mod compat {
     pub const MANIFEST_SCHEMA: u32 = 6;
@@ -923,7 +923,7 @@ pub enum Encoding {
 pub const RELEASE_FORMAT: u32 = 1;
 
 /// Written by `genesis-applet publish` beside the bundle, and uploaded by CI with a `source`
-/// block. The same fields as `ReleaseRecord` in `@genesis/core`.
+/// block. The same fields as `ReleaseRecord` in `@let/core`.
 ///
 /// Unknown fields are ignored, here and in the nested blocks, so a newer `genesis-applet` can add
 /// fields without hiding its releases from older phones; `releaseFormat` marks a breaking change.
@@ -1001,7 +1001,7 @@ pub struct ReleaseRepository {
 // ---------------------------------------------------------------------------------------------
 // Limits and errors
 
-/// Sent to every document in `bound`. The same fields as `Limits` in `@genesis/core`.
+/// Sent to every document in `bound`. The same fields as `Limits` in `@let/core`.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Limits {
@@ -1074,7 +1074,7 @@ impl Default for Limits {
     }
 }
 
-/// The same names as `ERROR_CODES` in `@genesis/core`.
+/// The same names as `ERROR_CODES` in `@let/core`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ErrorCode {

@@ -1,19 +1,19 @@
 import { readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { readApplet, requireValue, safePath } from '../packages/applet-tools/src/manifest.mjs';
-import { appletCompat, formatMismatches } from '../packages/applet-tools/src/compat.mjs';
+import { readApplet, requireValue, safePath } from '../let/packages/applet-tools/src/manifest.mjs';
+import { appletCompat, formatMismatches } from '../let/packages/applet-tools/src/compat.mjs';
 import { checkLayout, readWorkspace } from './workspace.mjs';
 export const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-const PACKAGES = ['packages/core', 'packages/sdk', 'packages/applet-tools'];
+const PACKAGES = ['let/packages/core', 'let/packages/sdk', 'let/packages/applet-tools'];
 
-/** `COMPAT` and `FRAMEWORK_VERSION` as written in `packages/core/src/compat.ts`. */
+/** `COMPAT` and `FRAMEWORK_VERSION` as written in `let/packages/core/src/compat.ts`. */
 async function typescriptTable() {
-  const source = await readFile(path.join(root, 'packages/core/src/compat.ts'), 'utf8');
+  const source = await readFile(path.join(root, 'let/packages/core/src/compat.ts'), 'utf8');
   const body = source.match(/export const COMPAT = \{([^}]*)\}/)?.[1];
   const framework = source.match(/export const FRAMEWORK_VERSION = "([^"]+)"/)?.[1];
-  requireValue(body && framework, 'packages/core/src/compat.ts must define COMPAT and FRAMEWORK_VERSION');
+  requireValue(body && framework, 'let/packages/core/src/compat.ts must define COMPAT and FRAMEWORK_VERSION');
   const table = {};
   for (const [, name, value] of body.matchAll(/^\s*([A-Za-z]+):\s*(\d+),/gm)) table[name] = Number(value);
   return { table, framework };
@@ -50,7 +50,7 @@ export async function checkFrameworkVersions(framework) {
     const json = JSON.parse(await readFile(path.join(root, directory, 'package.json'), 'utf8'));
     if (json.version !== framework) problems.push(`  ${json.name} version ${json.version}, expected ${framework}`);
     for (const [name, range] of Object.entries({ ...json.dependencies, ...json.devDependencies, ...json.peerDependencies })) {
-      if (name.startsWith('@genesis/') && range !== framework) problems.push(`  ${json.name} depends on ${name} ${range}, expected ${framework}`);
+      if (name.startsWith('@let/') && range !== framework) problems.push(`  ${json.name} depends on ${name} ${range}, expected ${framework}`);
     }
   }
   requireValue(problems.length === 0, `Framework package versions differ from FRAMEWORK_VERSION:\n${problems.join('\n')}`);

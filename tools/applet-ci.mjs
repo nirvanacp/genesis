@@ -5,15 +5,15 @@
 //   assets  --source <dir> --path <path> --out <dir> --repository-id <n> --repository <owner/name>
 //           --commit <sha> --tag <tag> --run <url>
 //
-// An applet resolves @genesis/sdk from the Genesis npm workspace, so `verify` copies it into this
+// An applet resolves @let/sdk from the Genesis npm workspace, so `verify` copies it into this
 // checkout's applets directory and rebuilds it with this checkout's tools.
 import { spawnSync } from 'node:child_process';
 import { appendFile, copyFile, cp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { validateReleaseRecord } from '@genesis/core';
-import { readApplet, requireValue } from '../packages/applet-tools/src/manifest.mjs';
-import { PUBLISHED, bundleName, readPublished, recordName } from '../packages/applet-tools/src/publish.mjs';
-import { listApplets, tagFor } from '../packages/applet-tools/src/repo.mjs';
+import { validateReleaseRecord } from '@let/core';
+import { readApplet, requireValue } from '../let/packages/applet-tools/src/manifest.mjs';
+import { PUBLISHED, bundleName, readPublished, recordName } from '../let/packages/applet-tools/src/publish.mjs';
+import { listApplets, tagFor } from '../let/packages/applet-tools/src/repo.mjs';
 import { readWorkspace, root } from './workspace.mjs';
 
 const OPTIONS = {
@@ -85,9 +85,9 @@ async function verify({ source, path: relative }) {
     // npm ci cannot run: the lockfile does not list the copied workspace.
     console.error('Installing with npm install, because the root lockfile does not list the copied applet');
     run('npm', ['install', '--no-audit', '--no-fund']);
-    run('npm', ['run', 'build', '-w', 'packages/core']);
-    run(process.execPath, ['packages/sdk/build.mjs']);
-    run(process.execPath, ['packages/applet-tools/src/cli.mjs', 'publish', target, '--verify']);
+    run('npm', ['run', 'build', '-w', 'let/packages/core']);
+    run(process.execPath, ['let/packages/sdk/build.mjs']);
+    run(process.execPath, ['let/packages/applet-tools/src/cli.mjs', 'publish', target, '--verify']);
   } finally {
     await rm(created ? appletsDirectory : target, { recursive: true, force: true });
     await writeFile(lockfile, lock);

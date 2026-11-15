@@ -3,9 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "workspaces": [
-    "packages/core",
-    "packages/sdk",
-    "packages/applet-tools",
+    "let/packages/*",
     "applets/*"
   ],
   "engines": {
@@ -14,7 +12,7 @@
   },
   "packageManager": "npm@11.14.1",
   "scripts": {
-    "typecheck": "npm run build -w packages/core && node packages/sdk/build.mjs && npm run typecheck --workspaces",
+    "typecheck": "npm run build -w let/packages/core && node let/packages/sdk/build.mjs && npm run typecheck --workspaces",
     "check:packages": "node tools/check-packages.mjs",
     "workspace": "node tools/workspace.mjs",
     "build": "node tools/build.mjs --stage all --variant debug"
