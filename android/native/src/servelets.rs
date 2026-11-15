@@ -18,6 +18,7 @@ use std::{
         atomic::{AtomicUsize, Ordering},
         mpsc::{Sender, channel},
     },
+    time::Instant,
 };
 
 /// Requests waiting for the worker, at most; one more is refused with `QuotaExceeded`.
@@ -131,11 +132,33 @@ struct Worker {
 
 impl Worker {
     fn handle(&mut self, job: &ServeletJob) -> ShellEvent {
+        let started = Instant::now();
         let index = match self.instance(job) {
             Ok(index) => index,
-            Err(failure) => return failure_event(job, failure),
+            Err(failure) => {
+                log(Level::Error, &format!("{}/{}: {failure}", job.applet_id, job.service_id));
+                return failure_event(job, failure);
+            }
         };
-        match self.instances[index].servelet.handle(&job.request) {
+        let opened = started.elapsed();
+        let result = self.instances[index].servelet.handle(&job.request);
+        let outcome = match &result {
+            Ok(response) => response.status.to_string(),
+            Err(failure) => failure.to_string(),
+        };
+        log(
+            Level::Debug,
+            &format!(
+                "{}/{} {} {} {outcome} in {} ms (open {} ms)",
+                job.applet_id,
+                job.service_id,
+                job.request.method,
+                job.request.path,
+                started.elapsed().as_millis(),
+                opened.as_millis()
+            ),
+        );
+        match result {
             Ok(response) => ShellEvent::ServiceResponse { request_id: job.request_id, status: response.status, body: response.body },
             Err(failure) => {
                 // A trapped or stopped module may have left its memory in any state.
@@ -181,9 +204,33 @@ fn open(root: &Path, job: &ServeletJob) -> Result<Servelet, Failure> {
     let directory = root.join(&job.applet_id).join(&job.service_id);
     std::fs::create_dir_all(&directory).map_err(|e| unavailable(format!("cannot create its data directory: {e}")))?;
     let name = format!("{}/{}", job.applet_id, job.service_id);
-    let log = Box::new(move |level: Level, line: &str| eprintln!("genesis-servelet {name} {level:?}: {line}"));
-    Servelet::open_with_log(&wasm, &directory.join("data.sqlite3"), Limits::default(), log)
+    let lines = Box::new(move |level: Level, line: &str| log(level, &format!("{name}: {line}")));
+    Servelet::open_with_log(&wasm, &directory.join("data.sqlite3"), Limits::default(), lines)
 }
+
+/// Writes a line to logcat under the tag `servelet` in debug builds on Android; release builds
+/// and other targets drop it.
+#[cfg(all(target_os = "android", debug_assertions))]
+fn log(level: Level, line: &str) {
+    use std::ffi::{CString, c_char, c_int};
+    #[link(name = "log")]
+    unsafe extern "C" {
+        fn __android_log_write(priority: c_int, tag: *const c_char, text: *const c_char) -> c_int;
+    }
+    // android/log.h priorities: DEBUG 3, INFO 4, WARN 5, ERROR 6.
+    let priority = match level {
+        Level::Debug => 3,
+        Level::Info => 4,
+        Level::Warn => 5,
+        Level::Error => 6,
+    };
+    let Ok(text) = CString::new(line.replace('\0', " ")) else { return };
+    // SAFETY: both pointers are NUL-terminated strings that outlive the call.
+    unsafe { __android_log_write(priority, c"servelet".as_ptr(), text.as_ptr()) };
+}
+
+#[cfg(not(all(target_os = "android", debug_assertions)))]
+fn log(_level: Level, _line: &str) {}
 
 fn failure_event(job: &ServeletJob, failure: Failure) -> ShellEvent {
     let service = &job.service_id;
