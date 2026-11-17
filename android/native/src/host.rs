@@ -33,6 +33,8 @@ pub struct Host {
     pub documents: Documents,
     pub contexts: Contexts,
     pub out: Vec<ShellCommand>,
+    /// Writes resume files off this thread.
+    pub writer: crate::writer::Writer,
     /// A debuggable APK accepts development builds from `genesis-import/`.
     pub debuggable: bool,
     /// The running add, review or update flow.
@@ -328,15 +330,16 @@ impl Host {
         }
     }
 
-    pub(crate) fn save_resume(&self, applet_id: &str, resume: &Resume) {
+    /// Saved on the writer thread: this runs while the user leaves or uses the applet.
+    pub(crate) fn save_resume(&mut self, applet_id: &str, resume: &Resume) {
         let (Some(path), Ok(bytes)) = (self.resume_path(applet_id), serde_json::to_vec(resume)) else { return };
-        let _ = applets::write_atomic(&path, &bytes);
+        self.writer.write(path, bytes);
     }
 
     /// Where the applet was: kept in memory, else saved before the process last ended.
     fn take_resume(&mut self, applet_id: &str) -> Option<Resume> {
         self.contexts.resumes.remove(applet_id).or_else(|| {
-            let bytes = std::fs::read(self.resume_path(applet_id)?).ok()?;
+            let bytes = self.writer.read(&self.resume_path(applet_id)?)?;
             serde_json::from_slice(&bytes).ok()
         })
     }
@@ -344,7 +347,7 @@ impl Host {
     pub fn forget_resume(&mut self, applet_id: &str) {
         self.contexts.resumes.remove(applet_id);
         if let Some(path) = self.resume_path(applet_id) {
-            let _ = std::fs::remove_file(path);
+            self.writer.delete(path);
         }
     }
 
