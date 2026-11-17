@@ -530,7 +530,7 @@ impl Host {
     }
 
     /// Under memory pressure in the background, every applet whose window is not resumed retires
-    /// to its resume target, freeing its WebViews.
+    /// to its resume target, freeing its WebViews and its running servelets.
     fn trim_memory(&mut self, level: u32) {
         if level < TRIM_MEMORY_BACKGROUND {
             return;
@@ -539,6 +539,7 @@ impl Host {
             self.contexts.sessions.values().filter(|s| s.suspended_at_ms.is_some()).map(|s| s.applet_id.clone()).collect();
         for applet_id in suspended {
             self.retire_for_resume(&applet_id);
+            crate::servelets::drop_applet(&applet_id);
         }
     }
 

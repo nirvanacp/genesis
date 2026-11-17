@@ -6,6 +6,7 @@
 use crate::{
     compat,
     imports::{IncompatibleBundle, VerifiedFiles},
+    servelets::LocalServelet,
     source::Source,
 };
 use genesis_contracts::{
@@ -50,10 +51,14 @@ fn current() -> AppletStatus {
     AppletStatus::Current
 }
 
+/// The local services of a revision by service id; an invalid servelet keeps its reason.
+pub type LocalServelets = BTreeMap<String, Result<LocalServelet, String>>;
+
 pub enum Installed {
     Current {
         revision: u64,
         manifest: Box<Manifest>,
+        servelets: LocalServelets,
     },
     /// `revision` names files an older Genesis installed; an import of an incompatible bundle writes none.
     Incompatible {
@@ -167,7 +172,16 @@ impl Applets {
     /// The applet's revision and manifest, when it is installed and current.
     pub fn current(&self, applet_id: &str) -> Option<(u64, &Manifest)> {
         match self.installed.get(applet_id)? {
-            Installed::Current { revision, manifest } => Some((*revision, manifest)),
+            Installed::Current { revision, manifest, .. } => Some((*revision, manifest)),
+            Installed::Incompatible { .. } => None,
+        }
+    }
+
+    /// The bundled servelet that answers `service_id` for the current revision; None for a
+    /// remote service.
+    pub fn local_servelet(&self, applet_id: &str, service_id: &str) -> Option<&Result<LocalServelet, String>> {
+        match self.installed.get(applet_id)? {
+            Installed::Current { servelets, .. } => servelets.get(service_id),
             Installed::Incompatible { .. } => None,
         }
     }
@@ -246,7 +260,8 @@ impl Applets {
         }
         // The index written by `replace` carries the source, so it changes only now.
         let previous_source = self.sources.insert(id.clone(), source);
-        let installed = Installed::Current { revision, manifest: Box::new(bundle.manifest.clone()) };
+        let servelets = local_servelets(&directory, bundle);
+        let installed = Installed::Current { revision, manifest: Box::new(bundle.manifest.clone()), servelets };
         if let Err(error) = self.replace(&id, installed) {
             match previous_source {
                 Some(previous) => self.sources.insert(id.clone(), previous),
@@ -384,7 +399,10 @@ fn classify(directory: &Path, revision: u64) -> Option<Installed> {
     match compat::evaluate(&header) {
         Compatibility::Incompatible { direction, mismatches } => Some(incompatible(direction, mismatches)),
         Compatibility::Current => Some(match serde_json::from_slice::<Bundle>(&bytes) {
-            Ok(bundle) => Installed::Current { revision, manifest: Box::new(bundle.manifest) },
+            Ok(bundle) => {
+                let servelets = local_servelets(directory, &bundle);
+                Installed::Current { revision, manifest: Box::new(bundle.manifest), servelets }
+            }
             // A manifest in an older shape under the same version numbers stays listed as outdated,
             // with its source, so the user can update or remove it.
             Err(_) => incompatible(Direction::Outdated, vec![Mismatch {
@@ -419,6 +437,7 @@ fn entry(applet_id: &str, installed: &Installed) -> LauncherEntry {
         update: None,
         origins: Vec::new(),
         services: Vec::new(),
+        local_services: Vec::new(),
         storage: false,
         notifications: None,
         publisher: None,
@@ -428,13 +447,16 @@ fn entry(applet_id: &str, installed: &Installed) -> LauncherEntry {
         bundle_sha256: None,
     };
     match installed {
-        Installed::Current { manifest, .. } => {
+        Installed::Current { manifest, servelets, .. } => {
             let accent = manifest.shell.as_ref().and_then(|s| s.accent.clone());
             let capabilities = capabilities(manifest);
+            let (local_services, services): (Vec<_>, _) = capabilities.services.into_iter().partition(|s| servelets.contains_key(s));
             LauncherEntry {
                 origins: manifest.origins.clone(),
-                services: capabilities.services,
-                storage: capabilities.storage,
+                services,
+                // A servelet keeps its database on the phone, which Clear data erases.
+                storage: capabilities.storage || !local_services.is_empty(),
+                local_services,
                 notifications: manifest.capabilities.notifications.clone().map(Box::new),
                 ..blank(&manifest.name, accent, AppletStatus::Current)
             }
@@ -454,6 +476,47 @@ pub fn capabilities(manifest: &Manifest) -> ReleaseCapabilities {
         storage: manifest.capabilities.storage.unwrap_or(false),
         services: manifest.capabilities.services.iter().flatten().map(|s| s.id.clone()).collect(),
     }
+}
+
+/// The servelets a current revision bundles: each declared service with a
+/// `servelets/<id>/servelet.json` in the bundle. Install checked every file against
+/// `bundle.files`, so the module's hash is the one listed there.
+fn local_servelets(directory: &Path, bundle: &Bundle) -> LocalServelets {
+    let hashes: BTreeMap<&str, &str> = bundle.files.iter().map(|f| (f.path.as_str(), f.sha256.as_str())).collect();
+    let declared = bundle.manifest.capabilities.services.iter().flatten();
+    declared
+        .filter(|service| hashes.contains_key(format!("servelets/{}/servelet.json", service.id).as_str()))
+        .map(|service| (service.id.clone(), local_servelet(directory, &service.id, &hashes)))
+        .collect()
+}
+
+/// Reads one `servelet.json` and checks that this Genesis can run its module.
+fn local_servelet(directory: &Path, service_id: &str, hashes: &BTreeMap<&str, &str>) -> Result<LocalServelet, String> {
+    let base = format!("servelets/{service_id}");
+    let bytes = fs::read(directory.join(&base).join("servelet.json")).map_err(|e| format!("cannot read servelet.json: {e}"))?;
+    let declaration: serde_json::Value = serde_json::from_slice(&bytes).map_err(|e| format!("servelet.json is not JSON: {e}"))?;
+    let text = |field: &str| declaration.get(field).and_then(|v| v.as_str());
+    let abi = declaration.get("abi").and_then(|v| v.as_u64());
+    if abi != Some(u64::from(genesis_servelet_runtime::ABI)) {
+        return Err(format!("it needs servelet ABI {}, and this Genesis runs ABI {}", abi.unwrap_or(0), genesis_servelet_runtime::ABI));
+    }
+    if text("engine") != Some("wasm") {
+        return Err(format!("this Genesis cannot run the {} engine", text("engine").unwrap_or("unnamed")));
+    }
+    if text("runtime") != Some("local") {
+        return Err("servelet.json does not say runtime \"local\"".into());
+    }
+    let wasm = format!("{base}/servelet.wasm");
+    let listed = hashes.get(wasm.as_str()).ok_or("the bundle has no servelet.wasm")?;
+    let sha256 = text("sha256").ok_or("servelet.json has no sha256")?;
+    if sha256 != *listed {
+        return Err("servelet.wasm does not match servelet.json".into());
+    }
+    let path = directory.join(&wasm);
+    if !path.is_file() {
+        return Err("servelet.wasm is missing".into());
+    }
+    Ok(LocalServelet { wasm: path, sha256: sha256.into() })
 }
 
 fn write_revision(directory: &Path, bundle: &Bundle, files: VerifiedFiles) -> Result<(), String> {

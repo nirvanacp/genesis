@@ -10,7 +10,7 @@ use crate::{
     imports::{self, Verified, VerifiedFiles},
     semver,
     source::{self, Source},
-    storage_worker,
+    servelets, storage_worker,
 };
 use genesis_contracts::*;
 use serde::{Deserialize, Serialize};
@@ -290,9 +290,10 @@ fn publisher(source: &Source) -> Option<String> {
 /// What an offered release asks for beyond the installed applet: origins, services and storage.
 /// What the installed applet's files do not say counts as new.
 fn gains(installed: Option<&LauncherEntry>, record: &ReleaseRecord) -> (Vec<String>, Vec<String>, bool) {
-    let (origins, services) = installed.map(|e| (e.origins.as_slice(), e.services.as_slice())).unwrap_or_default();
+    let origins = installed.map(|e| e.origins.as_slice()).unwrap_or_default();
+    let had = |service: &String| installed.is_some_and(|e| e.services.contains(service) || e.local_services.contains(service));
     let new_origins = record.origins.iter().filter(|o| !origins.contains(o)).cloned().collect();
-    let new_services = record.capabilities.services.iter().filter(|s| !services.contains(s)).cloned().collect();
+    let new_services = record.capabilities.services.iter().filter(|s| !had(s)).cloned().collect();
     (new_origins, new_services, record.capabilities.storage && !installed.is_some_and(|e| e.storage))
 }
 
@@ -820,6 +821,8 @@ impl Host {
         let updated = self.applets.source(&id).is_some();
         let version = source.version().map(String::from);
         let (_, previous) = self.applets.install(bundle, files, source)?;
+        // The new revision's servelets open on the same databases at their next request.
+        servelets::drop_applet(&id);
         self.clear_update(&id);
         let was_active = self.is_live(&id);
         self.after_install(&id, previous, was_active);
@@ -850,8 +853,9 @@ impl Host {
         self.retire_session(applet_id);
     }
 
-    /// Deletes the applet's stored documents and namespace. The install or removal waits for
-    /// `deletion_completed`, so an applet whose data could not be erased stays as it was.
+    /// Deletes the applet's stored documents and namespace, and its servelets' databases. The
+    /// install or removal waits for `deletion_completed`, so an applet whose stored documents
+    /// could not be erased stays as it was.
     fn erase_data(&mut self, deletion: Deletion) -> Result<(), String> {
         let applet_id = deletion.applet_id().to_string();
         let job_id = documents::next_op_id();
@@ -859,6 +863,7 @@ impl Host {
         if !storage_worker::submit(job) {
             return Err(format!("Storage is busy; the stored data of {applet_id} was not erased"));
         }
+        servelets::erase_applet(&applet_id);
         self.deletions.insert(job_id, deletion);
         Ok(())
     }

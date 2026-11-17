@@ -91,11 +91,14 @@ androidComponents {
             workspace.set(workspaceRoot)
             inputs.files(fileTree(workspaceRoot) {
                 include("Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "package.json", "package-lock.json",
-                    "tsconfig.base.json", ".nvmrc", "tools/**", "crates/contracts/**", "packages/**", "genesis.workspace.json", "genesis.packages.json", "android/native/**")
+                    "tsconfig.base.json", ".nvmrc", "tools/**", "crates/contracts/**", "let/packages/**", "let/package.json", "let/tsconfig.base.json", "genesis.workspace.json", "genesis.packages.json", "android/native/**")
                 exclude("**/node_modules/**", "**/target/**")
             })
             inputs.files(fileTree(appletsDirectory) {
                 exclude("**/node_modules/**", "**/target/**", ".git/**")
+            })
+            inputs.files(fileTree(File(workspaceRoot, "servelets")) {
+                exclude("**/node_modules/**", "**/target/**", ".git/**", "**/dist/**")
             })
             assetsDirectory.set(layout.buildDirectory.dir("generated/genesis/${variant.name}/assets"))
             jniDirectory.set(layout.buildDirectory.dir("generated/genesis/${variant.name}/jniLibs"))
