@@ -1,3 +1,4 @@
+mod activity;
 mod applets;
 mod compat;
 mod contexts;
@@ -48,6 +49,7 @@ fn dispatch(input: &str) -> String {
                 let attach = host.files_dir.as_ref().map(|dir| ShellEvent::Attach {
                     files_dir: dir.to_string_lossy().into_owned(),
                     debuggable: host.debuggable,
+                    activity_off: host.activity_off,
                 });
                 *host = Host::default();
                 if let Some(attach) = attach {

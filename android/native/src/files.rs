@@ -198,10 +198,14 @@ impl Host {
     }
 
     /// The shell ended a context's one-time grant; the foreground learns whether the page used it.
-    pub fn grant_ended(&mut self, view: &ViewRef, grant: GrantKind, used: bool) {
+    pub fn grant_ended(&mut self, view: &ViewRef, grant: GrantKind, used: bool, now: u64) {
         let Role::Context(id) = &view.role else { return };
         if self.context_view(&view.applet_id, id).is_none() {
             return;
+        }
+        if used {
+            // The page goes on with what the grant let it start.
+            self.extend_awake(&view.applet_id, id, now + crate::activity::CALL_TAIL_MS);
         }
         self.foreground_event(&view.applet_id, "context.grantEnded", json!({ "id": id, "grant": grant, "used": used }));
     }
