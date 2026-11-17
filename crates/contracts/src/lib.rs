@@ -112,6 +112,9 @@ pub enum ShellEvent {
         files_dir: String,
         #[serde(default)]
         debuggable: bool,
+        /// Every covered context stays awake, as before contexts rested. For comparing and debugging.
+        #[serde(default)]
+        activity_off: bool,
     },
     /// The manager window (the Genesis list) was created. It has none of an earlier flow's screens.
     ManagerAttached,
@@ -388,6 +391,17 @@ pub enum StatusKind {
     ImportReceived,
 }
 
+/// How much of a covered context's website runs. Ordered: a context takes the highest level
+/// asked for. `Resting` is hidden and paused, `Running` is hidden with its scripts and media
+/// going, `Awake` runs and draws as a visible page does.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ActivityLevel {
+    Resting,
+    Running,
+    Awake,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum ShellCommand {
@@ -417,6 +431,8 @@ pub enum ShellCommand {
     RevealContext { view: ViewRef, title: String },
     /// Moves the revealed context of `applet_id`'s window back under the foreground.
     CoverContext { applet_id: Option<String> },
+    /// How much of a covered context's website runs from now on. A revealed context ignores it.
+    SetActivity { view: ViewRef, level: ActivityLevel },
     /// Page-side `history.go(delta)`, with the native fallback the shell applies.
     HistoryGo { view: ViewRef, delta: i32 },
     Reload { view: ViewRef },
@@ -1035,6 +1051,9 @@ pub struct Limits {
     /// The foreground can let a hidden page use one website feature once (`context.grant`).
     #[serde(default)]
     pub grants: bool,
+    /// The host rests covered contexts and takes `context.hold`. Absent in an older Genesis.
+    #[serde(default)]
+    pub activity: bool,
     /// Input page calls one context takes at once before the host answers `RATE_LIMITED`.
     #[serde(default = "default_input_burst")]
     pub input_burst: u32,
@@ -1072,6 +1091,7 @@ impl Default for Limits {
             trusted_input: true,
             user_actions: true,
             grants: true,
+            activity: true,
             input_burst: default_input_burst(),
             input_refill_ms: default_input_refill_ms(),
         }
@@ -1328,6 +1348,10 @@ pub enum Call {
     /// `{granted: true, expiresInMs}`; a revealed context needs no grant and gets `0`.
     #[serde(rename = "context.grant")]
     ContextGrant { id: String, grant: GrantKind },
+    /// Keeps covered context `id` running without drawing (`running`) or at full speed for a
+    /// while (`awake`); `null` lets it rest again. A hold is advice: calls wake the page themselves.
+    #[serde(rename = "context.hold")]
+    ContextHold { id: String, level: Option<ActivityLevel> },
     /// Has the shell post picked files to the asking context document, for an open call. Answers
     /// `{count}` once the bytes were posted.
     #[serde(rename = "page.files")]
