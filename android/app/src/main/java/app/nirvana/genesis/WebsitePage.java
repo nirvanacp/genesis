@@ -67,6 +67,12 @@ interface WebsitePage {
     /** The shell shows the page to the user (true) or hides it again (false). */
     void setRevealed(boolean revealed);
 
+    /**
+     * How much a covered page runs: `awake` draws and runs at full speed, `running` runs scripts,
+     * network and media without drawing, `resting` also pauses the page as a background tab is.
+     */
+    void setActivity(String level);
+
     /** The system font size or appearance changed while the page lives. */
     void configurationChanged();
 

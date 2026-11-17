@@ -156,6 +156,7 @@ final class Router {
             case "releaseFiles": { Shell shell = applets.get(command.getString("appletId")); if (shell != null) shell.releaseFiles(command.getJSONArray("ids")); break; }
             case "showWindow": { Shell shell = view(command, type); if (shell != null) shell.showWindow(command.getJSONObject("view"), command.getString("url")); break; }
             case "revealForeground": { Shell shell = named(command, type); if (shell != null) shell.revealForeground(); break; }
+            case "setActivity": { Shell shell = view(command, type); if (shell != null) shell.setActivity(command.getJSONObject("view"), command.getString("level")); break; }
             case "coverContext": { Shell shell = named(command, type); if (shell != null) shell.coverContext(); break; }
             case "moveTaskToBack": { Shell shell = named(command, type); if (shell != null) shell.activity().moveTaskToBack(true); break; }
             case "showError": if (appletIdOf(command) == null) flowRefused(); showError(appletIdOf(command), command.getString("message")); break;
