@@ -27,8 +27,14 @@ final class Perf {
     static final String TAG = "GenesisPerf";
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static final Map<View, Runnable> SLEEPS = new WeakHashMap<>();
+    private static final Map<String, Integer> VALUES = new java.util.HashMap<>();
 
+    /** Reads a switch once: the properties are set before the app starts, and a read reflects. */
     static int get(String name, int fallback) {
+        return VALUES.computeIfAbsent(name, key -> read(key, fallback));
+    }
+
+    private static int read(String name, int fallback) {
         try {
             Object value = Class.forName("android.os.SystemProperties").getMethod("get", String.class)
                 .invoke(null, "debug.genesis.perf." + name);

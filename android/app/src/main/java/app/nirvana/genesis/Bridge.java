@@ -1,6 +1,7 @@
 package app.nirvana.genesis;
 
 import android.os.Looper;
+import android.os.Trace;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -23,11 +24,14 @@ final class Bridge {
         JSONArray commands;
         boolean trace = Perf.trace() && !"tick".equals(event.optString("type"));
         long start = android.os.SystemClock.uptimeMillis();
+        Trace.beginSection("genesis.dispatch");
         try {
             commands = new JSONArray(NativeBridge.dispatch(event.toString()));
         } catch (JSONException | RuntimeException | LinkageError error) {
             router.showError(null, "Genesis host failed: " + error);
             return;
+        } finally {
+            Trace.endSection();
         }
         long dispatched = android.os.SystemClock.uptimeMillis();
         if (trace) {
@@ -37,10 +41,13 @@ final class Bridge {
         }
         for (int i = 0; i < commands.length(); i++) {
             JSONObject command = commands.optJSONObject(i);
+            Trace.beginSection("genesis." + (command == null ? "command" : command.optString("type")));
             try {
                 router.execute(command);
             } catch (JSONException | RuntimeException error) {
                 router.showError(null, "Genesis could not run " + (command == null ? "a command" : command.optString("type")) + ": " + error.getMessage());
+            } finally {
+                Trace.endSection();
             }
         }
         long ran = android.os.SystemClock.uptimeMillis();
