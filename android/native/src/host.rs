@@ -144,6 +144,7 @@ impl Host {
             ShellEvent::FilesSent { token, ok, code, message } => self.files_sent(token, ok, code, message),
             ShellEvent::GrantEnded { view, grant, used } => self.grant_ended(&view, grant, used, now),
         }
+        self.start_due_contexts(now);
         self.refresh_activity(now);
         Ok(std::mem::take(&mut self.out))
     }
@@ -444,13 +445,13 @@ impl Host {
                 None => self.out.push(ShellCommand::ShowError { applet_id: window, message: format!("Applet {applet_id} is not installed") }),
             };
         };
-        let script = match self.applets.read_text(applet_id, revision, "page.js") {
-            Ok(script) => script,
-            Err(message) => return self.out.push(ShellCommand::ShowError { applet_id: window, message }),
-        };
+        if let Err(message) = self.applets.read_text(applet_id, revision, "page.js") {
+            return self.out.push(ShellCommand::ShowError { applet_id: window, message });
+        }
         self.make_room(applet_id);
         let mut session = Session::new(applet_id.into(), revision, resume.is_some());
         let (mut urls, saved) = resume.map(|r| (r.urls, r.saved)).unwrap_or_default();
+        let opening_context = opening.as_ref().map(|(id, _)| id.clone()).filter(|id| manifest.contexts.iter().any(|c| &c.id == id));
         urls.extend(opening);
         session.saved = saved;
         self.out.push(ShellCommand::ShowApplet {
@@ -465,20 +466,20 @@ impl Host {
             origins: vec![FOREGROUND_ORIGIN.into()],
             start_script: None,
         });
+        // Every context exists from the start, at the URL its view will load once it starts.
         for context in &manifest.contexts {
             let url = urls.get(&context.id).cloned().unwrap_or_else(|| context.start_url.clone());
-            // A new view starts awake in the shell, and stays so while its first page loads.
-            let loading_until_ms = mono_ms() + self.limits.document_ready_ms;
-            let view = ContextView { level: Some(ActivityLevel::Awake), loading_until_ms, ..ContextView::at(url.clone()) };
-            session.contexts.insert(context.id.clone(), view);
-            self.out.push(ShellCommand::CreateView {
-                view: ViewRef { applet_id: applet_id.into(), role: Role::Context(context.id.clone()) },
-                url,
-                origins: manifest.origins.clone(),
-                start_script: Some(script.clone()),
-            });
+            session.contexts.insert(context.id.clone(), ContextView::at(url));
         }
         self.contexts.sessions.insert(applet_id.into(), session);
+        // The context a link opens, or the first one, starts now; the others follow one by one.
+        let first = opening_context.or_else(|| manifest.contexts.first().map(|c| c.id.clone()));
+        let now = mono_ms();
+        for context in &manifest.contexts {
+            if self.activity_off || Some(&context.id) == first.as_ref() {
+                self.start_context(applet_id, &context.id, now);
+            }
+        }
     }
 
     /// Keeps the live applets under `LIVE_APPLETS_MAX` before `applet_id` starts: the applet

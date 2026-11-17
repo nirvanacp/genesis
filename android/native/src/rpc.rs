@@ -160,6 +160,7 @@ impl Host {
             Role::Context(id) => {
                 let data = json!({ "id": id, "generation": document_generation, "url": url });
                 self.foreground_event(&view.applet_id, "context.bound", data);
+                self.context_bound(&view.applet_id, crate::host::mono_ms());
             }
             // A new foreground knows none of the old one's watches and calls; the pages drop them.
             Role::Foreground => {
@@ -275,6 +276,12 @@ impl Host {
                 let Some(url) = web_url(&url) else {
                     return error(ErrorCode::InvalidArgument, "context.navigate needs an http or https URL");
                 };
+                // A context that has not started yet starts at the URL instead of its own.
+                if let Some(context) = self.context_mut(applet_id, &id).filter(|c| !c.started()) {
+                    context.url = url;
+                    self.start_context(applet_id, &id, now);
+                    return ok();
+                }
                 self.begin_load(&target, now);
                 self.out.push(ShellCommand::LoadUrl { view: target, url, mode });
                 ok()
@@ -282,24 +289,34 @@ impl Host {
             Call::ContextBack { id, steps } => {
                 let Some(target) = self.context_view(applet_id, &id) else { return unknown_context(&id) };
                 let steps = steps.unwrap_or(1).clamp(1, i32::MAX as u32) as i32;
+                if self.start_context(applet_id, &id, now) {
+                    return ok(); // A page that starts now has no history to move through.
+                }
                 self.begin_load(&target, now);
                 self.out.push(ShellCommand::HistoryGo { view: target, delta: -steps });
                 ok()
             }
             Call::ContextForward { id } => {
                 let Some(target) = self.context_view(applet_id, &id) else { return unknown_context(&id) };
+                if self.start_context(applet_id, &id, now) {
+                    return ok();
+                }
                 self.begin_load(&target, now);
                 self.out.push(ShellCommand::HistoryGo { view: target, delta: 1 });
                 ok()
             }
             Call::ContextReload { id } => {
                 let Some(target) = self.context_view(applet_id, &id) else { return unknown_context(&id) };
+                if self.start_context(applet_id, &id, now) {
+                    return ok(); // Starting the page is its load.
+                }
                 self.begin_load(&target, now);
                 self.out.push(ShellCommand::Reload { view: target });
                 ok()
             }
             Call::ContextReveal { id } => {
                 let Some(target) = self.context_view(applet_id, &id) else { return unknown_context(&id) };
+                self.start_context(applet_id, &id, now);
                 self.reveal(&id, target, &manifest.name);
                 ok()
             }
@@ -369,6 +386,7 @@ impl Host {
                 if self.session(applet_id).is_some_and(|s| s.revealed.as_deref() == Some(id.as_str())) {
                     return Outcome::Now(Ok(json!({ "granted": true, "expiresInMs": 0 })));
                 }
+                self.start_context(applet_id, &id, now);
                 // The page is awake for as long as the grant can be used.
                 self.extend_awake(applet_id, &id, now + GRANT_MS);
                 self.user_action(view, document_id, request_id, Some(target), UserAction::Grant { grant }, now)
@@ -380,6 +398,7 @@ impl Host {
                 if !self.limits.activity {
                     return error(ErrorCode::UnknownMethod, "Holds are not available in this Genesis");
                 }
+                self.start_context(applet_id, &id, now);
                 self.hold(applet_id, &id, level, now);
                 ok()
             }
@@ -438,6 +457,7 @@ impl Host {
     #[allow(clippy::too_many_arguments)]
     fn page_call(&mut self, applet_id: &str, document_id: &str, request_id: u64, context: String, generation: u64, op: String, args: Value, timeout_ms: Option<u64>, now: u64) -> Outcome {
         let Some(target) = self.context_view(applet_id, &context) else { return unknown_context(&context) };
+        self.start_context(applet_id, &context, now);
         let Some(document) = self.documents.current(&target) else {
             return error(ErrorCode::NotReady, "The context has no bound page");
         };

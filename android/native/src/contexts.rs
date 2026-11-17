@@ -34,6 +34,13 @@ pub struct ContextView {
 }
 
 impl ContextView {
+    /// Whether the shell has this context's view. Contexts start one after another.
+    pub fn started(&self) -> bool {
+        self.level.is_some()
+    }
+}
+
+impl ContextView {
     /// A context at `url` whose view does not exist yet.
     pub fn at(url: String) -> Self {
         Self {
@@ -111,6 +118,8 @@ pub struct Session {
     pub suspended_at_ms: Option<u64>,
     /// Each context's input budget, by context id, created on its first input call.
     pub input_budgets: HashMap<String, InputBudget>,
+    /// When the next context that has no view yet starts (`mono_ms`); None once all have.
+    pub start_next_at_ms: Option<u64>,
 }
 
 /// Page operations that act on the website, so they spend the context's input budget. Reads,
@@ -168,6 +177,7 @@ impl Session {
             open_context: None,
             suspended_at_ms: None,
             input_budgets: HashMap::new(),
+            start_next_at_ms: None,
         }
     }
 

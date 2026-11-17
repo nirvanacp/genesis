@@ -15,6 +15,10 @@ pub const CALL_TAIL_MS: u64 = 2_500;
 /// An `awake` hold drops to `running` after this long.
 pub const HOLD_AWAKE_MAX_MS: u64 = 30_000;
 
+/// The next context of an applet starts this long after the previous one bound, so their first
+/// loads do not compete.
+pub const START_STAGGER_MS: u64 = 3_000;
+
 /// The tail a context gets once what keeps it busy now ends, or None when nothing does.
 fn busy_tail(session: &Session, id: &str, context: &ContextView, now: u64) -> Option<u64> {
     if context.navigating_since.is_some() || now < context.loading_until_ms {
@@ -89,6 +93,68 @@ impl Host {
         {
             self.activity_wake_ms = at;
             self.out.push(ShellCommand::Wake { delay_ms: at - now });
+        }
+    }
+
+    /// Creates the context's view at its stored URL, unless it exists. Returns whether it did.
+    /// A foreground call that names a context starts it, so the page the user is on never waits.
+    pub fn start_context(&mut self, applet_id: &str, context_id: &str, now: u64) -> bool {
+        if self.session(applet_id).and_then(|s| s.contexts.get(context_id)).is_none_or(|c| c.started()) {
+            return false;
+        }
+        let Some((revision, manifest)) = self.applets.current(applet_id) else { return false };
+        let origins = manifest.origins.clone();
+        let Ok(script) = self.applets.read_text(applet_id, revision, "page.js") else { return false };
+        let ready_ms = self.limits.document_ready_ms;
+        let Some(session) = self.session_mut(applet_id) else { return false };
+        let Some(context) = session.contexts.get_mut(context_id) else { return false };
+        // A new view starts awake in the shell, and stays so while its first page loads.
+        context.level = Some(ActivityLevel::Awake);
+        context.loading_until_ms = now + ready_ms;
+        let url = context.url.clone();
+        // The next context waits for this one to bind, or for as long as a page may take to.
+        let waiting = session.contexts.values().any(|c| !c.started());
+        session.start_next_at_ms = waiting.then_some(now + ready_ms);
+        self.out.push(ShellCommand::CreateView {
+            view: ViewRef { applet_id: applet_id.into(), role: Role::Context(context_id.into()) },
+            url,
+            origins,
+            start_script: Some(script),
+        });
+        true
+    }
+
+    /// A context document bound: the applet's next context may start after the stagger.
+    pub fn context_bound(&mut self, applet_id: &str, now: u64) {
+        let Some(session) = self.session_mut(applet_id) else { return };
+        if let Some(at) = session.start_next_at_ms
+            && now + START_STAGGER_MS < at
+        {
+            session.start_next_at_ms = Some(now + START_STAGGER_MS);
+            self.out.push(ShellCommand::Wake { delay_ms: START_STAGGER_MS });
+        }
+    }
+
+    /// Starts the next context, in manifest order, of each applet in front whose turn has come.
+    pub fn start_due_contexts(&mut self, now: u64) {
+        let due = |s: &&Session| s.suspended_at_ms.is_none() && s.start_next_at_ms.is_some_and(|at| at <= now);
+        let applets: Vec<String> = self.contexts.sessions.values().filter(due).map(|s| s.applet_id.clone()).collect();
+        for applet_id in applets {
+            let next = self.active_manifest(&applet_id).and_then(|(_, manifest)| {
+                let session = self.session(&applet_id)?;
+                let waiting = |id: &&String| session.contexts.get(*id).is_some_and(|c| !c.started());
+                manifest.contexts.iter().map(|c| &c.id).find(waiting).cloned()
+            });
+            match next {
+                Some(id) => {
+                    self.start_context(&applet_id, &id, now);
+                }
+                None => {
+                    if let Some(session) = self.session_mut(&applet_id) {
+                        session.start_next_at_ms = None;
+                    }
+                }
+            }
         }
     }
 
