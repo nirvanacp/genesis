@@ -4,6 +4,20 @@
 .DS_Store
 **/*.env
 
+# Build output anywhere in the workspace, including folders left by checkouts
+# from before the framework moved to let/ (packages/core/dist, packages/sdk/dist)
+dist/
+build/
+.gradle/
+.cxx/
+.kotlin/
+*.tsbuildinfo
+*.apk
+*.aab
+.build-lock
+.build-stamp
+/packages/applet-tools/kit/
+
 # Applets directory named in genesis.workspace.json (separate repository)
 /applets
 

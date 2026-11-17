@@ -283,6 +283,14 @@ final class Shell implements Views.Listener, Ui.Actions {
             foreground.addView(page.tab.view(), new FrameLayout.LayoutParams(-1, -1));
         } else {
             sources.addView(page.tab.view(), new FrameLayout.LayoutParams(-1, -1));
+            Perf.covered(page.tab.view());
+        }
+        // Spike: every context after the applet's first one loads late.
+        int lazy = Perf.get("lazy", 0);
+        long contexts = pages.values().stream().filter(Views.Page::isContext).count();
+        if (lazy > 0 && page.isContext() && contexts > 1) {
+            page.tab.view().postDelayed(() -> { if (pages.containsValue(page)) page.tab.load(url); }, lazy);
+            return;
         }
         page.tab.load(url);
     }
@@ -307,6 +315,7 @@ final class Shell implements Views.Listener, Ui.Actions {
     void loadUrl(JSONObject ref, String url, String mode) {
         Views.Page page = pages.get(key(ref));
         if (page == null) return;
+        wake(page);
         if ("replace".equals(mode)) page.tab.replace(url);
         else page.tab.followLink(url);
     }
@@ -318,6 +327,7 @@ final class Shell implements Views.Listener, Ui.Actions {
     void historyGo(JSONObject ref, int delta) {
         Views.Page page = pages.get(key(ref));
         if (page == null) return;
+        wake(page);
         page.tab.go(delta, () -> {
             try { owner.send(Bridge.event("historyUnmoved").put("view", page.ref)); }
             catch (JSONException ignored) { /* Unreachable for these values. */ }
@@ -326,7 +336,14 @@ final class Shell implements Views.Listener, Ui.Actions {
 
     void reload(JSONObject ref) {
         Views.Page page = pages.get(key(ref));
-        if (page != null) page.tab.reload();
+        if (page == null) return;
+        wake(page);
+        page.tab.reload();
+    }
+
+    /** Spike: the applet uses a covered context, so the website may run at full speed for a while. */
+    private void wake(Views.Page page) {
+        if (page.isContext() && !page.isRevealed()) Perf.wake(page.tab.view());
     }
 
     /** Reparents the context's WebView above the foreground. Nothing reloads; the page keeps running. */
@@ -343,6 +360,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         view.setFocusable(true);
         view.setFocusableInTouchMode(true);
         view.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);
+        Perf.revealed(view);
         revealed.addView(view, new FrameLayout.LayoutParams(-1, -1));
         revealed.setVisibility(View.VISIBLE);
         page.tab.setRevealed(true);
@@ -374,6 +392,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         view.setFocusable(false);
         view.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
         sources.addView(view, new FrameLayout.LayoutParams(-1, -1));
+        Perf.covered(view);
         page.tab.setRevealed(false);
         owner.cancelInvalidFiles();
         menu.performAccessibilityAction(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS, null);
@@ -401,7 +420,10 @@ final class Shell implements Views.Listener, Ui.Actions {
 
     void postMessage(JSONObject ref, String payload) {
         Views.Page page = pages.get(key(ref));
-        if (page != null) page.post(payload);
+        if (page == null) return;
+        // Events to a context are calls and cancels; the foreground's are not a reason to wake anything.
+        if (payload.contains("\"name\":\"call\"")) wake(page);
+        page.post(Perf.limits(payload));
     }
 
     /**
@@ -415,6 +437,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         else if (page.isRevealed()) refusal = "Trusted input goes only to a hidden page";
         else {
             try {
+                wake(page);
                 page.tab.input(events);
                 page.trustedInputAt = SystemClock.uptimeMillis();
             }
