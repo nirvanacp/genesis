@@ -1,121 +1,186 @@
 # Genesis
 
-Genesis is an Android app that runs user-built applets. An applet is a native-feeling React UI over one or more live website sessions: each context is a WebView that loads the real website and keeps its history, an adapter in the page publishes what the page shows as keyed records and actions, and the applet owns the screens, data and rules. Pages the applet does not customize, sign-in, cookies and protected flows stay with the website, which appears in place in the same session when needed.
+Genesis is an Android app that runs apps you build on top of the websites you already use.
 
-There are two kinds of work:
+You describe the app you want to a coding agent: "a Hacker News app with a saved library and categories", "Gmail, but every email can become a reminder". The agent writes an **applet**, a phone UI that reads the real website underneath, signed in as you, and acts on it. Screens you designed look and behave like a native app. Pages you didn't redesign show the website itself, in the same session and history, so nothing the website can do is lost.
 
-| Layer | Owns | Start here |
+Genesis is a working prototype. It runs five example applets today, but there is no signed release yet and the version numbers are still `0.0.0`. See [status](#status).
+
+## Why
+
+Many websites are hard to use on a phone. Some have no app, and the apps that exist rarely do exactly what you want. You can't build your own app for a website you don't own, because you have no access to its server API.
+
+The website does give you one thing. Its pages already open in a browser, signed in as you, with all your data on screen, and a person can read that data and press those buttons. Genesis lets your own code do the same, then draws your screens over the result. The website keeps its sign-in, cookies, server rules and history. Your applet owns the screens, the extra data and the rules you asked for.
+
+An applet can:
+
+- show a website's pages as native screens, with tabs, loading skeletons, transitions and an Android Back button that works as expected;
+- act on the website: vote, follow, post with photos, fill and submit forms, using the website's own requests and your session;
+- add features the website doesn't have, such as categories for bookmarks, reminders on emails or search over saved items, with the data kept on the phone;
+- combine several websites in one app;
+- hand anything it doesn't customize back to the real website, including sign-in, captchas and settings.
+
+## How it works
+
+```
+┌─────────────────────────────────────────────────────────┐
+│ Applet UI: your web app, in any framework               │  visible
+│ screens, application rules, stored records              │
+└──────────────┬──────────────────────────────────────────┘
+               │ watches, inputs, navigation  (@let/sdk)
+┌──────────────▼──────────────────────────────────────────┐
+│ Genesis                                                 │
+│ Rust host: routes every message, deadlines, limits,     │
+│            storage, services                            │
+│ Java shell: windows, WebViews, Back, menus, downloads   │
+└──────┬─────────────────────┬───────────────────┬────────┘
+       │                     │                   │
+┌──────▼───────┐     ┌───────▼──────┐     ┌──────▼───────┐
+│ Context      │     │ Context      │     │ Servelet     │
+│ real website │ ... │ real website │     │ Go + SQLite  │
+│ + page agent │     │ + page agent │     │ (WebAssembly)│
+└──────────────┘     └──────────────┘     └──────────────┘
+```
+
+- **Contexts** are the live website sessions an applet declares, up to three. Each is an Android WebView (or GeckoView, chosen per applet) with its own history, loading the real website with your cookies. A context stays hidden while the applet shows its own screen for the page, and appears in place when it doesn't.
+- **The page agent** is Genesis code that runs inside every page on the applet's declared origins, before the website's scripts. The UI asks it to read the page into keyed JSON records, either with a JSON read specification or with readers in the applet's own page module. A watch sends the records once, then only what changes. The page agent also runs inputs on the page: click, fill, type, select, submit and more. It refuses password, one-time-code and payment fields.
+- **The applet UI** is a web app in its own WebView, built with any web framework. React bindings are included. For each page it decides whether to show its own screen or the website; the router helper makes that choice from a route table unless the applet sets its own rules.
+- **The host** is a Rust core that every message passes through. It counts each page load as a separate document, so an answer from a page the user has already left is dropped instead of shown. It owns the applet's storage, the deadlines and the limits.
+- **The shell** is the Android app in Java. It creates the windows and WebViews, the Genesis menu and the website bar, and handles Back, downloads, file uploads, permission prompts, sharing and notifications.
+- **Servelets** are an applet's optional backend: a small Go service with its own SQLite database, compiled to WebAssembly and run by Genesis on the phone. There is no server to host and no account to create.
+
+Website HTML never reaches the applet UI. The UI only sees the records a reader chose to extract. The website's own scripts never get Genesis's message channel, and page code can't reach the applet's storage or services.
+
+## The projects
+
+Genesis is split into four repositories that check out into one workspace.
+
+| Project | Location in the workspace | What it is |
 | --- | --- | --- |
-| Genesis platform | The Android shell, the Rust host, the shared packages, build tooling and builder guidance | [AGENTS.md](AGENTS.md) |
-| Applets | Website adapters, screens, application rules, stored data and optional backends | `let/factory/applets/AGENTS.md` in the Let repository |
-| Servelets | An applet's own backend: a Go CRUD service with a SQLite database that runs on the phone | `let/factory/servelets/AGENTS.md` in the Let repository |
+| Genesis | this repository | The Android app: the Java shell, the Rust host, the servelet runtime and the APK build |
+| [Let](https://github.com/nirvanacp/let) | `let/` | The framework applets and servelets are built with: `@let/sdk`, `@let/core`, the `let-applet` and `let-servelet` tools, the Go servelet library, and the instructions coding agents follow |
+| [Applets](https://github.com/nirvanacp/applets) | `applets/` | Example applets, one directory each |
+| [Servelets](https://github.com/nirvanacp/servelets) | `servelets/` | Example servelets used by those applets |
 
-An applet author uses the public SDK and their own code, and does not need to learn the host implementation.
+If you want to build an app, you only need Let and a debug build of Genesis. You don't need to read any Java or Rust.
 
-## Repository map
+## Example applets
 
-| Path | Contents |
-| --- | --- |
-| `android/app/` | Java shell: activity, launcher, context WebViews, website bar, native Genesis menu, service HTTPS client |
-| `android/native/` | Rust host `genesis-host`: applets, contexts, documents, RPC, storage, services, compatibility, imports (`libgenesis_host.so`) |
-| `crates/contracts/` | `genesis-contracts`: shell events and commands, document messages, bundle types, limits, error codes |
-| `crates/servelet-runtime/` | `genesis-servelet-runtime`: runs a Go servelet (a `wasip1` WebAssembly module) over its SQLite database in a sandbox with fuel, time and memory limits; `servelet-run` sends a request list to a module |
-| `let/` | The Let framework, a separate repository (private for now): `@let/core`, `@let/sdk`, the `let-applet` (also `genesis-applet`) and `let-servelet` tools, the Go servelet library and the builder guidance. Not tracked here |
-| `tools/` | APK asset and native build pipeline, package index check, service helpers |
-| `applets/` | The applets directory: a separate repository ([nirvanacp/applets](https://github.com/nirvanacp/applets)) with the `hn-bookmarks`, `x-bookmarks` and `gmail-only` applets, their port registry and backend launcher. Not tracked here |
-| `servelets/` | The servelets directory: a separate repository, one directory per servelet. Not tracked here |
-| `genesis.workspace.json` | Where the workspace's parts live: the applets, Let and servelets directories and the repositories they are cloned from |
-| `genesis.packages.json` | Applets bundled into the APK, named by their directory in the applets directory |
+| Applet | Website | What it adds |
+| --- | --- | --- |
+| [Hacker News](https://github.com/nirvanacp/applets/tree/develop/hn-bookmarks) | news.ycombinator.com | Home, Search, Post, Saved and Me tabs, with a Saved library and categories stored in a servelet |
+| [X](https://github.com/nirvanacp/applets/tree/develop/x-bookmarks) | x.com | Home, Explore, Notifications, Saved and Profile, a photo composer, and a private Categories library in a servelet |
+| [Gmail Only](https://github.com/nirvanacp/applets/tree/develop/gmail-only) | mail.google.com | Turns emails into reminders and to-dos, with snoozes and "remind me if no reply", across several Google accounts |
+| [Instagram](https://github.com/nirvanacp/applets/tree/develop/instagram) | instagram.com | Feed, stories tray, posts, comments, profiles, Explore, search, notifications and messages |
+| [Spotify](https://github.com/nirvanacp/applets/tree/develop/spotify) | open.spotify.com | A native player frame over the web player: tabs, mini-player, Now Playing, albums, playlists, artists and search. In progress |
 
-## Build and run
+## Build your own applet
 
-Requirements: Node 24, Cargo 1.94.0 with `cargo-ndk` 4.1.2, the Android SDK with NDK 28.2.13676358 and `ANDROID_HOME` set, and OpenSSL for the example backends. `tools/build.mjs` checks these versions and names the install command for a missing one. From the repository root:
+You need Node 24.15.0, a device or emulator with a debug build of Genesis ([build it below](#build-the-genesis-app)) reachable over `adb`, and Go 1.24 or later if your app needs a servelet.
+
+The fastest way is to ask a coding agent. From the workspace root:
+
+> Read let/AGENTS.md. Build an app for https://example.com that keeps my reading list with tags and lets me search it.
+
+The agent decides whether the app needs a servelet, inspects the website, writes the page module, the screens and the backend, and checks the result on the device. The instructions it follows are in [`let/factory/`](https://github.com/nirvanacp/let/tree/develop/factory).
+
+To start by hand:
 
 ```sh
-npm run workspace -- setup   # clone the applets and Let repositories, create the servelets directory
+cd applets
+npx genesis-applet create my-applet --origin https://example.com --name "Example"
+cd .. && npm install                       # the root installs every applet's dependencies
+cd applets/my-applet
+npm run check                              # manifest, compatibility, TypeScript and page module
+npm run build                              # writes dist/ with the bundle
+npx genesis-applet dev install . --device emulator-5554
+```
+
+`dev install` sends the last build to the debug app, which applies it without a restart. The [getting started guide](https://github.com/nirvanacp/let/blob/develop/factory/applets/guides/getting-started.md) walks through the first watch and the first input. The Let packages are not on npm yet, so use the tools from a Genesis workspace for now.
+
+## Build the Genesis app
+
+Requirements:
+
+- Node 24.15.0 and npm 11.14.1 (`.nvmrc` names the Node version)
+- Rust 1.94.0 (`rust-toolchain.toml` installs the toolchain and Android targets) and `cargo-ndk` 4.1.2
+- The Android SDK with NDK 28.2.13676358, and `ANDROID_HOME` set
+- Go 1.24 or later, to build the servelets of bundled applets
+
+`tools/build.mjs` checks each version and prints the install command for a missing one.
+
+```sh
+npm run workspace -- setup     # clone Let and the applets, create an empty servelets directory
+git clone https://github.com/nirvanacp/servelets.git servelets   # the example servelets, if setup left it empty
 npm install
 npm run typecheck
-npm run build
+npm run build                  # native library, packages and bundled applets
 
-# Build the APK, including the native library and bundled applets, and install it.
-android/gradlew -p android :app:installDebug
-
-# Build an applet and install it on a connected device without reinstalling the APK.
-node let/packages/applet-tools/src/cli.mjs check applets/x-bookmarks
-node let/packages/applet-tools/src/cli.mjs build applets/x-bookmarks
-node let/packages/applet-tools/src/cli.mjs dev install applets/x-bookmarks --device emulator-5554
+# Build the APK and install it on one device.
+ANDROID_SERIAL=emulator-5554 android/gradlew -p android :app:installDebug
 ```
 
-`dev install` sends the last build, so run `build` first. Hacker News is bundled into the APK through `genesis.packages.json`; X is installed with `dev install`. Release builds refuse `dev install`: they bundle each applet's published release, and users add other applets with **Add applet** in the launcher's Genesis menu, from a public GitHub repository or a downloaded bundle file. Genesis reviews every build before installing it and offers updates from the same source. Publishing, in the Let applet guides, covers versions, tags and the CI workflows that publish a release.
+Genesis runs on Android 8.0 (API 26) and later.
 
-An entry in `genesis.packages.json` can be an object, `{ "id": "hn-bookmarks", "drawer": true }`, to give that bundled applet its own entry in the Android app drawer. The entry shows the applet's name over its accent color, with the icon its manifest names as `shell.icon`; an applet without an icon gets no entry. The entry appears once the applet is installed and runs on this device. Before shipping a build to a store, check that each icon is original artwork and that each name does not claim to be the website's own app.
+### Debug and release builds
 
-## Applets directory
+A debug build accepts `genesis-applet dev install` over `adb`. A release build refuses it. Release builds install the applets bundled into the APK and the applets people add from **Add applet** in the Genesis menu, from a public GitHub repository or a downloaded bundle file. Genesis shows each build's origins and capabilities for review before installing it, and offers updates from the same source. In an applet repository, CI rebuilds every tagged version and publishes the release only when the rebuild matches the committed build; the [publishing guide](https://github.com/nirvanacp/let/blob/develop/factory/applets/guides/publishing.md) covers versions, tags and the reusable workflows in `.github/workflows/`.
 
-The applets live in their own repository, outside this one's history. `genesis.workspace.json` says where:
+`genesis.packages.json` lists the applets bundled into the APK, by directory name. An entry such as `{ "id": "hn-bookmarks", "drawer": true }` also gives that applet its own icon in the Android app drawer, drawn from the manifest's `shell.icon` and accent color.
 
-```json
-{ "applets": { "directory": "applets", "repository": "git@github.com:nirvanacp/applets.git" } }
-```
+## Workspace
 
-`directory` is relative to the repository root or absolute. Name each applet's directory after its applet id, a short product name such as `hn-bookmarks` rather than a website domain, since one applet can span several websites. The root installs every applet's dependencies through the npm workspace `applets/*`, so all of them share one `node_modules` and one React. `npm run workspace -- <command>` keeps the checkout in line with the config:
+`genesis.workspace.json` says where Let, the applets and the servelets live and which repositories they come from. `directory` can be relative to this repository or absolute. `npm run workspace -- <command>` keeps the checkout in line with it:
 
 | Command | What it does |
 | --- | --- |
 | `path` | Prints the applets directory |
-| `setup` | Clones `repository` into `directory` when it is missing, then runs `sync` |
-| `sync` | When `directory` is not `applets`, links `applets/` to it; when it is outside the repository, also links its `node_modules` to the root install |
+| `setup` | Clones Let and the applets into their directories when they are missing, creates the servelets directory (cloning it when the config names a repository), then runs `sync` |
+| `sync` | Links `applets/` to the configured directory when it lives elsewhere, and links its `node_modules` to the root install |
 | `check` | Fails with the repairing command when the checkout differs from the config. `npm run check:packages` runs it too |
 
-Run `npm install` after `setup`. The Gradle build, `tools/check-packages.mjs` and `genesis.packages.json` all read the configured directory. Inside the repository, the applets directory is a nested repository, so new worktrees get their own copy of it on the same branch name (see `AGENTS.md`); an applets directory outside the repository is shared by every worktree.
+The root `package.json` is an npm workspace over `let/packages/*` and `applets/*`, so every applet resolves the same SDK, tools and React. Run `npm install` at the root only.
 
-## Running local applet servers
+## Repository map
 
-Start the applet backends before using features that depend on them. HN's Saved library and X's Categories need their own servers; opening Genesis does not start them. After restarting your computer, restart the servers. After restarting or reconnecting Android, restore its adb tunnels too.
+| Path | What it is |
+| --- | --- |
+| `android/app/` | The Java shell: the manager window, one window per applet, context WebViews and GeckoView pages, the website bar, the Genesis menu, the service HTTPS client |
+| `android/native/` | `genesis-host`, the Rust host built into `libgenesis_host.so`: applets, contexts, documents, messages, storage, services, compatibility, installs |
+| `crates/contracts/` | `genesis-contracts`: shell events and commands, document messages, manifest and bundle types, limits, error codes |
+| `crates/servelet-runtime/` | `genesis-servelet-runtime`: runs a servelet's WebAssembly module over its SQLite database, with fuel, time and memory limits. `servelet-run` runs one on the computer |
+| `tools/` | The APK asset and native build, the workspace and package checks, applet CI, git hooks |
+| `.github/workflows/` | Reusable workflows that applet repositories call to check and release applets |
+| `genesis.workspace.json` | Where Let, the applets and the servelets are checked out |
+| `genesis.packages.json` | The applets bundled into the APK |
 
-Use Node 24, installed workspace dependencies and OpenSSL. Device connection also requires an authorized adb device, a Genesis debug build and the applets installed in it. Run these commands from the applets directory.
+## Status
 
-```sh
-# Start every applet's local backend in the background.
-./start-applet-servers.sh
+What works today, on Android emulators and a physical Samsung phone:
 
-# Start backends and restore Android tunnels and service connections.
-# Replace emulator-5554 with your device's serial from adb devices.
-./start-applet-servers.sh --device emulator-5554
+- the runtime: manifest schema 6, bundle format 3, document protocol 1, page control API 1, with `@let/sdk` and the tools at `0.0.0`;
+- up to three website contexts per applet, on WebView or GeckoView;
+- applet storage, HTTPS services with pinned certificates, and servelets on the phone;
+- installing applets from GitHub releases or bundle files, with review and updates;
+- browser features inside applets, including downloads, file uploads, popups, HTTP authentication and permission prompts.
 
-# Stop all managed backends, preserving data and credentials.
-./start-applet-servers.sh --stop
-```
+Not done yet:
 
-Use the device command after a reboot to make backend features reachable from Genesis. Servers keep running after the launcher exits or the terminal closes. Repeated starts reuse healthy managed processes. To restart them, run the stop command followed by the appropriate start command.
+- a signed release APK and publisher signing for applets;
+- the Let packages on npm;
+- applet UIs in React Native or native Java or Kotlin, servelets in JavaScript, and servelets in the cloud;
+- iOS.
 
-To operate one applet instead:
+Genesis refuses an applet built for another version of the runtime and marks it as needing an update.
 
-```sh
-./hn-bookmarks/start.sh --device emulator-5554
-./hn-bookmarks/start.sh --stop
+## Contributing
 
-./x-bookmarks/start.sh --device emulator-5554
-./x-bookmarks/start.sh --stop
-```
+Work in this workspace falls into three layers, each with its own instructions:
 
-Omit `--device emulator-5554` to start only the computer-side backend. HN uses port 8787 and X uses 8788. Port reservations live in the applets directory's `ports.json`.
+| Layer | Covers | Instructions |
+| --- | --- | --- |
+| Platform | This repository and Let's packages, tools and guidance | [AGENTS.md](AGENTS.md) |
+| Applets | An applet's page module, screens, rules and data | `let/factory/applets/AGENTS.md` |
+| Servelets | An applet's Go backend | `let/factory/servelets/AGENTS.md` |
 
-SQLite is built into Node; no separate database server is needed. Existing databases, tokens, TLS files and `server.log` files are preserved under `~/.local/share/genesis/services/<applet-id>/<service-id>/`. If you previously set `GENESIS_SERVICE_STATE_ROOT`, keep using that value to reach the same data. On X's first database creation only, prefix startup with `X_EXPECTED_HANDLE=your_handle`; an existing library keeps its stored account.
-
-If startup fails, read the named service's private `server.log`, check adb authorization and connectivity in device mode, and check for occupied ports. The launcher reports failures and leaves successful servers running. It does not silently change ports or delete data. Process status alone does not prove Android connectivity.
-
-```sh
-# Validate port reservations and declarations without starting services.
-./start-applet-servers.sh --check
-
-# Inspect recorded process status without starting a backend.
-npx --no-install genesis-applet service status hn-bookmarks --local --json
-npx --no-install genesis-applet service status x-bookmarks --local --json
-```
-
-These startup scripts are operator commands. Coding agents maintain and check them, but do not run services unless asked. See services and data, in the Let applet guides, for configuration and the contract for applets with several servers.
-
-## Current state
-
-One runtime: manifest schema 6, bundle format 3, document protocol 1, adapter API 1, and `@let/sdk` and `genesis-applet` 0.0.0. Each applet has a React foreground, one or more website contexts with their own history, an adapter that publishes regions of keyed records and desired-state actions from each page it knows, host storage and optional pinned HTTPS services. Genesis checks every applet against its compatibility table and marks an applet built for another version as needing an update. The Hacker News and X examples are rebuilt on it and checked on an Android emulator; physical phones and several website writes are not yet verified on this runtime. Production publishing, release signing and backends reachable without a computer are separate work.
+The instructions are written for coding agents and read just as well for people. They cover nested repositories, worktrees, branch names (`feat/…`, `fix/…`, `docs/…`), the commit format `feat/(<area>): message`, and the checks to run before committing. Pull requests go to `develop`. Run `sh tools/git-hooks/install.sh` once after cloning to install the branch name and worktree hooks.
