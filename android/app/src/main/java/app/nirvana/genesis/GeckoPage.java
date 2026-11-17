@@ -49,6 +49,8 @@ final class GeckoPage implements WebsitePage {
     private final String startScript;
     private final GeckoSession session;
     private final GeckoView view;
+    /** The level last applied; a new page is awake. */
+    private String level = "awake";
     private final Handler main = new Handler(Looper.getMainLooper());
     /** Loads asked for before the bridge extension was ready, in order. */
     private List<Runnable> waiting = new ArrayList<>();
@@ -210,6 +212,13 @@ final class GeckoPage implements WebsitePage {
         session.setFocused(revealed);
         session.getAccessibility().setView(revealed ? view : null);
         if (!revealed) closeDialog();
+    }
+
+    @Override public void setActivity(String level) {
+        if (level.equals(this.level)) return;
+        this.level = level;
+        session.setActive(!"resting".equals(level));
+        view.setVisibility("awake".equals(level) ? View.VISIBLE : View.INVISIBLE);
     }
 
     /** The runtime follows Android's font size and appearance for every page. */

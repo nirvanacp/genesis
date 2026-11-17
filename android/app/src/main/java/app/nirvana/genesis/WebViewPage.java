@@ -100,6 +100,8 @@ final class WebViewPage implements WebsitePage {
     /** Counts navigation starts and commits, so a fallback can see whether anything moved. */
     private int moves;
     private boolean destroyed;
+    /** The level last applied; a new page is awake. */
+    private String level = "awake";
 
     private WebViewPage(Activity activity, Views.Listener listener, Views.Page page, WebViewAssetLoader assets) {
         this.activity = activity;
@@ -241,6 +243,19 @@ final class WebViewPage implements WebsitePage {
 
     /** WebView runs a hidden page as it runs a shown one; the shell's reparenting is enough. */
     @Override public void setRevealed(boolean revealed) {}
+
+    /** Never `pauseTimers()`: it stops every WebView in the process, the applet's own page too. */
+    @Override public void setActivity(String level) {
+        if (level.equals(this.level)) return;
+        this.level = level;
+        if ("resting".equals(level)) {
+            web.setVisibility(View.INVISIBLE);
+            web.onPause();
+        } else {
+            web.onResume();
+            web.setVisibility("awake".equals(level) ? View.VISIBLE : View.INVISIBLE);
+        }
+    }
 
     @Override public void configurationChanged() { WebsiteSettings.configurationChanged(web, website); }
 

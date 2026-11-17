@@ -33,6 +33,8 @@ pub struct Host {
     pub documents: Documents,
     pub contexts: Contexts,
     pub out: Vec<ShellCommand>,
+    /// Writes resume files off this thread.
+    pub writer: crate::writer::Writer,
     /// A debuggable APK accepts development builds from `genesis-import/`.
     pub debuggable: bool,
     /// The running add, review or update flow.
@@ -43,6 +45,10 @@ pub struct Host {
     pub next_request: u64,
     /// Storage jobs erasing an applet's data, by job id, with the install or removal that waits for them.
     pub deletions: HashMap<u64, Deletion>,
+    /// Every covered context stays awake: the debug switch that turns resting off.
+    pub activity_off: bool,
+    /// When the wake the activity controller last asked for is due; 0 before the first.
+    pub activity_wake_ms: u64,
 }
 
 /// Wall-clock milliseconds since the Unix epoch, for times that are saved, sent out of the host or
@@ -62,13 +68,15 @@ impl Host {
     pub fn dispatch(&mut self, event: ShellEvent) -> Result<Vec<ShellCommand>, String> {
         let now = mono_ms();
         match event {
-            ShellEvent::Attach { files_dir, debuggable } => {
+            ShellEvent::Attach { files_dir, debuggable, activity_off } => {
                 self.end_flow();
                 self.contexts = Contexts::default();
                 self.documents = Documents::default();
                 self.applets = Applets::load(Path::new(&files_dir));
                 self.files_dir = Some(files_dir.into());
                 self.debuggable = debuggable;
+                self.activity_off = activity_off;
+                self.activity_wake_ms = 0;
                 self.load_updates();
             }
             ShellEvent::ManagerAttached => {
@@ -102,7 +110,7 @@ impl Host {
             ShellEvent::DocumentStarted { view, url } => self.document_started(view, url, now),
             ShellEvent::DocumentMessage { view, payload } => self.document_message(view, &payload, now),
             ShellEvent::ContextNavigated { view, url, index, size, can_go_back, can_go_forward, same_document, reload } => {
-                let reported = ContextView { url, index, size, can_go_back, can_go_forward, navigating_since: None };
+                let reported = ContextView { index, size, can_go_back, can_go_forward, ..ContextView::at(url) };
                 self.context_navigated(view, reported, same_document, reload);
             }
             ShellEvent::RendererGone { view } => self.renderer_gone(&view),
@@ -136,8 +144,10 @@ impl Host {
             ShellEvent::JsDialogClosed { view, token } => self.js_dialog_closed(&view, token, now),
             ShellEvent::UserActionDone { token, ok, code, message, result } => self.user_action_done(token, ok, code, message, result),
             ShellEvent::FilesSent { token, ok, code, message } => self.files_sent(token, ok, code, message),
-            ShellEvent::GrantEnded { view, grant, used } => self.grant_ended(&view, grant, used),
+            ShellEvent::GrantEnded { view, grant, used } => self.grant_ended(&view, grant, used, now),
         }
+        self.start_due_contexts(now);
+        self.refresh_activity(now);
         Ok(std::mem::take(&mut self.out))
     }
 
@@ -320,15 +330,16 @@ impl Host {
         }
     }
 
-    pub(crate) fn save_resume(&self, applet_id: &str, resume: &Resume) {
+    /// Saved on the writer thread: this runs while the user leaves or uses the applet.
+    pub(crate) fn save_resume(&mut self, applet_id: &str, resume: &Resume) {
         let (Some(path), Ok(bytes)) = (self.resume_path(applet_id), serde_json::to_vec(resume)) else { return };
-        let _ = applets::write_atomic(&path, &bytes);
+        self.writer.write(path, bytes);
     }
 
     /// Where the applet was: kept in memory, else saved before the process last ended.
     fn take_resume(&mut self, applet_id: &str) -> Option<Resume> {
         self.contexts.resumes.remove(applet_id).or_else(|| {
-            let bytes = std::fs::read(self.resume_path(applet_id)?).ok()?;
+            let bytes = self.writer.read(&self.resume_path(applet_id)?)?;
             serde_json::from_slice(&bytes).ok()
         })
     }
@@ -336,7 +347,7 @@ impl Host {
     pub fn forget_resume(&mut self, applet_id: &str) {
         self.contexts.resumes.remove(applet_id);
         if let Some(path) = self.resume_path(applet_id) {
-            let _ = std::fs::remove_file(path);
+            self.writer.delete(path);
         }
     }
 
@@ -385,6 +396,7 @@ impl Host {
             return;
         };
         if manifest.origins.iter().any(|o| applets::origin_of(o).as_deref() == Some(&origin)) {
+            self.begin_load(&view, mono_ms());
             return self.out.push(ShellCommand::LoadUrl { view, url: url.into(), mode: NavigateMode::Push });
         }
         let others: Vec<String> = self
@@ -436,13 +448,13 @@ impl Host {
                 None => self.out.push(ShellCommand::ShowError { applet_id: window, message: format!("Applet {applet_id} is not installed") }),
             };
         };
-        let script = match self.applets.read_text(applet_id, revision, "page.js") {
-            Ok(script) => script,
-            Err(message) => return self.out.push(ShellCommand::ShowError { applet_id: window, message }),
-        };
+        if let Err(message) = self.applets.read_text(applet_id, revision, "page.js") {
+            return self.out.push(ShellCommand::ShowError { applet_id: window, message });
+        }
         self.make_room(applet_id);
         let mut session = Session::new(applet_id.into(), revision, resume.is_some());
         let (mut urls, saved) = resume.map(|r| (r.urls, r.saved)).unwrap_or_default();
+        let opening_context = opening.as_ref().map(|(id, _)| id.clone()).filter(|id| manifest.contexts.iter().any(|c| &c.id == id));
         urls.extend(opening);
         session.saved = saved;
         self.out.push(ShellCommand::ShowApplet {
@@ -457,18 +469,20 @@ impl Host {
             origins: vec![FOREGROUND_ORIGIN.into()],
             start_script: None,
         });
+        // Every context exists from the start, at the URL its view will load once it starts.
         for context in &manifest.contexts {
             let url = urls.get(&context.id).cloned().unwrap_or_else(|| context.start_url.clone());
-            let view = ContextView { url: url.clone(), index: 0, size: 0, can_go_back: false, can_go_forward: false, navigating_since: None };
-            session.contexts.insert(context.id.clone(), view);
-            self.out.push(ShellCommand::CreateView {
-                view: ViewRef { applet_id: applet_id.into(), role: Role::Context(context.id.clone()) },
-                url,
-                origins: manifest.origins.clone(),
-                start_script: Some(script.clone()),
-            });
+            session.contexts.insert(context.id.clone(), ContextView::at(url));
         }
         self.contexts.sessions.insert(applet_id.into(), session);
+        // The context a link opens, or the first one, starts now; the others follow one by one.
+        let first = opening_context.or_else(|| manifest.contexts.first().map(|c| c.id.clone()));
+        let now = mono_ms();
+        for context in &manifest.contexts {
+            if self.activity_off || Some(&context.id) == first.as_ref() {
+                self.start_context(applet_id, &context.id, now);
+            }
+        }
     }
 
     /// Keeps the live applets under `LIVE_APPLETS_MAX` before `applet_id` starts: the applet
@@ -652,12 +666,14 @@ impl Host {
         if let Some(session) = self.session_mut(applet_id) {
             session.back_history = Some(id);
         }
+        self.begin_load(&view, mono_ms());
         self.out.push(ShellCommand::HistoryGo { view, delta: -1 });
     }
 
     /// A history step did not move the context. A Back that fell through to it leaves the applet.
     fn history_unmoved(&mut self, view: &ViewRef) {
         let Role::Context(id) = &view.role else { return };
+        self.end_load(view);
         let Some(session) = self.contexts.sessions.get_mut(&view.applet_id) else { return };
         if session.back_history.as_ref() == Some(id) {
             session.back_history = None;
@@ -711,6 +727,9 @@ impl Host {
         context.can_go_forward = reported.can_go_forward;
         if waiting && !same_document {
             self.retire_document(&view);
+        }
+        if same_document {
+            self.end_load(&view); // The page moved inside its document: nothing more loads.
         }
         let generation = match self.documents.current(&view) {
             Some(document) if !waiting => document.generation,

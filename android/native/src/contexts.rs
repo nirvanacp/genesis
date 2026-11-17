@@ -1,5 +1,6 @@
 //! State of the live applets' contexts: navigation, reveal, page calls and the Back slot.
 use crate::{dialogs::OpenDialog, files::FileHandles};
+use genesis_contracts::ActivityLevel;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap};
@@ -20,6 +21,42 @@ pub struct ContextView {
     /// Set by `DocumentStarted` and cleared when that document says hello: a document committed
     /// and has not bound yet.
     pub navigating_since: Option<u64>,
+    /// The level last sent to the shell for this context. `None` before its view exists.
+    pub level: Option<ActivityLevel>,
+    /// The context stays awake until this time: the tail after a load, a call or a cover.
+    pub awake_until_ms: u64,
+    /// A load the host asked for may still commit until this time; 0 when none is under way.
+    pub loading_until_ms: u64,
+    /// The tail the context gets once what keeps it busy now ends; 0 while nothing does.
+    pub busy_tail_ms: u64,
+    /// The foreground's hold, and when an awake hold drops to running.
+    pub hold: Option<(ActivityLevel, u64)>,
+}
+
+impl ContextView {
+    /// Whether the shell has this context's view. Contexts start one after another.
+    pub fn started(&self) -> bool {
+        self.level.is_some()
+    }
+}
+
+impl ContextView {
+    /// A context at `url` whose view does not exist yet.
+    pub fn at(url: String) -> Self {
+        Self {
+            url,
+            index: 0,
+            size: 0,
+            can_go_back: false,
+            can_go_forward: false,
+            navigating_since: None,
+            level: None,
+            awake_until_ms: 0,
+            loading_until_ms: 0,
+            busy_tail_ms: 0,
+            hold: None,
+        }
+    }
 }
 
 /// A page operation the foreground asked a context document to run (`page.call`). The foreground's
@@ -81,6 +118,8 @@ pub struct Session {
     pub suspended_at_ms: Option<u64>,
     /// Each context's input budget, by context id, created on its first input call.
     pub input_budgets: HashMap<String, InputBudget>,
+    /// When the next context that has no view yet starts (`mono_ms`); None once all have.
+    pub start_next_at_ms: Option<u64>,
 }
 
 /// Page operations that act on the website, so they spend the context's input budget. Reads,
@@ -138,6 +177,7 @@ impl Session {
             open_context: None,
             suspended_at_ms: None,
             input_budgets: HashMap::new(),
+            start_next_at_ms: None,
         }
     }
 
