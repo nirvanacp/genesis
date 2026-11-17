@@ -4,6 +4,12 @@
 .DS_Store
 **/*.env
 
+# Build output left by checkouts from before the framework moved to let/
+/packages/core/dist/
+/packages/sdk/dist/
+/packages/applet-tools/kit/
+/packages/sdk/.build-lock
+
 # Applets directory named in genesis.workspace.json (separate repository)
 /applets
 
