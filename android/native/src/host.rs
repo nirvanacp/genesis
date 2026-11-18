@@ -47,6 +47,10 @@ pub struct Host {
     pub deletions: HashMap<u64, Deletion>,
     /// Every covered context stays awake: the debug switch that turns resting off.
     pub activity_off: bool,
+    /// Covered websites load images: the debug switch that turns light pages off.
+    pub light_off: bool,
+    /// The host keeps no cached watch values: the debug switch that turns the store's cache off.
+    pub store_off: bool,
     /// When the wake the activity controller last asked for is due; 0 before the first.
     pub activity_wake_ms: u64,
 }
@@ -68,7 +72,7 @@ impl Host {
     pub fn dispatch(&mut self, event: ShellEvent) -> Result<Vec<ShellCommand>, String> {
         let now = mono_ms();
         match event {
-            ShellEvent::Attach { files_dir, debuggable, activity_off } => {
+            ShellEvent::Attach { files_dir, debuggable, activity_off, light_off, store_off } => {
                 self.end_flow();
                 self.contexts = Contexts::default();
                 self.documents = Documents::default();
@@ -76,6 +80,8 @@ impl Host {
                 self.files_dir = Some(files_dir.into());
                 self.debuggable = debuggable;
                 self.activity_off = activity_off;
+                self.light_off = light_off;
+                self.store_off = store_off;
                 self.activity_wake_ms = 0;
                 self.load_updates();
             }

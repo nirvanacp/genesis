@@ -51,6 +51,8 @@ fn dispatch(input: &str) -> String {
                     files_dir: dir.to_string_lossy().into_owned(),
                     debuggable: host.debuggable,
                     activity_off: host.activity_off,
+                    light_off: host.light_off,
+                    store_off: host.store_off,
                 });
                 *host = Host::default();
                 if let Some(attach) = attach {
