@@ -16,7 +16,8 @@ use std::{
     time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
-/// An applet in the background longer than this is retired and recreated on resume.
+/// An applet in the background longer than this is retired and recreated on resume, unless it
+/// holds a page.
 const SUSPEND_RETIRE_MS: u64 = 30_000;
 /// The limit while a context is revealed: while the user is on a website, for sign-in codes,
 /// file pickers and other apps they return from.
@@ -598,9 +599,13 @@ impl Host {
     }
 
     /// Measured on the wall clock, which keeps counting while the phone sleeps; the monotonic
-    /// clock stops then. A clock set back counts as no time passed.
+    /// clock stops then. A clock set back counts as no time passed. An applet that holds a page
+    /// stays: the page does work of its own, such as playing music, which recreating it would stop.
     fn retire_if_long_suspended(&mut self, applet_id: &str) {
         let Some(session) = self.session(applet_id) else { return };
+        if session.contexts.values().any(|context| context.hold.is_some()) {
+            return;
+        }
         // `revealed` does not change while suspended, so this is the state the user left in.
         let limit = if session.revealed.is_some() { REVEALED_RETIRE_MS } else { SUSPEND_RETIRE_MS };
         if session.suspended_at_ms.is_some_and(|at| now_ms().saturating_sub(at) >= limit) {
