@@ -346,6 +346,17 @@ final class Shell implements Views.Listener, Ui.Actions {
     }
 
     /**
+     * The host makes a covered context light and lifts it before a reveal, so the page the user
+     * sees always loads in full. The foreground is never light.
+     */
+    void setLight(JSONObject ref, boolean on) {
+        Views.Page page = pages.get(key(ref));
+        if (page == null || !page.isContext() || on && page == revealedPage) return;
+        if (DebugLog.any) DebugLog.log(ref.optString("appletId"), "view.light", "role", ref.optString("role"), "on", on);
+        page.tab.setLight(on);
+    }
+
+    /**
      * The applet's own page pauses shortly after its window leaves the front, late enough for it
      * to save its state first, and runs again when the window returns.
      */

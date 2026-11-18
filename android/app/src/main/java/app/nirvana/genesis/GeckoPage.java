@@ -221,6 +221,9 @@ final class GeckoPage implements WebsitePage {
         view.setVisibility("awake".equals(level) ? View.VISIBLE : View.INVISIBLE);
     }
 
+    /** GeckoView has no per-page switch for images, so its pages always load in full. */
+    @Override public void setLight(boolean on) {}
+
     /** The runtime follows Android's font size and appearance for every page. */
     @Override public void configurationChanged() {}
 

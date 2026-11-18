@@ -73,6 +73,9 @@ interface WebsitePage {
      */
     void setActivity(String level);
 
+    /** A covered page skips image downloads (true) or loads them again (false). */
+    void setLight(boolean on);
+
     /** The system font size or appearance changed while the page lives. */
     void configurationChanged();
 

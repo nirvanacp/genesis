@@ -16,6 +16,7 @@ import java.util.Map;
  * ui_profile: off keeps the applet's screens in the websites' WebView profile and renderer.
  * ui_warmup:  on starts the applet screens' renderer when the first window opens (an experiment).
  * light:      off lets covered websites load images, as before light pages.
+ * light_fonts: on also answers a covered website's web font requests with nothing (an experiment).
  * store:      off makes the host keep no cached watch values; live values arrive as before.
  */
 final class Perf {
@@ -48,6 +49,8 @@ final class Perf {
     static boolean uiWarmUp() { return "on".equals(get("ui_warmup")); }
 
     static boolean lightOff() { return "off".equals(get("light")); }
+
+    static boolean lightFonts() { return "on".equals(get("light_fonts")); }
 
     static boolean storeOff() { return "off".equals(get("store")); }
 
