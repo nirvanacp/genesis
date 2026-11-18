@@ -153,6 +153,7 @@ impl Host {
                 self.store_cached(&applet_id, &context, &stream, serial, &url, at, snapshot)
             }
             ShellEvent::StoreResync { applet_id, context, stream } => self.store_resync(&applet_id, &context, &stream, now),
+            ShellEvent::WebsiteDataRemoved { applet_id } => self.website_data_removed(applet_id.as_deref()),
             ShellEvent::Tick => self.tick(now),
             ShellEvent::TrimMemory { level } => self.trim_memory(level),
             event @ ShellEvent::FetchCompleted { .. } => self.fetch_completed(event),

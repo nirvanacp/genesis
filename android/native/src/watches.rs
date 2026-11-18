@@ -21,7 +21,8 @@ const WATCH_ID_MAX: usize = 128;
 
 impl Host {
     /// Adds the subscription, or keeps an equal one, and opens it in the context's bound document.
-    pub fn watch_subscribe(&mut self, applet_id: &str, context: String, id: String, spec: Value, when: Option<Value>, now: u64) -> Result<Value, ErrorBody> {
+    #[allow(clippy::too_many_arguments)]
+    pub fn watch_subscribe(&mut self, applet_id: &str, context: String, id: String, spec: Value, when: Option<Value>, persist: bool, now: u64) -> Result<Value, ErrorBody> {
         if self.context_view(applet_id, &context).is_none() {
             return Err(ErrorBody::new(ErrorCode::NotFound, format!("No context {context}")));
         }
@@ -33,11 +34,11 @@ impl Host {
             return Err(ErrorBody::new(ErrorCode::Retired, "The applet is not active"));
         };
         let key = (context.clone(), id.clone());
-        match session.subscriptions.get(&key) {
+        match session.subscriptions.get_mut(&key) {
             Some(existing) if existing.spec != spec || existing.when != when => {
                 return Err(ErrorBody::new(ErrorCode::Conflict, format!("The watch {id} is subscribed with another specification")));
             }
-            Some(_) => {}
+            Some(existing) => existing.persist = persist,
             None => {
                 if session.subscriptions.keys().filter(|(c, _)| *c == context).count() >= watches_max {
                     return Err(ErrorBody::new(ErrorCode::QuotaExceeded, format!("At most {watches_max} watches can be open")));
@@ -45,7 +46,7 @@ impl Host {
                 session.next_subscription += 1;
                 let serial = session.next_subscription;
                 let fingerprint = store::fingerprint(&spec);
-                session.subscriptions.insert(key, Subscription { spec, when, serial, open_in: None, fingerprint, live: false });
+                session.subscriptions.insert(key, Subscription { spec, when, serial, open_in: None, fingerprint, live: false, persist });
             }
         }
         if debug_log::on(applet_id) {
@@ -118,6 +119,7 @@ impl Host {
             n: view["n"].as_u64().unwrap_or(0),
             seq,
             data: data.clone(),
+            persist: subscription.persist,
         };
         let stream_key = (applet_id.to_string(), context.to_string(), stream.to_string());
         match store::emit(emit) {
@@ -132,6 +134,42 @@ impl Host {
                 self.resync_watch(applet_id, context, stream, crate::host::mono_ms());
             }
             _ => {}
+        }
+    }
+
+    /// `store.forget`: the store forgets the applet's values of `context`, or of every context.
+    /// A subscription waiting for its first snapshot takes no kept value after this.
+    pub fn store_forget(&mut self, applet_id: &str, context: Option<String>) -> Result<Value, ErrorBody> {
+        if let Some(context) = &context
+            && self.context_view(applet_id, context).is_none()
+        {
+            return Err(ErrorBody::new(ErrorCode::NotFound, format!("No context {context}")));
+        }
+        if debug_log::on(applet_id) {
+            debug_log::host(applet_id, "store.forget", json!({ "context": context }));
+        }
+        self.refuse_cached(applet_id, context.as_deref());
+        store::forget(applet_id, context);
+        Ok(json!({}))
+    }
+
+    /// The websites' data was removed: the store deletes the values it kept, of `applet_id` or
+    /// of every applet, since they may show another account.
+    pub fn website_data_removed(&mut self, applet_id: Option<&str>) {
+        let applets: Vec<String> = self.contexts.sessions.keys().filter(|a| applet_id.is_none_or(|id| id == *a)).cloned().collect();
+        for applet in applets {
+            self.refuse_cached(&applet, None);
+        }
+        store::erase(applet_id);
+    }
+
+    /// Makes the subscriptions of `context`, or of every context, take no kept value already on its way.
+    fn refuse_cached(&mut self, applet_id: &str, context: Option<&str>) {
+        let Some(session) = self.contexts.sessions.get_mut(applet_id) else { return };
+        for ((c, _), subscription) in session.subscriptions.iter_mut() {
+            if context.is_none_or(|context| context == c) {
+                subscription.live = true;
+            }
         }
     }
 

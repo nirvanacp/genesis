@@ -105,6 +105,8 @@ pub struct Subscription {
     pub fingerprint: u64,
     /// A snapshot from the page reached the foreground, so a kept value would be older.
     pub live: bool,
+    /// The store also writes the watch's values to the phone.
+    pub persist: bool,
 }
 
 impl CallHandle {

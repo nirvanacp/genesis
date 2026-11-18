@@ -105,7 +105,7 @@ pub extern "system" fn Java_app_nirvana_genesis_NativeBridge_configureStorage<'l
                 if !store::initialized() {
                     let vm = env.get_java_vm().map_err(|e| e.to_string())?;
                     let callback = env.new_global_ref(&class).map_err(|e| e.to_string())?;
-                    store::start(vm, callback)?;
+                    store::start(files.join("applets"), vm, callback)?;
                 }
                 Ok(())
             }));

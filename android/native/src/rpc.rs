@@ -10,7 +10,7 @@ use crate::{
 use genesis_contracts::*;
 use serde_json::{Value, json};
 
-const FOREGROUND_METHODS: [&str; 28] = [
+const FOREGROUND_METHODS: [&str; 29] = [
     "ui.ready",
     "storage.get",
     "storage.list",
@@ -30,6 +30,7 @@ const FOREGROUND_METHODS: [&str; 28] = [
     "page.cancel",
     "watch.subscribe",
     "watch.unsubscribe",
+    "store.forget",
     "context.grant",
     "context.hold",
     "files.pick",
@@ -361,7 +362,10 @@ impl Host {
                 self.page_call(applet_id, document_id, request_id, context, generation, op, args, timeout_ms, now)
             }
             Call::PageCancel { context, call_id } => self.page_cancel(applet_id, document_id, context, call_id),
-            Call::WatchSubscribe { context, id, spec, when } => Outcome::Now(self.watch_subscribe(applet_id, context, id, spec, when, now)),
+            Call::WatchSubscribe { context, id, spec, when, persist } => {
+                Outcome::Now(self.watch_subscribe(applet_id, context, id, spec, when, persist, now))
+            }
+            Call::StoreForget { context } => Outcome::Now(self.store_forget(applet_id, context)),
             Call::WatchUnsubscribe { context, id } => Outcome::Now(self.watch_unsubscribe(applet_id, context, id, now)),
             Call::PageResult { call_id, ok, value, error } => self.page_result(applet_id, document_id, call_id, ok, value, error),
             Call::PageProgress { call_id, state, completed_steps } => self.page_progress(applet_id, document_id, call_id, state, completed_steps),
