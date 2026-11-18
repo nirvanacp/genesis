@@ -1,6 +1,7 @@
 //! Document messages: handshake, role authorization and method dispatch.
 use crate::{
     contexts::{CallHandle, InputBudget, CALL_INPUTS_MAX, PACED_OPS},
+    debug_log,
     documents::PendingOp,
     host::Host,
     servelets,
@@ -9,7 +10,7 @@ use crate::{
 use genesis_contracts::*;
 use serde_json::{Value, json};
 
-const FOREGROUND_METHODS: [&str; 25] = [
+const FOREGROUND_METHODS: [&str; 29] = [
     "ui.ready",
     "storage.get",
     "storage.list",
@@ -27,6 +28,9 @@ const FOREGROUND_METHODS: [&str; 25] = [
     "back.leave",
     "page.call",
     "page.cancel",
+    "watch.subscribe",
+    "watch.unsubscribe",
+    "store.forget",
     "context.grant",
     "context.hold",
     "files.pick",
@@ -35,8 +39,9 @@ const FOREGROUND_METHODS: [&str; 25] = [
     "share.open",
     "links.openExternal",
     "notifications.enable",
+    "debug.log",
 ];
-const CONTEXT_METHODS: [&str; 6] = ["page.result", "page.progress", "page.emit", "page.input", "page.files", "page.share"];
+const CONTEXT_METHODS: [&str; 7] = ["page.result", "page.progress", "page.emit", "page.input", "page.files", "page.share", "debug.log"];
 /// Events in one `page.input`.
 const INPUT_EVENTS_MAX: usize = 64;
 /// Characters of `text` in one `page.input`, all its text events together. The shell types each
@@ -151,7 +156,7 @@ impl Host {
             context_id,
             generation: document.generation,
             manifest: Box::new(manifest),
-            limits: self.limits.clone(),
+            limits: Limits { debug_log: debug_log::on(&view.applet_id), ..self.limits.clone() },
             session: saved,
         };
         self.post(&view, &bound);
@@ -160,10 +165,16 @@ impl Host {
             Role::Context(id) => {
                 let data = json!({ "id": id, "generation": document_generation, "url": url });
                 self.foreground_event(&view.applet_id, "context.bound", data);
-                self.context_bound(&view.applet_id, crate::host::mono_ms());
+                let now = crate::host::mono_ms();
+                self.context_bound(&view.applet_id, now);
+                self.open_watches(&view.applet_id, id, now);
             }
             // A new foreground knows none of the old one's watches and calls; the pages drop them.
             Role::Foreground => {
+                if let Some(session) = self.session_mut(&view.applet_id) {
+                    session.subscriptions.clear();
+                }
+                self.forget_dirty(&view.applet_id, None);
                 self.release_holds(&view.applet_id);
                 self.reset_contexts(&view.applet_id);
             }
@@ -202,6 +213,7 @@ impl Host {
                 document_id: document_id.into(),
                 request_id,
                 deadline_ms: now + host.limits.rpc_deadline_ms,
+                started_ms: now,
             };
             host.documents.begin_op(op)
         };
@@ -351,6 +363,11 @@ impl Host {
                 self.page_call(applet_id, document_id, request_id, context, generation, op, args, timeout_ms, now)
             }
             Call::PageCancel { context, call_id } => self.page_cancel(applet_id, document_id, context, call_id),
+            Call::WatchSubscribe { context, id, spec, when, persist } => {
+                Outcome::Now(self.watch_subscribe(applet_id, context, id, spec, when, persist, now))
+            }
+            Call::StoreForget { context } => Outcome::Now(self.store_forget(applet_id, context)),
+            Call::WatchUnsubscribe { context, id } => Outcome::Now(self.watch_unsubscribe(applet_id, context, id, now)),
             Call::PageResult { call_id, ok, value, error } => self.page_result(applet_id, document_id, call_id, ok, value, error),
             Call::PageProgress { call_id, state, completed_steps } => self.page_progress(applet_id, document_id, call_id, state, completed_steps),
             Call::PageEmit { stream, kind, seq, view: page_view, url, data } => {
@@ -415,6 +432,16 @@ impl Host {
                 }
                 self.user_action(view, document_id, request_id, Some(view.clone()), UserAction::Share { title, text, url }, now)
             }
+            Call::DebugLog { entries } => {
+                if debug_log::on(applet_id) {
+                    let src = match &view.role {
+                        Role::Foreground => "client".to_string(),
+                        Role::Context(id) => format!("page:{id}"),
+                    };
+                    debug_log::document(applet_id, &src, entries);
+                }
+                ok()
+            }
         }
     }
 
@@ -457,6 +484,9 @@ impl Host {
     #[allow(clippy::too_many_arguments)]
     fn page_call(&mut self, applet_id: &str, document_id: &str, request_id: u64, context: String, generation: u64, op: String, args: Value, timeout_ms: Option<u64>, now: u64) -> Outcome {
         let Some(target) = self.context_view(applet_id, &context) else { return unknown_context(&context) };
+        if op == "watch.open" || op == "watch.close" {
+            return error(ErrorCode::InvalidArgument, "Watches open and close with watch.subscribe and watch.unsubscribe");
+        }
         self.start_context(applet_id, &context, now);
         let Some(document) = self.documents.current(&target) else {
             return error(ErrorCode::NotReady, "The context has no bound page");
@@ -496,7 +526,14 @@ impl Host {
             deadline_ms: now + budget_ms,
             paced,
             inputs: 0,
+            op,
+            started_ms: now,
+            watch: None,
         };
+        if debug_log::on(applet_id) {
+            debug_log::host(applet_id, "page.call", json!({ "context": handle.context_id, "op": handle.op }));
+        }
+        let op = handle.op.clone();
         let call_id = session.begin_call(handle);
         self.event(&target, "call", json!({ "callId": call_id, "op": op, "args": args, "deadlineMs": budget_ms }));
         Outcome::Later
@@ -606,7 +643,7 @@ impl Host {
             return error(ErrorCode::InputUnavailable, format!("One call sends trusted input at most {CALL_INPUTS_MAX} times"));
         }
         handle.inputs += 1;
-        let op = PendingOp { view: view.clone(), document_id: document_id.into(), request_id, deadline_ms: handle.deadline_ms };
+        let op = PendingOp { view: view.clone(), document_id: document_id.into(), request_id, deadline_ms: handle.deadline_ms, started_ms: crate::host::mono_ms() };
         let token = self.documents.begin_op(op);
         self.out.push(ShellCommand::Input { view: view.clone(), token, events });
         Outcome::Later
@@ -625,7 +662,9 @@ impl Host {
     #[allow(clippy::too_many_arguments)]
     fn page_emit(&mut self, view: &ViewRef, stream: String, kind: EmitKind, seq: u64, page_view: Value, url: String, data: Value) -> Outcome {
         let Role::Context(id) = &view.role else { unreachable!() };
-        let size = serde_json::to_vec(&data).map(|b| b.len()).unwrap_or(usize::MAX);
+        // The same bytes measure the message here and carry it to the store.
+        let bytes = serde_json::to_vec(&data).ok();
+        let size = bytes.as_ref().map_or(usize::MAX, Vec::len);
         match kind {
             EmitKind::Snapshot if size > self.limits.page_max_bytes => {
                 return error(ErrorCode::PageTooLarge, "The snapshot is too large");
@@ -643,6 +682,15 @@ impl Host {
             _ => {}
         }
         let generation = self.documents.current(view).map_or(0, |d| d.generation);
+        if let Some(context) = self.context_mut(&view.applet_id, id)
+            && context.last_view.as_ref() != Some(&page_view)
+        {
+            context.last_view = Some(page_view.clone());
+        }
+        self.watch_emitted(&view.applet_id, id, &stream, kind, seq, &page_view, &url, &data, bytes.unwrap_or_default());
+        if debug_log::on(&view.applet_id) {
+            debug_log::host(&view.applet_id, "page.emit", json!({ "context": id, "kind": kind, "bytes": size }));
+        }
         let message = json!({
             "context": id, "generation": generation, "stream": stream, "kind": kind,
             "seq": seq, "view": page_view, "url": url, "data": data,

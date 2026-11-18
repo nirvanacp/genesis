@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Only exported debug logs can be shared, nothing else in the cache or files. -->
+<paths>
+    <cache-path name="shared-logs" path="shared-logs/" />
+</paths>

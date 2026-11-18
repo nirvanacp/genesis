@@ -158,7 +158,7 @@ The root `package.json` is an npm workspace over `let/packages/*` and `applets/*
 
 What works today, on Android emulators and a physical Samsung phone:
 
-- the runtime: manifest schema 6, bundle format 3, document protocol 1, page control API 1, with `@let/sdk` and the tools at `0.0.0`;
+- the runtime: manifest schema 6, bundle format 3, document protocol 2, page control API 1, with `@let/sdk` and the tools at `0.0.0`;
 - up to three website contexts per applet, on WebView or GeckoView;
 - applet storage, HTTPS services with pinned certificates, and servelets on the phone;
 - installing applets from GitHub releases or bundle files, with review and updates;

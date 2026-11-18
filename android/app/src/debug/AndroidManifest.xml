@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug builds only: tools/bench.mjs opens an applet cold with `adb shell am start`, the same
+     intent its home-screen shortcut sends, and the shell user may start only exported activities. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <application>
+        <activity
+            android:name=".AppletEntryActivity"
+            android:exported="true"
+            tools:replace="android:exported" />
+    </application>
+</manifest>

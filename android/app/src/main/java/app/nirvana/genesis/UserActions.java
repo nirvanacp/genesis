@@ -114,6 +114,7 @@ final class UserActions {
             return;
         }
         if (!consumeTap()) { answer(done(token, "USER_ACTION_REQUIRED", "The action needs a fresh tap on the applet", null)); return; }
+        if (DebugLog.any) DebugLog.log(appletId, "user.action", "kind", kind, "context", view == null ? null : view.optString("role"));
         switch (kind) {
             case "pickFiles": pick(token, strings(action.optJSONArray("accept")), action.optBoolean("multiple")); break;
             case "save": save(token, view, action.optString("url"), action.isNull("filename") ? null : action.optString("filename", null)); break;

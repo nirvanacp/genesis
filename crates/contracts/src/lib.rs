@@ -12,7 +12,7 @@ use serde_json::{Map, Value};
 pub mod compat {
     pub const MANIFEST_SCHEMA: u32 = 6;
     pub const BUNDLE_FORMAT: u32 = 3;
-    pub const PROTOCOL: u32 = 1;
+    pub const PROTOCOL: u32 = 2;
     pub const ADAPTER_API: u32 = 1;
     pub const SESSION_STATE: u32 = 1;
     pub const IMPORT_ENVELOPE: u32 = 1;
@@ -102,6 +102,20 @@ impl TryFrom<String> for Role {
 // ---------------------------------------------------------------------------------------------
 // Shell events and commands
 
+/// What a debug log's first line says about the app, its WebView and the phone. A shell that
+/// does not send a field leaves it empty or zero.
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct DeviceInfo {
+    pub app_version: String,
+    pub app_code: u64,
+    pub webview_package: String,
+    pub webview_version: String,
+    pub model: String,
+    pub android_release: String,
+    pub sdk: u32,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum ShellEvent {
@@ -110,11 +124,23 @@ pub enum ShellEvent {
     /// development imports.
     Attach {
         files_dir: String,
+        /// The app's cache directory, where shared debug logs are written.
+        #[serde(default)]
+        cache_dir: String,
         #[serde(default)]
         debuggable: bool,
         /// Every covered context stays awake, as before contexts rested. For comparing and debugging.
         #[serde(default)]
         activity_off: bool,
+        /// Covered websites load images too, as before light pages. For comparing and debugging.
+        #[serde(default)]
+        light_off: bool,
+        /// The host keeps no cached watch values. For comparing and debugging.
+        #[serde(default)]
+        store_off: bool,
+        /// The app, WebView and phone, for the first line of a debug log.
+        #[serde(default)]
+        device: DeviceInfo,
     },
     /// The manager window (the Genesis list) was created. It has none of an earlier flow's screens.
     ManagerAttached,
@@ -201,6 +227,31 @@ pub enum ShellEvent {
     ServiceFailed { request_id: u64, code: ErrorCode, message: String },
     /// A storage worker result, relayed by the shell to the UI thread.
     StorageCompleted { payload: String },
+    /// A watch value the store thread kept, for the subscription `serial` that asked for it,
+    /// relayed by the shell to the UI thread. `url` is the page it was read from, without its
+    /// fragment, and `at` the epoch milliseconds of its last change.
+    StoreCached { applet_id: String, context: String, stream: String, serial: u64, url: String, at: u64, snapshot: Value },
+    /// The store thread missed a message of the stream and dropped the value it kept, relayed by
+    /// the shell to the UI thread. The host asks the page for a fresh snapshot.
+    StoreResync { applet_id: String, context: String, stream: String },
+    /// The log thread copied the applet's debug log for `ExportLog`, relayed by the shell to the
+    /// UI thread: `path` is the file in the cache's `shared-logs/`, or None when the applet has
+    /// no log or the copy failed. The host answers `LogExported`.
+    LogExportDone {
+        applet_id: String,
+        #[serde(default)]
+        path: Option<String>,
+    },
+    /// The log thread deleted the applet's debug log files, relayed by the shell to the UI
+    /// thread. The host answers `LogDeleted`.
+    LogDeleted { applet_id: String },
+    /// The user removed websites' cookies and storage: signed out of sites in settings, or moved
+    /// the applet `applet_id` to another sign-in. The host forgets the watch values it kept, of
+    /// that applet or, without one, of every applet.
+    WebsiteDataRemoved {
+        #[serde(default)]
+        applet_id: Option<String>,
+    },
     Tick,
     /// Android asked the process to free memory (`ComponentCallbacks2` level). At 40
     /// (`TRIM_MEMORY_BACKGROUND`) or above, the host retires every applet whose window is not resumed.
@@ -279,6 +330,27 @@ pub enum ShellEvent {
     /// The one-time grant of `view` ended: `used` when the page used it, otherwise it expired or
     /// was cleared by a navigation, a reveal, a cover, a popup or the view's end.
     GrantEnded { view: ViewRef, grant: GrantKind, used: bool },
+    /// The applet's debug log switch, sent when the user turns it on or off and, for each applet
+    /// whose log is on, after `Attach`.
+    DebugLog { applet_id: String, on: bool },
+    /// One shell event for the applet's debug log. The host writes it only while the log is on.
+    Log { applet_id: String, entry: LogEntry },
+    /// Copies the applet's debug log to one file to share. The host answers `LogExported` once
+    /// its log thread made the copy.
+    ExportLog { applet_id: String },
+    /// Deletes the applet's debug log files. The host answers `LogDeleted` once they are gone.
+    DeleteLog { applet_id: String },
+}
+
+/// One debug log event from the shell or a document. `t` is milliseconds since the epoch, `ev`
+/// names the event and `d` holds its fields: names, counts, durations and error codes, never page
+/// text, stored data, typed text, cookies or query strings.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct LogEntry {
+    pub t: u64,
+    pub ev: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub d: Option<Value>,
 }
 
 /// Something only the user may start, carried out by the shell after a fresh tap on the applet
@@ -433,6 +505,9 @@ pub enum ShellCommand {
     CoverContext { applet_id: Option<String> },
     /// How much of a covered context's website runs from now on. A revealed context ignores it.
     SetActivity { view: ViewRef, level: ActivityLevel },
+    /// A covered context skips image downloads (`on`) or loads them again (`!on`), before it is
+    /// revealed. GeckoView ignores it.
+    SetLight { view: ViewRef, on: bool },
     /// Page-side `history.go(delta)`, with the native fallback the shell applies.
     HistoryGo { view: ViewRef, delta: i32 },
     Reload { view: ViewRef },
@@ -541,6 +616,12 @@ pub enum ShellCommand {
     },
     /// The shell deletes the applet's stored service credentials.
     ForgetApplet { applet_id: String },
+    /// The answer to `ExportLog`: the file in the cache's `shared-logs/` that holds the applet's
+    /// debug log, or None when it has none or the copy failed.
+    LogExported { applet_id: String, path: Option<String> },
+    /// The applet's debug log files are deleted: after `DeleteLog`, and after its data was
+    /// cleared or it was removed. The shell shows that it has no log to share.
+    LogDeleted { applet_id: String },
     /// The foreground asked to notify the user. The shell posts it only when the user turned
     /// the applet's notifications on; `url` opens in the applet's window when tapped.
     PostNotification { applet_id: String, id: String, title: String, body: Option<String>, url: Option<String> },
@@ -1060,6 +1141,9 @@ pub struct Limits {
     /// Milliseconds for one input call of the burst to come back.
     #[serde(default = "default_input_refill_ms")]
     pub input_refill_ms: u32,
+    /// The user turned this applet's debug log on: documents send their events with `debug.log`.
+    #[serde(default)]
+    pub debug_log: bool,
 }
 
 fn default_input_burst() -> u32 {
@@ -1094,6 +1178,7 @@ impl Default for Limits {
             activity: true,
             input_burst: default_input_burst(),
             input_refill_ms: default_input_refill_ms(),
+            debug_log: false,
         }
     }
 }
@@ -1277,6 +1362,32 @@ pub enum Call {
         #[serde(default)]
         timeout_ms: Option<u64>,
     },
+    /// Subscribes the asking foreground to watch `id` in `context`. The host opens the watch
+    /// (`watch.open`) in every document of the context that binds while the subscription lasts,
+    /// and reports an open that failed as a `status` emit with `status: "error"`. Answers `{}` at
+    /// once; the same `id` with another `spec` or `when` answers `CONFLICT`. A subscription ends
+    /// with `watch.unsubscribe`, a new foreground document or the applet's retirement.
+    #[serde(rename = "watch.subscribe")]
+    WatchSubscribe {
+        context: String,
+        id: String,
+        spec: Value,
+        #[serde(default)]
+        when: Option<Value>,
+        /// The host also keeps the watch's last value on the phone, for the next start of the applet.
+        #[serde(default)]
+        persist: bool,
+    },
+    /// Ends the subscription to watch `id` in `context`; the host closes the page's watch.
+    #[serde(rename = "watch.unsubscribe")]
+    WatchUnsubscribe { context: String, id: String },
+    /// Forgets the watch values the host kept for the applet, in memory and on the phone: those of
+    /// `context`, or of every context when it is absent. Answers `{}`.
+    #[serde(rename = "store.forget")]
+    StoreForget {
+        #[serde(default)]
+        context: Option<String>,
+    },
     /// Cancels one call of the asking document in `context`, or all of them when `call_id` is absent.
     #[serde(rename = "page.cancel")]
     PageCancel {
@@ -1369,6 +1480,10 @@ pub enum Call {
         #[serde(default)]
         active: bool,
     },
+    /// Events for the applet's debug log, from the foreground or a context document. Answers `{}`
+    /// at once, also when the log is off.
+    #[serde(rename = "debug.log")]
+    DebugLog { entries: Vec<LogEntry> },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]

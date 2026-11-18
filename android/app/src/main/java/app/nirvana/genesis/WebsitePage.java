@@ -12,6 +12,9 @@ interface WebsitePage {
     /** The view the shell places in the hidden contexts, the revealed container or the popup sheet. */
     View view();
 
+    /** Writes the console messages counted since the last line to the applet's debug log, if any. */
+    default void logConsoleCounts() {}
+
     /** The committed URL, or null before the first commit. */
     String url();
 
@@ -72,6 +75,9 @@ interface WebsitePage {
      * network and media without drawing, `resting` also pauses the page as a background tab is.
      */
     void setActivity(String level);
+
+    /** A covered page skips image downloads (true) or loads them again (false). */
+    void setLight(boolean on);
 
     /** The system font size or appearance changed while the page lives. */
     void configurationChanged();

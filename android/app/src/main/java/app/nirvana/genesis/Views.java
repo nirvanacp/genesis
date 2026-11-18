@@ -147,6 +147,8 @@ final class Views {
         Runnable grantExpiry;
         /** Until when the window this hidden page opened with its grant may still show; 0 for none. */
         long windowUntil;
+        /** The foreground got its first `page.emit`, logged once with `Perf.trace()`. */
+        boolean emitTraced;
 
         /** The profile the page's cookies and permission answers belong to. */
         final SiteData site;

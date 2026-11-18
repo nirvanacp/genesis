@@ -57,6 +57,18 @@ final class WebViewSites extends SiteData {
         return new WebViewSites(name, profile.getCookieManager(), profile.getWebStorage(), new SiteGrants(context, name));
     }
 
+    /** The profile of every applet's own screens, so they run in a renderer of their own. Never a website profile. */
+    static final String UI_PROFILE = "genesis-ui";
+
+    /**
+     * The site data of the applet's own screens: the `genesis-ui` profile, whose renderer a busy
+     * website never blocks, or the default profile where WebView has no profiles or the
+     * `ui_profile` switch is off. Its cookies stay first-party only, as before.
+     */
+    static WebViewSites ui(Context context) {
+        return profilesSupported() && !Perf.uiProfileOff() ? profile(context, UI_PROFILE) : defaultProfile(context);
+    }
+
     /**
      * Deletes a named profile with its cookies, storage and permission answers. Returns false
      * while a WebView still uses it, so the caller can try again later.
@@ -64,6 +76,7 @@ final class WebViewSites extends SiteData {
     @SuppressLint("RequiresFeature")
     static boolean delete(Context context, String name) {
         if (!profilesSupported()) return true;
+        if (UI_PROFILE.equals(name)) return true; // The applets' own screens, never a website profile.
         try { ProfileStore.getInstance().deleteProfile(name); }
         catch (IllegalStateException inUse) { return false; }
         new SiteGrants(context, name).clearAll();

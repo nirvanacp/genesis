@@ -234,6 +234,14 @@ public final class Manage {
         content.addView(t.pair("Storage", entry.optBoolean("storage") ? "Keeps data on this phone" : "None"));
         content.addView(t.pair("Applet id", appletId));
 
+        content.addView(t.section("Troubleshooting"));
+        content.addView(debugLog(appletId));
+        if (ui.actions.debugLogExists(appletId)) {
+            content.addView(t.row(R.drawable.ic_file, "Share debug log", "Send what " + name + " recorded to someone who can help", null, false, t.onSurface,
+                () -> ui.actions.shareDebugLog(appletId)));
+            content.addView(t.row(R.drawable.ic_delete, "Delete debug log", null, null, false, t.onSurface, () -> ui.actions.deleteDebugLog(appletId)));
+        }
+
         content.addView(t.section("Manage"));
         if (!"incompatible".equals(entry.optString("status"))) {
             content.addView(t.row(R.drawable.ic_add_box, "Add to home screen", "An icon that opens " + name + " in its own window", null, false, t.onSurface,
@@ -368,6 +376,17 @@ public final class Manage {
         String detail = android.os.Build.VERSION.SDK_INT >= 33 ? "Its card in recent apps shows no preview of the screen."
             : "Its card in recent apps shows no preview of the screen, and screenshots of it are blocked.";
         return t.row(R.drawable.ic_lock, "Hide in recent apps", detail, toggle, false, t.onSurface, null);
+    }
+
+    /** "Debug log": events only, never page text or data. It turns off on its own after 7 days. */
+    private View debugLog(String appletId) {
+        Tokens t = ui.tokens;
+        MaterialSwitch toggle = new MaterialSwitch(ui.activity);
+        toggle.setChecked(ui.actions.debugLog(appletId));
+        toggle.setContentDescription("Debug log");
+        toggle.setOnCheckedChangeListener((button, checked) -> ui.actions.setDebugLog(appletId, checked));
+        return t.row(R.drawable.ic_tune, "Debug log", "Record what this applet does, to share when something goes wrong. Turns off after 7 days.",
+            toggle, false, t.onSurface, null);
     }
 
     private void confirmClear(JSONObject entry) {

@@ -2,6 +2,7 @@ mod activity;
 mod applets;
 mod compat;
 mod contexts;
+mod debug_log;
 mod dialogs;
 mod documents;
 mod fetch;
@@ -17,6 +18,8 @@ mod services;
 mod source;
 mod storage;
 mod storage_worker;
+mod store;
+mod watches;
 mod writer;
 
 use genesis_contracts::{ShellCommand, ShellEvent};
@@ -49,8 +52,12 @@ fn dispatch(input: &str) -> String {
                 let mut host = host.borrow_mut();
                 let attach = host.files_dir.as_ref().map(|dir| ShellEvent::Attach {
                     files_dir: dir.to_string_lossy().into_owned(),
+                    cache_dir: host.cache_dir.as_ref().map(|d| d.to_string_lossy().into_owned()).unwrap_or_default(),
                     debuggable: host.debuggable,
                     activity_off: host.activity_off,
+                    light_off: host.light_off,
+                    store_off: host.store_off,
+                    device: host.device.clone(),
                 });
                 *host = Host::default();
                 if let Some(attach) = attach {
@@ -95,6 +102,17 @@ pub extern "system" fn Java_app_nirvana_genesis_NativeBridge_configureStorage<'l
                     let vm = env.get_java_vm().map_err(|e| e.to_string())?;
                     let callback = env.new_global_ref(&class).map_err(|e| e.to_string())?;
                     servelets::start(files.join("servelets"), vm, callback)?;
+                }
+                if !store::initialized() {
+                    let vm = env.get_java_vm().map_err(|e| e.to_string())?;
+                    let callback = env.new_global_ref(&class).map_err(|e| e.to_string())?;
+                    // The host never changes its limits, so the default is the limit it uses.
+                    store::start(files.join("applets"), genesis_contracts::Limits::default().document_ready_ms, vm, callback)?;
+                }
+                if !debug_log::delivers() {
+                    let vm = env.get_java_vm().map_err(|e| e.to_string())?;
+                    let callback = env.new_global_ref(&class).map_err(|e| e.to_string())?;
+                    debug_log::set_delivery(vm, callback);
                 }
                 Ok(())
             }));

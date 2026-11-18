@@ -60,6 +60,8 @@ public final class Ui {
         /** Offers to move the applet to GeckoView, where a separate sign-in works on every phone. */
         void offerSeparateSignIn(String appletId);
         void setSeparateSignIn(String appletId, boolean on);
+        /** Websites' cookies and storage were removed, so Genesis forgets the page values it kept. */
+        void websiteDataRemoved();
         /** The engine the applet's websites run in: "webview" (the default) or "gecko". */
         String engine(String appletId);
         /** Moves the applet's websites to the engine; an open applet reopens on it. */
@@ -67,6 +69,14 @@ public final class Ui {
         /** Whether the applet's Recents card hides its screen. */
         boolean hiddenInRecents(String appletId);
         void setHiddenInRecents(String appletId, boolean on);
+        /** Whether the applet's debug log is on. Turning it on or off reloads an open applet. */
+        boolean debugLog(String appletId);
+        void setDebugLog(String appletId, boolean on);
+        /** Whether the applet has a debug log to share or delete. */
+        boolean debugLogExists(String appletId);
+        /** Copies the debug log to one file and opens the share sheet with it. */
+        void shareDebugLog(String appletId);
+        void deleteDebugLog(String appletId);
         /** Whether the user turned the applet's notifications on. */
         boolean notificationsOn(String appletId);
         /** Turning them on may ask Android first; `result` gets whether they are on afterwards. */

@@ -247,7 +247,7 @@ fn failed(request_id: u64, code: ErrorCode, message: String) -> ShellEvent {
     ShellEvent::ServiceFailed { request_id, code, message }
 }
 
-fn deliver(vm: &JavaVM, callback: &Global<JClass<'static>>, event: &ShellEvent) {
+pub(crate) fn deliver(vm: &JavaVM, callback: &Global<JClass<'static>>, event: &ShellEvent) {
     let Ok(encoded) = serde_json::to_string(event) else { return };
     let _ = vm.attach_current_thread(|env| -> jni::errors::Result<()> {
         let value = JString::from_str(env, encoded)?;

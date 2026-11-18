@@ -110,7 +110,7 @@ impl Host {
         if self.documents.pending_count(document_id) >= self.limits.pending_requests_max {
             return Err(ErrorBody::new(ErrorCode::QuotaExceeded, "Too many pending requests"));
         }
-        let op = PendingOp { view: view.clone(), document_id: document_id.into(), request_id, deadline_ms: now + USER_ACTION_DEADLINE_MS };
+        let op = PendingOp { view: view.clone(), document_id: document_id.into(), request_id, deadline_ms: now + USER_ACTION_DEADLINE_MS, started_ms: now };
         let token = self.documents.begin_op(op);
         if matches!(action, UserAction::PickFiles { .. })
             && let Some(session) = self.session_mut(&view.applet_id)
@@ -188,7 +188,7 @@ impl Host {
         if files.iter().map(|f| f.size).sum::<u64>() > FILES_BYTES_MAX {
             return Err(invalid("page.files sends at most 128 MiB"));
         }
-        let op = PendingOp { view: view.clone(), document_id: document_id.into(), request_id, deadline_ms: handle.deadline_ms };
+        let op = PendingOp { view: view.clone(), document_id: document_id.into(), request_id, deadline_ms: handle.deadline_ms, started_ms: crate::host::mono_ms() };
         let token = self.documents.begin_op(op);
         if let Some(session) = self.session_mut(&view.applet_id) {
             session.files.sends.insert(token, files.len());

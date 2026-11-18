@@ -78,6 +78,8 @@ final class Shell implements Views.Listener, Ui.Actions {
     /** The shared sign-in, and the profiles of applets that keep their own, by applet id. */
     private final SiteData sites;
     private final Map<String, SiteData> profiles = new HashMap<>();
+    /** The applets' own screens' profile, made on first use; never listed or cleared as a website's. */
+    private SiteData uiSites;
     private final android.content.SharedPreferences state;
     private final Views views;
     private Tokens tokens;
@@ -106,6 +108,8 @@ final class Shell implements Views.Listener, Ui.Actions {
     private final Downloads downloads;
     private static long nextDialog;
     private Views.Page revealedPage;
+    /** The applet's own page drew its first frame with content, so it may show. */
+    private boolean foregroundReady;
     /** The one window the revealed context opened, or null. */
     private Views.Page popup;
     /** The website question being asked, or null. */
@@ -274,11 +278,16 @@ final class Shell implements Views.Listener, Ui.Actions {
 
     void createView(JSONObject ref, String url, JSONArray origins, String startScript) throws JSONException {
         destroyView(ref);
-        // The foreground is Genesis's own page and keeps the shared profile; only websites change sign-in.
-        SiteData site = "foreground".equals(ref.optString("role")) ? sites : sitesFor(ref.optString("appletId"));
+        // The foreground is Genesis's own page in its own profile and renderer; only websites change sign-in.
+        SiteData site = "foreground".equals(ref.optString("role")) ? uiSites() : sitesFor(ref.optString("appletId"));
         Views.Page page = views.document(ref, set(origins), startScript, site);
         pages.put(key(ref), page);
+        if (DebugLog.any) {
+            DebugLog.log(ref.optString("appletId"), "view.create", "role", ref.optString("role"), "profile", site.profile,
+                "engine", page.tab instanceof GeckoPage ? GeckoEngine.ID : WebViewSites.ENGINE);
+        }
         if (page.isForeground()) {
+            foregroundReady = false;
             page.tab.view().setVisibility(View.INVISIBLE);
             foreground.addView(page.tab.view(), new FrameLayout.LayoutParams(-1, -1));
         } else {
@@ -290,6 +299,10 @@ final class Shell implements Views.Listener, Ui.Actions {
     void destroyView(JSONObject ref) {
         Views.Page page = pages.remove(key(ref));
         if (page == null) return;
+        if (DebugLog.any) {
+            page.tab.logConsoleCounts();
+            DebugLog.log(ref.optString("appletId"), "view.destroy", "role", ref.optString("role"));
+        }
         closeDialogs(page);
         endGrant(page, false);
         downloads.drop(page);
@@ -337,17 +350,60 @@ final class Shell implements Views.Listener, Ui.Actions {
     void setActivity(JSONObject ref, String level) {
         Views.Page page = pages.get(key(ref));
         if (page == null || !page.isContext() || page == revealedPage) return;
+        if (DebugLog.any) {
+            page.tab.logConsoleCounts();
+            DebugLog.log(ref.optString("appletId"), "view.activity", "role", ref.optString("role"), "level", level);
+        }
         page.tab.setActivity(level);
     }
 
     /**
-     * The applet's own page pauses shortly after its window leaves the front, late enough for it
-     * to save its state first, and runs again when the window returns.
+     * The host makes a covered context light and lifts it before a reveal, so the page the user
+     * sees always loads in full. The foreground is never light.
      */
-    private final Runnable pauseForeground = () -> {
+    void setLight(JSONObject ref, boolean on) {
+        Views.Page page = pages.get(key(ref));
+        if (page == null || !page.isContext() || on && page == revealedPage) return;
+        if (DebugLog.any) {
+            page.tab.logConsoleCounts();
+            DebugLog.log(ref.optString("appletId"), "view.light", "role", ref.optString("role"), "on", on);
+        }
+        page.tab.setLight(on);
+    }
+
+    /**
+     * Runs the applet's own page and, while its window is in front but a website covers it, lets
+     * it rest again after `FOREGROUND_PAUSE_MS`. Everything that gives the covered page work
+     * calls this first: a message from the host, the window coming to the front, a change of
+     * what covers it. WebView freezes a page paused for about a minute, and a frozen page runs no
+     * timers and receives no messages, so the page must be running before its work arrives.
+     */
+    private void wakeForeground() {
+        android.webkit.WebView web = web(foregroundPage());
+        if (web == null || !inFront) return;
+        bar.removeCallbacks(restSoon);
+        bar.removeCallbacks(wakeAgain);
+        web.onResume();
+        if (foregroundCovered() && !Perf.activityOff()) bar.postDelayed(restSoon, FOREGROUND_PAUSE_MS);
+    }
+
+    /**
+     * Pauses the applet's own page once it has been quiet while covered, or shortly after its
+     * window leaves the front, late enough for it to save its state first. A covered page in
+     * front wakes again every `FOREGROUND_WAKE_MS`, well before the freeze, so its own timers
+     * keep running; a page whose window is behind runs again when the window returns.
+     */
+    private void restForeground() {
         Views.Page page = foregroundPage();
-        if (page != null && !this.inFront) ((WebViewPage) page.tab).web.onPause();
-    };
+        android.webkit.WebView web = web(page);
+        if (web == null || (inFront && !foregroundCovered())) return;
+        if (DebugLog.any) DebugLog.log(page.ref.optString("appletId"), "foreground.rest", "front", inFront);
+        web.onPause();
+        if (inFront) bar.postDelayed(wakeAgain, FOREGROUND_WAKE_MS);
+    }
+
+    private final Runnable restSoon = this::restForeground;
+    private final Runnable wakeAgain = this::wakeForeground;
 
     /** Reparents the context's WebView above the foreground. Nothing reloads; the page keeps running. */
     void revealContext(JSONObject ref, String title) {
@@ -358,6 +414,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         if (popup != null && popup.opener != revealedPage) closePopup();
         if (revealedPage != null && revealedPage != page) coverContext();
         if (revealedPage == page) { bar.setTitle(title); return; }
+        if (DebugLog.any) DebugLog.log(ref.optString("appletId"), "context.reveal", "role", ref.optString("role"));
         View view = page.tab.view();
         sources.removeView(view);
         view.setFocusable(true);
@@ -375,6 +432,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         bar.setVisibility(View.VISIBLE);
         GenesisMenu.tint(menu, tokens, true);
         revealedPage = page;
+        showForeground();
     }
 
     /**
@@ -386,6 +444,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         endGrants();
         Views.Page page = revealedPage;
         if (page == null) return;
+        if (DebugLog.any) DebugLog.log(page.ref.optString("appletId"), "context.cover", "role", page.role);
         closeCustomView();
         cancelPrompts();
         dropRevealed();
@@ -419,12 +478,48 @@ final class Shell implements Views.Listener, Ui.Actions {
         revealed.setVisibility(View.GONE);
         bar.setVisibility(View.GONE);
         GenesisMenu.tint(menu, tokens, false);
+        showForeground();
+    }
+
+    /**
+     * Shows the applet's own page once it is ready, and only while no website covers it. The
+     * website bar with a revealed context or a popup fills the applet container. A WebView that
+     * is only invisible still counts as a visible page to its engine, which keeps asking for
+     * frames it never gets, so the covered page is also paused while it is quiet: its
+     * `visibilityState` becomes "hidden" and its animations stop. A paused page runs scripts and
+     * receives messages only until WebView freezes it, about a minute later, so the pause never
+     * lasts that long (see `wakeForeground`). The page runs and is shown again in the same pass
+     * that removes the website, before the next frame is drawn.
+     */
+    private void showForeground() {
+        Views.Page page = foregroundPage();
+        android.webkit.WebView web = web(page);
+        if (web == null) return;
+        boolean covered = foregroundCovered();
+        wakeForeground();
+        int visibility = foregroundReady && !covered ? View.VISIBLE : View.INVISIBLE;
+        if (web.getVisibility() == visibility) return;
+        if (DebugLog.any) DebugLog.log(page.ref.optString("appletId"), "foreground.shown", "shown", visibility == View.VISIBLE);
+        web.setVisibility(visibility);
+    }
+
+    private boolean foregroundCovered() {
+        return revealed.getVisibility() == View.VISIBLE || popupSheet.getVisibility() == View.VISIBLE;
     }
 
     void postMessage(JSONObject ref, String payload) {
         Views.Page page = pages.get(key(ref));
         if (page == null) return;
-        page.post(payload);
+        // The covered applet page may be paused; it runs before its message arrives.
+        if (page.isForeground() && foregroundCovered()) wakeForeground();
+        if (!Perf.trace()) { page.post(payload); return; }
+        if (page.isForeground() && !page.emitTraced && payload.contains("\"name\":\"page.emit\"") && payload.contains("\"kind\":\"snapshot\"")) {
+            page.emitTraced = true;
+            Perf.log("firstEmit " + ref.optString("appletId"));
+        }
+        android.os.Trace.beginSection("genesis.shell.postMessage");
+        try { page.post(payload); }
+        finally { android.os.Trace.endSection(); }
     }
 
     /**
@@ -444,6 +539,7 @@ final class Shell implements Views.Listener, Ui.Actions {
             catch (Input.Refused refused) { refusal = refused.getMessage(); }
         }
         String message = refusal;
+        if (DebugLog.any) DebugLog.log(ref.optString("appletId"), "input.trusted", "role", ref.optString("role"), "events", events.length(), "ok", message == null);
         // Answered after this command batch, since the host is still handling the event that sent it.
         bar.post(() -> {
             try {
@@ -477,6 +573,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         try {
             if (page.isRevealed()) return UserActions.done(token, null, null, new JSONObject().put("granted", true).put("expiresInMs", 0));
             endGrant(page, false);
+            if (DebugLog.any) DebugLog.log(page.ref.optString("appletId"), "grant.start", "role", page.role, "grant", kind);
             page.grant = kind;
             page.grantUntil = SystemClock.uptimeMillis() + SitePolicy.GRANT_MS;
             page.grantExpiry = () -> { if (page.grant != null) endGrant(page, false); };
@@ -502,6 +599,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         page.grantUntil = 0;
         if (page.grantExpiry != null) bar.removeCallbacks(page.grantExpiry);
         page.grantExpiry = null;
+        if (DebugLog.any) DebugLog.log(page.ref.optString("appletId"), "grant.end", "role", page.role, "grant", grant, "used", used);
         bar.post(() -> {
             try { owner.send(Bridge.event("grantEnded").put("view", page.ref).put("grant", grant).put("used", used)); }
             catch (JSONException ignored) { /* Unreachable for these values. */ }
@@ -589,13 +687,13 @@ final class Shell implements Views.Listener, Ui.Actions {
     /** Shows the foreground once its first frame with applet content is ready to draw. */
     void revealForeground() {
         Views.Page page = foregroundPage();
-        if (page == null) return;
-        // The foreground is always a WebView page.
-        android.webkit.WebView web = ((WebViewPage) page.tab).web;
+        android.webkit.WebView web = web(page);
+        if (web == null) return;
         web.postVisualStateCallback(++visualState, new android.webkit.WebView.VisualStateCallback() {
             @Override public void onComplete(long requestId) {
                 if (pages.get(key(page.ref)) != page) return;
-                web.setVisibility(View.VISIBLE);
+                foregroundReady = true;
+                showForeground();
                 splash.hide();
             }
         });
@@ -766,6 +864,7 @@ final class Shell implements Views.Listener, Ui.Actions {
             bar.setVisibility(View.GONE);
             GenesisMenu.tint(menu, tokens, false);
         }
+        showForeground();
         return true;
     }
 
@@ -829,8 +928,11 @@ final class Shell implements Views.Listener, Ui.Actions {
 
     @Override public void documentMessage(Views.Page page, String payload) {
         if (pages.get(key(page.ref)) != page) return;
+        boolean trace = Perf.trace();
+        if (trace) android.os.Trace.beginSection("genesis.shell.documentMessage");
         try { owner.send(Bridge.event("documentMessage").put("view", page.ref).put("payload", payload)); }
         catch (JSONException ignored) { /* Unreachable for string values. */ }
+        finally { if (trace) android.os.Trace.endSection(); }
     }
 
     @Override public void contextNavigated(Views.Page page, Views.Committed committed) {
@@ -884,6 +986,7 @@ final class Shell implements Views.Listener, Ui.Actions {
     }
 
     @Override public boolean chooseFiles(Views.Page page, Requests.FileRequest request) {
+        if (DebugLog.any) DebugLog.log(page.ref.optString("appletId"), "files.pick", "role", page.role);
         return owner.chooseFiles(request, () -> (page == popup || pages.get(key(page.ref)) == page) && SitePolicy.mayShowUi(page));
     }
 
@@ -915,6 +1018,7 @@ final class Shell implements Views.Listener, Ui.Actions {
             GenesisMenu.tint(menu, tokens, true);
         }
         bar.setUrl(popup.tab.url());
+        showForeground();
         return popup;
     }
 
@@ -1288,9 +1392,14 @@ final class Shell implements Views.Listener, Ui.Actions {
 
     @Override public void removeApplet(String id) { appletEvent("removeApplet", id); }
 
-    @Override public void clearData(String id) { appletEvent("clearData", id); }
+    @Override public void clearData(String id) {
+        DebugLog.forget(activity, id);
+        appletEvent("clearData", id);
+    }
 
     @Override public void keepVersion(String id) { appletEvent("keepVersion", id); }
+
+    @Override public void websiteDataRemoved() { owner.send(Bridge.event("websiteDataRemoved")); }
 
     @Override public void menu(String action) {
         try { owner.send(GenesisRuntime.windowEvent("menu", window).put("action", action)); }
@@ -1300,6 +1409,11 @@ final class Shell implements Views.Listener, Ui.Actions {
     @Override public Connections.Store connections() { return owner.connections(); }
 
     @Override public SiteData sites() { return sites; }
+
+    private SiteData uiSites() {
+        if (uiSites == null) uiSites = WebViewSites.ui(activity);
+        return uiSites;
+    }
 
     // -----------------------------------------------------------------------------------------
     // Separate sign-ins
@@ -1395,7 +1509,10 @@ final class Shell implements Views.Listener, Ui.Actions {
     private static final Set<String> featuresAsked = new java.util.HashSet<>();
     /** True between the window's resume and pause. */
     private boolean inFront;
+    /** How long the applet's page keeps running after its last work while covered or behind. */
     private static final long FOREGROUND_PAUSE_MS = 2000;
+    /** How long a covered applet page stays paused at most: half the time WebView takes to freeze it. */
+    private static final long FOREGROUND_WAKE_MS = 30_000;
     /** The open engine-switch question, or null. */
     private android.app.Dialog featureDialog;
 
@@ -1423,10 +1540,11 @@ final class Shell implements Views.Listener, Ui.Actions {
 
     void frontChanged(boolean front) {
         inFront = front;
-        bar.removeCallbacks(pauseForeground);
-        Views.Page page = foregroundPage();
-        if (front && page != null) ((WebViewPage) page.tab).web.onResume();
-        else if (!front && !Perf.activityOff()) bar.postDelayed(pauseForeground, FOREGROUND_PAUSE_MS);
+        if (DebugLog.any) DebugLog.log(appletId, "window.front", "front", front);
+        bar.removeCallbacks(restSoon);
+        bar.removeCallbacks(wakeAgain);
+        if (front) wakeForeground();
+        else if (!Perf.activityOff()) bar.postDelayed(restSoon, FOREGROUND_PAUSE_MS);
         askWaitingFeature();
     }
 
@@ -1546,11 +1664,37 @@ final class Shell implements Views.Listener, Ui.Actions {
             state.edit().remove(profileKey(appletId)).remove(profileNameKey(appletId)).putStringSet(DELETE_PROFILES, pending).apply();
         }
         forgetProfile(appletId);
+        // Kept page values may show the other sign-in's account.
+        appletEvent("websiteDataRemoved", appletId);
         // The applet restarts in its new sign-in wherever it runs; the host ignores this for an applet that is not running.
         try { owner.send(GenesisRuntime.windowEvent("menu", appletId).put("action", "reload")); }
         catch (JSONException ignored) { /* Unreachable for string values. */ }
         ui.pages.refresh();
     }
+
+    // -----------------------------------------------------------------------------------------
+    // Debug log
+
+    @Override public boolean debugLog(String appletId) { return DebugLog.on(appletId); }
+
+    /** The applet restarts so its pages log, or stop logging, from their first event. */
+    @Override public void setDebugLog(String appletId, boolean on) {
+        if (on == DebugLog.on(appletId)) return;
+        DebugLog.set(activity, appletId, on);
+        try { owner.send(GenesisRuntime.windowEvent("menu", appletId).put("action", "reload")); }
+        catch (JSONException ignored) { /* Unreachable for string values. */ }
+        ui.pages.refresh();
+    }
+
+    @Override public boolean debugLogExists(String appletId) { return DebugLog.exists(appletId); }
+
+    @Override public void shareDebugLog(String appletId) { appletEvent("exportLog", appletId); }
+
+    /** The host deletes the files on its log thread and answers `logDeleted`, which refreshes the page. */
+    @Override public void deleteDebugLog(String appletId) { appletEvent("deleteLog", appletId); }
+
+    /** Rebuilds the open settings pages after something they show changed outside this window. */
+    void refreshPages() { if (!destroyed) ui.pages.refresh(); }
 
     // -----------------------------------------------------------------------------------------
     // Hide in recent apps
@@ -1600,6 +1744,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         forgetProfile(context, appletId);
         android.content.SharedPreferences.Editor edit = state(context).edit()
             .remove(privacyKey(appletId)).remove(engineKey(appletId)).remove(geckoUsedKey(appletId));
+        DebugLog.forget(context, appletId);
         for (EngineFeatures.Feature feature : EngineFeatures.Feature.values()) edit.remove(engineAskKey(appletId, feature));
         edit.apply();
     }
@@ -1697,6 +1842,11 @@ final class Shell implements Views.Listener, Ui.Actions {
     private Views.Page foregroundPage() {
         for (Views.Page page : pages.values()) if (page.isForeground()) return page;
         return null;
+    }
+
+    /** The page's WebView. Null for no page and for a page of another engine, which the foreground never is. */
+    private static android.webkit.WebView web(Views.Page page) {
+        return page != null && page.tab instanceof WebViewPage ? ((WebViewPage) page.tab).web : null;
     }
 
     boolean hasForeground() { return foregroundPage() != null; }

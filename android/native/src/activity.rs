@@ -3,9 +3,11 @@
 //! a hold the applet asked for. The shell applies the level; this module chooses it.
 use crate::{
     contexts::{ContextView, Session},
+    debug_log,
     host::Host,
 };
 use genesis_contracts::*;
+use serde_json::json;
 
 /// A context stays awake this long after its document bound, for the page's own first work.
 pub const LOAD_TAIL_MS: u64 = 3_000;
@@ -73,6 +75,9 @@ impl Host {
                 let wanted = wanted_level(context, suspended, busy.is_some(), now);
                 if wanted != current {
                     context.level = Some(wanted);
+                    if debug_log::on(&session.applet_id) {
+                        debug_log::host(&session.applet_id, "context.level", json!({ "id": id, "level": wanted }));
+                    }
                     let view = ViewRef { applet_id: session.applet_id.clone(), role: Role::Context(id.clone()) };
                     let command = ShellCommand::SetActivity { view, level: wanted };
                     if wanted > current { raised.push(command) } else { lowered.push(command) }
@@ -102,26 +107,47 @@ impl Host {
         if self.session(applet_id).and_then(|s| s.contexts.get(context_id)).is_none_or(|c| c.started()) {
             return false;
         }
-        let Some((revision, manifest)) = self.applets.current(applet_id) else { return false };
+        let Some((_, manifest)) = self.applets.current(applet_id) else { return false };
         let origins = manifest.origins.clone();
-        let Ok(script) = self.applets.read_text(applet_id, revision, "page.js") else { return false };
         let ready_ms = self.limits.document_ready_ms;
         let Some(session) = self.session_mut(applet_id) else { return false };
         let Some(context) = session.contexts.get_mut(context_id) else { return false };
+        if debug_log::on(applet_id) {
+            debug_log::host(applet_id, "context.start", json!({ "id": context_id }));
+        }
         // A new view starts awake in the shell, and stays so while its first page loads.
         context.level = Some(ActivityLevel::Awake);
         context.loading_until_ms = now + ready_ms;
         let url = context.url.clone();
+        let script = session.page_script.clone();
         // The next context waits for this one to bind, or for as long as a page may take to.
         let waiting = session.contexts.values().any(|c| !c.started());
         session.start_next_at_ms = waiting.then_some(now + ready_ms);
+        let covered = session.revealed.as_deref() != Some(context_id);
         self.out.push(ShellCommand::CreateView {
             view: ViewRef { applet_id: applet_id.into(), role: Role::Context(context_id.into()) },
             url,
             origins,
             start_script: Some(script),
         });
+        if covered {
+            self.set_light(applet_id, context_id, true);
+        }
         true
+    }
+
+    /// A covered context is light: it skips image downloads nobody sees. Reveal lifts it before
+    /// the shell shows the page, and covering sets it again. Only for a started context, and
+    /// never with the `light` switch off. GeckoView has no such setting; its shell ignores it.
+    pub fn set_light(&mut self, applet_id: &str, context_id: &str, on: bool) {
+        if self.light_off || self.session(applet_id).and_then(|s| s.contexts.get(context_id)).is_none_or(|c| !c.started()) {
+            return;
+        }
+        if debug_log::on(applet_id) {
+            debug_log::host(applet_id, "context.light", json!({ "id": context_id, "on": on }));
+        }
+        let view = ViewRef { applet_id: applet_id.into(), role: Role::Context(context_id.into()) };
+        self.out.push(ShellCommand::SetLight { view, on });
     }
 
     /// A context document bound: the applet's next context may start after the stagger.

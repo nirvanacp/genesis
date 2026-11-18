@@ -31,6 +31,8 @@ pub struct PendingOp {
     pub document_id: String,
     pub request_id: u64,
     pub deadline_ms: u64,
+    /// When the request began (`mono_ms`), for the debug log.
+    pub started_ms: u64,
 }
 
 #[derive(Default)]
@@ -114,6 +116,10 @@ impl Documents {
 
     pub fn has_op(&self, op_id: u64) -> bool {
         self.ops.contains_key(&op_id)
+    }
+
+    pub fn op(&self, op_id: u64) -> Option<&PendingOp> {
+        self.ops.get(&op_id)
     }
 
     pub fn begin_op(&mut self, op: PendingOp) -> u64 {

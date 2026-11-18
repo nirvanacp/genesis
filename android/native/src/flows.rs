@@ -864,6 +864,8 @@ impl Host {
             return Err(format!("Storage is busy; the stored data of {applet_id} was not erased"));
         }
         servelets::erase_applet(&applet_id);
+        crate::store::erase(Some(&applet_id));
+        self.forget_dirty(&applet_id, None);
         self.deletions.insert(job_id, deletion);
         Ok(())
     }

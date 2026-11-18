@@ -2,6 +2,7 @@
 use crate::{
     applets::{self, Applets},
     contexts::{BackSlot, CallHandle, ContextView, Contexts, Resume, Session},
+    debug_log,
     documents::Documents,
     flows::{Deletion, Flow, Updates, erasing_message},
     storage_worker,
@@ -9,13 +10,14 @@ use crate::{
 use genesis_contracts::*;
 use serde_json::{Value, json};
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, HashMap, HashSet},
     path::{Path, PathBuf},
     sync::OnceLock,
     time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
-/// An applet in the background longer than this is retired and recreated on resume.
+/// An applet in the background longer than this is retired and recreated on resume, unless it
+/// holds a page.
 const SUSPEND_RETIRE_MS: u64 = 30_000;
 /// The limit while a context is revealed: while the user is on a website, for sign-in codes,
 /// file pickers and other apps they return from.
@@ -28,6 +30,8 @@ const TRIM_MEMORY_BACKGROUND: u32 = 40;
 #[derive(Default)]
 pub struct Host {
     pub files_dir: Option<PathBuf>,
+    /// The app's cache directory, where shared debug logs go.
+    pub cache_dir: Option<PathBuf>,
     pub limits: Limits,
     pub applets: Applets,
     pub documents: Documents,
@@ -47,8 +51,17 @@ pub struct Host {
     pub deletions: HashMap<u64, Deletion>,
     /// Every covered context stays awake: the debug switch that turns resting off.
     pub activity_off: bool,
+    /// Covered websites load images: the debug switch that turns light pages off.
+    pub light_off: bool,
+    /// The host keeps no cached watch values: the debug switch that turns the store's cache off.
+    pub store_off: bool,
+    /// The app, WebView and phone the shell named at `Attach`, for debug logs.
+    pub device: DeviceInfo,
     /// When the wake the activity controller last asked for is due; 0 before the first.
     pub activity_wake_ms: u64,
+    /// Watch streams (applet, context, stream) whose message the store missed, until a snapshot
+    /// reaches it again.
+    pub store_dirty: HashSet<(String, String, String)>,
 }
 
 /// Wall-clock milliseconds since the Unix epoch, for times that are saved, sent out of the host or
@@ -68,14 +81,19 @@ impl Host {
     pub fn dispatch(&mut self, event: ShellEvent) -> Result<Vec<ShellCommand>, String> {
         let now = mono_ms();
         match event {
-            ShellEvent::Attach { files_dir, debuggable, activity_off } => {
+            ShellEvent::Attach { files_dir, cache_dir, debuggable, activity_off, light_off, store_off, device } => {
                 self.end_flow();
                 self.contexts = Contexts::default();
                 self.documents = Documents::default();
                 self.applets = Applets::load(Path::new(&files_dir));
+                debug_log::configure(Path::new(&files_dir), Path::new(&cache_dir), &device);
+                self.device = device;
                 self.files_dir = Some(files_dir.into());
+                self.cache_dir = Some(cache_dir.into());
                 self.debuggable = debuggable;
                 self.activity_off = activity_off;
+                self.light_off = light_off;
+                self.store_off = store_off;
                 self.activity_wake_ms = 0;
                 self.load_updates();
             }
@@ -113,7 +131,12 @@ impl Host {
                 let reported = ContextView { index, size, can_go_back, can_go_forward, ..ContextView::at(url) };
                 self.context_navigated(view, reported, same_document, reload);
             }
-            ShellEvent::RendererGone { view } => self.renderer_gone(&view),
+            ShellEvent::RendererGone { view } => {
+                if debug_log::on(&view.applet_id) {
+                    debug_log::host(&view.applet_id, "renderer.gone", json!({ "view": view.role }));
+                }
+                self.renderer_gone(&view)
+            }
             ShellEvent::HistoryUnmoved { view } => self.history_unmoved(&view),
             ShellEvent::InputDone { view, token, ok, message } => self.input_done(&view, token, ok, message),
             ShellEvent::WindowRequested { view, url } => self.window_requested(view, &url),
@@ -122,12 +145,19 @@ impl Host {
                 self.import_bundled(&path, &payload, release.as_deref())
             }
             ShellEvent::ServiceResponse { request_id, status, body } => {
+                self.log_service(request_id, json!({ "status": status }), now);
                 self.finish_op(request_id, None, Ok(crate::services::result(status, body)));
             }
             ShellEvent::ServiceFailed { request_id, code, message } => {
+                self.log_service(request_id, json!({ "code": code }), now);
                 self.finish_op(request_id, None, Err(ErrorBody::new(code, message)));
             }
             ShellEvent::StorageCompleted { payload } => self.storage_completed(&payload)?,
+            ShellEvent::StoreCached { applet_id, context, stream, serial, url, at, snapshot } => {
+                self.store_cached(&applet_id, &context, &stream, serial, &url, at, snapshot)
+            }
+            ShellEvent::StoreResync { applet_id, context, stream } => self.store_resync(&applet_id, &context, &stream, now),
+            ShellEvent::WebsiteDataRemoved { applet_id } => self.website_data_removed(applet_id.as_deref()),
             ShellEvent::Tick => self.tick(now),
             ShellEvent::TrimMemory { level } => self.trim_memory(level),
             event @ ShellEvent::FetchCompleted { .. } => self.fetch_completed(event),
@@ -137,18 +167,55 @@ impl Host {
             ShellEvent::ReviewDecision { review_id, accept, replace } => self.review_decision(&review_id, accept, replace),
             ShellEvent::CheckUpdates { applet_id, manual } => self.check_updates(applet_id, manual),
             ShellEvent::CancelFlow => self.cancel_flow(),
-            ShellEvent::RemoveApplet { applet_id } => self.remove_applet(&applet_id),
-            ShellEvent::ClearData { applet_id } => self.clear_data(&applet_id),
+            ShellEvent::RemoveApplet { applet_id } => {
+                Self::forget_log(&applet_id);
+                self.remove_applet(&applet_id)
+            }
+            ShellEvent::ClearData { applet_id } => {
+                Self::forget_log(&applet_id);
+                self.clear_data(&applet_id)
+            }
             ShellEvent::KeepVersion { applet_id } => self.keep_version(&applet_id),
             ShellEvent::JsDialog { view, token } => self.js_dialog(&view, token, now),
             ShellEvent::JsDialogClosed { view, token } => self.js_dialog_closed(&view, token, now),
             ShellEvent::UserActionDone { token, ok, code, message, result } => self.user_action_done(token, ok, code, message, result),
             ShellEvent::FilesSent { token, ok, code, message } => self.files_sent(token, ok, code, message),
             ShellEvent::GrantEnded { view, grant, used } => self.grant_ended(&view, grant, used, now),
+            ShellEvent::DebugLog { applet_id, on } => debug_log::set(&applet_id, on),
+            ShellEvent::Log { applet_id, entry } => debug_log::shell(&applet_id, entry),
+            // The log thread answers both; without it, an export is answered here.
+            ShellEvent::ExportLog { applet_id } => {
+                if !debug_log::export(&applet_id) {
+                    self.out.push(ShellCommand::LogExported { applet_id, path: None });
+                }
+            }
+            ShellEvent::DeleteLog { applet_id } => {
+                debug_log::delete(&applet_id);
+            }
+            ShellEvent::LogExportDone { applet_id, path } => self.out.push(ShellCommand::LogExported { applet_id, path }),
+            ShellEvent::LogDeleted { applet_id } => self.out.push(ShellCommand::LogDeleted { applet_id }),
         }
         self.start_due_contexts(now);
         self.refresh_activity(now);
         Ok(std::mem::take(&mut self.out))
+    }
+
+    /// Turns the applet's debug log off and deletes it, as erasing its data or removing it does.
+    fn forget_log(applet_id: &str) {
+        debug_log::set(applet_id, false);
+        debug_log::delete(applet_id);
+    }
+
+    /// A service request ended: its duration and `outcome` (status or error code), when logged.
+    fn log_service(&self, request_id: u64, outcome: Value, now: u64) {
+        let Some(op) = self.documents.op(request_id) else { return };
+        if debug_log::on(&op.view.applet_id) {
+            let mut data = json!({ "ms": now.saturating_sub(op.started_ms) });
+            if let (Some(data), Value::Object(outcome)) = (data.as_object_mut(), outcome) {
+                data.extend(outcome);
+            }
+            debug_log::host(&op.view.applet_id, "service.result", data);
+        }
     }
 
     // -----------------------------------------------------------------------------------------
@@ -289,6 +356,7 @@ impl Host {
         }
         let Some(session) = self.session_mut(applet_id) else { return };
         session.suspended_at_ms = Some(now_ms());
+        session.kept_logged = false;
         let resume = Self::resume_of(session);
         self.save_resume(applet_id, &resume);
         self.broadcast(applet_id, "suspended", json!({}));
@@ -448,11 +516,13 @@ impl Host {
                 None => self.out.push(ShellCommand::ShowError { applet_id: window, message: format!("Applet {applet_id} is not installed") }),
             };
         };
-        if let Err(message) = self.applets.read_text(applet_id, revision, "page.js") {
-            return self.out.push(ShellCommand::ShowError { applet_id: window, message });
-        }
+        let page_script = match self.applets.read_text(applet_id, revision, "page.js") {
+            Ok(script) => script,
+            Err(message) => return self.out.push(ShellCommand::ShowError { applet_id: window, message }),
+        };
         self.make_room(applet_id);
         let mut session = Session::new(applet_id.into(), revision, resume.is_some());
+        session.page_script = page_script;
         let (mut urls, saved) = resume.map(|r| (r.urls, r.saved)).unwrap_or_default();
         let opening_context = opening.as_ref().map(|(id, _)| id.clone()).filter(|id| manifest.contexts.iter().any(|c| &c.id == id));
         urls.extend(opening);
@@ -473,6 +543,9 @@ impl Host {
         for context in &manifest.contexts {
             let url = urls.get(&context.id).cloned().unwrap_or_else(|| context.start_url.clone());
             session.contexts.insert(context.id.clone(), ContextView::at(url));
+        }
+        if debug_log::on(applet_id) {
+            debug_log::host(applet_id, "applet.open", json!({ "revision": revision, "restored": session.restored }));
         }
         self.contexts.sessions.insert(applet_id.into(), session);
         // The context a link opens, or the first one, starts now; the others follow one by one.
@@ -507,6 +580,10 @@ impl Host {
     /// Destroys the applet's views. Documents receive `retired` first.
     pub fn retire_session(&mut self, applet_id: &str) {
         let Some(session) = self.contexts.sessions.remove(applet_id) else { return };
+        self.forget_dirty(applet_id, None);
+        if debug_log::on(applet_id) {
+            debug_log::host(applet_id, "applet.close", json!({}));
+        }
         let views = self.documents.retire_applet(&session.applet_id);
         for (view, document_id) in &views {
             let message = HostMessage::Event { document_id: document_id.clone(), name: "retired".into(), data: json!({}) };
@@ -534,12 +611,26 @@ impl Host {
 
     /// Measured on the wall clock, which keeps counting while the phone sleeps; the monotonic
     /// clock stops then. A clock set back counts as no time passed.
+    ///
+    /// An applet that holds a page stays, however long it is suspended: the page does work of its
+    /// own, such as playing music, which recreating it would stop. It keeps its WebViews and
+    /// servelets until the applet releases the hold, the system asks for memory (`trim_memory`)
+    /// or a fourth applet starts (`LIVE_APPLETS_MAX`). The debug log says so once per suspension,
+    /// with `applet.kept`.
     fn retire_if_long_suspended(&mut self, applet_id: &str) {
-        let Some(session) = self.session(applet_id) else { return };
+        let Some(session) = self.session_mut(applet_id) else { return };
         // `revealed` does not change while suspended, so this is the state the user left in.
         let limit = if session.revealed.is_some() { REVEALED_RETIRE_MS } else { SUSPEND_RETIRE_MS };
-        if session.suspended_at_ms.is_some_and(|at| now_ms().saturating_sub(at) >= limit) {
+        let Some(suspended_ms) = session.suspended_at_ms.map(|at| now_ms().saturating_sub(at)).filter(|ms| *ms >= limit) else {
+            return;
+        };
+        let Some(holding) = session.contexts.iter().find(|(_, context)| context.hold.is_some()).map(|(id, _)| id.clone()) else {
             self.retire_for_resume(applet_id);
+            return;
+        };
+        if !session.kept_logged && debug_log::on(applet_id) {
+            session.kept_logged = true;
+            debug_log::host(applet_id, "applet.kept", json!({ "context": holding, "suspendedMs": suspended_ms }));
         }
     }
 
@@ -586,23 +677,31 @@ impl Host {
     // -----------------------------------------------------------------------------------------
     // Reveal and Back
 
+    /// The page loads its images again before the shell shows it; the context it replaces is
+    /// covered and light again.
     pub fn reveal(&mut self, context_id: &str, view: ViewRef, title: &str) {
         let Some(session) = self.contexts.sessions.get_mut(&view.applet_id) else { return };
         if session.revealed.as_deref() == Some(context_id) {
             return;
         }
-        if session.revealed.replace(context_id.into()).is_some() {
-            let applet_id = Some(session.applet_id.clone());
-            self.out.push(ShellCommand::CoverContext { applet_id });
+        let applet_id = session.applet_id.clone();
+        let previous = session.revealed.replace(context_id.into());
+        if previous.is_some() {
+            self.out.push(ShellCommand::CoverContext { applet_id: Some(applet_id.clone()) });
         }
+        self.set_light(&applet_id, context_id, false);
         self.out.push(ShellCommand::RevealContext { view, title: title.into() });
+        if let Some(previous) = previous {
+            self.set_light(&applet_id, &previous, true);
+        }
     }
 
     pub fn cover(&mut self, applet_id: &str) {
         let Some(session) = self.session_mut(applet_id) else { return };
-        if session.revealed.take().is_some() {
-            let applet_id = Some(session.applet_id.clone());
-            self.out.push(ShellCommand::CoverContext { applet_id });
+        if let Some(previous) = session.revealed.take() {
+            let applet_id = session.applet_id.clone();
+            self.out.push(ShellCommand::CoverContext { applet_id: Some(applet_id.clone()) });
+            self.set_light(&applet_id, &previous, true);
         }
     }
 
@@ -720,11 +819,15 @@ impl Host {
         }
         let Some(context) = self.context_mut(&view.applet_id, id) else { return };
         let waiting = context.navigating_since.is_some();
+        let moved = crate::store::without_fragment(&context.url) != crate::store::without_fragment(&reported.url);
         context.url = reported.url.clone();
         context.index = reported.index;
         context.size = reported.size;
         context.can_go_back = reported.can_go_back;
         context.can_go_forward = reported.can_go_forward;
+        if moved {
+            self.ask_store_again(&view.applet_id, id);
+        }
         if waiting && !same_document {
             self.retire_document(&view);
         }
@@ -735,6 +838,10 @@ impl Host {
             Some(document) if !waiting => document.generation,
             _ => self.documents.next_generation(&view),
         };
+        if debug_log::on(&view.applet_id) {
+            let data = json!({ "id": id, "url": debug_log::origin_path(&reported.url), "sameDocument": same_document, "reload": reload });
+            debug_log::host(&view.applet_id, "context.navigated", data);
+        }
         self.foreground_event(
             &view.applet_id,
             "context.navigated",
@@ -747,7 +854,8 @@ impl Host {
         );
     }
 
-    /// An applet's views share one renderer, so any loss is total for it: retire the applet once,
+    /// An applet's screens and websites need each other, so losing any renderer under them is total
+    /// for it, whether it ran the screens (shared by every applet) or the websites: retire the applet once,
     /// keep what Reload needs, and explain. A view whose renderer may be dead is never revealed.
     fn renderer_gone(&mut self, view: &ViewRef) {
         if !self.is_live(&view.applet_id) {
@@ -780,6 +888,16 @@ impl Host {
 
     /// Answers the foreground request behind a page call, if the document that asked is still current.
     pub fn answer_call(&mut self, applet_id: &str, handle: &CallHandle, outcome: Result<Value, ErrorBody>) {
+        if debug_log::on(applet_id) {
+            let mut data = json!({ "context": handle.context_id, "op": handle.op, "ms": mono_ms().saturating_sub(handle.started_ms) });
+            if let Err(error) = &outcome {
+                data["code"] = json!(error.code);
+            }
+            debug_log::host(applet_id, "page.result", data);
+        }
+        if let Some(watch) = &handle.watch {
+            return self.watch_call_done(applet_id, handle, watch, outcome);
+        }
         let Some(view) = self.foreground_view(applet_id) else { return };
         if self.documents.is_current(&view, &handle.foreground_document) {
             self.respond(&view, &handle.foreground_document, handle.request_id, outcome);
@@ -828,6 +946,9 @@ impl Host {
 
     fn tick(&mut self, now: u64) {
         for op in self.documents.expired_ops(now) {
+            if debug_log::on(&op.view.applet_id) {
+                debug_log::host(&op.view.applet_id, "request.deadline", json!({ "view": op.view.role, "ms": now.saturating_sub(op.started_ms) }));
+            }
             let error = ErrorBody::new(ErrorCode::Deadline, "The request took too long");
             self.respond(&op.view, &op.document_id, op.request_id, Err(error));
         }
@@ -873,6 +994,9 @@ impl Host {
             }
         }
         for id in gone {
+            if debug_log::on(applet_id) {
+                debug_log::host(applet_id, "context.gone", json!({ "id": id, "code": ErrorCode::NotReady }));
+            }
             self.foreground_event(applet_id, "context.gone", json!({ "id": id, "code": ErrorCode::NotReady, "message": "The page did not load in time" }));
         }
     }
