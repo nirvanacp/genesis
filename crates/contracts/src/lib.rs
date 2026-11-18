@@ -217,6 +217,17 @@ pub enum ShellEvent {
     /// The store thread missed a message of the stream and dropped the value it kept, relayed by
     /// the shell to the UI thread. The host asks the page for a fresh snapshot.
     StoreResync { applet_id: String, context: String, stream: String },
+    /// The log thread copied the applet's debug log for `ExportLog`, relayed by the shell to the
+    /// UI thread: `path` is the file in the cache's `shared-logs/`, or None when the applet has
+    /// no log or the copy failed. The host answers `LogExported`.
+    LogExportDone {
+        applet_id: String,
+        #[serde(default)]
+        path: Option<String>,
+    },
+    /// The log thread deleted the applet's debug log files, relayed by the shell to the UI
+    /// thread. The host answers `LogDeleted`.
+    LogDeleted { applet_id: String },
     /// The user removed websites' cookies and storage: signed out of sites in settings, or moved
     /// the applet `applet_id` to another sign-in. The host forgets the watch values it kept, of
     /// that applet or, without one, of every applet.
@@ -307,9 +318,10 @@ pub enum ShellEvent {
     DebugLog { applet_id: String, on: bool },
     /// One shell event for the applet's debug log. The host writes it only while the log is on.
     Log { applet_id: String, entry: LogEntry },
-    /// Copies the applet's debug log to one file to share. The host answers `LogExported`.
+    /// Copies the applet's debug log to one file to share. The host answers `LogExported` once
+    /// its log thread made the copy.
     ExportLog { applet_id: String },
-    /// Deletes the applet's debug log files.
+    /// Deletes the applet's debug log files. The host answers `LogDeleted` once they are gone.
     DeleteLog { applet_id: String },
 }
 
@@ -590,6 +602,9 @@ pub enum ShellCommand {
     /// The answer to `ExportLog`: the file in the cache's `shared-logs/` that holds the applet's
     /// debug log, or None when it has none or the copy failed.
     LogExported { applet_id: String, path: Option<String> },
+    /// The applet's debug log files are deleted: after `DeleteLog`, and after its data was
+    /// cleared or it was removed. The shell shows that it has no log to share.
+    LogDeleted { applet_id: String },
     /// The foreground asked to notify the user. The shell posts it only when the user turned
     /// the applet's notifications on; `url` opens in the applet's window when tapped.
     PostNotification { applet_id: String, id: String, title: String, body: Option<String>, url: Option<String> },

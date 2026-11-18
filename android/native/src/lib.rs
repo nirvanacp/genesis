@@ -108,6 +108,11 @@ pub extern "system" fn Java_app_nirvana_genesis_NativeBridge_configureStorage<'l
                     // The host never changes its limits, so the default is the limit it uses.
                     store::start(files.join("applets"), genesis_contracts::Limits::default().document_ready_ms, vm, callback)?;
                 }
+                if !debug_log::delivers() {
+                    let vm = env.get_java_vm().map_err(|e| e.to_string())?;
+                    let callback = env.new_global_ref(&class).map_err(|e| e.to_string())?;
+                    debug_log::set_delivery(vm, callback);
+                }
                 Ok(())
             }));
             let message = match result {

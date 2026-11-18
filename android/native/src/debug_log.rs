@@ -5,8 +5,14 @@
 //! Each file starts with a `log.header` line. A file over `FILE_MAX_BYTES` becomes `log-1` and the
 //! older ones move up, to `log-3` at most. With every log off, a call site costs one atomic load:
 //! callers check `on` before they build an event.
+//!
+//! One thread, `genesis-log`, owns the files. The UI thread only queues: lines, at most
+//! `QUEUE_LINES` of them, and the control messages that close, copy or delete an applet's files,
+//! which are never refused. The thread answers a copy and a delete with a shell event, so the UI
+//! thread never waits for a file.
 use crate::host::now_ms;
-use genesis_contracts::{LogEntry, compat};
+use genesis_contracts::{LogEntry, ShellEvent, compat};
+use jni::{JavaVM, objects::{Global, JClass}};
 use serde_json::{Value, json};
 use std::{
     collections::{BTreeSet, HashMap},
@@ -14,9 +20,9 @@ use std::{
     io::{BufWriter, Write},
     path::{Path, PathBuf},
     sync::{
-        Mutex, OnceLock,
-        atomic::{AtomicBool, AtomicU64, Ordering},
-        mpsc::{self, RecvTimeoutError, SyncSender, TrySendError},
+        LazyLock, Mutex, MutexGuard, OnceLock,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+        mpsc::{self, RecvTimeoutError, Sender},
     },
     time::{Duration, Instant},
 };
@@ -28,8 +34,6 @@ const FILE_MAX_BYTES: u64 = 2 * 1024 * 1024;
 const FILES_MAX: usize = 4;
 /// Written lines reach the file at most this long after they were queued.
 const FLUSH_EVERY: Duration = Duration::from_secs(1);
-/// How long an export waits for the log thread.
-const EXPORT_WAIT: Duration = Duration::from_secs(5);
 
 /// Entries one `debug.log` call writes; the rest are counted in one `log.truncated` line.
 pub const ENTRIES_MAX: usize = 200;
@@ -41,13 +45,23 @@ const STRING_MAX_CHARS: usize = 300;
 /// Some applet's log is on. Checked before the set, so a call site costs one load when none is.
 static ENABLED: AtomicBool = AtomicBool::new(false);
 static APPLETS: Mutex<BTreeSet<String>> = Mutex::new(BTreeSet::new());
-static DROPPED: AtomicU64 = AtomicU64::new(0);
-static QUEUE: OnceLock<Option<SyncSender<Message>>> = OnceLock::new();
+/// Lines dropped since each applet's last written line, by applet.
+static DROPPED: LazyLock<Mutex<HashMap<String, u64>>> = LazyLock::new(Mutex::default);
+// Control messages are never refused, so the channel is unbounded and `QUEUED` bounds the
+// lines alone.
+static QUEUE: OnceLock<Option<Sender<Message>>> = OnceLock::new();
+static QUEUED: AtomicUsize = AtomicUsize::new(0);
 static DIRECTORIES: Mutex<Option<(PathBuf, PathBuf)>> = Mutex::new(None);
+/// How the log thread reaches the UI thread with its answers.
+static DELIVERY: OnceLock<(JavaVM, Global<JClass<'static>>)> = OnceLock::new();
 
 enum Message {
     Line { applet_id: String, line: String },
-    Export { applet_id: String, reply: mpsc::Sender<Option<String>> },
+    /// The applet's log was switched off: its file closes.
+    Close { applet_id: String },
+    /// Answers `LogExportDone`.
+    Export { applet_id: String },
+    /// Answers `LogDeleted`.
     Delete { applet_id: String },
 }
 
@@ -56,8 +70,28 @@ pub fn on(applet_id: &str) -> bool {
     ENABLED.load(Ordering::Relaxed) && applets().contains(applet_id)
 }
 
-fn applets() -> std::sync::MutexGuard<'static, BTreeSet<String>> {
+fn applets() -> MutexGuard<'static, BTreeSet<String>> {
     APPLETS.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+fn dropped() -> MutexGuard<'static, HashMap<String, u64>> {
+    DROPPED.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// Whether the log thread can answer the UI thread.
+pub fn delivers() -> bool {
+    DELIVERY.get().is_some()
+}
+
+/// Gives the log thread the way to the UI thread, once per process.
+pub fn set_delivery(vm: JavaVM, callback: Global<JClass<'static>>) {
+    let _ = DELIVERY.set((vm, callback));
+}
+
+fn deliver(event: &ShellEvent) {
+    if let Some((vm, callback)) = DELIVERY.get() {
+        crate::servelets::deliver(vm, callback, event);
+    }
 }
 
 /// Where logs and exports go: the app's files and cache directories. Set at `Attach`.
@@ -69,14 +103,20 @@ fn directories() -> Option<(PathBuf, PathBuf)> {
     DIRECTORIES.lock().unwrap_or_else(|e| e.into_inner()).clone()
 }
 
-/// Turns `applet_id`'s log on or off.
+/// Turns `applet_id`'s log on or off. A log turned off closes its file, after the lines
+/// already queued.
 pub fn set(applet_id: &str, enabled: bool) {
     let mut applets = applets();
-    match enabled {
-        true => applets.insert(applet_id.into()),
+    let was_on = match enabled {
+        true => !applets.insert(applet_id.into()),
         false => applets.remove(applet_id),
     };
     ENABLED.store(!applets.is_empty(), Ordering::Relaxed);
+    drop(applets);
+    // A log that never wrote a line has no thread to tell.
+    if was_on && !enabled && let Some(Some(queue)) = QUEUE.get() {
+        let _ = queue.send(Message::Close { applet_id: applet_id.into() });
+    }
 }
 
 /// Writes one host event. The caller checked `on`.
@@ -117,32 +157,34 @@ fn write(applet_id: &str, src: &str, t: u64, ev: &str, d: Option<Value>) {
         line["d"] = d;
     }
     let Some(queue) = queue() else { return };
-    let message = Message::Line { applet_id: applet_id.into(), line: line.to_string() };
-    if let Err(TrySendError::Full(_)) = queue.try_send(message) {
-        DROPPED.fetch_add(1, Ordering::Relaxed);
+    if QUEUED.fetch_add(1, Ordering::SeqCst) >= QUEUE_LINES {
+        QUEUED.fetch_sub(1, Ordering::SeqCst);
+        *dropped().entry(applet_id.into()).or_default() += 1;
+        return;
+    }
+    if queue.send(Message::Line { applet_id: applet_id.into(), line: line.to_string() }).is_err() {
+        QUEUED.fetch_sub(1, Ordering::SeqCst);
     }
 }
 
-/// Copies the applet's log, oldest file first, to one file in the cache's `shared-logs/`.
-/// Waits for the log thread, so every line queued before is in the copy.
-pub fn export(applet_id: &str) -> Option<String> {
-    let (reply, answer) = mpsc::channel();
-    queue()?.send(Message::Export { applet_id: applet_id.into(), reply }).ok()?;
-    answer.recv_timeout(EXPORT_WAIT).ok().flatten()
+/// Asks the log thread to copy the applet's log, oldest file first, to one file in the cache's
+/// `shared-logs/`, after the lines already queued. The thread answers `LogExportDone`. False
+/// when no thread runs, so no answer will come.
+pub fn export(applet_id: &str) -> bool {
+    queue().is_some_and(|queue| queue.send(Message::Export { applet_id: applet_id.into() }).is_ok())
 }
 
-/// Deletes the applet's log files, after the lines already queued.
-pub fn delete(applet_id: &str) {
-    if let Some(queue) = queue() {
-        let _ = queue.send(Message::Delete { applet_id: applet_id.into() });
-    }
+/// Asks the log thread to delete the applet's log files, after the lines already queued. The
+/// thread answers `LogDeleted`. False when no thread runs, so no answer will come.
+pub fn delete(applet_id: &str) -> bool {
+    queue().is_some_and(|queue| queue.send(Message::Delete { applet_id: applet_id.into() }).is_ok())
 }
 
 /// The log thread's queue, started on first use. None when the thread could not start.
-fn queue() -> Option<&'static SyncSender<Message>> {
+fn queue() -> Option<&'static Sender<Message>> {
     QUEUE
         .get_or_init(|| {
-            let (sender, receiver) = mpsc::sync_channel(QUEUE_LINES);
+            let (sender, receiver) = mpsc::channel();
             let thread = std::thread::Builder::new().name("genesis-log".into()).spawn(move || run(receiver));
             thread.ok().map(|_| sender)
         })
@@ -188,21 +230,30 @@ impl Files {
     fn handle(&mut self, message: Message) {
         match message {
             Message::Line { applet_id, line } => {
-                let dropped = DROPPED.swap(0, Ordering::Relaxed);
-                if dropped > 0 {
-                    let note = json!({ "t": now_ms(), "src": "host", "ev": "log.dropped", "d": { "count": dropped } });
+                QUEUED.fetch_sub(1, Ordering::SeqCst);
+                // The note goes into the file of the applet whose lines were dropped.
+                let count = dropped().remove(&applet_id);
+                if let Some(count) = count {
+                    let note = json!({ "t": now_ms(), "src": "host", "ev": "log.dropped", "d": { "count": count } });
                     self.append(&applet_id, &note.to_string());
                 }
                 self.append(&applet_id, &line);
             }
-            Message::Export { applet_id, reply } => {
-                let _ = reply.send(self.export(&applet_id));
+            // Dropping the writer writes what it holds and closes the file.
+            Message::Close { applet_id } => {
+                self.open.remove(&applet_id);
+            }
+            Message::Export { applet_id } => {
+                let path = self.export(&applet_id);
+                deliver(&ShellEvent::LogExportDone { applet_id, path });
             }
             Message::Delete { applet_id } => {
                 self.open.remove(&applet_id);
+                dropped().remove(&applet_id);
                 if let Some((logs, _)) = directories() {
                     let _ = fs::remove_dir_all(logs.join(&applet_id));
                 }
+                deliver(&ShellEvent::LogDeleted { applet_id });
             }
         }
     }

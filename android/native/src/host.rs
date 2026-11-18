@@ -180,11 +180,17 @@ impl Host {
             ShellEvent::GrantEnded { view, grant, used } => self.grant_ended(&view, grant, used, now),
             ShellEvent::DebugLog { applet_id, on } => debug_log::set(&applet_id, on),
             ShellEvent::Log { applet_id, entry } => debug_log::shell(&applet_id, entry),
+            // The log thread answers both; without it, an export is answered here.
             ShellEvent::ExportLog { applet_id } => {
-                let path = debug_log::export(&applet_id);
-                self.out.push(ShellCommand::LogExported { applet_id, path });
+                if !debug_log::export(&applet_id) {
+                    self.out.push(ShellCommand::LogExported { applet_id, path: None });
+                }
             }
-            ShellEvent::DeleteLog { applet_id } => debug_log::delete(&applet_id),
+            ShellEvent::DeleteLog { applet_id } => {
+                debug_log::delete(&applet_id);
+            }
+            ShellEvent::LogExportDone { applet_id, path } => self.out.push(ShellCommand::LogExported { applet_id, path }),
+            ShellEvent::LogDeleted { applet_id } => self.out.push(ShellCommand::LogDeleted { applet_id }),
         }
         self.start_due_contexts(now);
         self.refresh_activity(now);

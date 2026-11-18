@@ -24,6 +24,8 @@ final class DebugLog {
     /** Whether any applet's log is on. */
     static volatile boolean any;
     private static final Set<String> applets = ConcurrentHashMap.newKeySet();
+    /** The applets that have log files, so a settings row never lists a directory. */
+    private static final Set<String> written = ConcurrentHashMap.newKeySet();
     private static GenesisRuntime runtime;
 
     private DebugLog() {}
@@ -42,9 +44,18 @@ final class DebugLog {
             }
         }
         any = !applets.isEmpty();
-        File[] shared = new File(runtime.app.getCacheDir(), "shared-logs").listFiles();
-        long now = System.currentTimeMillis();
-        for (File file : shared == null ? new File[0] : shared) if (now - file.lastModified() > SHARED_MS) file.delete();
+        File files = runtime.app.getFilesDir(), cache = runtime.app.getCacheDir();
+        UserActions.IO.execute(() -> {
+            // A log that was turned off keeps its files, so every applet's folder counts.
+            File[] logs = new File(files, "logs").listFiles();
+            for (File applet : logs == null ? new File[0] : logs) {
+                String[] names = applet.list();
+                if (names != null && names.length > 0) written.add(applet.getName());
+            }
+            File[] shared = new File(cache, "shared-logs").listFiles();
+            long now = System.currentTimeMillis();
+            for (File file : shared == null ? new File[0] : shared) if (now - file.lastModified() > SHARED_MS) file.delete();
+        });
     }
 
     /** The applet opens: a log on for longer than `ON_MS` turns off. */
@@ -76,16 +87,17 @@ final class DebugLog {
         if (runtime != null) runtime.send(switchEvent(appletId, on));
     }
 
-    /** Whether the applet has log files to share. */
-    static boolean exists(Context context, String appletId) {
-        String[] files = new File(context.getFilesDir(), "logs/" + appletId).list();
-        return files != null && files.length > 0;
-    }
+    /** Whether the applet has log files to share: files found at startup, or a line recorded since. */
+    static boolean exists(String appletId) { return written.contains(appletId); }
+
+    /** The host deleted the applet's log files. */
+    static void deleted(String appletId) { written.remove(appletId); }
 
     /** A removed or erased applet's switch goes with it; the host deletes its files. */
     static void forget(Context context, String appletId) {
         state(context).edit().remove(PREFIX + appletId).apply();
         applets.remove(appletId);
+        written.remove(appletId);
         any = !applets.isEmpty();
     }
 
@@ -103,6 +115,7 @@ final class DebugLog {
                 entry.put("d", d);
             }
             JSONObject event = Bridge.event("log").put("appletId", appletId).put("entry", entry);
+            written.add(appletId);
             runtime.main.post(() -> runtime.send(event));
         } catch (JSONException ignored) { /* Unreachable for these values. */ }
     }

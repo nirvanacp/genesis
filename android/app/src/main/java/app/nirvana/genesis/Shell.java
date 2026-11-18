@@ -1501,7 +1501,6 @@ final class Shell implements Views.Listener, Ui.Actions {
     private static final long FOREGROUND_PAUSE_MS = 2000;
     /** How long a covered applet page stays paused at most: half the time WebView takes to freeze it. */
     private static final long FOREGROUND_WAKE_MS = 30_000;
-    private static final long LOG_DELETE_REFRESH_MS = 500;
     /** The open engine-switch question, or null. */
     private android.app.Dialog featureDialog;
 
@@ -1675,15 +1674,15 @@ final class Shell implements Views.Listener, Ui.Actions {
         ui.pages.refresh();
     }
 
-    @Override public boolean debugLogExists(String appletId) { return DebugLog.exists(activity, appletId); }
+    @Override public boolean debugLogExists(String appletId) { return DebugLog.exists(appletId); }
 
     @Override public void shareDebugLog(String appletId) { appletEvent("exportLog", appletId); }
 
-    /** The host deletes the files on its log thread, so the page refreshes a moment later. */
-    @Override public void deleteDebugLog(String appletId) {
-        appletEvent("deleteLog", appletId);
-        bar.postDelayed(() -> { if (!destroyed) ui.pages.refresh(); }, LOG_DELETE_REFRESH_MS);
-    }
+    /** The host deletes the files on its log thread and answers `logDeleted`, which refreshes the page. */
+    @Override public void deleteDebugLog(String appletId) { appletEvent("deleteLog", appletId); }
+
+    /** Rebuilds the open settings pages after something they show changed outside this window. */
+    void refreshPages() { if (!destroyed) ui.pages.refresh(); }
 
     // -----------------------------------------------------------------------------------------
     // Hide in recent apps

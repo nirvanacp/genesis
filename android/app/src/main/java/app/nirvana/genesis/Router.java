@@ -203,6 +203,10 @@ final class Router {
                 break;
             }
             case "logExported": shareLog(command.getString("appletId"), command.isNull("path") ? null : command.getString("path")); break;
+            case "logDeleted":
+                DebugLog.deleted(command.getString("appletId"));
+                for (Shell shell : windows()) shell.refreshPages();
+                break;
             case "startAppletWindow": start(appletIntent(runtime.app, command.getString("appletId"))); break;
             case "openManager": start(new Intent(runtime.app, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); break;
             case "postNotification":
