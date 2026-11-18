@@ -24,22 +24,27 @@ final class FileSelection {
 
     FileSelection(Activity activity) { this.activity = activity; }
 
+    /**
+     * The picker for a website's file input. It always uses the document picker: a WebView cannot read
+     * the photo picker's `content:` URIs, so the page would get files whose reads fail.
+     */
     void open(Requests.FileRequest result, BooleanSupplier current) {
         cancel();
         if (!result.open) { result.cancel(); return; }
-        start(result.acceptTypes, result.multiple, result, current);
+        start(result.acceptTypes, result.multiple, false, result, current);
     }
 
     /**
      * The picker for the applet UI's `files.pick`: `accept` holds MIME types or `.ext` suffixes.
-     * `result` gets the picked `content:` URIs, or null when the user cancelled.
+     * `result` gets the picked `content:` URIs, or null when the user cancelled. The host reads them
+     * itself, so media types may use the photo picker.
      */
     void openForApplet(String[] accept, boolean multiple, ValueCallback<Uri[]> result, BooleanSupplier current) {
         cancel();
-        start(accept, multiple, new Requests.FileRequest(accept, multiple, true, result::onReceiveValue), current);
+        start(accept, multiple, true, new Requests.FileRequest(accept, multiple, true, result::onReceiveValue), current);
     }
 
-    private void start(String[] accept, boolean multiple, Requests.FileRequest result, BooleanSupplier current) {
+    private void start(String[] accept, boolean multiple, boolean photos, Requests.FileRequest result, BooleanSupplier current) {
         callback = result; valid = current; this.multiple = multiple;
         List<String> accepted = new ArrayList<>();
         for (String value : accept) {
@@ -50,7 +55,7 @@ final class FileSelection {
             }
         }
         mimeTypes = accepted.toArray(new String[0]);
-        Intent intent = media() && photoPicker() ? photoPicker(mediaType()) : documentPicker();
+        Intent intent = photos && media() && photoPicker() ? photoPicker(mediaType()) : documentPicker();
         requestCode = requestCode == 45000 ? 41000 : requestCode + 1;
         try { activity.startActivityForResult(intent, requestCode); }
         catch (android.content.ActivityNotFoundException error) { cancel(); }
