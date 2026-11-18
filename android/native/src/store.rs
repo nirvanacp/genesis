@@ -13,8 +13,10 @@
 //! after a start. A file older than `PERSISTED_MAX_AGE_MS` is deleted unread.
 //!
 //! A website often renders after the page's first read, and no message says that an empty page
-//! is done. So a value that read nothing, a list without items or a null, is neither served nor
-//! written until it has stayed that way for `EMPTY_HOLD_MS`; the file keeps the value before it.
+//! is done. So a value that read nothing, a list without items or a null, is written only once it
+//! has stayed that way for the hold, which is the time a page has to become ready
+//! (`documentReadyMs`). Until then the file keeps the value before it, and a lookup is answered
+//! with that value. A value that read nothing is never served itself: it shows nothing.
 use crate::debug_log;
 use genesis_contracts::{EmitKind, ShellEvent};
 use jni::{JavaVM, objects::{Global, JClass}};
@@ -42,8 +44,6 @@ const VALUE_MAX_BYTES: usize = 256 * 1024;
 const WRITE_INTERVAL_MS: u64 = 2_000;
 /// The persisted values of one applet, at most; past it the least recently used are deleted.
 const PERSISTED_MAX_BYTES: u64 = 4 * 1024 * 1024;
-/// A value that read nothing is served and written only once it has been empty this long.
-const EMPTY_HOLD_MS: u64 = 5_000;
 /// A persisted value older than this is deleted when the applet's values are read.
 const PERSISTED_MAX_AGE_MS: u64 = 7 * 24 * 60 * 60 * 1000;
 /// The position of a value whose stream position is unknown: read from a file, or after the page
@@ -110,8 +110,9 @@ pub fn initialized() -> bool {
     MESSAGES.get().is_some()
 }
 
-/// Starts the thread; `root` is `<files>/applets`.
-pub fn start(root: PathBuf, vm: JavaVM, callback: Global<JClass<'static>>) -> Result<(), String> {
+/// Starts the thread; `root` is `<files>/applets`, and `empty_hold_ms` is how long a value that
+/// read nothing waits before it replaces the one before it.
+pub fn start(root: PathBuf, empty_hold_ms: u64, vm: JavaVM, callback: Global<JClass<'static>>) -> Result<(), String> {
     if initialized() {
         return Ok(());
     }
@@ -119,7 +120,7 @@ pub fn start(root: PathBuf, vm: JavaVM, callback: Global<JClass<'static>>) -> Re
     std::thread::Builder::new()
         .name("genesis-store".into())
         .spawn(move || {
-            let mut store = Store { root, values: HashMap::new(), loaded: HashSet::new(), clock: 0, started: Instant::now() };
+            let mut store = Store { root, empty_hold_ms, values: HashMap::new(), loaded: HashSet::new(), clock: 0, started: Instant::now() };
             while let Some(message) = next(&receiver, store.next_write()) {
                 let event = catch_unwind(AssertUnwindSafe(|| match message {
                     None => None,
@@ -236,8 +237,11 @@ struct Entry {
     snapshot: Option<Value>,
     /// Epoch milliseconds of the last change.
     at: u64,
-    /// When the value last became empty (milliseconds of the thread's clock); `None` while it has data.
+    /// When the page's read last became empty (milliseconds of the thread's clock); `None` while
+    /// it has data, and for a value read from a file.
     empty_since: Option<u64>,
+    /// The value with data that an empty snapshot replaced, and when it last changed.
+    before: Option<(Value, u64)>,
     /// When the entry was last used, for least-recently-used eviction.
     used: u64,
     persist: bool,
@@ -250,17 +254,35 @@ struct Entry {
 
 impl Entry {
     /// The value read nothing and the page may not have rendered yet.
-    fn held(&self, now: u64) -> bool {
-        self.empty_since.is_some_and(|since| now < since + EMPTY_HOLD_MS)
+    fn held(&self, now: u64, hold_ms: u64) -> bool {
+        self.empty_since.is_some_and(|since| now < since + hold_ms)
+    }
+
+    /// The value a lookup is answered with, and when it last changed: the value itself when it
+    /// has data, or the one before it while it is held.
+    fn cached(&self, now: u64, hold_ms: u64) -> Option<(Value, u64)> {
+        match &self.snapshot {
+            Some(snapshot) if !empty(snapshot) => Some((snapshot.clone(), self.at)),
+            _ if self.held(now, hold_ms) => self.before.clone(),
+            _ => None,
+        }
+    }
+
+    /// The last value with data, and when it last changed.
+    fn with_data(self) -> Option<(Value, u64)> {
+        match self.snapshot {
+            Some(snapshot) if !empty(&snapshot) => Some((snapshot, self.at)),
+            _ => self.before,
+        }
     }
 
     /// When the value may be written (milliseconds of the thread's clock); `None` when no write waits.
-    fn write_at(&self) -> Option<u64> {
+    fn write_at(&self, hold_ms: u64) -> Option<u64> {
         if !(self.persist && self.unsaved && self.snapshot.is_some()) {
             return None;
         }
         let interval = self.written_ms.map_or(0, |written| written + WRITE_INTERVAL_MS);
-        let hold = self.empty_since.map_or(0, |since| since + EMPTY_HOLD_MS);
+        let hold = self.empty_since.map_or(0, |since| since + hold_ms);
         Some(interval.max(hold))
     }
 }
@@ -278,6 +300,8 @@ struct Saved {
 
 struct Store {
     root: PathBuf,
+    /// How long a value that read nothing waits before it is written and the value before it is dropped.
+    empty_hold_ms: u64,
     values: HashMap<Key, Entry>,
     /// Applets whose persisted values were read since the start.
     loaded: HashSet<String>,
@@ -299,10 +323,13 @@ impl Store {
                 return None;
             }
             let snapshot = (json_len(&data) <= VALUE_MAX_BYTES).then_some(data);
-            let (written_ms, saved_bytes) = self.values.get(&key).map_or((None, 0), |e| (e.written_ms, e.saved_bytes));
+            let old = self.values.remove(&key);
+            let (written_ms, saved_bytes) = old.as_ref().map_or((None, 0), |e| (e.written_ms, e.saved_bytes));
             let at = crate::host::now_ms();
             let empty_since = snapshot.as_ref().is_some_and(empty).then(|| self.now());
-            let entry = Entry { spec, generation, n, seq, snapshot, at, empty_since, used: self.clock, persist, unsaved: true, written_ms, saved_bytes };
+            // An empty read keeps the value it replaced until the page had its time to render.
+            let before = empty_since.and(old).filter(|e| e.spec == spec).and_then(Entry::with_data);
+            let entry = Entry { spec, generation, n, seq, snapshot, at, empty_since, before, used: self.clock, persist, unsaved: true, written_ms, saved_bytes };
             self.values.insert(key.clone(), entry);
             self.unpersist_if(&key, !persist);
             self.evict(&key.applet_id);
@@ -338,6 +365,9 @@ impl Store {
             Some(snapshot) if empty(snapshot) => entry.empty_since.or(Some(now)),
             _ => None,
         };
+        if entry.empty_since.is_none() {
+            entry.before = None;
+        }
         entry.at = crate::host::now_ms();
         entry.unsaved = true;
         entry.persist = persist;
@@ -348,12 +378,15 @@ impl Store {
     fn get(&mut self, key: Key, spec: u64, serial: u64) -> Option<ShellEvent> {
         self.load(&key.applet_id);
         self.clock += 1;
-        let now = self.now();
-        let entry = self.values.get_mut(&key).filter(|e| e.spec == spec && !e.held(now))?;
+        let (now, hold_ms) = (self.now(), self.empty_hold_ms);
+        let entry = self.values.get_mut(&key).filter(|e| e.spec == spec)?;
         entry.used = self.clock;
-        let snapshot = entry.snapshot.clone()?;
+        if !entry.held(now, hold_ms) {
+            entry.before = None;
+        }
+        let (snapshot, at) = entry.cached(now, hold_ms)?;
         let Key { applet_id, context, stream, url } = key;
-        Some(ShellEvent::StoreCached { applet_id, context, stream, serial, url, at: entry.at, snapshot })
+        Some(ShellEvent::StoreCached { applet_id, context, stream, serial, url, at, snapshot })
     }
 
     /// Keeps only the applet's values whose key passes `keep`.
@@ -419,7 +452,7 @@ impl Store {
     /// How long until the next persisted value may be written; `None` when none waits.
     fn next_write(&self) -> Option<Duration> {
         let now = self.now();
-        let next = self.values.values().filter_map(Entry::write_at).min()?;
+        let next = self.values.values().filter_map(|e| e.write_at(self.empty_hold_ms)).min()?;
         Some(Duration::from_millis(next.saturating_sub(now)))
     }
 
@@ -429,7 +462,7 @@ impl Store {
         let due: Vec<Key> = self
             .values
             .iter()
-            .filter(|(_, e)| e.write_at().is_some_and(|at| now >= at))
+            .filter(|(_, e)| e.write_at(self.empty_hold_ms).is_some_and(|at| now >= at))
             .map(|(k, _)| k.clone())
             .collect();
         let mut applets = HashSet::new();
@@ -451,6 +484,7 @@ impl Store {
             }
             let Some(entry) = self.values.get_mut(&key) else { continue };
             entry.unsaved = false;
+            entry.before = None;
             entry.written_ms = Some(now);
             entry.saved_bytes = if written.is_ok() { bytes.len() as u64 } else { 0 };
             applets.insert(key.applet_id);
@@ -502,6 +536,7 @@ impl Store {
                 snapshot: Some(saved.snapshot),
                 at: saved.at,
                 empty_since: None,
+                before: None,
                 used: 0,
                 persist: true,
                 unsaved: false,
