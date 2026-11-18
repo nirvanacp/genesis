@@ -115,6 +115,12 @@ pub enum ShellEvent {
         /// Every covered context stays awake, as before contexts rested. For comparing and debugging.
         #[serde(default)]
         activity_off: bool,
+        /// Covered websites load images too, as before light pages. For comparing and debugging.
+        #[serde(default)]
+        light_off: bool,
+        /// The host keeps no cached watch values. For comparing and debugging.
+        #[serde(default)]
+        store_off: bool,
     },
     /// The manager window (the Genesis list) was created. It has none of an earlier flow's screens.
     ManagerAttached,
