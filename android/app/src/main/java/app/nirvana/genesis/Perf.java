@@ -14,6 +14,7 @@ import java.util.Map;
  *             an applet's screens get their first watch value (`tools/bench.mjs` cold reads it).
  * activity:   off keeps every covered website awake, as before the host chose activity levels.
  * ui_profile: off keeps the applet's screens in the websites' WebView profile and renderer.
+ * ui_warmup:  on starts the applet screens' renderer when the first window opens (an experiment).
  * light:      off lets covered websites load images, as before light pages.
  * store:      off makes the host keep no cached watch values; live values arrive as before.
  */
@@ -43,6 +44,8 @@ final class Perf {
     static boolean activityOff() { return "off".equals(get("activity")); }
 
     static boolean uiProfileOff() { return "off".equals(get("ui_profile")); }
+
+    static boolean uiWarmUp() { return "on".equals(get("ui_warmup")); }
 
     static boolean lightOff() { return "off".equals(get("light")); }
 

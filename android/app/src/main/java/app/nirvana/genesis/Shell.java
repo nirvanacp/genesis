@@ -78,6 +78,8 @@ final class Shell implements Views.Listener, Ui.Actions {
     /** The shared sign-in, and the profiles of applets that keep their own, by applet id. */
     private final SiteData sites;
     private final Map<String, SiteData> profiles = new HashMap<>();
+    /** The applets' own screens' profile, made on first use; never listed or cleared as a website's. */
+    private SiteData uiSites;
     private final android.content.SharedPreferences state;
     private final Views views;
     private Tokens tokens;
@@ -274,11 +276,11 @@ final class Shell implements Views.Listener, Ui.Actions {
 
     void createView(JSONObject ref, String url, JSONArray origins, String startScript) throws JSONException {
         destroyView(ref);
-        // The foreground is Genesis's own page and keeps the shared profile; only websites change sign-in.
-        SiteData site = "foreground".equals(ref.optString("role")) ? sites : sitesFor(ref.optString("appletId"));
+        // The foreground is Genesis's own page in its own profile and renderer; only websites change sign-in.
+        SiteData site = "foreground".equals(ref.optString("role")) ? uiSites() : sitesFor(ref.optString("appletId"));
         Views.Page page = views.document(ref, set(origins), startScript, site);
         pages.put(key(ref), page);
-        if (DebugLog.any) DebugLog.log(ref.optString("appletId"), "view.create", "role", ref.optString("role"));
+        if (DebugLog.any) DebugLog.log(ref.optString("appletId"), "view.create", "role", ref.optString("role"), "profile", site.profile);
         if (page.isForeground()) {
             page.tab.view().setVisibility(View.INVISIBLE);
             foreground.addView(page.tab.view(), new FrameLayout.LayoutParams(-1, -1));
@@ -1322,6 +1324,11 @@ final class Shell implements Views.Listener, Ui.Actions {
     @Override public Connections.Store connections() { return owner.connections(); }
 
     @Override public SiteData sites() { return sites; }
+
+    private SiteData uiSites() {
+        if (uiSites == null) uiSites = WebViewSites.ui(activity);
+        return uiSites;
+    }
 
     // -----------------------------------------------------------------------------------------
     // Separate sign-ins
