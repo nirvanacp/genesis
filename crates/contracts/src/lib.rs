@@ -1316,6 +1316,22 @@ pub enum Call {
         #[serde(default)]
         timeout_ms: Option<u64>,
     },
+    /// Subscribes the asking foreground to watch `id` in `context`. The host opens the watch
+    /// (`watch.open`) in every document of the context that binds while the subscription lasts,
+    /// and reports an open that failed as a `status` emit with `status: "error"`. Answers `{}` at
+    /// once; the same `id` with another `spec` or `when` answers `CONFLICT`. A subscription ends
+    /// with `watch.unsubscribe`, a new foreground document or the applet's retirement.
+    #[serde(rename = "watch.subscribe")]
+    WatchSubscribe {
+        context: String,
+        id: String,
+        spec: Value,
+        #[serde(default)]
+        when: Option<Value>,
+    },
+    /// Ends the subscription to watch `id` in `context`; the host closes the page's watch.
+    #[serde(rename = "watch.unsubscribe")]
+    WatchUnsubscribe { context: String, id: String },
     /// Cancels one call of the asking document in `context`, or all of them when `call_id` is absent.
     #[serde(rename = "page.cancel")]
     PageCancel {
