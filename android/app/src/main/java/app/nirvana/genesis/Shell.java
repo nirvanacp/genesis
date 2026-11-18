@@ -1327,6 +1327,8 @@ final class Shell implements Views.Listener, Ui.Actions {
 
     @Override public void keepVersion(String id) { appletEvent("keepVersion", id); }
 
+    @Override public void websiteDataRemoved() { owner.send(Bridge.event("websiteDataRemoved")); }
+
     @Override public void menu(String action) {
         try { owner.send(GenesisRuntime.windowEvent("menu", window).put("action", action)); }
         catch (JSONException ignored) { /* Unreachable for string values. */ }
@@ -1588,6 +1590,8 @@ final class Shell implements Views.Listener, Ui.Actions {
             state.edit().remove(profileKey(appletId)).remove(profileNameKey(appletId)).putStringSet(DELETE_PROFILES, pending).apply();
         }
         forgetProfile(appletId);
+        // Kept page values may show the other sign-in's account.
+        appletEvent("websiteDataRemoved", appletId);
         // The applet restarts in its new sign-in wherever it runs; the host ignores this for an applet that is not running.
         try { owner.send(GenesisRuntime.windowEvent("menu", appletId).put("action", "reload")); }
         catch (JSONException ignored) { /* Unreachable for string values. */ }

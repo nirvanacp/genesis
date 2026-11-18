@@ -182,7 +182,10 @@ public final class Settings {
         out.setOnClickListener(v -> {
             dialog[0].dismiss();
             // GeckoView answers later; a Settings page that closed meanwhile has nothing to redraw.
-            Runnable done = () -> { if (ui.pages.has(SITES)) ui.pages.refresh(); };
+            Runnable done = () -> {
+                ui.actions.websiteDataRemoved();
+                if (ui.pages.has(SITES)) ui.pages.refresh();
+            };
             if (all) {
                 // Every group clears on its own; the page refreshes once the last one is done.
                 int[] left = { groups.size() };
