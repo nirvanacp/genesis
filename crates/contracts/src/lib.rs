@@ -12,7 +12,7 @@ use serde_json::{Map, Value};
 pub mod compat {
     pub const MANIFEST_SCHEMA: u32 = 6;
     pub const BUNDLE_FORMAT: u32 = 3;
-    pub const PROTOCOL: u32 = 1;
+    pub const PROTOCOL: u32 = 2;
     pub const ADAPTER_API: u32 = 1;
     pub const SESSION_STATE: u32 = 1;
     pub const IMPORT_ENVELOPE: u32 = 1;
