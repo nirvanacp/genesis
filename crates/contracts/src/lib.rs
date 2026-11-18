@@ -110,6 +110,9 @@ pub enum ShellEvent {
     /// development imports.
     Attach {
         files_dir: String,
+        /// The app's cache directory, where shared debug logs are written.
+        #[serde(default)]
+        cache_dir: String,
         #[serde(default)]
         debuggable: bool,
         /// Every covered context stays awake, as before contexts rested. For comparing and debugging.
@@ -285,6 +288,26 @@ pub enum ShellEvent {
     /// The one-time grant of `view` ended: `used` when the page used it, otherwise it expired or
     /// was cleared by a navigation, a reveal, a cover, a popup or the view's end.
     GrantEnded { view: ViewRef, grant: GrantKind, used: bool },
+    /// The applet's debug log switch, sent when the user turns it on or off and, for each applet
+    /// whose log is on, after `Attach`.
+    DebugLog { applet_id: String, on: bool },
+    /// One shell event for the applet's debug log. The host writes it only while the log is on.
+    Log { applet_id: String, entry: LogEntry },
+    /// Copies the applet's debug log to one file to share. The host answers `LogExported`.
+    ExportLog { applet_id: String },
+    /// Deletes the applet's debug log files.
+    DeleteLog { applet_id: String },
+}
+
+/// One debug log event from the shell or a document. `t` is milliseconds since the epoch, `ev`
+/// names the event and `d` holds its fields: names, counts, durations and error codes, never page
+/// text, stored data, typed text, cookies or query strings.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct LogEntry {
+    pub t: u64,
+    pub ev: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub d: Option<Value>,
 }
 
 /// Something only the user may start, carried out by the shell after a fresh tap on the applet
@@ -547,6 +570,9 @@ pub enum ShellCommand {
     },
     /// The shell deletes the applet's stored service credentials.
     ForgetApplet { applet_id: String },
+    /// The answer to `ExportLog`: the file in the cache's `shared-logs/` that holds the applet's
+    /// debug log, or None when it has none or the copy failed.
+    LogExported { applet_id: String, path: Option<String> },
     /// The foreground asked to notify the user. The shell posts it only when the user turned
     /// the applet's notifications on; `url` opens in the applet's window when tapped.
     PostNotification { applet_id: String, id: String, title: String, body: Option<String>, url: Option<String> },
@@ -1066,6 +1092,9 @@ pub struct Limits {
     /// Milliseconds for one input call of the burst to come back.
     #[serde(default = "default_input_refill_ms")]
     pub input_refill_ms: u32,
+    /// The user turned this applet's debug log on: documents send their events with `debug.log`.
+    #[serde(default)]
+    pub debug_log: bool,
 }
 
 fn default_input_burst() -> u32 {
@@ -1100,6 +1129,7 @@ impl Default for Limits {
             activity: true,
             input_burst: default_input_burst(),
             input_refill_ms: default_input_refill_ms(),
+            debug_log: false,
         }
     }
 }
@@ -1375,6 +1405,10 @@ pub enum Call {
         #[serde(default)]
         active: bool,
     },
+    /// Events for the applet's debug log, from the foreground or a context document. Answers `{}`
+    /// at once, also when the log is off.
+    #[serde(rename = "debug.log")]
+    DebugLog { entries: Vec<LogEntry> },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
