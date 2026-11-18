@@ -81,19 +81,6 @@ final class WebViewPage implements WebsitePage {
           }
         })""";
 
-    /** The `light_fonts` experiment: a light page gets an empty answer for each web font. */
-    private static final boolean LIGHT_FONTS = Perf.lightFonts();
-
-    private static boolean isFont(String path) {
-        if (path == null) return false;
-        String lower = path.toLowerCase(java.util.Locale.ROOT);
-        return lower.endsWith(".woff2") || lower.endsWith(".woff") || lower.endsWith(".ttf") || lower.endsWith(".otf");
-    }
-
-    private static WebResourceResponse noContent() {
-        return new WebResourceResponse(null, null, 204, "No Content", Map.of(), new java.io.ByteArrayInputStream(new byte[0]));
-    }
-
     private final Activity activity;
     private final Views.Listener listener;
     private final Views.Page page;
@@ -122,8 +109,8 @@ final class WebViewPage implements WebsitePage {
     private boolean destroyed;
     /** The level last applied; a new page is awake. */
     private String level = "awake";
-    /** The page skips images while covered; read by `shouldInterceptRequest` off the UI thread. */
-    private volatile boolean light;
+    /** The page skips images while covered. */
+    private boolean light;
 
     private WebViewPage(Activity activity, Views.Listener listener, Views.Page page, WebViewAssetLoader assets) {
         this.activity = activity;
@@ -279,10 +266,7 @@ final class WebViewPage implements WebsitePage {
         }
     }
 
-    /**
-     * Turning it off fetches the images the shown document already references, without a reload.
-     * With the `light_fonts` experiment on, a light page also gets no web fonts.
-     */
+    /** Turning it off fetches the images the shown document already references, without a reload. */
     @Override public void setLight(boolean on) {
         if (on == light) return;
         light = on;
@@ -353,7 +337,6 @@ final class WebViewPage implements WebsitePage {
         @Override public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
             Uri url = request.getUrl();
             String path = url.getPath();
-            if (light && LIGHT_FONTS && isFont(path)) return noContent();
             if (assets == null) return null;
             if (Views.FOREGROUND_ORIGIN.equals(Views.origin(url.toString())) && path != null && path.startsWith(Views.PICKED_FILES)) {
                 return listener.pickedFile(path.substring(Views.PICKED_FILES.length()));

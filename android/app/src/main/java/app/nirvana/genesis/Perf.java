@@ -14,13 +14,9 @@ import java.util.Map;
  *             an applet's screens get their first watch value (`tools/bench.mjs` cold reads it).
  * activity:   off keeps every covered website awake, as before the host chose activity levels.
  * ui_profile: off keeps the applet's screens in the websites' WebView profile and renderer.
- * ui_warmup:  on starts the applet screens' renderer when the first window opens (an experiment).
  * light:      off lets covered websites load images, as before light pages.
- * light_fonts: on also answers a covered website's web font requests with nothing (an experiment).
  * webview_startup: off starts the WebView engine on the main thread at its first use, instead of
  *             on a background thread when the first window opens.
- * bfcache:    on keeps a website's pages in the back-forward cache, so Back and Forward restore
- *             them without a load (an experiment).
  * store:      off makes the host keep no cached watch values; live values arrive as before.
  */
 final class Perf {
@@ -50,15 +46,9 @@ final class Perf {
 
     static boolean uiProfileOff() { return "off".equals(get("ui_profile")); }
 
-    static boolean uiWarmUp() { return "on".equals(get("ui_warmup")); }
-
     static boolean lightOff() { return "off".equals(get("light")); }
 
-    static boolean lightFonts() { return "on".equals(get("light_fonts")); }
-
     static boolean webViewStartUpOff() { return "off".equals(get("webview_startup")); }
-
-    static boolean bfcache() { return "on".equals(get("bfcache")); }
 
     static boolean storeOff() { return "off".equals(get("store")); }
 

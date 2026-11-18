@@ -63,7 +63,6 @@ final class GenesisRuntime implements NativeBridge.StorageResults {
         started = true;
         // DevTools for debug builds on any device; release builds stay closed.
         android.webkit.WebView.setWebContentsDebuggingEnabled(debuggable);
-        WebViewSites.warmUpUi();
         try {
             NativeBridge.attach(this);
             String storage = NativeBridge.configureStorage(app.getFilesDir().getAbsolutePath());

@@ -70,16 +70,6 @@ final class WebViewSites extends SiteData {
     }
 
     /**
-     * Starts the applet screens' renderer ahead of the first applet, where WebView can. Only with
-     * the `ui_warmup` switch on: it is kept only if it measures faster.
-     */
-    @SuppressLint({"RequiresFeature", "UnsafeOptInUsageError"}) // Behind WARM_UP_RENDERER_PROCESS.
-    static void warmUpUi() {
-        if (!Perf.uiWarmUp() || Perf.uiProfileOff() || !profilesSupported() || !WebFeatures.has(WebViewFeature.WARM_UP_RENDERER_PROCESS)) return;
-        ProfileStore.getInstance().getOrCreateProfile(UI_PROFILE).warmUpRendererProcess();
-    }
-
-    /**
      * Deletes a named profile with its cookies, storage and permission answers. Returns false
      * while a WebView still uses it, so the caller can try again later.
      */
