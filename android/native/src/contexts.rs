@@ -103,7 +103,8 @@ pub struct Subscription {
     pub open_in: Option<String>,
     /// The store's fingerprint of `spec`, so a value read with another specification is not served.
     pub fingerprint: u64,
-    /// A snapshot from the page reached the foreground, so a kept value would be older.
+    /// Data from the page reached the foreground, so a kept value would be older. A snapshot that
+    /// read nothing does not count.
     pub live: bool,
     /// The store also writes the watch's values to the phone.
     pub persist: bool,

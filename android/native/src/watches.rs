@@ -71,7 +71,7 @@ impl Host {
     }
 
     /// A value the store kept: the foreground gets it as a snapshot marked `cached`, when the
-    /// subscription that asked still waits for the page's first snapshot at that URL.
+    /// subscription that asked still waits for the page's first data at that URL.
     #[allow(clippy::too_many_arguments)]
     pub fn store_cached(&mut self, applet_id: &str, context: &str, stream: &str, serial: u64, url: &str, at: u64, snapshot: Value) {
         if self.store_off {
@@ -98,14 +98,17 @@ impl Host {
         self.foreground_event(applet_id, "page.emit", message);
     }
 
-    /// A message of the page's watch stream: a snapshot makes the subscription live, and every
-    /// message goes to the store. One the store's queue cannot take drops the stream's value
-    /// there and asks the page for a fresh snapshot.
+    /// A message of the page's watch stream: a snapshot with data, an error or a patch makes the
+    /// subscription live, and every message goes to the store. A snapshot that read nothing does
+    /// not: the page may not have rendered yet, so the store's answer still reaches the
+    /// foreground, which holds it as it holds a kept value that came first. One the store's queue
+    /// cannot take drops the stream's value there and asks the page for a fresh snapshot.
     #[allow(clippy::too_many_arguments)]
     pub fn watch_emitted(&mut self, applet_id: &str, context: &str, stream: &str, kind: EmitKind, seq: u64, view: &Value, url: &str, data: &Value) {
         let Some(session) = self.contexts.sessions.get_mut(applet_id) else { return };
         let Some(subscription) = session.subscriptions.get_mut(&(context.to_string(), stream.to_string())) else { return };
-        if kind == EmitKind::Snapshot {
+        let read_nothing = data.get("status").and_then(Value::as_str) == Some("ready") && store::empty(data);
+        if kind == EmitKind::Patch || (kind == EmitKind::Snapshot && !read_nothing) {
             subscription.live = true;
         }
         if self.store_off {

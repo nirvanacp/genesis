@@ -579,7 +579,7 @@ fn patch(snapshot: &mut Value, change: &Value) {
 }
 
 /// The snapshot read nothing: a list without items, or a null value.
-fn empty(snapshot: &Value) -> bool {
+pub fn empty(snapshot: &Value) -> bool {
     match snapshot.get("order") {
         Some(order) => order.as_array().is_some_and(Vec::is_empty),
         None => snapshot.get("value").is_none_or(Value::is_null),
