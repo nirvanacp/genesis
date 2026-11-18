@@ -33,6 +33,9 @@ final class WebsiteSettings {
         if (context) {
             if (WebFeatures.has(WebViewFeature.ALGORITHMIC_DARKENING)) WebSettingsCompat.setAlgorithmicDarkeningAllowed(settings, true);
             textZoom(web);
+            // An experiment: Back and Forward restore the kept page. The page agent binds a
+            // restored page again, as a new document, on `pageshow`.
+            if (Perf.bfcache() && WebFeatures.has(WebViewFeature.BACK_FORWARD_CACHE)) WebSettingsCompat.setBackForwardCacheEnabled(settings, true);
         }
         settings.setGeolocationEnabled(context); // Asked through Views.Chrome, only while shown.
         // No X-Requested-With setting: current WebView no longer sends the header, and the
