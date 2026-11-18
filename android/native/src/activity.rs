@@ -107,9 +107,8 @@ impl Host {
         if self.session(applet_id).and_then(|s| s.contexts.get(context_id)).is_none_or(|c| c.started()) {
             return false;
         }
-        let Some((revision, manifest)) = self.applets.current(applet_id) else { return false };
+        let Some((_, manifest)) = self.applets.current(applet_id) else { return false };
         let origins = manifest.origins.clone();
-        let Ok(script) = self.applets.read_text(applet_id, revision, "page.js") else { return false };
         let ready_ms = self.limits.document_ready_ms;
         let Some(session) = self.session_mut(applet_id) else { return false };
         let Some(context) = session.contexts.get_mut(context_id) else { return false };
@@ -120,6 +119,7 @@ impl Host {
         context.level = Some(ActivityLevel::Awake);
         context.loading_until_ms = now + ready_ms;
         let url = context.url.clone();
+        let script = session.page_script.clone();
         // The next context waits for this one to bind, or for as long as a page may take to.
         let waiting = session.contexts.values().any(|c| !c.started());
         session.start_next_at_ms = waiting.then_some(now + ready_ms);

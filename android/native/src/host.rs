@@ -497,11 +497,13 @@ impl Host {
                 None => self.out.push(ShellCommand::ShowError { applet_id: window, message: format!("Applet {applet_id} is not installed") }),
             };
         };
-        if let Err(message) = self.applets.read_text(applet_id, revision, "page.js") {
-            return self.out.push(ShellCommand::ShowError { applet_id: window, message });
-        }
+        let page_script = match self.applets.read_text(applet_id, revision, "page.js") {
+            Ok(script) => script,
+            Err(message) => return self.out.push(ShellCommand::ShowError { applet_id: window, message }),
+        };
         self.make_room(applet_id);
         let mut session = Session::new(applet_id.into(), revision, resume.is_some());
+        session.page_script = page_script;
         let (mut urls, saved) = resume.map(|r| (r.urls, r.saved)).unwrap_or_default();
         let opening_context = opening.as_ref().map(|(id, _)| id.clone()).filter(|id| manifest.contexts.iter().any(|c| &c.id == id));
         urls.extend(opening);

@@ -123,6 +123,9 @@ pub struct Session {
     pub input_budgets: HashMap<String, InputBudget>,
     /// When the next context that has no view yet starts (`mono_ms`); None once all have.
     pub start_next_at_ms: Option<u64>,
+    /// The revision's page script, read once when the applet starts; every context view gets it.
+    /// An install retires the session, so it never outlives its revision.
+    pub page_script: String,
 }
 
 /// Page operations that act on the website, so they spend the context's input budget. Reads,
@@ -181,6 +184,7 @@ impl Session {
             suspended_at_ms: None,
             input_budgets: HashMap::new(),
             start_next_at_ms: None,
+            page_script: String::new(),
         }
     }
 
