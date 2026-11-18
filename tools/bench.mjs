@@ -5,7 +5,8 @@
 //   idle     samples for --seconds while nobody touches the device.
 //   journey  samples for --seconds while the operator, or another script, drives the device.
 //            Start the journey right after the script prints "sampling".
-//   cold     force-stops Genesis, opens the applet with the intent its home-screen shortcut uses,
+//   cold     force-stops Genesis, opens the applet with the intent its home-screen shortcut uses
+//            (a debug build, whose entry activity is exported),
 //            and waits (up to --seconds) for the shell's first page.emit to the applet's screens.
 //            Needs `adb -s <serial> shell setprop debug.genesis.perf.trace 1` before it runs.
 //
@@ -109,11 +110,15 @@ function traceLines() {
 }
 
 function launchApplet() {
+  // The entry activity is exported in debug builds only, so a release build refuses this start.
   const intent = `am start -a ${OPEN_APPLET} -d genesis-applet:${options.applet} -n ${options.package}/${ENTRY_ACTIVITY}`;
-  let output = shell(`log -t GenesisBench launch; ${intent}`);
-  // The entry activity is not exported. A debug build lets the app's own user start it.
-  if (/Error|Permission Denial|Exception/.test(output)) output = shell(`log -t GenesisBench launch; run-as ${options.package} ${intent}`);
-  if (/Error|Permission Denial|Exception/.test(output)) throw new Error(`Could not open ${options.applet}: ${output.trim()}`);
+  let output;
+  try {
+    output = shell(`log -t GenesisBench launch; ${intent} 2>&1`);
+  } catch (error) {
+    output = `${error.stdout ?? ''}${error.stderr ?? ''}` || error.message;
+  }
+  if (/Error|Permission Denial|Exception/.test(output)) throw new Error(`Could not open ${options.applet} (a debug build is needed): ${output.trim().split('\n').slice(0, 3).join(' ')}`);
 }
 
 async function main() {
