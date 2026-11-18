@@ -81,7 +81,8 @@ final class GenesisRuntime implements NativeBridge.StorageResults {
         for (File file : stale == null ? new File[0] : stale) if (!file.delete()) file.deleteOnExit();
         attached = true;
         try {
-            send(Bridge.event("attach").put("filesDir", app.getFilesDir().getAbsolutePath()).put("debuggable", debuggable).put("activityOff", Perf.activityOff()));
+            send(Bridge.event("attach").put("filesDir", app.getFilesDir().getAbsolutePath()).put("debuggable", debuggable).put("activityOff", Perf.activityOff())
+                .put("lightOff", Perf.lightOff()).put("storeOff", Perf.storeOff()));
         } catch (JSONException error) {
             throw new IllegalStateException(error);
         }

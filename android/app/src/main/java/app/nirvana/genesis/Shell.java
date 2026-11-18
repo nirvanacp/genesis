@@ -424,7 +424,14 @@ final class Shell implements Views.Listener, Ui.Actions {
     void postMessage(JSONObject ref, String payload) {
         Views.Page page = pages.get(key(ref));
         if (page == null) return;
-        page.post(payload);
+        if (!Perf.trace()) { page.post(payload); return; }
+        if (page.isForeground() && !page.emitTraced && payload.contains("\"name\":\"page.emit\"") && payload.contains("\"kind\":\"snapshot\"")) {
+            page.emitTraced = true;
+            Perf.log("firstEmit " + ref.optString("appletId"));
+        }
+        android.os.Trace.beginSection("genesis.shell.postMessage");
+        try { page.post(payload); }
+        finally { android.os.Trace.endSection(); }
     }
 
     /**
@@ -829,8 +836,11 @@ final class Shell implements Views.Listener, Ui.Actions {
 
     @Override public void documentMessage(Views.Page page, String payload) {
         if (pages.get(key(page.ref)) != page) return;
+        boolean trace = Perf.trace();
+        if (trace) android.os.Trace.beginSection("genesis.shell.documentMessage");
         try { owner.send(Bridge.event("documentMessage").put("view", page.ref).put("payload", payload)); }
         catch (JSONException ignored) { /* Unreachable for string values. */ }
+        finally { if (trace) android.os.Trace.endSection(); }
     }
 
     @Override public void contextNavigated(Views.Page page, Views.Committed committed) {
