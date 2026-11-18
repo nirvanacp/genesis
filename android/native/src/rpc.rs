@@ -10,7 +10,7 @@ use crate::{
 use genesis_contracts::*;
 use serde_json::{Value, json};
 
-const FOREGROUND_METHODS: [&str; 26] = [
+const FOREGROUND_METHODS: [&str; 28] = [
     "ui.ready",
     "storage.get",
     "storage.list",
@@ -28,6 +28,8 @@ const FOREGROUND_METHODS: [&str; 26] = [
     "back.leave",
     "page.call",
     "page.cancel",
+    "watch.subscribe",
+    "watch.unsubscribe",
     "context.grant",
     "context.hold",
     "files.pick",
@@ -162,10 +164,15 @@ impl Host {
             Role::Context(id) => {
                 let data = json!({ "id": id, "generation": document_generation, "url": url });
                 self.foreground_event(&view.applet_id, "context.bound", data);
-                self.context_bound(&view.applet_id, crate::host::mono_ms());
+                let now = crate::host::mono_ms();
+                self.context_bound(&view.applet_id, now);
+                self.open_watches(&view.applet_id, id, now);
             }
             // A new foreground knows none of the old one's watches and calls; the pages drop them.
             Role::Foreground => {
+                if let Some(session) = self.session_mut(&view.applet_id) {
+                    session.subscriptions.clear();
+                }
                 self.release_holds(&view.applet_id);
                 self.reset_contexts(&view.applet_id);
             }
@@ -354,6 +361,8 @@ impl Host {
                 self.page_call(applet_id, document_id, request_id, context, generation, op, args, timeout_ms, now)
             }
             Call::PageCancel { context, call_id } => self.page_cancel(applet_id, document_id, context, call_id),
+            Call::WatchSubscribe { context, id, spec, when } => Outcome::Now(self.watch_subscribe(applet_id, context, id, spec, when, now)),
+            Call::WatchUnsubscribe { context, id } => Outcome::Now(self.watch_unsubscribe(applet_id, context, id, now)),
             Call::PageResult { call_id, ok, value, error } => self.page_result(applet_id, document_id, call_id, ok, value, error),
             Call::PageProgress { call_id, state, completed_steps } => self.page_progress(applet_id, document_id, call_id, state, completed_steps),
             Call::PageEmit { stream, kind, seq, view: page_view, url, data } => {
@@ -470,6 +479,9 @@ impl Host {
     #[allow(clippy::too_many_arguments)]
     fn page_call(&mut self, applet_id: &str, document_id: &str, request_id: u64, context: String, generation: u64, op: String, args: Value, timeout_ms: Option<u64>, now: u64) -> Outcome {
         let Some(target) = self.context_view(applet_id, &context) else { return unknown_context(&context) };
+        if op == "watch.open" || op == "watch.close" {
+            return error(ErrorCode::InvalidArgument, "Watches open and close with watch.subscribe and watch.unsubscribe");
+        }
         self.start_context(applet_id, &context, now);
         let Some(document) = self.documents.current(&target) else {
             return error(ErrorCode::NotReady, "The context has no bound page");
@@ -511,6 +523,7 @@ impl Host {
             inputs: 0,
             op,
             started_ms: now,
+            watch: None,
         };
         if debug_log::on(applet_id) {
             debug_log::host(applet_id, "page.call", json!({ "context": handle.context_id, "op": handle.op }));
@@ -662,6 +675,9 @@ impl Host {
             _ => {}
         }
         let generation = self.documents.current(view).map_or(0, |d| d.generation);
+        if let Some(context) = self.context_mut(&view.applet_id, id) {
+            context.last_view = Some(page_view.clone());
+        }
         if debug_log::on(&view.applet_id) {
             debug_log::host(&view.applet_id, "page.emit", json!({ "context": id, "kind": kind, "bytes": size }));
         }

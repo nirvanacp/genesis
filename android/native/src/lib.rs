@@ -18,6 +18,7 @@ mod services;
 mod source;
 mod storage;
 mod storage_worker;
+mod watches;
 mod writer;
 
 use genesis_contracts::{ShellCommand, ShellEvent};

@@ -857,6 +857,9 @@ impl Host {
             }
             debug_log::host(applet_id, "page.result", data);
         }
+        if let Some(watch) = &handle.watch {
+            return self.watch_call_done(applet_id, handle, watch, outcome);
+        }
         let Some(view) = self.foreground_view(applet_id) else { return };
         if self.documents.is_current(&view, &handle.foreground_document) {
             self.respond(&view, &handle.foreground_document, handle.request_id, outcome);

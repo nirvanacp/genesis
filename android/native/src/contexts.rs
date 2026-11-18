@@ -31,6 +31,8 @@ pub struct ContextView {
     pub busy_tail_ms: u64,
     /// The foreground's hold, and when an awake hold drops to running.
     pub hold: Option<(ActivityLevel, u64)>,
+    /// The `view` of the page's last watch message, for the messages the host sends in its name.
+    pub last_view: Option<Value>,
 }
 
 impl ContextView {
@@ -55,6 +57,7 @@ impl ContextView {
             loading_until_ms: 0,
             busy_tail_ms: 0,
             hold: None,
+            last_view: None,
         }
     }
 }
@@ -79,6 +82,25 @@ pub struct CallHandle {
     /// The operation's name and when the call began (`mono_ms`), for the debug log.
     pub op: String,
     pub started_ms: u64,
+    /// Set on a call the host made for a watch subscription: its result goes to no document.
+    pub watch: Option<WatchCall>,
+}
+
+/// The subscription a host-made watch call belongs to.
+#[derive(Clone)]
+pub struct WatchCall {
+    pub id: String,
+    pub serial: u64,
+}
+
+/// The foreground's subscription to one watch of a context.
+pub struct Subscription {
+    pub spec: Value,
+    pub when: Option<Value>,
+    /// Tells this subscription from an earlier one with the same id.
+    pub serial: u64,
+    /// The context document the host sent `watch.open` to, until that open fails.
+    pub open_in: Option<String>,
 }
 
 impl CallHandle {
@@ -126,6 +148,9 @@ pub struct Session {
     /// The revision's page script, read once when the applet starts; every context view gets it.
     /// An install retires the session, so it never outlives its revision.
     pub page_script: String,
+    /// The current foreground's watch subscriptions, by context id and watch id.
+    pub subscriptions: BTreeMap<(String, String), Subscription>,
+    pub next_subscription: u64,
 }
 
 /// Page operations that act on the website, so they spend the context's input budget. Reads,
@@ -185,6 +210,8 @@ impl Session {
             input_budgets: HashMap::new(),
             start_next_at_ms: None,
             page_script: String::new(),
+            subscriptions: BTreeMap::new(),
+            next_subscription: 0,
         }
     }
 
