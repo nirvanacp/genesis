@@ -217,6 +217,13 @@ pub enum ShellEvent {
     /// The store thread missed a message of the stream and dropped the value it kept, relayed by
     /// the shell to the UI thread. The host asks the page for a fresh snapshot.
     StoreResync { applet_id: String, context: String, stream: String },
+    /// The user removed websites' cookies and storage: signed out of sites in settings, or moved
+    /// the applet `applet_id` to another sign-in. The host forgets the watch values it kept, of
+    /// that applet or, without one, of every applet.
+    WebsiteDataRemoved {
+        #[serde(default)]
+        applet_id: Option<String>,
+    },
     Tick,
     /// Android asked the process to free memory (`ComponentCallbacks2` level). At 40
     /// (`TRIM_MEMORY_BACKGROUND`) or above, the host retires every applet whose window is not resumed.
@@ -1335,10 +1342,20 @@ pub enum Call {
         spec: Value,
         #[serde(default)]
         when: Option<Value>,
+        /// The host also keeps the watch's last value on the phone, for the next start of the applet.
+        #[serde(default)]
+        persist: bool,
     },
     /// Ends the subscription to watch `id` in `context`; the host closes the page's watch.
     #[serde(rename = "watch.unsubscribe")]
     WatchUnsubscribe { context: String, id: String },
+    /// Forgets the watch values the host kept for the applet, in memory and on the phone: those of
+    /// `context`, or of every context when it is absent. Answers `{}`.
+    #[serde(rename = "store.forget")]
+    StoreForget {
+        #[serde(default)]
+        context: Option<String>,
+    },
     /// Cancels one call of the asking document in `context`, or all of them when `call_id` is absent.
     #[serde(rename = "page.cancel")]
     PageCancel {
