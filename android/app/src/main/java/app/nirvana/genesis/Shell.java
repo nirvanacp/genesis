@@ -360,13 +360,37 @@ final class Shell implements Views.Listener, Ui.Actions {
     }
 
     /**
-     * The applet's own page pauses shortly after its window leaves the front, late enough for it
-     * to save its state first, and runs again when the window returns.
+     * Runs the applet's own page and, while its window is in front but a website covers it, lets
+     * it rest again after `FOREGROUND_PAUSE_MS`. Everything that gives the covered page work
+     * calls this first: a message from the host, the window coming to the front, a change of
+     * what covers it. WebView freezes a page paused for about a minute, and a frozen page runs no
+     * timers and receives no messages, so the page must be running before its work arrives.
      */
-    private final Runnable pauseForeground = () -> {
+    private void wakeForeground() {
         Views.Page page = foregroundPage();
-        if (page != null && !this.inFront) ((WebViewPage) page.tab).web.onPause();
-    };
+        if (page == null || !inFront) return;
+        bar.removeCallbacks(restSoon);
+        bar.removeCallbacks(wakeAgain);
+        ((WebViewPage) page.tab).web.onResume();
+        if (foregroundCovered() && !Perf.activityOff()) bar.postDelayed(restSoon, FOREGROUND_PAUSE_MS);
+    }
+
+    /**
+     * Pauses the applet's own page once it has been quiet while covered, or shortly after its
+     * window leaves the front, late enough for it to save its state first. A covered page in
+     * front wakes again every `FOREGROUND_WAKE_MS`, well before the freeze, so its own timers
+     * keep running; a page whose window is behind runs again when the window returns.
+     */
+    private void restForeground() {
+        Views.Page page = foregroundPage();
+        if (page == null || (inFront && !foregroundCovered())) return;
+        if (DebugLog.any) DebugLog.log(page.ref.optString("appletId"), "foreground.rest", "front", inFront);
+        ((WebViewPage) page.tab).web.onPause();
+        if (inFront) bar.postDelayed(wakeAgain, FOREGROUND_WAKE_MS);
+    }
+
+    private final Runnable restSoon = this::restForeground;
+    private final Runnable wakeAgain = this::wakeForeground;
 
     /** Reparents the context's WebView above the foreground. Nothing reloads; the page keeps running. */
     void revealContext(JSONObject ref, String title) {
@@ -448,17 +472,18 @@ final class Shell implements Views.Listener, Ui.Actions {
      * Shows the applet's own page once it is ready, and only while no website covers it. The
      * website bar with a revealed context or a popup fills the applet container. A WebView that
      * is only invisible still counts as a visible page to its engine, which keeps asking for
-     * frames it never gets, so the covered page is also paused: its `visibilityState` becomes
-     * "hidden" and its animations stop. Its scripts and messages keep running. The page runs and
-     * is shown again in the same pass that removes the website, before the next frame is drawn.
+     * frames it never gets, so the covered page is also paused while it is quiet: its
+     * `visibilityState` becomes "hidden" and its animations stop. A paused page runs scripts and
+     * receives messages only until WebView freezes it, about a minute later, so the pause never
+     * lasts that long (see `wakeForeground`). The page runs and is shown again in the same pass
+     * that removes the website, before the next frame is drawn.
      */
     private void showForeground() {
         Views.Page page = foregroundPage();
         if (page == null) return;
         boolean covered = foregroundCovered();
         android.webkit.WebView web = ((WebViewPage) page.tab).web;
-        if (covered && !Perf.activityOff()) web.onPause();
-        else if (inFront) web.onResume();
+        wakeForeground();
         int visibility = foregroundReady && !covered ? View.VISIBLE : View.INVISIBLE;
         if (web.getVisibility() == visibility) return;
         if (DebugLog.any) DebugLog.log(page.ref.optString("appletId"), "foreground.shown", "shown", visibility == View.VISIBLE);
@@ -472,6 +497,8 @@ final class Shell implements Views.Listener, Ui.Actions {
     void postMessage(JSONObject ref, String payload) {
         Views.Page page = pages.get(key(ref));
         if (page == null) return;
+        // The covered applet page may be paused; it runs before its message arrives.
+        if (page.isForeground() && foregroundCovered()) wakeForeground();
         if (!Perf.trace()) { page.post(payload); return; }
         if (page.isForeground() && !page.emitTraced && payload.contains("\"name\":\"page.emit\"") && payload.contains("\"kind\":\"snapshot\"")) {
             page.emitTraced = true;
@@ -1470,7 +1497,10 @@ final class Shell implements Views.Listener, Ui.Actions {
     private static final Set<String> featuresAsked = new java.util.HashSet<>();
     /** True between the window's resume and pause. */
     private boolean inFront;
+    /** How long the applet's page keeps running after its last work while covered or behind. */
     private static final long FOREGROUND_PAUSE_MS = 2000;
+    /** How long a covered applet page stays paused at most: half the time WebView takes to freeze it. */
+    private static final long FOREGROUND_WAKE_MS = 30_000;
     private static final long LOG_DELETE_REFRESH_MS = 500;
     /** The open engine-switch question, or null. */
     private android.app.Dialog featureDialog;
@@ -1500,10 +1530,10 @@ final class Shell implements Views.Listener, Ui.Actions {
     void frontChanged(boolean front) {
         inFront = front;
         if (DebugLog.any) DebugLog.log(appletId, "window.front", "front", front);
-        bar.removeCallbacks(pauseForeground);
-        Views.Page page = foregroundPage();
-        if (front && page != null && (!foregroundCovered() || Perf.activityOff())) ((WebViewPage) page.tab).web.onResume();
-        else if (!front && !Perf.activityOff()) bar.postDelayed(pauseForeground, FOREGROUND_PAUSE_MS);
+        bar.removeCallbacks(restSoon);
+        bar.removeCallbacks(wakeAgain);
+        if (front) wakeForeground();
+        else if (!Perf.activityOff()) bar.postDelayed(restSoon, FOREGROUND_PAUSE_MS);
         askWaitingFeature();
     }
 
