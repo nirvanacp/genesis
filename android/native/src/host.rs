@@ -799,11 +799,15 @@ impl Host {
         }
         let Some(context) = self.context_mut(&view.applet_id, id) else { return };
         let waiting = context.navigating_since.is_some();
+        let moved = crate::store::without_fragment(&context.url) != crate::store::without_fragment(&reported.url);
         context.url = reported.url.clone();
         context.index = reported.index;
         context.size = reported.size;
         context.can_go_back = reported.can_go_back;
         context.can_go_forward = reported.can_go_forward;
+        if moved {
+            self.ask_store_again(&view.applet_id, id);
+        }
         if waiting && !same_document {
             self.retire_document(&view);
         }

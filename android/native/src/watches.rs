@@ -6,7 +6,8 @@
 //!
 //! The messages of a subscribed stream also go to the store thread (`store.rs`), which keeps the
 //! stream's last value per URL. A new subscription asks it for the value of the context's URL and
-//! shows it, marked `cached`, until the page's own snapshot arrives.
+//! shows it, marked `cached`, until the page's own snapshot arrives. A subscription asks again
+//! when its context navigates to another URL.
 use crate::{
     contexts::{CallHandle, Subscription, WatchCall},
     debug_log,
@@ -67,6 +68,24 @@ impl Host {
         let Some(view) = session.contexts.get(context) else { return };
         if !subscription.live {
             store::get(store::Key::new(applet_id, context, id, &view.url), subscription.fingerprint, subscription.serial);
+        }
+    }
+
+    /// The context committed a navigation to another URL (a fragment change is the same page):
+    /// its subscriptions wait for the new page's first data, and until then take the value the
+    /// store keeps for the new URL. An answer still on its way for the old URL is refused by
+    /// `store_cached`.
+    pub fn ask_store_again(&mut self, applet_id: &str, context: &str) {
+        let Some(session) = self.contexts.sessions.get_mut(applet_id) else { return };
+        let mut ids = Vec::new();
+        for ((c, id), subscription) in session.subscriptions.iter_mut() {
+            if c == context {
+                subscription.live = false;
+                ids.push(id.clone());
+            }
+        }
+        for id in ids {
+            self.ask_store(applet_id, context, &id);
         }
     }
 
