@@ -49,6 +49,7 @@ abstract class WindowActivity extends Activity implements Shell.Owner {
      * run Genesis; it then shows why and reports nothing.
      */
     boolean createWindow() {
+        WebFeatures.startUp(this);
         if (!WebFeatures.supported()) {
             Shell.unsupported(this);
             return false;

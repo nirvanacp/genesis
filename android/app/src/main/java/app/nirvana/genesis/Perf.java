@@ -17,6 +17,8 @@ import java.util.Map;
  * ui_warmup:  on starts the applet screens' renderer when the first window opens (an experiment).
  * light:      off lets covered websites load images, as before light pages.
  * light_fonts: on also answers a covered website's web font requests with nothing (an experiment).
+ * webview_startup: off starts the WebView engine on the main thread at its first use, instead of
+ *             on a background thread when the first window opens.
  * store:      off makes the host keep no cached watch values; live values arrive as before.
  */
 final class Perf {
@@ -51,6 +53,8 @@ final class Perf {
     static boolean lightOff() { return "off".equals(get("light")); }
 
     static boolean lightFonts() { return "on".equals(get("light_fonts")); }
+
+    static boolean webViewStartUpOff() { return "off".equals(get("webview_startup")); }
 
     static boolean storeOff() { return "off".equals(get("store")); }
 
