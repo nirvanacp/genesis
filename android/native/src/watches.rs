@@ -3,10 +3,15 @@
 //! the subscription lasts. Host-made calls are ordinary page calls, so they keep the context
 //! awake and expire at their deadline, but their results go to no document: an open that failed
 //! reaches the foreground as a `status` emit with `status: "error"`.
+//!
+//! The messages of a subscribed stream also go to the store thread (`store.rs`), which keeps the
+//! stream's last value per URL. A new subscription asks it for the value of the context's URL and
+//! shows it, marked `cached`, until the page's own snapshot arrives.
 use crate::{
     contexts::{CallHandle, Subscription, WatchCall},
     debug_log,
     host::Host,
+    store,
 };
 use genesis_contracts::*;
 use serde_json::{Value, json};
@@ -39,14 +44,115 @@ impl Host {
                 }
                 session.next_subscription += 1;
                 let serial = session.next_subscription;
-                session.subscriptions.insert(key, Subscription { spec, when, serial, open_in: None });
+                let fingerprint = store::fingerprint(&spec);
+                session.subscriptions.insert(key, Subscription { spec, when, serial, open_in: None, fingerprint, live: false });
             }
         }
         if debug_log::on(applet_id) {
             debug_log::host(applet_id, "watch.subscribe", json!({ "context": context, "watch": id }));
         }
         self.open_watch(applet_id, &context, &id, now);
+        self.ask_store(applet_id, &context, &id);
         Ok(json!({}))
+    }
+
+    /// Asks the store for the value it keeps at the context's URL, unless the page already sent one.
+    fn ask_store(&self, applet_id: &str, context: &str, id: &str) {
+        if self.store_off {
+            return;
+        }
+        let Some(session) = self.session(applet_id) else { return };
+        let Some(subscription) = session.subscriptions.get(&(context.to_string(), id.to_string())) else { return };
+        let Some(view) = session.contexts.get(context) else { return };
+        if !subscription.live {
+            store::get(store::Key::new(applet_id, context, id, &view.url), subscription.fingerprint, subscription.serial);
+        }
+    }
+
+    /// A value the store kept: the foreground gets it as a snapshot marked `cached`, when the
+    /// subscription that asked still waits for the page's first snapshot at that URL.
+    #[allow(clippy::too_many_arguments)]
+    pub fn store_cached(&mut self, applet_id: &str, context: &str, stream: &str, serial: u64, url: &str, at: u64, snapshot: Value) {
+        if self.store_off {
+            return;
+        }
+        let Some(session) = self.session(applet_id) else { return };
+        let Some(subscription) = session.subscriptions.get(&(context.to_string(), stream.to_string())) else { return };
+        let Some(view) = session.contexts.get(context) else { return };
+        if subscription.serial != serial || subscription.live || store::without_fragment(&view.url) != url {
+            return;
+        }
+        let current_url = view.url.clone();
+        let generation = self.context_view(applet_id, context).and_then(|t| self.documents.current(&t)).map_or(0, |d| d.generation);
+        if debug_log::on(applet_id) {
+            let bytes = serde_json::to_vec(&snapshot).map_or(0, |b| b.len());
+            let age_ms = crate::host::now_ms().saturating_sub(at);
+            debug_log::host(applet_id, "store.cached", json!({ "context": context, "watch": stream, "bytes": bytes, "ageMs": age_ms }));
+        }
+        let message = json!({
+            "context": context, "generation": generation, "stream": stream, "kind": EmitKind::Snapshot,
+            "seq": 0, "view": { "generation": generation, "n": 0, "url": current_url }, "url": current_url,
+            "data": snapshot, "cached": true, "at": at,
+        });
+        self.foreground_event(applet_id, "page.emit", message);
+    }
+
+    /// A message of the page's watch stream: a snapshot makes the subscription live, and every
+    /// message goes to the store. One the store's queue cannot take drops the stream's value
+    /// there and asks the page for a fresh snapshot.
+    #[allow(clippy::too_many_arguments)]
+    pub fn watch_emitted(&mut self, applet_id: &str, context: &str, stream: &str, kind: EmitKind, seq: u64, view: &Value, url: &str, data: &Value) {
+        let Some(session) = self.contexts.sessions.get_mut(applet_id) else { return };
+        let Some(subscription) = session.subscriptions.get_mut(&(context.to_string(), stream.to_string())) else { return };
+        if kind == EmitKind::Snapshot {
+            subscription.live = true;
+        }
+        if self.store_off {
+            return;
+        }
+        let emit = store::Emit {
+            key: store::Key::new(applet_id, context, stream, url),
+            spec: subscription.fingerprint,
+            kind,
+            generation: view["generation"].as_u64().unwrap_or(0),
+            n: view["n"].as_u64().unwrap_or(0),
+            seq,
+            data: data.clone(),
+        };
+        let stream_key = (applet_id.to_string(), context.to_string(), stream.to_string());
+        match store::emit(emit) {
+            store::Sent::Queued if kind == EmitKind::Snapshot => {
+                self.store_dirty.remove(&stream_key);
+            }
+            store::Sent::Full if self.store_dirty.insert(stream_key) => {
+                store::drop_stream(applet_id, context, stream);
+                if debug_log::on(applet_id) {
+                    debug_log::host(applet_id, "store.dirty", json!({ "context": context, "watch": stream }));
+                }
+                self.resync_watch(applet_id, context, stream, crate::host::mono_ms());
+            }
+            _ => {}
+        }
+    }
+
+    /// The store missed a message of the stream and dropped its value.
+    pub fn store_resync(&mut self, applet_id: &str, context: &str, stream: &str, now: u64) {
+        if debug_log::on(applet_id) {
+            debug_log::host(applet_id, "store.resync", json!({ "context": context, "watch": stream }));
+        }
+        self.resync_watch(applet_id, context, stream, now);
+    }
+
+    /// Asks the document the watch is open in for a fresh snapshot.
+    fn resync_watch(&mut self, applet_id: &str, context: &str, id: &str, now: u64) {
+        let Some(target) = self.context_view(applet_id, context) else { return };
+        let Some(document) = self.documents.current(&target).map(|d| d.id.clone()) else { return };
+        let Some(subscription) = self.session(applet_id).and_then(|s| s.subscriptions.get(&(context.to_string(), id.to_string()))) else { return };
+        if subscription.open_in.as_ref() != Some(&document) {
+            return;
+        }
+        let watch = WatchCall { id: id.into(), serial: subscription.serial };
+        self.watch_call(applet_id, context, document, "watch.resync", json!({ "id": id }), watch, now);
     }
 
     /// Ends the subscription and closes the watch in the document it was opened in, if still bound.

@@ -678,6 +678,7 @@ impl Host {
         if let Some(context) = self.context_mut(&view.applet_id, id) {
             context.last_view = Some(page_view.clone());
         }
+        self.watch_emitted(&view.applet_id, id, &stream, kind, seq, &page_view, &url, &data);
         if debug_log::on(&view.applet_id) {
             debug_log::host(&view.applet_id, "page.emit", json!({ "context": id, "kind": kind, "bytes": size }));
         }

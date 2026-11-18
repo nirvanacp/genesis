@@ -18,6 +18,7 @@ mod services;
 mod source;
 mod storage;
 mod storage_worker;
+mod store;
 mod watches;
 mod writer;
 
@@ -100,6 +101,11 @@ pub extern "system" fn Java_app_nirvana_genesis_NativeBridge_configureStorage<'l
                     let vm = env.get_java_vm().map_err(|e| e.to_string())?;
                     let callback = env.new_global_ref(&class).map_err(|e| e.to_string())?;
                     servelets::start(files.join("servelets"), vm, callback)?;
+                }
+                if !store::initialized() {
+                    let vm = env.get_java_vm().map_err(|e| e.to_string())?;
+                    let callback = env.new_global_ref(&class).map_err(|e| e.to_string())?;
+                    store::start(vm, callback)?;
                 }
                 Ok(())
             }));

@@ -101,6 +101,10 @@ pub struct Subscription {
     pub serial: u64,
     /// The context document the host sent `watch.open` to, until that open fails.
     pub open_in: Option<String>,
+    /// The store's fingerprint of `spec`, so a value read with another specification is not served.
+    pub fingerprint: u64,
+    /// A snapshot from the page reached the foreground, so a kept value would be older.
+    pub live: bool,
 }
 
 impl CallHandle {

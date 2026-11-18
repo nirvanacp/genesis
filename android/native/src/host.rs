@@ -10,7 +10,7 @@ use crate::{
 use genesis_contracts::*;
 use serde_json::{Value, json};
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, HashMap, HashSet},
     path::{Path, PathBuf},
     sync::OnceLock,
     time::{Instant, SystemTime, UNIX_EPOCH},
@@ -56,6 +56,9 @@ pub struct Host {
     pub store_off: bool,
     /// When the wake the activity controller last asked for is due; 0 before the first.
     pub activity_wake_ms: u64,
+    /// Watch streams (applet, context, stream) whose message the store missed, until a snapshot
+    /// reaches it again.
+    pub store_dirty: HashSet<(String, String, String)>,
 }
 
 /// Wall-clock milliseconds since the Unix epoch, for times that are saved, sent out of the host or
@@ -146,6 +149,10 @@ impl Host {
                 self.finish_op(request_id, None, Err(ErrorBody::new(code, message)));
             }
             ShellEvent::StorageCompleted { payload } => self.storage_completed(&payload)?,
+            ShellEvent::StoreCached { applet_id, context, stream, serial, url, at, snapshot } => {
+                self.store_cached(&applet_id, &context, &stream, serial, &url, at, snapshot)
+            }
+            ShellEvent::StoreResync { applet_id, context, stream } => self.store_resync(&applet_id, &context, &stream, now),
             ShellEvent::Tick => self.tick(now),
             ShellEvent::TrimMemory { level } => self.trim_memory(level),
             event @ ShellEvent::FetchCompleted { .. } => self.fetch_completed(event),
