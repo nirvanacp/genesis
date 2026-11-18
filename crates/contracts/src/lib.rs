@@ -102,6 +102,20 @@ impl TryFrom<String> for Role {
 // ---------------------------------------------------------------------------------------------
 // Shell events and commands
 
+/// What a debug log's first line says about the app, its WebView and the phone. A shell that
+/// does not send a field leaves it empty or zero.
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct DeviceInfo {
+    pub app_version: String,
+    pub app_code: u64,
+    pub webview_package: String,
+    pub webview_version: String,
+    pub model: String,
+    pub android_release: String,
+    pub sdk: u32,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum ShellEvent {
@@ -124,6 +138,9 @@ pub enum ShellEvent {
         /// The host keeps no cached watch values. For comparing and debugging.
         #[serde(default)]
         store_off: bool,
+        /// The app, WebView and phone, for the first line of a debug log.
+        #[serde(default)]
+        device: DeviceInfo,
     },
     /// The manager window (the Genesis list) was created. It has none of an earlier flow's screens.
     ManagerAttached,

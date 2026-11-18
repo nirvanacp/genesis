@@ -11,7 +11,7 @@
 //! which are never refused. The thread answers a copy and a delete with a shell event, so the UI
 //! thread never waits for a file.
 use crate::host::now_ms;
-use genesis_contracts::{LogEntry, ShellEvent, compat};
+use genesis_contracts::{DeviceInfo, LogEntry, ShellEvent, compat};
 use jni::{JavaVM, objects::{Global, JClass}};
 use serde_json::{Value, json};
 use std::{
@@ -52,6 +52,8 @@ static DROPPED: LazyLock<Mutex<HashMap<String, u64>>> = LazyLock::new(Mutex::def
 static QUEUE: OnceLock<Option<Sender<Message>>> = OnceLock::new();
 static QUEUED: AtomicUsize = AtomicUsize::new(0);
 static DIRECTORIES: Mutex<Option<(PathBuf, PathBuf)>> = Mutex::new(None);
+/// The app, WebView and phone, as each new file's first line names them.
+static DEVICE: Mutex<Value> = Mutex::new(Value::Null);
 /// How the log thread reaches the UI thread with its answers.
 static DELIVERY: OnceLock<(JavaVM, Global<JClass<'static>>)> = OnceLock::new();
 
@@ -94,9 +96,11 @@ fn deliver(event: &ShellEvent) {
     }
 }
 
-/// Where logs and exports go: the app's files and cache directories. Set at `Attach`.
-pub fn configure(files_dir: &Path, cache_dir: &Path) {
+/// Where logs and exports go, the app's files and cache directories, and what a file's first
+/// line says about the app and the phone. Set at `Attach`.
+pub fn configure(files_dir: &Path, cache_dir: &Path, device: &DeviceInfo) {
     *DIRECTORIES.lock().unwrap_or_else(|e| e.into_inner()) = Some((files_dir.join("logs"), cache_dir.join("shared-logs")));
+    *DEVICE.lock().unwrap_or_else(|e| e.into_inner()) = serde_json::to_value(device).unwrap_or_default();
 }
 
 fn directories() -> Option<(PathBuf, PathBuf)> {
@@ -315,7 +319,8 @@ fn open_newest(applet_id: &str) -> Option<(BufWriter<File>, u64)> {
     let mut size = file.metadata().map(|m| m.len()).unwrap_or(0);
     let mut writer = BufWriter::new(file);
     if size == 0 {
-        let header = json!({ "t": now_ms(), "src": "host", "ev": "log.header", "d": { "applet": applet_id, "protocol": compat::PROTOCOL } });
+        let device = DEVICE.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let header = json!({ "t": now_ms(), "src": "host", "ev": "log.header", "d": { "applet": applet_id, "protocol": compat::PROTOCOL, "device": device } });
         let header = header.to_string();
         writeln!(writer, "{header}").ok()?;
         size = header.len() as u64 + 1;

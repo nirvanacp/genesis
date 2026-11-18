@@ -57,6 +57,7 @@ fn dispatch(input: &str) -> String {
                     activity_off: host.activity_off,
                     light_off: host.light_off,
                     store_off: host.store_off,
+                    device: host.device.clone(),
                 });
                 *host = Host::default();
                 if let Some(attach) = attach {

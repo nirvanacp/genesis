@@ -12,6 +12,9 @@ interface WebsitePage {
     /** The view the shell places in the hidden contexts, the revealed container or the popup sheet. */
     View view();
 
+    /** Writes the console messages counted since the last line to the applet's debug log, if any. */
+    default void logConsoleCounts() {}
+
     /** The committed URL, or null before the first commit. */
     String url();
 

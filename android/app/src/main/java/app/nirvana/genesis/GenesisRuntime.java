@@ -83,7 +83,8 @@ final class GenesisRuntime implements NativeBridge.StorageResults {
         attached = true;
         try {
             send(Bridge.event("attach").put("filesDir", app.getFilesDir().getAbsolutePath()).put("cacheDir", app.getCacheDir().getAbsolutePath())
-                .put("debuggable", debuggable).put("activityOff", Perf.activityOff()).put("lightOff", Perf.lightOff()).put("storeOff", Perf.storeOff()));
+                .put("debuggable", debuggable).put("activityOff", Perf.activityOff()).put("lightOff", Perf.lightOff()).put("storeOff", Perf.storeOff())
+                .put("device", device()));
         } catch (JSONException error) {
             throw new IllegalStateException(error);
         }
@@ -94,6 +95,19 @@ final class GenesisRuntime implements NativeBridge.StorageResults {
     }
 
     boolean attached() { return attached; }
+
+    /** The app, WebView and phone, for the first line of a debug log. A value that cannot be read is left out. */
+    private JSONObject device() throws JSONException {
+        JSONObject device = new JSONObject().put("model", android.os.Build.MODEL).put("androidRelease", android.os.Build.VERSION.RELEASE)
+            .put("sdk", android.os.Build.VERSION.SDK_INT);
+        try {
+            android.content.pm.PackageInfo info = app.getPackageManager().getPackageInfo(app.getPackageName(), 0);
+            device.put("appVersion", info.versionName).put("appCode", androidx.core.content.pm.PackageInfoCompat.getLongVersionCode(info));
+            android.content.pm.PackageInfo webView = androidx.webkit.WebViewCompat.getCurrentWebViewPackage(app);
+            if (webView != null) device.put("webviewPackage", webView.packageName).put("webviewVersion", webView.versionName);
+        } catch (android.content.pm.PackageManager.NameNotFoundException | RuntimeException ignored) { /* The header leaves them empty. */ }
+        return device;
+    }
 
     void send(JSONObject event) {
         if (attached) bridge.send(event);

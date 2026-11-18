@@ -282,7 +282,10 @@ final class Shell implements Views.Listener, Ui.Actions {
         SiteData site = "foreground".equals(ref.optString("role")) ? uiSites() : sitesFor(ref.optString("appletId"));
         Views.Page page = views.document(ref, set(origins), startScript, site);
         pages.put(key(ref), page);
-        if (DebugLog.any) DebugLog.log(ref.optString("appletId"), "view.create", "role", ref.optString("role"), "profile", site.profile);
+        if (DebugLog.any) {
+            DebugLog.log(ref.optString("appletId"), "view.create", "role", ref.optString("role"), "profile", site.profile,
+                "engine", page.tab instanceof GeckoPage ? GeckoEngine.ID : WebViewSites.ENGINE);
+        }
         if (page.isForeground()) {
             foregroundReady = false;
             page.tab.view().setVisibility(View.INVISIBLE);
@@ -296,7 +299,10 @@ final class Shell implements Views.Listener, Ui.Actions {
     void destroyView(JSONObject ref) {
         Views.Page page = pages.remove(key(ref));
         if (page == null) return;
-        if (DebugLog.any) DebugLog.log(ref.optString("appletId"), "view.destroy", "role", ref.optString("role"));
+        if (DebugLog.any) {
+            page.tab.logConsoleCounts();
+            DebugLog.log(ref.optString("appletId"), "view.destroy", "role", ref.optString("role"));
+        }
         closeDialogs(page);
         endGrant(page, false);
         downloads.drop(page);
@@ -344,7 +350,10 @@ final class Shell implements Views.Listener, Ui.Actions {
     void setActivity(JSONObject ref, String level) {
         Views.Page page = pages.get(key(ref));
         if (page == null || !page.isContext() || page == revealedPage) return;
-        if (DebugLog.any) DebugLog.log(ref.optString("appletId"), "view.activity", "role", ref.optString("role"), "level", level);
+        if (DebugLog.any) {
+            page.tab.logConsoleCounts();
+            DebugLog.log(ref.optString("appletId"), "view.activity", "role", ref.optString("role"), "level", level);
+        }
         page.tab.setActivity(level);
     }
 
@@ -355,7 +364,10 @@ final class Shell implements Views.Listener, Ui.Actions {
     void setLight(JSONObject ref, boolean on) {
         Views.Page page = pages.get(key(ref));
         if (page == null || !page.isContext() || on && page == revealedPage) return;
-        if (DebugLog.any) DebugLog.log(ref.optString("appletId"), "view.light", "role", ref.optString("role"), "on", on);
+        if (DebugLog.any) {
+            page.tab.logConsoleCounts();
+            DebugLog.log(ref.optString("appletId"), "view.light", "role", ref.optString("role"), "on", on);
+        }
         page.tab.setLight(on);
     }
 

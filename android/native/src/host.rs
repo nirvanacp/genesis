@@ -55,6 +55,8 @@ pub struct Host {
     pub light_off: bool,
     /// The host keeps no cached watch values: the debug switch that turns the store's cache off.
     pub store_off: bool,
+    /// The app, WebView and phone the shell named at `Attach`, for debug logs.
+    pub device: DeviceInfo,
     /// When the wake the activity controller last asked for is due; 0 before the first.
     pub activity_wake_ms: u64,
     /// Watch streams (applet, context, stream) whose message the store missed, until a snapshot
@@ -79,12 +81,13 @@ impl Host {
     pub fn dispatch(&mut self, event: ShellEvent) -> Result<Vec<ShellCommand>, String> {
         let now = mono_ms();
         match event {
-            ShellEvent::Attach { files_dir, cache_dir, debuggable, activity_off, light_off, store_off } => {
+            ShellEvent::Attach { files_dir, cache_dir, debuggable, activity_off, light_off, store_off, device } => {
                 self.end_flow();
                 self.contexts = Contexts::default();
                 self.documents = Documents::default();
                 self.applets = Applets::load(Path::new(&files_dir));
-                debug_log::configure(Path::new(&files_dir), Path::new(&cache_dir));
+                debug_log::configure(Path::new(&files_dir), Path::new(&cache_dir), &device);
+                self.device = device;
                 self.files_dir = Some(files_dir.into());
                 self.cache_dir = Some(cache_dir.into());
                 self.debuggable = debuggable;

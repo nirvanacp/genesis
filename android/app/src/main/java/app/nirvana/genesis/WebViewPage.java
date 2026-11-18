@@ -99,6 +99,11 @@ final class WebViewPage implements WebsitePage {
     private final Views.Page page;
     /** The longest applet console message the debug log keeps. */
     private static final int CONSOLE_MAX_CHARS = 300;
+    /** A website's console messages are counted, and one debug log line is written for this many. */
+    private static final int CONSOLE_COUNT_MAX = 50;
+    /** A website's console messages since its last debug log line, and the origin of the newest. */
+    private int consoleErrors, consoleWarnings, consoleOther;
+    private String consoleOrigin;
     /** Serves the applet's files to the foreground; null for websites. */
     private final WebViewAssetLoader assets;
     final WebView web;
@@ -411,6 +416,13 @@ final class WebViewPage implements WebsitePage {
         }
     }
 
+    @Override public void logConsoleCounts() {
+        if (consoleErrors + consoleWarnings + consoleOther == 0) return;
+        DebugLog.log(page.ref.optString("appletId"), "website.console", "role", page.role, "error", consoleErrors, "warning", consoleWarnings,
+            "other", consoleOther, "origin", consoleOrigin);
+        consoleErrors = consoleWarnings = consoleOther = 0;
+    }
+
     private final class Chrome extends WebChromeClient {
         /** The media request being asked about; null once answered or withdrawn. */
         private PermissionRequest asking;
@@ -425,8 +437,8 @@ final class WebViewPage implements WebsitePage {
 
         /**
          * With the applet's debug log on: the applet page's errors and warnings, cut short, with
-         * their script path and line; for a website only the level and origin, never its text.
-         * Returning false keeps WebView's own logcat line.
+         * their script path and line; for a website only a count per level and the origin, never
+         * its text. Returning false keeps WebView's own logcat line.
          */
         @Override public boolean onConsoleMessage(android.webkit.ConsoleMessage message) {
             if (!DebugLog.any) return false;
@@ -434,7 +446,12 @@ final class WebViewPage implements WebsitePage {
             String appletId = page.ref.optString("appletId"), name = level.name().toLowerCase(java.util.Locale.ROOT);
             Uri source = Uri.parse(String.valueOf(message.sourceId()));
             if (!page.isForeground()) {
-                DebugLog.log(appletId, "website.console", "role", page.role, "level", name, "origin", source.getScheme() + "://" + source.getAuthority());
+                if (level == android.webkit.ConsoleMessage.MessageLevel.ERROR) consoleErrors++;
+                else if (level == android.webkit.ConsoleMessage.MessageLevel.WARNING) consoleWarnings++;
+                else consoleOther++;
+                // An inline script has no source address.
+                consoleOrigin = source.getScheme() == null ? "inline" : source.getScheme() + "://" + source.getAuthority();
+                if (consoleErrors + consoleWarnings + consoleOther >= CONSOLE_COUNT_MAX) logConsoleCounts();
             } else if (level == android.webkit.ConsoleMessage.MessageLevel.ERROR || level == android.webkit.ConsoleMessage.MessageLevel.WARNING) {
                 String text = String.valueOf(message.message());
                 DebugLog.log(appletId, "console", "level", name, "message", text.length() > CONSOLE_MAX_CHARS ? text.substring(0, CONSOLE_MAX_CHARS) : text,
