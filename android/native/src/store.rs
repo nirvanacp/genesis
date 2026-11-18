@@ -329,9 +329,11 @@ impl Store {
             let empty_since = snapshot.as_ref().is_some_and(empty).then(|| self.now());
             // An empty read keeps the value it replaced until the page had its time to render.
             let before = empty_since.and(old).filter(|e| e.spec == spec).and_then(Entry::with_data);
+            // A value too large to keep leaves no file either: the file would be older than the page.
+            let unpersist = !persist || snapshot.is_none();
             let entry = Entry { spec, generation, n, seq, snapshot, at, empty_since, before, used: self.clock, persist, unsaved: true, written_ms, saved_bytes };
             self.values.insert(key.clone(), entry);
-            self.unpersist_if(&key, !persist);
+            self.unpersist_if(&key, unpersist);
             self.evict(&key.applet_id);
             return None;
         }
@@ -371,7 +373,9 @@ impl Store {
         entry.at = crate::host::now_ms();
         entry.unsaved = true;
         entry.persist = persist;
-        self.unpersist_if(&key, !persist);
+        // A value that outgrew the limit leaves no file either: the file would be older than the page.
+        let unpersist = !persist || entry.snapshot.is_none();
+        self.unpersist_if(&key, unpersist);
         None
     }
 
@@ -404,7 +408,7 @@ impl Store {
         }
     }
 
-    /// Deletes the file of a value that is no longer persisted.
+    /// Deletes the file of a value that is no longer persisted, or no longer kept.
     fn unpersist_if(&mut self, key: &Key, gone: bool) {
         let Some(entry) = self.values.get_mut(key).filter(|e| gone && e.written_ms.is_some()) else { return };
         entry.written_ms = None;
@@ -456,7 +460,8 @@ impl Store {
         Some(Duration::from_millis(next.saturating_sub(now)))
     }
 
-    /// Writes every persisted value that changed and was not written in the last interval.
+    /// Writes every persisted value that changed and was not written in the last interval. A
+    /// write that failed is tried again after the interval; the file before it, if any, stays.
     fn write_due(&mut self) {
         let now = self.now();
         let due: Vec<Key> = self
@@ -483,10 +488,12 @@ impl Store {
                 debug_log::host(&key.applet_id, "store.write", json!({ "context": key.context, "watch": key.stream, "bytes": bytes.len(), "error": error }));
             }
             let Some(entry) = self.values.get_mut(&key) else { continue };
-            entry.unsaved = false;
-            entry.before = None;
             entry.written_ms = Some(now);
-            entry.saved_bytes = if written.is_ok() { bytes.len() as u64 } else { 0 };
+            if written.is_ok() {
+                entry.unsaved = false;
+                entry.before = None;
+                entry.saved_bytes = bytes.len() as u64;
+            }
             applets.insert(key.applet_id);
         }
         for applet_id in applets {

@@ -174,6 +174,7 @@ impl Host {
                 if let Some(session) = self.session_mut(&view.applet_id) {
                     session.subscriptions.clear();
                 }
+                self.forget_dirty(&view.applet_id, None);
                 self.release_holds(&view.applet_id);
                 self.reset_contexts(&view.applet_id);
             }

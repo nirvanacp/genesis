@@ -140,6 +140,12 @@ impl Host {
         }
     }
 
+    /// Forgets that the store missed a message of one stream (`context`, `stream`), or of every
+    /// stream of the applet: its subscription ended, so no snapshot will reach the store for it.
+    pub fn forget_dirty(&mut self, applet_id: &str, stream: Option<(&str, &str)>) {
+        self.store_dirty.retain(|(a, c, s)| a != applet_id || stream.is_some_and(|stream| stream != (c.as_str(), s.as_str())));
+    }
+
     /// `store.forget`: the store forgets the applet's values of `context`, or of every context.
     /// A subscription waiting for its first snapshot takes no kept value after this.
     pub fn store_forget(&mut self, applet_id: &str, context: Option<String>) -> Result<Value, ErrorBody> {
@@ -205,6 +211,7 @@ impl Host {
         if debug_log::on(applet_id) {
             debug_log::host(applet_id, "watch.unsubscribe", json!({ "context": context, "watch": id }));
         }
+        self.forget_dirty(applet_id, Some((&context, &id)));
         let Some(target) = self.context_view(applet_id, &context) else { return Ok(json!({})) };
         let current = self.documents.current(&target).map(|d| d.id.clone());
         if let Some(document) = current.filter(|d| subscription.open_in.as_ref() == Some(d)) {

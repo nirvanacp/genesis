@@ -570,6 +570,7 @@ impl Host {
     /// Destroys the applet's views. Documents receive `retired` first.
     pub fn retire_session(&mut self, applet_id: &str) {
         let Some(session) = self.contexts.sessions.remove(applet_id) else { return };
+        self.forget_dirty(applet_id, None);
         if debug_log::on(applet_id) {
             debug_log::host(applet_id, "applet.close", json!({}));
         }

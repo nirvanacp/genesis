@@ -865,6 +865,7 @@ impl Host {
         }
         servelets::erase_applet(&applet_id);
         crate::store::erase(Some(&applet_id));
+        self.forget_dirty(&applet_id, None);
         self.deletions.insert(job_id, deletion);
         Ok(())
     }
