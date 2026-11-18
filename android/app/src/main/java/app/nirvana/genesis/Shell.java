@@ -446,20 +446,27 @@ final class Shell implements Views.Listener, Ui.Actions {
 
     /**
      * Shows the applet's own page once it is ready, and only while no website covers it. The
-     * website bar with a revealed context or a popup fills the applet container, and a WebView
-     * that is not shown makes no frames, so the screen's animations stop behind the website. Its
-     * scripts and messages keep running. The page is shown again in the same pass that removes
-     * the website, before the next frame is drawn.
+     * website bar with a revealed context or a popup fills the applet container. A WebView that
+     * is only invisible still counts as a visible page to its engine, which keeps asking for
+     * frames it never gets, so the covered page is also paused: its `visibilityState` becomes
+     * "hidden" and its animations stop. Its scripts and messages keep running. The page runs and
+     * is shown again in the same pass that removes the website, before the next frame is drawn.
      */
     private void showForeground() {
         Views.Page page = foregroundPage();
         if (page == null) return;
-        boolean covered = revealed.getVisibility() == View.VISIBLE || popupSheet.getVisibility() == View.VISIBLE;
+        boolean covered = foregroundCovered();
+        android.webkit.WebView web = ((WebViewPage) page.tab).web;
+        if (covered && !Perf.activityOff()) web.onPause();
+        else if (inFront) web.onResume();
         int visibility = foregroundReady && !covered ? View.VISIBLE : View.INVISIBLE;
-        View view = page.tab.view();
-        if (view.getVisibility() == visibility) return;
+        if (web.getVisibility() == visibility) return;
         if (DebugLog.any) DebugLog.log(page.ref.optString("appletId"), "foreground.shown", "shown", visibility == View.VISIBLE);
-        view.setVisibility(visibility);
+        web.setVisibility(visibility);
+    }
+
+    private boolean foregroundCovered() {
+        return revealed.getVisibility() == View.VISIBLE || popupSheet.getVisibility() == View.VISIBLE;
     }
 
     void postMessage(JSONObject ref, String payload) {
@@ -1495,7 +1502,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         if (DebugLog.any) DebugLog.log(appletId, "window.front", "front", front);
         bar.removeCallbacks(pauseForeground);
         Views.Page page = foregroundPage();
-        if (front && page != null) ((WebViewPage) page.tab).web.onResume();
+        if (front && page != null && (!foregroundCovered() || Perf.activityOff())) ((WebViewPage) page.tab).web.onResume();
         else if (!front && !Perf.activityOff()) bar.postDelayed(pauseForeground, FOREGROUND_PAUSE_MS);
         askWaitingFeature();
     }
