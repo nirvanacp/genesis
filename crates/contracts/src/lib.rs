@@ -210,6 +210,13 @@ pub enum ShellEvent {
     ServiceFailed { request_id: u64, code: ErrorCode, message: String },
     /// A storage worker result, relayed by the shell to the UI thread.
     StorageCompleted { payload: String },
+    /// A watch value the store thread kept, for the subscription `serial` that asked for it,
+    /// relayed by the shell to the UI thread. `url` is the page it was read from, without its
+    /// fragment, and `at` the epoch milliseconds of its last change.
+    StoreCached { applet_id: String, context: String, stream: String, serial: u64, url: String, at: u64, snapshot: Value },
+    /// The store thread missed a message of the stream and dropped the value it kept, relayed by
+    /// the shell to the UI thread. The host asks the page for a fresh snapshot.
+    StoreResync { applet_id: String, context: String, stream: String },
     Tick,
     /// Android asked the process to free memory (`ComponentCallbacks2` level). At 40
     /// (`TRIM_MEMORY_BACKGROUND`) or above, the host retires every applet whose window is not resumed.
