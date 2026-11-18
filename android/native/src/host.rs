@@ -641,23 +641,31 @@ impl Host {
     // -----------------------------------------------------------------------------------------
     // Reveal and Back
 
+    /// The page loads its images again before the shell shows it; the context it replaces is
+    /// covered and light again.
     pub fn reveal(&mut self, context_id: &str, view: ViewRef, title: &str) {
         let Some(session) = self.contexts.sessions.get_mut(&view.applet_id) else { return };
         if session.revealed.as_deref() == Some(context_id) {
             return;
         }
-        if session.revealed.replace(context_id.into()).is_some() {
-            let applet_id = Some(session.applet_id.clone());
-            self.out.push(ShellCommand::CoverContext { applet_id });
+        let applet_id = session.applet_id.clone();
+        let previous = session.revealed.replace(context_id.into());
+        if previous.is_some() {
+            self.out.push(ShellCommand::CoverContext { applet_id: Some(applet_id.clone()) });
         }
+        self.set_light(&applet_id, context_id, false);
         self.out.push(ShellCommand::RevealContext { view, title: title.into() });
+        if let Some(previous) = previous {
+            self.set_light(&applet_id, &previous, true);
+        }
     }
 
     pub fn cover(&mut self, applet_id: &str) {
         let Some(session) = self.session_mut(applet_id) else { return };
-        if session.revealed.take().is_some() {
-            let applet_id = Some(session.applet_id.clone());
-            self.out.push(ShellCommand::CoverContext { applet_id });
+        if let Some(previous) = session.revealed.take() {
+            let applet_id = session.applet_id.clone();
+            self.out.push(ShellCommand::CoverContext { applet_id: Some(applet_id.clone()) });
+            self.set_light(&applet_id, &previous, true);
         }
     }
 
@@ -806,7 +814,8 @@ impl Host {
         );
     }
 
-    /// An applet's views share one renderer, so any loss is total for it: retire the applet once,
+    /// An applet's screens and websites need each other, so losing any renderer under them is total
+    /// for it, whether it ran the screens (shared by every applet) or the websites: retire the applet once,
     /// keep what Reload needs, and explain. A view whose renderer may be dead is never revealed.
     fn renderer_gone(&mut self, view: &ViewRef) {
         if !self.is_live(&view.applet_id) {

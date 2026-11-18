@@ -123,13 +123,31 @@ impl Host {
         // The next context waits for this one to bind, or for as long as a page may take to.
         let waiting = session.contexts.values().any(|c| !c.started());
         session.start_next_at_ms = waiting.then_some(now + ready_ms);
+        let covered = session.revealed.as_deref() != Some(context_id);
         self.out.push(ShellCommand::CreateView {
             view: ViewRef { applet_id: applet_id.into(), role: Role::Context(context_id.into()) },
             url,
             origins,
             start_script: Some(script),
         });
+        if covered {
+            self.set_light(applet_id, context_id, true);
+        }
         true
+    }
+
+    /// A covered context is light: it skips image downloads nobody sees. Reveal lifts it before
+    /// the shell shows the page, and covering sets it again. Only for a started context, and
+    /// never with the `light` switch off. GeckoView has no such setting; its shell ignores it.
+    pub fn set_light(&mut self, applet_id: &str, context_id: &str, on: bool) {
+        if self.light_off || self.session(applet_id).and_then(|s| s.contexts.get(context_id)).is_none_or(|c| !c.started()) {
+            return;
+        }
+        if debug_log::on(applet_id) {
+            debug_log::host(applet_id, "context.light", json!({ "id": context_id, "on": on }));
+        }
+        let view = ViewRef { applet_id: applet_id.into(), role: Role::Context(context_id.into()) };
+        self.out.push(ShellCommand::SetLight { view, on });
     }
 
     /// A context document bound: the applet's next context may start after the stagger.
