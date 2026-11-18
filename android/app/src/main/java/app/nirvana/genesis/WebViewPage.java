@@ -84,6 +84,8 @@ final class WebViewPage implements WebsitePage {
     private final Activity activity;
     private final Views.Listener listener;
     private final Views.Page page;
+    /** The longest applet console message the debug log keeps. */
+    private static final int CONSOLE_MAX_CHARS = 300;
     /** Serves the applet's files to the foreground; null for websites. */
     private final WebViewAssetLoader assets;
     final WebView web;
@@ -394,6 +396,26 @@ final class WebViewPage implements WebsitePage {
          * reaches its own request, including one a newer question replaced, which is refused.
          */
         private Object withdrawn;
+
+        /**
+         * With the applet's debug log on: the applet page's errors and warnings, cut short, with
+         * their script path and line; for a website only the level and origin, never its text.
+         * Returning false keeps WebView's own logcat line.
+         */
+        @Override public boolean onConsoleMessage(android.webkit.ConsoleMessage message) {
+            if (!DebugLog.any) return false;
+            android.webkit.ConsoleMessage.MessageLevel level = message.messageLevel();
+            String appletId = page.ref.optString("appletId"), name = level.name().toLowerCase(java.util.Locale.ROOT);
+            Uri source = Uri.parse(String.valueOf(message.sourceId()));
+            if (!page.isForeground()) {
+                DebugLog.log(appletId, "website.console", "role", page.role, "level", name, "origin", source.getScheme() + "://" + source.getAuthority());
+            } else if (level == android.webkit.ConsoleMessage.MessageLevel.ERROR || level == android.webkit.ConsoleMessage.MessageLevel.WARNING) {
+                String text = String.valueOf(message.message());
+                DebugLog.log(appletId, "console", "level", name, "message", text.length() > CONSOLE_MAX_CHARS ? text.substring(0, CONSOLE_MAX_CHARS) : text,
+                    "source", source.getPath(), "line", message.lineNumber());
+            }
+            return false;
+        }
 
         /**
          * Website pages get protected media (EME, such as Widevine) without asking, shown or hidden,

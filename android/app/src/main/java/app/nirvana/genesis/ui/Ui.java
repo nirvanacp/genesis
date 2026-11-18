@@ -67,6 +67,14 @@ public final class Ui {
         /** Whether the applet's Recents card hides its screen. */
         boolean hiddenInRecents(String appletId);
         void setHiddenInRecents(String appletId, boolean on);
+        /** Whether the applet's debug log is on. Turning it on or off reloads an open applet. */
+        boolean debugLog(String appletId);
+        void setDebugLog(String appletId, boolean on);
+        /** Whether the applet has a debug log to share or delete. */
+        boolean debugLogExists(String appletId);
+        /** Copies the debug log to one file and opens the share sheet with it. */
+        void shareDebugLog(String appletId);
+        void deleteDebugLog(String appletId);
         /** Whether the user turned the applet's notifications on. */
         boolean notificationsOn(String appletId);
         /** Turning them on may ask Android first; `result` gets whether they are on afterwards. */

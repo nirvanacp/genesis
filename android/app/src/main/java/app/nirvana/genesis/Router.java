@@ -126,6 +126,7 @@ final class Router {
                 String accent = Ui.str(command, "accent"), icon = Ui.str(command, "icon");
                 if (shell != null) shell.showApplet(id, name, accent, icon);
                 runtime.shortcuts.opened(id, name, accent, icon);
+                DebugLog.opened(id);
                 break;
             }
             case "createView": {
@@ -200,6 +201,7 @@ final class Router {
                 Shell.forgetApplet(runtime.app, id);
                 break;
             }
+            case "logExported": shareLog(command.getString("appletId"), command.isNull("path") ? null : command.getString("path")); break;
             case "startAppletWindow": start(appletIntent(runtime.app, command.getString("appletId"))); break;
             case "openManager": start(new Intent(runtime.app, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); break;
             case "postNotification":
@@ -282,6 +284,20 @@ final class Router {
     }
 
     /** Starts a window from the one in front, for its transition, or from the application. */
+    /** Offers the applet's exported debug log to the share sheet, readable only by the app the user picks. */
+    private void shareLog(String appletId, String path) {
+        if (path == null) {
+            android.widget.Toast.makeText(runtime.app, "There is no debug log to share", android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Uri uri = androidx.core.content.FileProvider.getUriForFile(runtime.app, runtime.app.getPackageName() + ".logs", new java.io.File(path));
+        Intent send = new Intent(Intent.ACTION_SEND).setType("application/x-ndjson").putExtra(Intent.EXTRA_STREAM, uri)
+            .putExtra(Intent.EXTRA_SUBJECT, "Genesis debug log: " + appletId)
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        send.setClipData(android.content.ClipData.newRawUri(null, uri));
+        start(Intent.createChooser(send, "Share debug log").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+    }
+
     private void start(Intent intent) {
         Activity from = recent == null ? null : recent.activity();
         try {

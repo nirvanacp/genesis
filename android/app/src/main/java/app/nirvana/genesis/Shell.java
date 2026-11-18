@@ -278,6 +278,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         SiteData site = "foreground".equals(ref.optString("role")) ? sites : sitesFor(ref.optString("appletId"));
         Views.Page page = views.document(ref, set(origins), startScript, site);
         pages.put(key(ref), page);
+        if (DebugLog.any) DebugLog.log(ref.optString("appletId"), "view.create", "role", ref.optString("role"));
         if (page.isForeground()) {
             page.tab.view().setVisibility(View.INVISIBLE);
             foreground.addView(page.tab.view(), new FrameLayout.LayoutParams(-1, -1));
@@ -290,6 +291,7 @@ final class Shell implements Views.Listener, Ui.Actions {
     void destroyView(JSONObject ref) {
         Views.Page page = pages.remove(key(ref));
         if (page == null) return;
+        if (DebugLog.any) DebugLog.log(ref.optString("appletId"), "view.destroy", "role", ref.optString("role"));
         closeDialogs(page);
         endGrant(page, false);
         downloads.drop(page);
@@ -337,6 +339,7 @@ final class Shell implements Views.Listener, Ui.Actions {
     void setActivity(JSONObject ref, String level) {
         Views.Page page = pages.get(key(ref));
         if (page == null || !page.isContext() || page == revealedPage) return;
+        if (DebugLog.any) DebugLog.log(ref.optString("appletId"), "view.activity", "role", ref.optString("role"), "level", level);
         page.tab.setActivity(level);
     }
 
@@ -358,6 +361,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         if (popup != null && popup.opener != revealedPage) closePopup();
         if (revealedPage != null && revealedPage != page) coverContext();
         if (revealedPage == page) { bar.setTitle(title); return; }
+        if (DebugLog.any) DebugLog.log(ref.optString("appletId"), "context.reveal", "role", ref.optString("role"));
         View view = page.tab.view();
         sources.removeView(view);
         view.setFocusable(true);
@@ -386,6 +390,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         endGrants();
         Views.Page page = revealedPage;
         if (page == null) return;
+        if (DebugLog.any) DebugLog.log(page.ref.optString("appletId"), "context.cover", "role", page.role);
         closeCustomView();
         cancelPrompts();
         dropRevealed();
@@ -451,6 +456,7 @@ final class Shell implements Views.Listener, Ui.Actions {
             catch (Input.Refused refused) { refusal = refused.getMessage(); }
         }
         String message = refusal;
+        if (DebugLog.any) DebugLog.log(ref.optString("appletId"), "input.trusted", "role", ref.optString("role"), "events", events.length(), "ok", message == null);
         // Answered after this command batch, since the host is still handling the event that sent it.
         bar.post(() -> {
             try {
@@ -484,6 +490,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         try {
             if (page.isRevealed()) return UserActions.done(token, null, null, new JSONObject().put("granted", true).put("expiresInMs", 0));
             endGrant(page, false);
+            if (DebugLog.any) DebugLog.log(page.ref.optString("appletId"), "grant.start", "role", page.role, "grant", kind);
             page.grant = kind;
             page.grantUntil = SystemClock.uptimeMillis() + SitePolicy.GRANT_MS;
             page.grantExpiry = () -> { if (page.grant != null) endGrant(page, false); };
@@ -509,6 +516,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         page.grantUntil = 0;
         if (page.grantExpiry != null) bar.removeCallbacks(page.grantExpiry);
         page.grantExpiry = null;
+        if (DebugLog.any) DebugLog.log(page.ref.optString("appletId"), "grant.end", "role", page.role, "grant", grant, "used", used);
         bar.post(() -> {
             try { owner.send(Bridge.event("grantEnded").put("view", page.ref).put("grant", grant).put("used", used)); }
             catch (JSONException ignored) { /* Unreachable for these values. */ }
@@ -894,6 +902,7 @@ final class Shell implements Views.Listener, Ui.Actions {
     }
 
     @Override public boolean chooseFiles(Views.Page page, Requests.FileRequest request) {
+        if (DebugLog.any) DebugLog.log(page.ref.optString("appletId"), "files.pick", "role", page.role);
         return owner.chooseFiles(request, () -> (page == popup || pages.get(key(page.ref)) == page) && SitePolicy.mayShowUi(page));
     }
 
@@ -1298,7 +1307,10 @@ final class Shell implements Views.Listener, Ui.Actions {
 
     @Override public void removeApplet(String id) { appletEvent("removeApplet", id); }
 
-    @Override public void clearData(String id) { appletEvent("clearData", id); }
+    @Override public void clearData(String id) {
+        DebugLog.forget(activity, id);
+        appletEvent("clearData", id);
+    }
 
     @Override public void keepVersion(String id) { appletEvent("keepVersion", id); }
 
@@ -1406,6 +1418,7 @@ final class Shell implements Views.Listener, Ui.Actions {
     /** True between the window's resume and pause. */
     private boolean inFront;
     private static final long FOREGROUND_PAUSE_MS = 2000;
+    private static final long LOG_DELETE_REFRESH_MS = 500;
     /** The open engine-switch question, or null. */
     private android.app.Dialog featureDialog;
 
@@ -1433,6 +1446,7 @@ final class Shell implements Views.Listener, Ui.Actions {
 
     void frontChanged(boolean front) {
         inFront = front;
+        if (DebugLog.any) DebugLog.log(appletId, "window.front", "front", front);
         bar.removeCallbacks(pauseForeground);
         Views.Page page = foregroundPage();
         if (front && page != null) ((WebViewPage) page.tab).web.onResume();
@@ -1563,6 +1577,30 @@ final class Shell implements Views.Listener, Ui.Actions {
     }
 
     // -----------------------------------------------------------------------------------------
+    // Debug log
+
+    @Override public boolean debugLog(String appletId) { return DebugLog.on(appletId); }
+
+    /** The applet restarts so its pages log, or stop logging, from their first event. */
+    @Override public void setDebugLog(String appletId, boolean on) {
+        if (on == DebugLog.on(appletId)) return;
+        DebugLog.set(activity, appletId, on);
+        try { owner.send(GenesisRuntime.windowEvent("menu", appletId).put("action", "reload")); }
+        catch (JSONException ignored) { /* Unreachable for string values. */ }
+        ui.pages.refresh();
+    }
+
+    @Override public boolean debugLogExists(String appletId) { return DebugLog.exists(activity, appletId); }
+
+    @Override public void shareDebugLog(String appletId) { appletEvent("exportLog", appletId); }
+
+    /** The host deletes the files on its log thread, so the page refreshes a moment later. */
+    @Override public void deleteDebugLog(String appletId) {
+        appletEvent("deleteLog", appletId);
+        bar.postDelayed(() -> { if (!destroyed) ui.pages.refresh(); }, LOG_DELETE_REFRESH_MS);
+    }
+
+    // -----------------------------------------------------------------------------------------
     // Hide in recent apps
 
     private static String privacyKey(String appletId) { return "applet-privacy/" + appletId; }
@@ -1610,6 +1648,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         forgetProfile(context, appletId);
         android.content.SharedPreferences.Editor edit = state(context).edit()
             .remove(privacyKey(appletId)).remove(engineKey(appletId)).remove(geckoUsedKey(appletId));
+        DebugLog.forget(context, appletId);
         for (EngineFeatures.Feature feature : EngineFeatures.Feature.values()) edit.remove(engineAskKey(appletId, feature));
         edit.apply();
     }

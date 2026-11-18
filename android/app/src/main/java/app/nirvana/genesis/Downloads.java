@@ -119,6 +119,7 @@ final class Downloads {
      */
     void start(Views.Page page, String url, String userAgent, String disposition, String mimeType) {
         String scheme = Uri.parse(url).getScheme();
+        if (DebugLog.any) DebugLog.log(page.ref.optString("appletId"), "download.start", "role", page.role, "scheme", scheme, "mime", mimeType);
         boolean web = "https".equalsIgnoreCase(scheme) || "http".equalsIgnoreCase(scheme);
         boolean blob = "blob".equalsIgnoreCase(scheme);
         if ((!web && !blob && !"data".equalsIgnoreCase(scheme)) || (blob && page.tab.channel() == null)) {
@@ -144,6 +145,7 @@ final class Downloads {
         String scheme = Uri.parse(url).getScheme();
         boolean web = "https".equalsIgnoreCase(scheme) || "http".equalsIgnoreCase(scheme);
         String name = android.webkit.URLUtil.guessFileName(web ? url : "", disposition, mimeType);
+        if (DebugLog.any) DebugLog.log(page.ref.optString("appletId"), "download.start", "role", page.role, "scheme", scheme, "mime", mimeType);
         confirm(page, web ? url : String.valueOf(page.tab.url()), name, () -> save(body, name, mimeType, length), () -> close(body));
     }
 
