@@ -108,6 +108,8 @@ final class Shell implements Views.Listener, Ui.Actions {
     private final Downloads downloads;
     private static long nextDialog;
     private Views.Page revealedPage;
+    /** The applet's own page drew its first frame with content, so it may show. */
+    private boolean foregroundReady;
     /** The one window the revealed context opened, or null. */
     private Views.Page popup;
     /** The website question being asked, or null. */
@@ -282,6 +284,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         pages.put(key(ref), page);
         if (DebugLog.any) DebugLog.log(ref.optString("appletId"), "view.create", "role", ref.optString("role"), "profile", site.profile);
         if (page.isForeground()) {
+            foregroundReady = false;
             page.tab.view().setVisibility(View.INVISIBLE);
             foreground.addView(page.tab.view(), new FrameLayout.LayoutParams(-1, -1));
         } else {
@@ -392,6 +395,7 @@ final class Shell implements Views.Listener, Ui.Actions {
         bar.setVisibility(View.VISIBLE);
         GenesisMenu.tint(menu, tokens, true);
         revealedPage = page;
+        showForeground();
     }
 
     /**
@@ -437,6 +441,25 @@ final class Shell implements Views.Listener, Ui.Actions {
         revealed.setVisibility(View.GONE);
         bar.setVisibility(View.GONE);
         GenesisMenu.tint(menu, tokens, false);
+        showForeground();
+    }
+
+    /**
+     * Shows the applet's own page once it is ready, and only while no website covers it. The
+     * website bar with a revealed context or a popup fills the applet container, and a WebView
+     * that is not shown makes no frames, so the screen's animations stop behind the website. Its
+     * scripts and messages keep running. The page is shown again in the same pass that removes
+     * the website, before the next frame is drawn.
+     */
+    private void showForeground() {
+        Views.Page page = foregroundPage();
+        if (page == null) return;
+        boolean covered = revealed.getVisibility() == View.VISIBLE || popupSheet.getVisibility() == View.VISIBLE;
+        int visibility = foregroundReady && !covered ? View.VISIBLE : View.INVISIBLE;
+        View view = page.tab.view();
+        if (view.getVisibility() == visibility) return;
+        if (DebugLog.any) DebugLog.log(page.ref.optString("appletId"), "foreground.shown", "shown", visibility == View.VISIBLE);
+        view.setVisibility(visibility);
     }
 
     void postMessage(JSONObject ref, String payload) {
@@ -623,7 +646,8 @@ final class Shell implements Views.Listener, Ui.Actions {
         web.postVisualStateCallback(++visualState, new android.webkit.WebView.VisualStateCallback() {
             @Override public void onComplete(long requestId) {
                 if (pages.get(key(page.ref)) != page) return;
-                web.setVisibility(View.VISIBLE);
+                foregroundReady = true;
+                showForeground();
                 splash.hide();
             }
         });
@@ -794,6 +818,7 @@ final class Shell implements Views.Listener, Ui.Actions {
             bar.setVisibility(View.GONE);
             GenesisMenu.tint(menu, tokens, false);
         }
+        showForeground();
         return true;
     }
 
@@ -947,6 +972,7 @@ final class Shell implements Views.Listener, Ui.Actions {
             GenesisMenu.tint(menu, tokens, true);
         }
         bar.setUrl(popup.tab.url());
+        showForeground();
         return popup;
     }
 
