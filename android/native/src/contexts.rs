@@ -148,6 +148,8 @@ pub struct Session {
     /// When the applet's window suspended, in wall-clock milliseconds (`now_ms`), so time the
     /// phone sleeps counts; None while it is resumed.
     pub suspended_at_ms: Option<u64>,
+    /// Whether this suspension's `applet.kept` debug log line is written.
+    pub kept_logged: bool,
     /// Each context's input budget, by context id, created on its first input call.
     pub input_budgets: HashMap<String, InputBudget>,
     /// When the next context that has no view yet starts (`mono_ms`); None once all have.
@@ -214,6 +216,7 @@ impl Session {
             saved: None,
             open_context: None,
             suspended_at_ms: None,
+            kept_logged: false,
             input_budgets: HashMap::new(),
             start_next_at_ms: None,
             page_script: String::new(),

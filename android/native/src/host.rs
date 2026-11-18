@@ -356,6 +356,7 @@ impl Host {
         }
         let Some(session) = self.session_mut(applet_id) else { return };
         session.suspended_at_ms = Some(now_ms());
+        session.kept_logged = false;
         let resume = Self::resume_of(session);
         self.save_resume(applet_id, &resume);
         self.broadcast(applet_id, "suspended", json!({}));
@@ -609,17 +610,27 @@ impl Host {
     }
 
     /// Measured on the wall clock, which keeps counting while the phone sleeps; the monotonic
-    /// clock stops then. A clock set back counts as no time passed. An applet that holds a page
-    /// stays: the page does work of its own, such as playing music, which recreating it would stop.
+    /// clock stops then. A clock set back counts as no time passed.
+    ///
+    /// An applet that holds a page stays, however long it is suspended: the page does work of its
+    /// own, such as playing music, which recreating it would stop. It keeps its WebViews and
+    /// servelets until the applet releases the hold, the system asks for memory (`trim_memory`)
+    /// or a fourth applet starts (`LIVE_APPLETS_MAX`). The debug log says so once per suspension,
+    /// with `applet.kept`.
     fn retire_if_long_suspended(&mut self, applet_id: &str) {
-        let Some(session) = self.session(applet_id) else { return };
-        if session.contexts.values().any(|context| context.hold.is_some()) {
-            return;
-        }
+        let Some(session) = self.session_mut(applet_id) else { return };
         // `revealed` does not change while suspended, so this is the state the user left in.
         let limit = if session.revealed.is_some() { REVEALED_RETIRE_MS } else { SUSPEND_RETIRE_MS };
-        if session.suspended_at_ms.is_some_and(|at| now_ms().saturating_sub(at) >= limit) {
+        let Some(suspended_ms) = session.suspended_at_ms.map(|at| now_ms().saturating_sub(at)).filter(|ms| *ms >= limit) else {
+            return;
+        };
+        let Some(holding) = session.contexts.iter().find(|(_, context)| context.hold.is_some()).map(|(id, _)| id.clone()) else {
             self.retire_for_resume(applet_id);
+            return;
+        };
+        if !session.kept_logged && debug_log::on(applet_id) {
+            session.kept_logged = true;
+            debug_log::host(applet_id, "applet.kept", json!({ "context": holding, "suspendedMs": suspended_ms }));
         }
     }
 
