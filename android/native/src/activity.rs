@@ -3,9 +3,11 @@
 //! a hold the applet asked for. The shell applies the level; this module chooses it.
 use crate::{
     contexts::{ContextView, Session},
+    debug_log,
     host::Host,
 };
 use genesis_contracts::*;
+use serde_json::json;
 
 /// A context stays awake this long after its document bound, for the page's own first work.
 pub const LOAD_TAIL_MS: u64 = 3_000;
@@ -73,6 +75,9 @@ impl Host {
                 let wanted = wanted_level(context, suspended, busy.is_some(), now);
                 if wanted != current {
                     context.level = Some(wanted);
+                    if debug_log::on(&session.applet_id) {
+                        debug_log::host(&session.applet_id, "context.level", json!({ "id": id, "level": wanted }));
+                    }
                     let view = ViewRef { applet_id: session.applet_id.clone(), role: Role::Context(id.clone()) };
                     let command = ShellCommand::SetActivity { view, level: wanted };
                     if wanted > current { raised.push(command) } else { lowered.push(command) }
@@ -108,6 +113,9 @@ impl Host {
         let ready_ms = self.limits.document_ready_ms;
         let Some(session) = self.session_mut(applet_id) else { return false };
         let Some(context) = session.contexts.get_mut(context_id) else { return false };
+        if debug_log::on(applet_id) {
+            debug_log::host(applet_id, "context.start", json!({ "id": context_id }));
+        }
         // A new view starts awake in the shell, and stays so while its first page loads.
         context.level = Some(ActivityLevel::Awake);
         context.loading_until_ms = now + ready_ms;

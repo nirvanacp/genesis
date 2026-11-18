@@ -2,6 +2,7 @@ mod activity;
 mod applets;
 mod compat;
 mod contexts;
+mod debug_log;
 mod dialogs;
 mod documents;
 mod fetch;
@@ -49,6 +50,7 @@ fn dispatch(input: &str) -> String {
                 let mut host = host.borrow_mut();
                 let attach = host.files_dir.as_ref().map(|dir| ShellEvent::Attach {
                     files_dir: dir.to_string_lossy().into_owned(),
+                    cache_dir: host.cache_dir.as_ref().map(|d| d.to_string_lossy().into_owned()).unwrap_or_default(),
                     debuggable: host.debuggable,
                     activity_off: host.activity_off,
                     light_off: host.light_off,

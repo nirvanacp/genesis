@@ -2,6 +2,7 @@
 use crate::{
     applets::{self, Applets},
     contexts::{BackSlot, CallHandle, ContextView, Contexts, Resume, Session},
+    debug_log,
     documents::Documents,
     flows::{Deletion, Flow, Updates, erasing_message},
     storage_worker,
@@ -28,6 +29,8 @@ const TRIM_MEMORY_BACKGROUND: u32 = 40;
 #[derive(Default)]
 pub struct Host {
     pub files_dir: Option<PathBuf>,
+    /// The app's cache directory, where shared debug logs go.
+    pub cache_dir: Option<PathBuf>,
     pub limits: Limits,
     pub applets: Applets,
     pub documents: Documents,
@@ -72,12 +75,14 @@ impl Host {
     pub fn dispatch(&mut self, event: ShellEvent) -> Result<Vec<ShellCommand>, String> {
         let now = mono_ms();
         match event {
-            ShellEvent::Attach { files_dir, debuggable, activity_off, light_off, store_off } => {
+            ShellEvent::Attach { files_dir, cache_dir, debuggable, activity_off, light_off, store_off } => {
                 self.end_flow();
                 self.contexts = Contexts::default();
                 self.documents = Documents::default();
                 self.applets = Applets::load(Path::new(&files_dir));
+                debug_log::configure(Path::new(&files_dir), Path::new(&cache_dir));
                 self.files_dir = Some(files_dir.into());
+                self.cache_dir = Some(cache_dir.into());
                 self.debuggable = debuggable;
                 self.activity_off = activity_off;
                 self.light_off = light_off;
@@ -119,7 +124,12 @@ impl Host {
                 let reported = ContextView { index, size, can_go_back, can_go_forward, ..ContextView::at(url) };
                 self.context_navigated(view, reported, same_document, reload);
             }
-            ShellEvent::RendererGone { view } => self.renderer_gone(&view),
+            ShellEvent::RendererGone { view } => {
+                if debug_log::on(&view.applet_id) {
+                    debug_log::host(&view.applet_id, "renderer.gone", json!({ "view": view.role }));
+                }
+                self.renderer_gone(&view)
+            }
             ShellEvent::HistoryUnmoved { view } => self.history_unmoved(&view),
             ShellEvent::InputDone { view, token, ok, message } => self.input_done(&view, token, ok, message),
             ShellEvent::WindowRequested { view, url } => self.window_requested(view, &url),
@@ -128,9 +138,11 @@ impl Host {
                 self.import_bundled(&path, &payload, release.as_deref())
             }
             ShellEvent::ServiceResponse { request_id, status, body } => {
+                self.log_service(request_id, json!({ "status": status }), now);
                 self.finish_op(request_id, None, Ok(crate::services::result(status, body)));
             }
             ShellEvent::ServiceFailed { request_id, code, message } => {
+                self.log_service(request_id, json!({ "code": code }), now);
                 self.finish_op(request_id, None, Err(ErrorBody::new(code, message)));
             }
             ShellEvent::StorageCompleted { payload } => self.storage_completed(&payload)?,
@@ -143,18 +155,49 @@ impl Host {
             ShellEvent::ReviewDecision { review_id, accept, replace } => self.review_decision(&review_id, accept, replace),
             ShellEvent::CheckUpdates { applet_id, manual } => self.check_updates(applet_id, manual),
             ShellEvent::CancelFlow => self.cancel_flow(),
-            ShellEvent::RemoveApplet { applet_id } => self.remove_applet(&applet_id),
-            ShellEvent::ClearData { applet_id } => self.clear_data(&applet_id),
+            ShellEvent::RemoveApplet { applet_id } => {
+                Self::forget_log(&applet_id);
+                self.remove_applet(&applet_id)
+            }
+            ShellEvent::ClearData { applet_id } => {
+                Self::forget_log(&applet_id);
+                self.clear_data(&applet_id)
+            }
             ShellEvent::KeepVersion { applet_id } => self.keep_version(&applet_id),
             ShellEvent::JsDialog { view, token } => self.js_dialog(&view, token, now),
             ShellEvent::JsDialogClosed { view, token } => self.js_dialog_closed(&view, token, now),
             ShellEvent::UserActionDone { token, ok, code, message, result } => self.user_action_done(token, ok, code, message, result),
             ShellEvent::FilesSent { token, ok, code, message } => self.files_sent(token, ok, code, message),
             ShellEvent::GrantEnded { view, grant, used } => self.grant_ended(&view, grant, used, now),
+            ShellEvent::DebugLog { applet_id, on } => debug_log::set(&applet_id, on),
+            ShellEvent::Log { applet_id, entry } => debug_log::shell(&applet_id, entry),
+            ShellEvent::ExportLog { applet_id } => {
+                let path = debug_log::export(&applet_id);
+                self.out.push(ShellCommand::LogExported { applet_id, path });
+            }
+            ShellEvent::DeleteLog { applet_id } => debug_log::delete(&applet_id),
         }
         self.start_due_contexts(now);
         self.refresh_activity(now);
         Ok(std::mem::take(&mut self.out))
+    }
+
+    /// Turns the applet's debug log off and deletes it, as erasing its data or removing it does.
+    fn forget_log(applet_id: &str) {
+        debug_log::set(applet_id, false);
+        debug_log::delete(applet_id);
+    }
+
+    /// A service request ended: its duration and `outcome` (status or error code), when logged.
+    fn log_service(&self, request_id: u64, outcome: Value, now: u64) {
+        let Some(op) = self.documents.op(request_id) else { return };
+        if debug_log::on(&op.view.applet_id) {
+            let mut data = json!({ "ms": now.saturating_sub(op.started_ms) });
+            if let (Some(data), Value::Object(outcome)) = (data.as_object_mut(), outcome) {
+                data.extend(outcome);
+            }
+            debug_log::host(&op.view.applet_id, "service.result", data);
+        }
     }
 
     // -----------------------------------------------------------------------------------------
@@ -480,6 +523,9 @@ impl Host {
             let url = urls.get(&context.id).cloned().unwrap_or_else(|| context.start_url.clone());
             session.contexts.insert(context.id.clone(), ContextView::at(url));
         }
+        if debug_log::on(applet_id) {
+            debug_log::host(applet_id, "applet.open", json!({ "revision": revision, "restored": session.restored }));
+        }
         self.contexts.sessions.insert(applet_id.into(), session);
         // The context a link opens, or the first one, starts now; the others follow one by one.
         let first = opening_context.or_else(|| manifest.contexts.first().map(|c| c.id.clone()));
@@ -513,6 +559,9 @@ impl Host {
     /// Destroys the applet's views. Documents receive `retired` first.
     pub fn retire_session(&mut self, applet_id: &str) {
         let Some(session) = self.contexts.sessions.remove(applet_id) else { return };
+        if debug_log::on(applet_id) {
+            debug_log::host(applet_id, "applet.close", json!({}));
+        }
         let views = self.documents.retire_applet(&session.applet_id);
         for (view, document_id) in &views {
             let message = HostMessage::Event { document_id: document_id.clone(), name: "retired".into(), data: json!({}) };
@@ -741,6 +790,10 @@ impl Host {
             Some(document) if !waiting => document.generation,
             _ => self.documents.next_generation(&view),
         };
+        if debug_log::on(&view.applet_id) {
+            let data = json!({ "id": id, "url": debug_log::origin_path(&reported.url), "sameDocument": same_document, "reload": reload });
+            debug_log::host(&view.applet_id, "context.navigated", data);
+        }
         self.foreground_event(
             &view.applet_id,
             "context.navigated",
@@ -786,6 +839,13 @@ impl Host {
 
     /// Answers the foreground request behind a page call, if the document that asked is still current.
     pub fn answer_call(&mut self, applet_id: &str, handle: &CallHandle, outcome: Result<Value, ErrorBody>) {
+        if debug_log::on(applet_id) {
+            let mut data = json!({ "context": handle.context_id, "op": handle.op, "ms": mono_ms().saturating_sub(handle.started_ms) });
+            if let Err(error) = &outcome {
+                data["code"] = json!(error.code);
+            }
+            debug_log::host(applet_id, "page.result", data);
+        }
         let Some(view) = self.foreground_view(applet_id) else { return };
         if self.documents.is_current(&view, &handle.foreground_document) {
             self.respond(&view, &handle.foreground_document, handle.request_id, outcome);
@@ -834,6 +894,9 @@ impl Host {
 
     fn tick(&mut self, now: u64) {
         for op in self.documents.expired_ops(now) {
+            if debug_log::on(&op.view.applet_id) {
+                debug_log::host(&op.view.applet_id, "request.deadline", json!({ "view": op.view.role, "ms": now.saturating_sub(op.started_ms) }));
+            }
             let error = ErrorBody::new(ErrorCode::Deadline, "The request took too long");
             self.respond(&op.view, &op.document_id, op.request_id, Err(error));
         }
@@ -879,6 +942,9 @@ impl Host {
             }
         }
         for id in gone {
+            if debug_log::on(applet_id) {
+                debug_log::host(applet_id, "context.gone", json!({ "id": id, "code": ErrorCode::NotReady }));
+            }
             self.foreground_event(applet_id, "context.gone", json!({ "id": id, "code": ErrorCode::NotReady, "message": "The page did not load in time" }));
         }
     }

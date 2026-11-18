@@ -1,6 +1,7 @@
 //! Document messages: handshake, role authorization and method dispatch.
 use crate::{
     contexts::{CallHandle, InputBudget, CALL_INPUTS_MAX, PACED_OPS},
+    debug_log,
     documents::PendingOp,
     host::Host,
     servelets,
@@ -9,7 +10,7 @@ use crate::{
 use genesis_contracts::*;
 use serde_json::{Value, json};
 
-const FOREGROUND_METHODS: [&str; 25] = [
+const FOREGROUND_METHODS: [&str; 26] = [
     "ui.ready",
     "storage.get",
     "storage.list",
@@ -35,8 +36,9 @@ const FOREGROUND_METHODS: [&str; 25] = [
     "share.open",
     "links.openExternal",
     "notifications.enable",
+    "debug.log",
 ];
-const CONTEXT_METHODS: [&str; 6] = ["page.result", "page.progress", "page.emit", "page.input", "page.files", "page.share"];
+const CONTEXT_METHODS: [&str; 7] = ["page.result", "page.progress", "page.emit", "page.input", "page.files", "page.share", "debug.log"];
 /// Events in one `page.input`.
 const INPUT_EVENTS_MAX: usize = 64;
 /// Characters of `text` in one `page.input`, all its text events together. The shell types each
@@ -151,7 +153,7 @@ impl Host {
             context_id,
             generation: document.generation,
             manifest: Box::new(manifest),
-            limits: self.limits.clone(),
+            limits: Limits { debug_log: debug_log::on(&view.applet_id), ..self.limits.clone() },
             session: saved,
         };
         self.post(&view, &bound);
@@ -202,6 +204,7 @@ impl Host {
                 document_id: document_id.into(),
                 request_id,
                 deadline_ms: now + host.limits.rpc_deadline_ms,
+                started_ms: now,
             };
             host.documents.begin_op(op)
         };
@@ -415,6 +418,16 @@ impl Host {
                 }
                 self.user_action(view, document_id, request_id, Some(view.clone()), UserAction::Share { title, text, url }, now)
             }
+            Call::DebugLog { entries } => {
+                if debug_log::on(applet_id) {
+                    let src = match &view.role {
+                        Role::Foreground => "client".to_string(),
+                        Role::Context(id) => format!("page:{id}"),
+                    };
+                    debug_log::document(applet_id, &src, entries);
+                }
+                ok()
+            }
         }
     }
 
@@ -496,7 +509,13 @@ impl Host {
             deadline_ms: now + budget_ms,
             paced,
             inputs: 0,
+            op,
+            started_ms: now,
         };
+        if debug_log::on(applet_id) {
+            debug_log::host(applet_id, "page.call", json!({ "context": handle.context_id, "op": handle.op }));
+        }
+        let op = handle.op.clone();
         let call_id = session.begin_call(handle);
         self.event(&target, "call", json!({ "callId": call_id, "op": op, "args": args, "deadlineMs": budget_ms }));
         Outcome::Later
@@ -606,7 +625,7 @@ impl Host {
             return error(ErrorCode::InputUnavailable, format!("One call sends trusted input at most {CALL_INPUTS_MAX} times"));
         }
         handle.inputs += 1;
-        let op = PendingOp { view: view.clone(), document_id: document_id.into(), request_id, deadline_ms: handle.deadline_ms };
+        let op = PendingOp { view: view.clone(), document_id: document_id.into(), request_id, deadline_ms: handle.deadline_ms, started_ms: crate::host::mono_ms() };
         let token = self.documents.begin_op(op);
         self.out.push(ShellCommand::Input { view: view.clone(), token, events });
         Outcome::Later
@@ -643,6 +662,9 @@ impl Host {
             _ => {}
         }
         let generation = self.documents.current(view).map_or(0, |d| d.generation);
+        if debug_log::on(&view.applet_id) {
+            debug_log::host(&view.applet_id, "page.emit", json!({ "context": id, "kind": kind, "bytes": size }));
+        }
         let message = json!({
             "context": id, "generation": generation, "stream": stream, "kind": kind,
             "seq": seq, "view": page_view, "url": url, "data": data,

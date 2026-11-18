@@ -76,6 +76,9 @@ pub struct CallHandle {
     pub paced: bool,
     /// The `page.input` requests this call has made.
     pub inputs: u32,
+    /// The operation's name and when the call began (`mono_ms`), for the debug log.
+    pub op: String,
+    pub started_ms: u64,
 }
 
 impl CallHandle {
