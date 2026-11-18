@@ -379,11 +379,11 @@ final class Shell implements Views.Listener, Ui.Actions {
      * timers and receives no messages, so the page must be running before its work arrives.
      */
     private void wakeForeground() {
-        Views.Page page = foregroundPage();
-        if (page == null || !inFront) return;
+        android.webkit.WebView web = web(foregroundPage());
+        if (web == null || !inFront) return;
         bar.removeCallbacks(restSoon);
         bar.removeCallbacks(wakeAgain);
-        ((WebViewPage) page.tab).web.onResume();
+        web.onResume();
         if (foregroundCovered() && !Perf.activityOff()) bar.postDelayed(restSoon, FOREGROUND_PAUSE_MS);
     }
 
@@ -395,9 +395,10 @@ final class Shell implements Views.Listener, Ui.Actions {
      */
     private void restForeground() {
         Views.Page page = foregroundPage();
-        if (page == null || (inFront && !foregroundCovered())) return;
+        android.webkit.WebView web = web(page);
+        if (web == null || (inFront && !foregroundCovered())) return;
         if (DebugLog.any) DebugLog.log(page.ref.optString("appletId"), "foreground.rest", "front", inFront);
-        ((WebViewPage) page.tab).web.onPause();
+        web.onPause();
         if (inFront) bar.postDelayed(wakeAgain, FOREGROUND_WAKE_MS);
     }
 
@@ -492,9 +493,9 @@ final class Shell implements Views.Listener, Ui.Actions {
      */
     private void showForeground() {
         Views.Page page = foregroundPage();
-        if (page == null) return;
+        android.webkit.WebView web = web(page);
+        if (web == null) return;
         boolean covered = foregroundCovered();
-        android.webkit.WebView web = ((WebViewPage) page.tab).web;
         wakeForeground();
         int visibility = foregroundReady && !covered ? View.VISIBLE : View.INVISIBLE;
         if (web.getVisibility() == visibility) return;
@@ -686,9 +687,8 @@ final class Shell implements Views.Listener, Ui.Actions {
     /** Shows the foreground once its first frame with applet content is ready to draw. */
     void revealForeground() {
         Views.Page page = foregroundPage();
-        if (page == null) return;
-        // The foreground is always a WebView page.
-        android.webkit.WebView web = ((WebViewPage) page.tab).web;
+        android.webkit.WebView web = web(page);
+        if (web == null) return;
         web.postVisualStateCallback(++visualState, new android.webkit.WebView.VisualStateCallback() {
             @Override public void onComplete(long requestId) {
                 if (pages.get(key(page.ref)) != page) return;
@@ -1842,6 +1842,11 @@ final class Shell implements Views.Listener, Ui.Actions {
     private Views.Page foregroundPage() {
         for (Views.Page page : pages.values()) if (page.isForeground()) return page;
         return null;
+    }
+
+    /** The page's WebView. Null for no page and for a page of another engine, which the foreground never is. */
+    private static android.webkit.WebView web(Views.Page page) {
+        return page != null && page.tab instanceof WebViewPage ? ((WebViewPage) page.tab).web : null;
     }
 
     boolean hasForeground() { return foregroundPage() != null; }
