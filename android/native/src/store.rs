@@ -11,6 +11,10 @@
 //! `<files>/applets/<applet>/store/<hash>.json`, at most once per `WRITE_INTERVAL_MS` per value
 //! and `PERSISTED_MAX_BYTES` per applet, and read back the first time the applet asks for one
 //! after a start. A file older than `PERSISTED_MAX_AGE_MS` is deleted unread.
+//!
+//! A website often renders after the page's first read, and no message says that an empty page
+//! is done. So a value that read nothing, a list without items or a null, is neither served nor
+//! written until it has stayed that way for `EMPTY_HOLD_MS`; the file keeps the value before it.
 use crate::debug_log;
 use genesis_contracts::{EmitKind, ShellEvent};
 use jni::{JavaVM, objects::{Global, JClass}};
@@ -38,6 +42,8 @@ const VALUE_MAX_BYTES: usize = 256 * 1024;
 const WRITE_INTERVAL_MS: u64 = 2_000;
 /// The persisted values of one applet, at most; past it the least recently used are deleted.
 const PERSISTED_MAX_BYTES: u64 = 4 * 1024 * 1024;
+/// A value that read nothing is served and written only once it has been empty this long.
+const EMPTY_HOLD_MS: u64 = 5_000;
 /// A persisted value older than this is deleted when the applet's values are read.
 const PERSISTED_MAX_AGE_MS: u64 = 7 * 24 * 60 * 60 * 1000;
 /// The position of a value whose stream position is unknown: read from a file, or after the page
@@ -230,6 +236,8 @@ struct Entry {
     snapshot: Option<Value>,
     /// Epoch milliseconds of the last change.
     at: u64,
+    /// When the value last became empty (milliseconds of the thread's clock); `None` while it has data.
+    empty_since: Option<u64>,
     /// When the entry was last used, for least-recently-used eviction.
     used: u64,
     persist: bool,
@@ -238,6 +246,23 @@ struct Entry {
     /// When it was last written (milliseconds of the thread's clock), and the file's size.
     written_ms: Option<u64>,
     saved_bytes: u64,
+}
+
+impl Entry {
+    /// The value read nothing and the page may not have rendered yet.
+    fn held(&self, now: u64) -> bool {
+        self.empty_since.is_some_and(|since| now < since + EMPTY_HOLD_MS)
+    }
+
+    /// When the value may be written (milliseconds of the thread's clock); `None` when no write waits.
+    fn write_at(&self) -> Option<u64> {
+        if !(self.persist && self.unsaved && self.snapshot.is_some()) {
+            return None;
+        }
+        let interval = self.written_ms.map_or(0, |written| written + WRITE_INTERVAL_MS);
+        let hold = self.empty_since.map_or(0, |since| since + EMPTY_HOLD_MS);
+        Some(interval.max(hold))
+    }
 }
 
 /// One persisted value, as written to its file.
@@ -276,12 +301,14 @@ impl Store {
             let snapshot = (json_len(&data) <= VALUE_MAX_BYTES).then_some(data);
             let (written_ms, saved_bytes) = self.values.get(&key).map_or((None, 0), |e| (e.written_ms, e.saved_bytes));
             let at = crate::host::now_ms();
-            let entry = Entry { spec, generation, n, seq, snapshot, at, used: self.clock, persist, unsaved: true, written_ms, saved_bytes };
+            let empty_since = snapshot.as_ref().is_some_and(empty).then(|| self.now());
+            let entry = Entry { spec, generation, n, seq, snapshot, at, empty_since, used: self.clock, persist, unsaved: true, written_ms, saved_bytes };
             self.values.insert(key.clone(), entry);
             self.unpersist_if(&key, !persist);
             self.evict(&key.applet_id);
             return None;
         }
+        let now = self.now();
         let entry = self.values.get_mut(&key)?;
         if entry.spec != spec || entry.generation != generation || entry.n != n || seq != entry.seq + 1 {
             if entry.generation == NO_POSITION && kind == EmitKind::Status {
@@ -307,6 +334,10 @@ impl Store {
                 entry.snapshot = None;
             }
         }
+        entry.empty_since = match &entry.snapshot {
+            Some(snapshot) if empty(snapshot) => entry.empty_since.or(Some(now)),
+            _ => None,
+        };
         entry.at = crate::host::now_ms();
         entry.unsaved = true;
         entry.persist = persist;
@@ -317,7 +348,8 @@ impl Store {
     fn get(&mut self, key: Key, spec: u64, serial: u64) -> Option<ShellEvent> {
         self.load(&key.applet_id);
         self.clock += 1;
-        let entry = self.values.get_mut(&key).filter(|e| e.spec == spec)?;
+        let now = self.now();
+        let entry = self.values.get_mut(&key).filter(|e| e.spec == spec && !e.held(now))?;
         entry.used = self.clock;
         let snapshot = entry.snapshot.clone()?;
         let Key { applet_id, context, stream, url } = key;
@@ -387,12 +419,8 @@ impl Store {
     /// How long until the next persisted value may be written; `None` when none waits.
     fn next_write(&self) -> Option<Duration> {
         let now = self.now();
-        self.values
-            .values()
-            .filter(|e| e.persist && e.unsaved && e.snapshot.is_some())
-            .map(|e| e.written_ms.map_or(0, |w| (w + WRITE_INTERVAL_MS).saturating_sub(now)))
-            .min()
-            .map(Duration::from_millis)
+        let next = self.values.values().filter_map(Entry::write_at).min()?;
+        Some(Duration::from_millis(next.saturating_sub(now)))
     }
 
     /// Writes every persisted value that changed and was not written in the last interval.
@@ -401,7 +429,7 @@ impl Store {
         let due: Vec<Key> = self
             .values
             .iter()
-            .filter(|(_, e)| e.persist && e.unsaved && e.snapshot.is_some() && e.written_ms.is_none_or(|w| now >= w + WRITE_INTERVAL_MS))
+            .filter(|(_, e)| e.write_at().is_some_and(|at| now >= at))
             .map(|(k, _)| k.clone())
             .collect();
         let mut applets = HashSet::new();
@@ -473,6 +501,7 @@ impl Store {
                 seq: 0,
                 snapshot: Some(saved.snapshot),
                 at: saved.at,
+                empty_since: None,
                 used: 0,
                 persist: true,
                 unsaved: false,
@@ -511,6 +540,14 @@ fn patch(snapshot: &mut Value, change: &Value) {
         if let Some(value) = change.get(field) {
             snapshot.insert(field.into(), value.clone());
         }
+    }
+}
+
+/// The snapshot read nothing: a list without items, or a null value.
+fn empty(snapshot: &Value) -> bool {
+    match snapshot.get("order") {
+        Some(order) => order.as_array().is_some_and(Vec::is_empty),
+        None => snapshot.get("value").is_none_or(Value::is_null),
     }
 }
 
