@@ -462,6 +462,9 @@ pub enum ShellCommand {
     CoverContext { applet_id: Option<String> },
     /// How much of a covered context's website runs from now on. A revealed context ignores it.
     SetActivity { view: ViewRef, level: ActivityLevel },
+    /// A covered context skips image downloads (`on`) or loads them again (`!on`), before it is
+    /// revealed. GeckoView ignores it.
+    SetLight { view: ViewRef, on: bool },
     /// Page-side `history.go(delta)`, with the native fallback the shell applies.
     HistoryGo { view: ViewRef, delta: i32 },
     Reload { view: ViewRef },
