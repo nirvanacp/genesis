@@ -99,12 +99,13 @@ impl Host {
     }
 
     /// A message of the page's watch stream: a snapshot with data, an error or a patch makes the
-    /// subscription live, and every message goes to the store. A snapshot that read nothing does
+    /// subscription live, and every message goes to the store, as `bytes`, its data as JSON, which
+    /// the store thread parses. A snapshot that read nothing does
     /// not: the page may not have rendered yet, so the store's answer still reaches the
     /// foreground, which holds it as it holds a kept value that came first. One the store's queue
     /// cannot take drops the stream's value there and asks the page for a fresh snapshot.
     #[allow(clippy::too_many_arguments)]
-    pub fn watch_emitted(&mut self, applet_id: &str, context: &str, stream: &str, kind: EmitKind, seq: u64, view: &Value, url: &str, data: &Value) {
+    pub fn watch_emitted(&mut self, applet_id: &str, context: &str, stream: &str, kind: EmitKind, seq: u64, view: &Value, url: &str, data: &Value, bytes: Vec<u8>) {
         let Some(session) = self.contexts.sessions.get_mut(applet_id) else { return };
         let Some(subscription) = session.subscriptions.get_mut(&(context.to_string(), stream.to_string())) else { return };
         let read_nothing = data.get("status").and_then(Value::as_str) == Some("ready") && store::empty(data);
@@ -114,18 +115,19 @@ impl Host {
         if self.store_off {
             return;
         }
-        let emit = store::Emit {
+        let (spec, persist) = (subscription.fingerprint, subscription.persist);
+        let sent = store::emit(|| store::Emit {
             key: store::Key::new(applet_id, context, stream, url),
-            spec: subscription.fingerprint,
+            spec,
             kind,
             generation: view["generation"].as_u64().unwrap_or(0),
             n: view["n"].as_u64().unwrap_or(0),
             seq,
-            data: data.clone(),
-            persist: subscription.persist,
-        };
+            data: bytes,
+            persist,
+        });
         let stream_key = (applet_id.to_string(), context.to_string(), stream.to_string());
-        match store::emit(emit) {
+        match sent {
             store::Sent::Queued if kind == EmitKind::Snapshot => {
                 self.store_dirty.remove(&stream_key);
             }

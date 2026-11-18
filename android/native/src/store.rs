@@ -1,8 +1,8 @@
 //! The watch store: the last value of each subscribed watch stream, kept off the UI thread so a
 //! subscription can show it before the page has read anything.
 //!
-//! One thread, `genesis-store`, owns every value. The UI thread only clones a watch message and
-//! sends it here; the thread applies snapshots and patches in stream order, and answers a lookup
+//! One thread, `genesis-store`, owns every value. The UI thread only sends a watch message's
+//! bytes here; the thread parses them, applies snapshots and patches in stream order, and answers a lookup
 //! with a `StoreCached` shell event. A message it cannot place, because one before it never
 //! arrived, drops the value and sends `StoreResync`, so the host asks the page for a snapshot. A
 //! value is never served once a message of its stream went missing.
@@ -74,7 +74,8 @@ pub struct Emit {
     pub generation: u64,
     pub n: u64,
     pub seq: u64,
-    pub data: Value,
+    /// The message's data as JSON, parsed on the store thread.
+    pub data: Vec<u8>,
     /// The value is also written to the phone.
     pub persist: bool,
 }
@@ -173,14 +174,14 @@ fn next(receiver: &Receiver<Message>, write_in: Option<Duration>) -> Option<Opti
     }
 }
 
-/// Queues a watch message.
-pub fn emit(emit: Emit) -> Sent {
+/// Queues a watch message. `emit` builds it only when the queue has room for it.
+pub fn emit(emit: impl FnOnce() -> Emit) -> Sent {
     let Some(messages) = MESSAGES.get() else { return Sent::Off };
     if QUEUED.fetch_add(1, Ordering::SeqCst) >= QUEUED_MAX {
         QUEUED.fetch_sub(1, Ordering::SeqCst);
         return Sent::Full;
     }
-    if messages.send(Message::Emit(emit)).is_err() {
+    if messages.send(Message::Emit(emit())).is_err() {
         QUEUED.fetch_sub(1, Ordering::SeqCst);
         return Sent::Off;
     }
@@ -235,6 +236,9 @@ struct Entry {
     seq: u64,
     /// The `ready` snapshot with every patch since applied; `None` while it is too large to keep.
     snapshot: Option<Value>,
+    /// The snapshot's size as JSON, at most: exact after a snapshot, then each patch adds its
+    /// own size. The snapshot is measured again only when this passes `VALUE_MAX_BYTES`.
+    size_estimate: usize,
     /// Epoch milliseconds of the last change.
     at: u64,
     /// When the page's read last became empty (milliseconds of the thread's clock); `None` while
@@ -311,9 +315,15 @@ struct Store {
 
 impl Store {
     fn apply(&mut self, emit: Emit) -> Option<ShellEvent> {
-        let Emit { key, spec, kind, generation, n, seq, data, persist } = emit;
+        let Emit { key, spec, kind, generation, n, seq, data: bytes, persist } = emit;
         self.load(&key.applet_id);
         self.clock += 1;
+        // The host made these bytes from a value, so they parse. If they do not, the message
+        // is lost: the value goes, and the stream's next snapshot starts it again.
+        let Ok(data) = serde_json::from_slice::<Value>(&bytes) else {
+            self.remove(&key);
+            return None;
+        };
         if kind == EmitKind::Snapshot {
             if data.get("status").and_then(Value::as_str) != Some("ready") {
                 // The page could not read: the kept value stays, but only a snapshot continues it.
@@ -322,7 +332,8 @@ impl Store {
                 }
                 return None;
             }
-            let snapshot = (json_len(&data) <= VALUE_MAX_BYTES).then_some(data);
+            let size_estimate = bytes.len();
+            let snapshot = (size_estimate <= VALUE_MAX_BYTES).then_some(data);
             let old = self.values.remove(&key);
             let (written_ms, saved_bytes) = old.as_ref().map_or((None, 0), |e| (e.written_ms, e.saved_bytes));
             let at = crate::host::now_ms();
@@ -331,7 +342,7 @@ impl Store {
             let before = empty_since.and(old).filter(|e| e.spec == spec).and_then(Entry::with_data);
             // A value too large to keep leaves no file either: the file would be older than the page.
             let unpersist = !persist || snapshot.is_none();
-            let entry = Entry { spec, generation, n, seq, snapshot, at, empty_since, before, used: self.clock, persist, unsaved: true, written_ms, saved_bytes };
+            let entry = Entry { spec, generation, n, seq, snapshot, size_estimate, at, empty_since, before, used: self.clock, persist, unsaved: true, written_ms, saved_bytes };
             self.values.insert(key.clone(), entry);
             self.unpersist_if(&key, unpersist);
             self.evict(&key.applet_id);
@@ -359,8 +370,12 @@ impl Store {
         }
         if let Some(snapshot) = &mut entry.snapshot {
             patch(snapshot, &data);
-            if json_len(snapshot) > VALUE_MAX_BYTES {
-                entry.snapshot = None;
+            entry.size_estimate += bytes.len();
+            if entry.size_estimate > VALUE_MAX_BYTES {
+                entry.size_estimate = json_len(snapshot);
+                if entry.size_estimate > VALUE_MAX_BYTES {
+                    entry.snapshot = None;
+                }
             }
         }
         entry.empty_since = match &entry.snapshot {
@@ -541,6 +556,8 @@ impl Store {
                 n: 0,
                 seq: 0,
                 snapshot: Some(saved.snapshot),
+                // The file holds the snapshot and a few fields more.
+                size_estimate: size as usize,
                 at: saved.at,
                 empty_since: None,
                 before: None,

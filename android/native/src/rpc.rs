@@ -662,7 +662,9 @@ impl Host {
     #[allow(clippy::too_many_arguments)]
     fn page_emit(&mut self, view: &ViewRef, stream: String, kind: EmitKind, seq: u64, page_view: Value, url: String, data: Value) -> Outcome {
         let Role::Context(id) = &view.role else { unreachable!() };
-        let size = serde_json::to_vec(&data).map(|b| b.len()).unwrap_or(usize::MAX);
+        // The same bytes measure the message here and carry it to the store.
+        let bytes = serde_json::to_vec(&data).ok();
+        let size = bytes.as_ref().map_or(usize::MAX, Vec::len);
         match kind {
             EmitKind::Snapshot if size > self.limits.page_max_bytes => {
                 return error(ErrorCode::PageTooLarge, "The snapshot is too large");
@@ -680,10 +682,12 @@ impl Host {
             _ => {}
         }
         let generation = self.documents.current(view).map_or(0, |d| d.generation);
-        if let Some(context) = self.context_mut(&view.applet_id, id) {
+        if let Some(context) = self.context_mut(&view.applet_id, id)
+            && context.last_view.as_ref() != Some(&page_view)
+        {
             context.last_view = Some(page_view.clone());
         }
-        self.watch_emitted(&view.applet_id, id, &stream, kind, seq, &page_view, &url, &data);
+        self.watch_emitted(&view.applet_id, id, &stream, kind, seq, &page_view, &url, &data, bytes.unwrap_or_default());
         if debug_log::on(&view.applet_id) {
             debug_log::host(&view.applet_id, "page.emit", json!({ "context": id, "kind": kind, "bytes": size }));
         }
