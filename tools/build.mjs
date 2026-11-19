@@ -115,6 +115,9 @@ async function resolveApplet({ id, drawer, release, base, manifest }) {
     console.log(`${id}: published release ${downloaded.version} (${release.tag}${downloaded.cached ? ", cached" : ", downloaded"})`);
     return { manifest: downloaded.bundle.bundle.manifest, drawer, bundleFile: downloaded.bundleFile, recordFile: downloaded.recordFile, icon: bundleIcon(downloaded.bundle) };
   }
+  // The applets directory is its own npm workspace: its node_modules holds the SDK and React.
+  const { appletsDirectory } = (await import("./workspace.mjs")).readWorkspace();
+  await requireFile(path.join(appletsDirectory, "node_modules"), `Missing the applets' npm dependencies. Run npm ci in ${appletsDirectory}.`);
   const { buildApplet } = await import("../let/packages/applet-tools/src/build.mjs");
   const { containedFile } = await import("../let/packages/applet-tools/src/manifest.mjs");
   const built = await buildApplet(base, path.join(intermediates, "bundles", manifest.id), { debug: variant === "debug" });
