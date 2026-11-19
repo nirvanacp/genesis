@@ -107,10 +107,9 @@ function bundleIcon({ bundle: { manifest }, entries }) {
 
 // Where an applet's bundle comes from. A release build always uses the published release; a debug
 // build uses the source directory when there is one, and the published release otherwise.
-// readPackages has already refused an applet with neither.
+// assets() has already refused an applet the variant cannot bundle.
 async function resolveApplet({ id, drawer, release, base, manifest }) {
   if (variant === "release" || !base) {
-    if (!release) throw new Error(`A release build needs a published release for ${id}: add release to its genesis.packages.json entry`);
     const downloaded = await downloadRelease({ id, release });
     console.log(`${id}: published release ${downloaded.version} (${release.tag}${downloaded.cached ? ", cached" : ", downloaded"})`);
     return { manifest: downloaded.bundle.bundle.manifest, drawer, bundleFile: downloaded.bundleFile, recordFile: downloaded.recordFile, icon: bundleIcon(downloaded.bundle) };
@@ -130,12 +129,14 @@ async function resolveApplet({ id, drawer, release, base, manifest }) {
 // the first launch after an install or update. A published release also brings its record.
 async function assets() {
   // The applet tools import @nirvanacp/core, which check() has just built.
-  const { readPackages } = await import("./check-packages.mjs");
+  const { readPackages, requireSource } = await import("./check-packages.mjs");
   const output = path.join(generated, "assets");
   await rm(output, { recursive: true, force: true });
   await mkdir(path.join(output, "bundles"), { recursive: true });
   const applets = [];
   for (const entry of await readPackages()) {
+    if (variant === "release" && !entry.release) throw new Error(`A release build needs a published release for ${entry.id}: add release to its genesis.packages.json entry`);
+    requireSource(entry);
     const applet = await resolveApplet(entry);
     for (const file of [applet.bundleFile, applet.recordFile].filter(Boolean)) {
       await copyFile(file, path.join(output, "bundles", path.basename(file)));

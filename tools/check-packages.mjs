@@ -85,8 +85,9 @@ function selectionEntry(entry) {
 
 /**
  * The selected applets from `genesis.packages.json`: each one's id, drawer choice and release,
- * and `base`, its directory inside the applets directory that `genesis.workspace.json` names, or
- * null when that directory, or the whole applets directory, is missing.
+ * `directory`, where its source belongs inside the applets directory that `genesis.workspace.json`
+ * names, and `base`, that directory's real path, or null when it, or the whole applets directory,
+ * is missing.
  */
 async function readSelection(packagesIndex) {
   const selection = JSON.parse(await readFile(path.join(root, 'genesis.packages.json'), 'utf8'));
@@ -100,26 +101,25 @@ async function readSelection(packagesIndex) {
     requireValue(safePath(entry.id), 'Invalid selected directory');
     const base = applets && await realpath(path.join(applets, entry.id)).catch(() => null);
     requireValue(!base || base.startsWith(applets + path.sep), 'Selected applet escapes the applets directory');
-    selected.push({ ...entry, base });
+    selected.push({ ...entry, directory: path.join(appletsDirectory, entry.id), base });
   }
-  return { appletsDirectory, selected };
+  return selected;
 }
 
 /** Fails for a selected applet that has neither its source directory nor a published release. */
-function requireSource({ id, release, base }, appletsDirectory) {
-  requireValue(base || release, `Selected applet ${id} has no source directory ${path.join(appletsDirectory, id)} and names no published release. Run npm run workspace -- setup.`);
+export function requireSource({ id, release, base, directory }) {
+  requireValue(base || release, `Selected applet ${id} has no source directory ${directory} and names no published release. Run npm run workspace -- setup.`);
 }
 
 /**
  * Every selected applet: `{ id, drawer, release, base }`, plus the applet read and validated from
- * its source directory when `base` is set. Fails on the first invalid one.
+ * its source directory when `base` is set. Fails on the first invalid one. An applet with neither
+ * source nor release is returned too, so the build can say what its variant needs.
  */
 export async function readPackages() {
   const { table } = await typescriptTable();
-  const { appletsDirectory, selected } = await readSelection(table.packagesIndex);
   const packages = [], ids = new Set();
-  for (const entry of selected) {
-    requireSource(entry, appletsDirectory);
+  for (const entry of await readSelection(table.packagesIndex)) {
     if (!entry.base) { packages.push(entry); continue; }
     const applet = await readApplet(entry.base);
     requireValue(!ids.has(applet.manifest.id), 'Duplicate selected applet ID'); ids.add(applet.manifest.id); packages.push({ ...applet, ...entry });
@@ -137,9 +137,8 @@ async function checkWorkspace() {
   const { table, framework } = await checkCompatMirror();
   await checkFrameworkVersions(framework);
   const passed = [], incompatible = [], ids = new Set();
-  const { appletsDirectory, selected } = await readSelection(table.packagesIndex);
-  for (const entry of selected) {
-    requireSource(entry, appletsDirectory);
+  for (const entry of await readSelection(table.packagesIndex)) {
+    requireSource(entry);
     const { base, id, release } = entry;
     if (!base) { passed.push(`${id} (release ${release.tag})`); continue; }
     const compat = await appletCompat(base);
