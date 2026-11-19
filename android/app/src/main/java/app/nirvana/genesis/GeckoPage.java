@@ -160,14 +160,17 @@ final class GeckoPage implements WebsitePage {
      */
     @Override public void followLink(String url) { follow(url, () -> load(url)); }
 
-    /** `untaken` runs when there is no port, no link to the URL, or the page does not take its click. */
+    /**
+     * `untaken` runs when there is no port, no link to the URL, or the page does not take its click,
+     * and also when it takes the click and nothing moves within LINK_FALLBACK_MS.
+     */
     private void follow(String url, Runnable untaken) {
         if (port == null) { untaken.run(); return; }
         int id = ++followed;
         int before = moves;
         following = taken -> {
             if (!taken) { untaken.run(); return; }
-            main.postDelayed(() -> { if (!destroyed && moves == before) load(url); }, LINK_FALLBACK_MS);
+            main.postDelayed(() -> { if (!destroyed && moves == before) untaken.run(); }, LINK_FALLBACK_MS);
         };
         try { port.postMessage(new JSONObject().put("type", "followLink").put("id", id).put("url", url)); }
         catch (JSONException error) { untaken.run(); }
@@ -175,8 +178,9 @@ final class GeckoPage implements WebsitePage {
 
     /**
      * The bridge runs the same route step as WebView's ROUTE script, after the link step for a
-     * push. When it answers false, or there is no port, the URL loads as `followLink` or `replace`
-     * would; otherwise the page owns the outcome.
+     * push when the page has no link or takes the click and does not move. When it answers false,
+     * or there is no port, the URL loads as `followLink` or `replace` would; otherwise the page owns
+     * the outcome.
      */
     @Override public void route(String url, boolean replace) {
         Runnable load = () -> { if (replace) replace(url); else load(url); };
