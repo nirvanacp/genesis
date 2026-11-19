@@ -5,12 +5,12 @@
 //   assets  --source <dir> --path <path> --out <dir> --repository-id <n> --repository <owner/name>
 //           --commit <sha> --tag <tag> --run <url>
 //
-// An applet resolves @let/sdk from the Genesis npm workspace, so `verify` copies it into this
+// An applet resolves @nirvanacp/sdk from the Genesis npm workspace, so `verify` copies it into this
 // checkout's applets directory and rebuilds it with this checkout's tools.
 import { spawnSync } from 'node:child_process';
 import { appendFile, copyFile, cp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { validateReleaseRecord } from '@let/core';
+import { validateReleaseRecord } from '@nirvanacp/core';
 import { readApplet, requireValue } from '../let/packages/applet-tools/src/manifest.mjs';
 import { PUBLISHED, bundleName, readPublished, recordName } from '../let/packages/applet-tools/src/publish.mjs';
 import { listApplets, tagFor } from '../let/packages/applet-tools/src/repo.mjs';
