@@ -124,7 +124,7 @@ Genesis runs on Android 8.0 (API 26) and later.
 
 ### Debug and release builds
 
-A debug build accepts `genesis-applet dev install` over `adb`. A release build refuses it. Release builds install the applets bundled into the APK and the applets people add from **Add applet** in the Genesis menu, from a public GitHub repository or a downloaded bundle file. Genesis shows each build's origins and capabilities for review before installing it, and offers updates from the same source. In an applet repository, CI rebuilds every tagged version and publishes the release only when the rebuild matches the committed build; the [publishing guide](https://github.com/nirvanacp/let/blob/develop/factory/applets/guides/publishing.md) covers versions, tags and the reusable workflows in `.github/workflows/`.
+A debug build accepts `genesis-applet dev install` over `adb`. A release build refuses it. Release builds install the applets bundled into the APK and the applets people add from **Add applet** in the Genesis menu, from a public GitHub repository or a downloaded bundle file. Genesis shows each build's origins and capabilities for review before installing it, and offers updates from the same source. In an applet repository, CI rebuilds every tagged version and publishes the release only when the rebuild matches the committed build; the [publishing guide](https://github.com/nirvanacp/let/blob/develop/factory/applets/guides/publishing.md) covers versions, tags and the reusable workflows, which live in the Let repository.
 
 `genesis.packages.json` lists the applets bundled into the APK, by directory name. An entry such as `{ "id": "hn-bookmarks", "drawer": true }` also gives that applet its own icon in the Android app drawer, drawn from the manifest's `shell.icon` and accent color.
 
@@ -149,8 +149,7 @@ The root `package.json` is an npm workspace over `let/packages/*` and `applets/*
 | `android/native/` | `genesis-host`, the Rust host built into `libgenesis_host.so`: applets, contexts, documents, messages, storage, services, compatibility, installs |
 | `crates/contracts/` | `genesis-contracts`: shell events and commands, document messages, manifest and bundle types, limits, error codes |
 | `crates/servelet-runtime/` | `genesis-servelet-runtime`: runs a servelet's WebAssembly module over its SQLite database, with fuel, time and memory limits. `servelet-run` runs one on the computer |
-| `tools/` | The APK asset and native build, the workspace and package checks, applet CI, git hooks |
-| `.github/workflows/` | Reusable workflows that applet repositories call to check and release applets |
+| `tools/` | The APK asset and native build, the workspace and package checks, git hooks |
 | `genesis.workspace.json` | Where Let, the applets and the servelets are checked out |
 | `genesis.packages.json` | The applets bundled into the APK |
 
