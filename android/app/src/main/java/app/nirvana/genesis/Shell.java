@@ -345,11 +345,14 @@ final class Shell implements Views.Listener, Ui.Actions {
 
     /**
      * Applies the level the host chose for a covered context. The foreground and the page the
-     * user is looking at always run in full.
+     * user is looking at always run in full, and so does a page whose video fills the screen: the
+     * level applies when the video closes.
      */
     void setActivity(JSONObject ref, String level) {
         Views.Page page = pages.get(key(ref));
         if (page == null || !page.isContext() || page == revealedPage) return;
+        page.activity = level;
+        if (customView != null && customView.page == page) return;
         if (DebugLog.any) {
             page.tab.logConsoleCounts();
             DebugLog.log(ref.optString("appletId"), "view.activity", "role", ref.optString("role"), "level", level);
@@ -971,6 +974,8 @@ final class Shell implements Views.Listener, Ui.Actions {
         customFrame.touched = () -> screen.page.touchedAt = SystemClock.uptimeMillis();
         customFrame.addView(screen.view, new FrameLayout.LayoutParams(-1, -1));
         root.addView(customFrame, new FrameLayout.LayoutParams(-1, -1));
+        // A hidden context's video plays over the applet, so its page runs as a shown one.
+        if (screen.page != revealedPage) screen.page.tab.setActivity("awake");
     }
 
     @Override public void hideFullScreen() {
@@ -979,10 +984,12 @@ final class Shell implements Views.Listener, Ui.Actions {
     }
 
     private void removeCustomView() {
+        Views.Page page = customView.page;
         customFrame.removeView(customView.view);
         root.removeView(customFrame);
         customFrame = null;
         customView = null;
+        if (page != revealedPage && page.activity != null && pages.get(key(page.ref)) == page) page.tab.setActivity(page.activity);
     }
 
     @Override public boolean chooseFiles(Views.Page page, Requests.FileRequest request) {
