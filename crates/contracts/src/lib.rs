@@ -1067,7 +1067,9 @@ pub struct ReleaseCapabilities {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReleaseToolchain {
-    pub genesis_commit: String,
+    /// Only in records made before the tools were published to npm.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub genesis_commit: Option<String>,
     pub node: String,
     pub tools: String,
     pub sdk: String,
