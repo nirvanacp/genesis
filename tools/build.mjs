@@ -51,56 +51,95 @@ async function check() {
   run(process.execPath, ["node_modules/typescript/lib/tsc.js", "-p", "let/packages/sdk/tsconfig.json"]);
 }
 
-// The committed release of an applet, when it is current: `published/` holds the bundle and its
-// release record, the record names this applet and its package.json version, and the bundle
-// matches the record's hash. Rebuilding would change `builtAt` and break the match with GitHub.
-async function publishedRelease(base, id) {
-  const record = path.join(base, "published", `applet-${id}.release.json`);
-  const bundle = path.join(base, "published", `applet-${id}.bundle.json`);
-  let release, bytes;
-  try {
-    release = JSON.parse(await readFile(record, "utf8"));
-    bytes = await readFile(bundle);
-  } catch {
-    return { reason: "no published release" };
+const sha256 = bytes => createHash("sha256").update(bytes).digest("hex");
+
+// A published release asset on GitHub. Each segment of the tag is encoded, so `id/vX.Y.Z` keeps its slash.
+function releaseUrl({ repository, tag }, asset) {
+  return `https://github.com/${repository}/releases/download/${tag.split("/").map(encodeURIComponent).join("/")}/${asset}`;
+}
+
+async function download(url) {
+  let response;
+  try { response = await fetch(url); }
+  catch (error) { throw new Error(`Cannot download ${url}: ${error.cause?.message ?? error.message}`); }
+  if (!response.ok) throw new Error(`Cannot download ${url}: HTTP ${response.status}`);
+  return Buffer.from(await response.arrayBuffer());
+}
+
+// The bundle and release record of an applet's published release. A cached bundle whose SHA-256
+// equals the pinned one is reused, so a rebuild works offline. Both files are checked before
+// they are cached: the bundle's SHA-256 equals the pinned one and the record's, the record is
+// valid and names this applet, and so does the bundle's manifest.
+async function downloadRelease({ id, release }) {
+  const { validateReleaseRecord } = await import("@nirvanacp/core");
+  const directory = path.join(root, "target/genesis/releases", id, release.tag.replace(/[^A-Za-z0-9._-]/g, "_").replace(/^\./, "_"));
+  const bundleFile = path.join(directory, `applet-${id}.bundle.json`);
+  const recordFile = path.join(directory, `applet-${id}.release.json`);
+  const cached = await Promise.all([readFile(bundleFile), readFile(recordFile)]).catch(() => null);
+  const fresh = !(cached && sha256(cached[0]) === release.sha256);
+  const [bundleBytes, recordBytes] = fresh
+    ? [await download(releaseUrl(release, path.basename(bundleFile))), await download(releaseUrl(release, path.basename(recordFile)))]
+    : cached;
+  const failure = `${id} release ${release.tag} from ${release.repository}`;
+  const actual = sha256(bundleBytes);
+  if (actual !== release.sha256) throw new Error(`${failure}: the bundle's SHA-256 is ${actual}, but genesis.packages.json pins ${release.sha256}`);
+  let record, bundle;
+  try { record = validateReleaseRecord(JSON.parse(recordBytes.toString("utf8"))); }
+  catch (error) { throw new Error(`${failure}: invalid release record: ${error.message}`); }
+  if (record.appletId !== id) throw new Error(`${failure}: the release record is for ${record.appletId}`);
+  if (record.bundle.sha256 !== actual) throw new Error(`${failure}: the release record's bundle SHA-256 is ${record.bundle.sha256}, not ${actual}`);
+  try { bundle = JSON.parse(bundleBytes.toString("utf8")); }
+  catch (error) { throw new Error(`${failure}: the bundle is not JSON: ${error.message}`); }
+  if (bundle?.bundle?.manifest?.id !== id || !Array.isArray(bundle.entries)) throw new Error(`${failure}: the bundle is not an import file for ${id}`);
+  if (fresh) {
+    await mkdir(directory, { recursive: true });
+    await writeFile(bundleFile, bundleBytes);
+    await writeFile(recordFile, recordBytes);
   }
-  const { version } = JSON.parse(await readFile(path.join(base, "package.json"), "utf8"));
-  if (release.appletId !== id || release.version !== version) {
-    return { reason: `published release ${release.version} is not package.json version ${version}` };
+  return { bundleFile, recordFile, bundle, version: record.version, cached: !fresh };
+}
+
+// The icon file of a bundle: the entry at `shell.icon`, or null when there is none.
+function bundleIcon({ bundle: { manifest }, entries }) {
+  const entry = manifest.shell?.icon && entries.find(e => e.path === manifest.shell.icon);
+  return entry ? Buffer.from(entry.content, entry.encoding === "base64" ? "base64" : "utf8") : null;
+}
+
+// Where an applet's bundle comes from. A release build always uses the published release; a debug
+// build uses the source directory when there is one, and the published release otherwise.
+// readPackages has already refused an applet with neither.
+async function resolveApplet({ id, drawer, release, base, manifest }) {
+  if (variant === "release" || !base) {
+    if (!release) throw new Error(`A release build needs a published release for ${id}: add release to its genesis.packages.json entry`);
+    const downloaded = await downloadRelease({ id, release });
+    console.log(`${id}: published release ${downloaded.version} (${release.tag}${downloaded.cached ? ", cached" : ", downloaded"})`);
+    return { manifest: downloaded.bundle.bundle.manifest, drawer, bundleFile: downloaded.bundleFile, recordFile: downloaded.recordFile, icon: bundleIcon(downloaded.bundle) };
   }
-  if (createHash("sha256").update(bytes).digest("hex") !== release.bundle?.sha256) {
-    return { reason: "published bundle does not match its release record" };
-  }
-  return { record, bundle, version };
+  const { buildApplet } = await import("../let/packages/applet-tools/src/build.mjs");
+  const { containedFile } = await import("../let/packages/applet-tools/src/manifest.mjs");
+  const built = await buildApplet(base, path.join(intermediates, "bundles", manifest.id), { debug: variant === "debug" });
+  console.log(`${manifest.id}: built from source`);
+  const icon = manifest.shell?.icon ? await readFile(await containedFile(base, manifest.shell.icon)) : null;
+  return { manifest, drawer, bundleFile: built.importFile, recordFile: null, icon };
 }
 
 // Each selected applet becomes assets/bundles/applet-<id>.bundle.json, which the shell stages on
-// the first launch after an install or update. The release variant ships the committed release
-// with its record; the debug variant, and an applet without a current release, is built here.
+// the first launch after an install or update. A published release also brings its record.
 async function assets() {
   // The applet tools import @nirvanacp/core, which check() has just built.
   const { readPackages } = await import("./check-packages.mjs");
-  const { buildApplet } = await import("../let/packages/applet-tools/src/build.mjs");
   const output = path.join(generated, "assets");
   await rm(output, { recursive: true, force: true });
   await mkdir(path.join(output, "bundles"), { recursive: true });
-  const packages = await readPackages();
-  await drawerEntries(packages);
-  for (const { base, manifest } of packages) {
-    if (variant === "release") {
-      const published = await publishedRelease(base, manifest.id);
-      if (published.record) {
-        await copyFile(published.bundle, path.join(output, "bundles", path.basename(published.bundle)));
-        await copyFile(published.record, path.join(output, "bundles", path.basename(published.record)));
-        console.log(`${manifest.id}: published release ${published.version}`);
-        continue;
-      }
-      console.warn(`Warning: ${manifest.id}: ${published.reason}; bundling a fresh build without a release record.`);
+  const applets = [];
+  for (const entry of await readPackages()) {
+    const applet = await resolveApplet(entry);
+    for (const file of [applet.bundleFile, applet.recordFile].filter(Boolean)) {
+      await copyFile(file, path.join(output, "bundles", path.basename(file)));
     }
-    const built = await buildApplet(base, path.join(intermediates, "bundles", manifest.id), { debug: variant === "debug" });
-    await copyFile(built.importFile, path.join(output, "bundles", path.basename(built.importFile)));
-    console.log(`${manifest.id}: built from source`);
+    applets.push(applet);
   }
+  await drawerEntries(applets);
   console.log(`Generated applet bundles: ${path.join(output, "bundles")}`);
 }
 
@@ -110,23 +149,22 @@ const androidString = text => escapeXml(text.replace(/\\/g, "\\\\").replace(/'/g
 
 // Each selected applet with `drawer: true` gets an app drawer entry: an `activity-alias` of
 // AppletEntryActivity whose meta-data names the applet, with the applet's name and an adaptive
-// icon made from `shell.icon` over its accent color. The shell enables each alias only while its
+// icon made from `shell.icon` (the `icon` bytes resolveApplet read) over its accent color. The shell enables each alias only while its
 // applet is installed and can run. Gradle adds `res/` and the manifest overlay to the variant.
-async function drawerEntries(packages) {
+async function drawerEntries(applets) {
   const res = path.join(generated, "res");
   const overlay = manifestOverlay;
   await rm(res, { recursive: true, force: true });
   for (const folder of ["values", "drawable", "drawable-nodpi", "mipmap-anydpi-v26"]) await mkdir(path.join(res, folder), { recursive: true });
   await mkdir(path.dirname(overlay), { recursive: true });
-  const { containedFile } = await import("../let/packages/applet-tools/src/manifest.mjs");
   const values = [], aliases = [];
-  for (const { base, manifest } of packages.filter(p => p.drawer)) {
-    if (!manifest.shell?.icon) {
+  for (const { manifest, icon } of applets.filter(a => a.drawer)) {
+    if (!icon) {
       console.warn(`Warning: ${manifest.id}: no shell.icon, so no app drawer entry; a drawer entry needs the applet's own artwork.`);
       continue;
     }
     const name = `applet_${manifest.id.replace(/-/g, "_")}`;
-    await copyFile(await containedFile(base, manifest.shell.icon), path.join(res, "drawable-nodpi", `${name}_fg.png`));
+    await writeFile(path.join(res, "drawable-nodpi", `${name}_fg.png`), icon);
     // The inset keeps the whole icon inside the adaptive icon's safe zone.
     await writeFile(path.join(res, "drawable", `${name}_inset.xml`),
       `<inset xmlns:android="http://schemas.android.com/apk/res/android" android:drawable="@drawable/${name}_fg" android:inset="21%" />\n`);
