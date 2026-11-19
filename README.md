@@ -4,7 +4,7 @@ Genesis is an Android app that runs apps you build on top of the websites you al
 
 You describe the app you want to a coding agent: "a Hacker News app with a saved library and categories", "Gmail, but every email can become a reminder". The agent writes an **applet**, a phone UI that reads the real website underneath, signed in as you, and acts on it. Screens you designed look and behave like a native app. Pages you didn't redesign show the website itself, in the same session and history, so nothing the website can do is lost.
 
-Genesis is a working prototype. It runs five example applets today, but there is no signed release yet and the version numbers are still `0.0.0`. See [status](#status).
+Genesis is an alpha. It runs five example applets today, and expect breaking changes until the first stable release. See [download](#download) and [status](#status).
 
 ## Why
 
@@ -62,7 +62,29 @@ Genesis is split into four repositories that check out into one workspace.
 | [Applets](https://github.com/nirvanacp/applets) | `applets/` | Example applets, one directory each |
 | [Servelets](https://github.com/nirvanacp/servelets) | `servelets/` | Example servelets used by those applets |
 
-If you want to build an app, you only need Let and a debug build of Genesis. You don't need to read any Java or Rust.
+If you want to build an app, you only need the Let packages from npm and the Genesis developer build. You don't need this repository, and you don't need to read any Java or Rust.
+
+## Download
+
+Each release on the [releases page](https://github.com/nirvanacp/genesis/releases) holds:
+
+| File | What it is |
+| --- | --- |
+| `genesis-<version>.apk` | The app, `app.nirvana.genesis` |
+| `genesis-<version>-developer.apk` | Genesis Dev, `app.nirvana.genesis.dev`: the same app and bundled applets, debuggable, and it accepts development installs from the applet tools. It installs beside the app. Install it to build applets |
+| `genesis-<version>.aab` | The Android App Bundle of the app, for app stores |
+| `genesis-<version>-native-symbols.zip` | The unstripped native libraries, for reading crash reports |
+| `SHA256SUMS` | The checksums of the files above |
+
+Check the files you downloaded, then install over `adb` or by opening the APK on the phone:
+
+```sh
+shasum -a 256 --check --ignore-missing SHA256SUMS
+gh attestation verify genesis-<version>.apk --repo nirvanacp/genesis
+adb -s <serial> install genesis-<version>.apk
+```
+
+A version with a `-`, such as `0.1.0-alpha.1`, is published as a prerelease. Genesis runs on Android 8.0 (API 26) and later.
 
 ## Example applets
 
@@ -76,27 +98,22 @@ If you want to build an app, you only need Let and a debug build of Genesis. You
 
 ## Build your own applet
 
-You need Node 24.15.0, a device or emulator with a debug build of Genesis ([build it below](#build-the-genesis-app)) reachable over `adb`, and Go 1.24 or later if your app needs a servelet.
+Applets are built with [Let](https://github.com/nirvanacp/let), in any directory. You need Node 24.15.0, a device or emulator with the Genesis developer build ([download](#download)) reachable over `adb`, and Go 1.24 or later if your app needs a servelet. You don't need this repository.
 
-The fastest way is to ask a coding agent. From the workspace root:
+```sh
+npx @nirvanacp/applet-tools create my-applet --origin https://example.com --name "Example"
+cd my-applet
+npm install
+npm run check                              # manifest, compatibility, TypeScript and page module
+npm run build                              # writes dist/ with the bundle
+npx let-applet dev install . --device emulator-5554 --application app.nirvana.genesis.dev
+```
+
+`dev install` sends the last build to Genesis Dev, which applies it without a restart. The new applet carries Let's instructions for coding agents in `let/`; give an agent `let/AGENTS.md` and a request in your own words:
 
 > Read let/AGENTS.md. Build an app for https://example.com that keeps my reading list with tags and lets me search it.
 
-The agent decides whether the app needs a servelet, inspects the website, writes the page module, the screens and the backend, and checks the result on the device. The instructions it follows are in [`let/factory/`](https://github.com/nirvanacp/let/tree/develop/factory).
-
-To start by hand:
-
-```sh
-cd applets
-npx genesis-applet create my-applet --origin https://example.com --name "Example"
-npm install                                # the applets directory installs every applet's dependencies
-cd my-applet
-npm run check                              # manifest, compatibility, TypeScript and page module
-npm run build                              # writes dist/ with the bundle
-npx genesis-applet dev install . --device emulator-5554
-```
-
-`dev install` sends the last build to the debug app, which applies it without a restart. The [getting started guide](https://github.com/nirvanacp/let/blob/develop/factory/applets/guides/getting-started.md) walks through the first watch and the first input. The Let packages are not on npm yet, so use the tools from a Genesis workspace for now.
+The agent decides whether the app needs a servelet, inspects the website, writes the page module, the screens and the backend, and checks the result on the device. The [getting started guide](https://github.com/nirvanacp/let/blob/develop/factory/applets/guides/getting-started.md) walks through the first watch and the first input, and the [publishing guide](https://github.com/nirvanacp/let/blob/develop/factory/applets/guides/publishing.md) covers releases that people add to Genesis from GitHub.
 
 ## Build the Genesis app
 
@@ -109,6 +126,8 @@ Requirements:
 
 `tools/build.mjs` checks each version and prints the install command for a missing one.
 
+A debug build builds the bundled applets from their source, so it needs the whole workspace:
+
 ```sh
 npm run workspace -- setup     # clone Let and the applets (and npm ci in them), create an empty servelets directory
 git clone https://github.com/nirvanacp/servelets.git servelets   # the example servelets, if setup left it empty
@@ -120,11 +139,42 @@ npm run build                  # native library, packages and bundled applets
 ANDROID_SERIAL=emulator-5554 android/gradlew -p android :app:installDebug
 ```
 
-Genesis runs on Android 8.0 (API 26) and later.
+A release-type build takes every bundled applet from its pinned published release, so it needs this repository and Let, but no applet or servelet source:
 
-### Debug and release builds
+```sh
+git clone https://github.com/nirvanacp/let.git let
+git -C let checkout v<version>   # the @nirvanacp/core version in package-lock.json, as the release workflow does
+npm ci
+android/gradlew -p android :app:assembleRelease     # app-release.apk; :app:bundleRelease writes the .aab
+android/gradlew -p android :app:assembleDeveloper   # app-developer.apk, Genesis Dev
+```
 
-A debug build accepts `genesis-applet dev install` over `adb`. A release build refuses it. Release builds install the applets bundled into the APK and the applets people add from **Add applet** in the Genesis menu, from a public GitHub repository or a downloaded bundle file. Genesis shows each build's origins and capabilities for review before installing it, and offers updates from the same source. In an applet repository, CI rebuilds every tagged version and publishes the release only when the rebuild matches the committed build; the [publishing guide](https://github.com/nirvanacp/let/blob/develop/factory/applets/guides/publishing.md) covers versions, tags and the reusable workflows, which live in the Let repository.
+### Build types
+
+| Build type | Application id | Bundled applets | Development installs |
+| --- | --- | --- | --- |
+| `debug` | `app.nirvana.genesis` | Built from source, or the pinned release when the source is missing | Accepted |
+| `release` | `app.nirvana.genesis` | Pinned published releases only | Refused |
+| `developer` | `app.nirvana.genesis.dev`, version name ending in `-dev`, label "Genesis Dev" | The same pinned releases as `release` | Accepted |
+
+`release` and `developer` are signed with the key that four values name. Each comes from an environment variable, otherwise from the Gradle property after it, for example in `~/.gradle/gradle.properties`:
+
+| Environment variable | Gradle property |
+| --- | --- |
+| `GENESIS_KEYSTORE_FILE` | `genesis.keystore.file` |
+| `GENESIS_KEYSTORE_PASSWORD` | `genesis.keystore.password` |
+| `GENESIS_KEY_ALIAS` | `genesis.key.alias` |
+| `GENESIS_KEY_PASSWORD` | `genesis.key.password` |
+
+Without all four, `release` is unsigned and `developer` is signed with the debug key, so it still installs.
+
+### Releases
+
+A tag `v<versionName>` runs [app-release.yml](.github/workflows/app-release.yml). It checks out Let at the tag of the framework version in `package-lock.json`, runs the checks, builds `assembleRelease`, `bundleRelease` and `assembleDeveloper`, signs them with the key in the repository's secrets, and publishes the files listed under [download](#download) as a GitHub release with build provenance attestations. Running the workflow by hand from a branch is a dry run: it signs with a throwaway key and keeps the files as a workflow artifact.
+
+### Applets in the app
+
+A debug or developer build accepts `let-applet dev install` over `adb`. A release build refuses it. Release builds install the applets bundled into the APK and the applets people add from **Add applet** in the Genesis menu, from a public GitHub repository or a downloaded bundle file. Genesis shows each build's origins and capabilities for review before installing it, and offers updates from the same source. In an applet repository, CI rebuilds every tagged version and publishes the release only when the rebuild matches the committed build; the [publishing guide](https://github.com/nirvanacp/let/blob/develop/factory/applets/guides/publishing.md) covers versions, tags and the reusable workflows, which live in the Let repository.
 
 `genesis.packages.json` lists the applets bundled into the APK, by applet id, which is also the applet's directory name. An entry such as `{ "id": "hn-bookmarks", "drawer": true }` also gives that applet its own icon in the Android app drawer, drawn from the manifest's `shell.icon` and accent color. An entry's `release` object pins the applet's published GitHub release:
 
@@ -133,7 +183,7 @@ A debug build accepts `genesis-applet dev install` over `adb`. A release build r
   "release": { "repository": "nirvanacp/applets", "tag": "hn-bookmarks/v0.0.7", "sha256": "<SHA-256 of applet-hn-bookmarks.bundle.json>" } }
 ```
 
-A release build bundles only pinned releases, so it needs Genesis and Let but not the applets or servelets. It downloads `applet-<id>.bundle.json` and `applet-<id>.release.json` from the release into `target/genesis/releases/`, and fails unless the bundle's SHA-256 matches the pin and the release record, and the record is valid and names the applet. A cached download is reused, so a rebuild works offline. A debug build builds an applet from its source directory when the applets directory has it, and uses the pinned release otherwise.
+A release or developer build bundles only pinned releases, and fails when a selected applet has no `release` pin. It downloads `applet-<id>.bundle.json` and `applet-<id>.release.json` from the release into `target/genesis/releases/`, and fails unless the bundle's SHA-256 matches the pin and the release record, and the record is valid and names the applet. A cached download is reused, so a rebuild works offline. A debug build builds an applet from its source directory when the applets directory has it, and uses the pinned release otherwise.
 
 ## Workspace
 
@@ -170,12 +220,13 @@ What works today, on Android emulators and a physical Samsung phone:
 - up to three website contexts per applet, on WebView or GeckoView;
 - applet storage, HTTPS services with pinned certificates, and servelets on the phone;
 - installing applets from GitHub releases or bundle files, with review and updates;
+- a release workflow that builds the signed app, the App Bundle and Genesis Dev from a tag;
+- the Let packages ready to publish to npm from a tag of the Let repository;
 - browser features inside applets, including downloads, file uploads, popups, HTTP authentication and permission prompts.
 
 Not done yet:
 
-- a signed release APK and publisher signing for applets;
-- the Let packages on npm;
+- publisher signing for applets;
 - applet UIs in React Native or native Java or Kotlin, servelets in JavaScript, and servelets in the cloud;
 - iOS.
 
