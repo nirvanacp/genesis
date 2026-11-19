@@ -989,7 +989,12 @@ final class Shell implements Views.Listener, Ui.Actions {
         root.removeView(customFrame);
         customFrame = null;
         customView = null;
-        if (page != revealedPage && page.activity != null && pages.get(key(page.ref)) == page) page.tab.setActivity(page.activity);
+        // The page's level comes back a moment later, so a resting page still runs the exit's
+        // fullscreenchange, which pauses its video and takes its full-screen styles away.
+        bar.postDelayed(() -> {
+            if (destroyed || (customView != null && customView.page == page) || page == revealedPage || page.activity == null || pages.get(key(page.ref)) != page) return;
+            page.tab.setActivity(page.activity);
+        }, FULL_SCREEN_EXIT_MS);
     }
 
     @Override public boolean chooseFiles(Views.Page page, Requests.FileRequest request) {
@@ -1518,6 +1523,8 @@ final class Shell implements Views.Listener, Ui.Actions {
     private boolean inFront;
     /** How long the applet's page keeps running after its last work while covered or behind. */
     private static final long FOREGROUND_PAUSE_MS = 2000;
+    /** How long a page that left full screen runs before its activity level comes back. */
+    private static final long FULL_SCREEN_EXIT_MS = 500;
     /** How long a covered applet page stays paused at most: half the time WebView takes to freeze it. */
     private static final long FOREGROUND_WAKE_MS = 30_000;
     /** The open engine-switch question, or null. */
