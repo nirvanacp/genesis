@@ -144,7 +144,7 @@ A release build bundles only pinned releases, so it needs Genesis and Let but no
 | `path` | Prints the applets directory |
 | `setup` | Clones Let and the applets into their directories when they are missing and runs `npm ci` in a newly cloned applets directory, creates the servelets directory (cloning it when the config names a repository), then runs `sync` |
 | `sync` | Links `applets/` to the configured directory when it lives elsewhere |
-| `link-framework` | Installs this checkout's `let/packages/*` into the applets' `node_modules` without saving, so the applets build against the local framework |
+| `link-framework` | Installs a packed copy of this checkout's `let/packages/*` into the applets' `node_modules` without saving, so the applets build against the local framework. Run it again after changing the framework |
 | `unlink-framework` | Runs `npm ci` in the applets directory, back to the npm registry versions |
 | `check` | Fails with the repairing command when the checkout differs from the config. `npm run check:packages` runs it too |
 

@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, lstatSync, readFileSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
+import { existsSync, lstatSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -18,8 +19,9 @@ const help = `Usage: npm run workspace -- <command>   (or node tools/workspace.m
   sync    when the applets directory is elsewhere, link applets/ to it
   check   fail unless the workspace matches ${CONFIG}
   link-framework
-          install this checkout's let/packages/* into the applets' node_modules, so the
-          applets build against the local framework instead of the npm registry copy
+          install a copy of this checkout's let/packages/* into the applets' node_modules,
+          so the applets build against the local framework instead of the npm registry
+          copy; run it again after changing the framework
   unlink-framework
           run npm ci in the applets directory, back to the registry copy
 
@@ -145,12 +147,21 @@ function npm(directory, args) {
   requireValue(!result.error && result.status === 0, `npm ${args.join(' ')} failed in ${directory}`);
 }
 
-// npm links each local package directory it is given, so the applets resolve this checkout's
-// framework. --no-save keeps the applets' package.json and lockfile on the registry versions.
+// Installs this checkout's framework into the applets the way the registry would: npm pack runs each
+// package's prepack step (builds, the servelet tools' Go library and templates) and the applets
+// install the tarballs. A copy, not a link: a linked SDK would resolve React from the Genesis root,
+// a second copy beside the applets' own, and hooks would fail. --no-save keeps the applets'
+// package.json and lockfile on the registry versions. Run it again after changing the framework.
 function linkFramework() {
   const { appletsDirectory, let: framework } = readWorkspace();
   requireValue(existsSync(appletsDirectory), `Missing applets directory ${appletsDirectory}. Run npm run workspace -- setup.`);
-  npm(appletsDirectory, ['install', '--no-save', ...FRAMEWORK.map(name => path.join(framework.directory, 'packages', name))]);
+  const packed = mkdtempSync(path.join(tmpdir(), 'genesis-framework-'));
+  try {
+    for (const name of FRAMEWORK) npm(path.join(framework.directory, 'packages', name), ['pack', '--pack-destination', packed]);
+    npm(appletsDirectory, ['install', '--no-save', ...readdirSync(packed).map(file => path.join(packed, file))]);
+  } finally {
+    rmSync(packed, { recursive: true, force: true });
+  }
   console.log('The applets use the local Let packages. npm run workspace -- unlink-framework restores the registry copy.');
 }
 
