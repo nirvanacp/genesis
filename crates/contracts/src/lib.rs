@@ -496,7 +496,9 @@ pub enum ShellCommand {
     CreateView { view: ViewRef, url: String, origins: Vec<String>, start_script: Option<String> },
     DestroyView { view: ViewRef },
     /// `push` is `loadUrl`; `replace` is `location.replace(url)`, with `loadUrl` when the page cannot run script.
-    LoadUrl { view: ViewRef, url: String, mode: NavigateMode },
+    /// With `same_document`, the shell first asks the page's router to show a same-origin URL in the
+    /// current document (a history entry and a `popstate` event), and loads the URL when the page does not change.
+    LoadUrl { view: ViewRef, url: String, mode: NavigateMode, same_document: bool },
     /// Hides the splash of `applet_id`'s window.
     RevealForeground { applet_id: Option<String> },
     /// Moves the context's WebView above the foreground and shows the website bar.
@@ -1327,6 +1329,9 @@ pub enum Call {
         url: String,
         #[serde(default)]
         mode: NavigateMode,
+        /// Try a route inside the current document before loading; see `ShellCommand::LoadUrl`.
+        #[serde(default)]
+        same_document: bool,
     },
     /// Goes back `steps` entries (1 when absent).
     #[serde(rename = "context.back")]

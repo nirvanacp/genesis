@@ -282,7 +282,7 @@ impl Host {
                 self.out.push(ShellCommand::PostNotification { applet_id, id, title, body, url });
                 Outcome::Now(Ok(json!({ "posted": true })))
             }
-            Call::ContextNavigate { id, url, mode } => {
+            Call::ContextNavigate { id, url, mode, same_document } => {
                 let Some(target) = self.context_view(applet_id, &id) else { return unknown_context(&id) };
                 // Any http or https origin: an undeclared one presents as website.
                 let Some(url) = web_url(&url) else {
@@ -295,7 +295,7 @@ impl Host {
                     return ok();
                 }
                 self.begin_load(&target, now);
-                self.out.push(ShellCommand::LoadUrl { view: target, url, mode });
+                self.out.push(ShellCommand::LoadUrl { view: target, url, mode, same_document });
                 ok()
             }
             Call::ContextBack { id, steps } => {

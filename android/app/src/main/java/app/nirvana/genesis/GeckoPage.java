@@ -158,16 +158,39 @@ final class GeckoPage implements WebsitePage {
      * port, or when the page does not take the click, or takes it and does not move within
      * LINK_FALLBACK_MS, the URL loads.
      */
-    @Override public void followLink(String url) {
-        if (port == null) { load(url); return; }
+    @Override public void followLink(String url) { follow(url, () -> load(url)); }
+
+    /** `untaken` runs when there is no port, no link to the URL, or the page does not take its click. */
+    private void follow(String url, Runnable untaken) {
+        if (port == null) { untaken.run(); return; }
         int id = ++followed;
         int before = moves;
         following = taken -> {
-            if (!taken) { load(url); return; }
+            if (!taken) { untaken.run(); return; }
             main.postDelayed(() -> { if (!destroyed && moves == before) load(url); }, LINK_FALLBACK_MS);
         };
         try { port.postMessage(new JSONObject().put("type", "followLink").put("id", id).put("url", url)); }
-        catch (JSONException error) { load(url); }
+        catch (JSONException error) { untaken.run(); }
+    }
+
+    /**
+     * The bridge runs the same route step as WebView's ROUTE script, after the link step for a
+     * push. When it answers false, or there is no port, the URL loads as `followLink` or `replace`
+     * would; otherwise the page owns the outcome.
+     */
+    @Override public void route(String url, boolean replace) {
+        Runnable load = () -> { if (replace) replace(url); else load(url); };
+        Runnable inDocument = () -> {
+            if (port == null) { load.run(); return; }
+            int id = ++followed;
+            following = moved -> { if (!moved) load.run(); };
+            try {
+                port.postMessage(new JSONObject().put("type", "route").put("id", id).put("url", url)
+                    .put("replace", replace).put("windowMs", ROUTE_WINDOW_MS));
+            } catch (JSONException error) { load.run(); }
+        };
+        if (replace) inDocument.run();
+        else follow(url, inDocument);
     }
 
     /** GeckoView moves to the exact entry; there is no entry skipping to work around, as in WebView. */

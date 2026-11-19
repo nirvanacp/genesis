@@ -470,7 +470,7 @@ impl Host {
         };
         if manifest.origins.iter().any(|o| applets::origin_of(o).as_deref() == Some(&origin)) {
             self.begin_load(&view, mono_ms());
-            return self.out.push(ShellCommand::LoadUrl { view, url: url.into(), mode: NavigateMode::Push });
+            return self.out.push(ShellCommand::LoadUrl { view, url: url.into(), mode: NavigateMode::Push, same_document: false });
         }
         let others: Vec<String> = self
             .applets

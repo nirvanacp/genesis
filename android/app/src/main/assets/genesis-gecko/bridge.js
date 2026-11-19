@@ -35,8 +35,51 @@
       case "followLink":
         port.postMessage({ type: "followed", id: message.id, taken: followLink(message.url) });
         return;
+      case "route":
+        port.postMessage({ type: "followed", id: message.id, taken: route(message.url, message.replace === true, message.windowMs) });
+        return;
     }
   });
+
+  // The same step as the shell's ROUTE script for WebView: moves the history entry to the URL and
+  // tells the website's router with a popstate, then loads the URL over that entry when nothing in
+  // the page changed within windowMs. False when it did not move the entry.
+  function route(target, replace, windowMs) {
+    try {
+      const url = new URL(target);
+      const here = new URL(location.href);
+      if (url.origin !== here.origin || !document.body) return false;
+      if (url.pathname === here.pathname && url.search === here.search) return false;
+      const title = document.title;
+      let changed = false;
+      const hasElement = nodes => Array.prototype.some.call(nodes, node => node.nodeType === 1);
+      const observer = new MutationObserver(records => {
+        if (records.some(record => hasElement(record.addedNodes) || hasElement(record.removedNodes))) changed = true;
+      });
+      // The state stays the page world's own value, so the website's popstate handler can read it.
+      const state = page.history.state;
+      const init = new page.Object();
+      init.state = state;
+      const popstate = new page.PopStateEvent("popstate", init);
+      observer.observe(document.documentElement, { childList: true, subtree: true });
+      try {
+        if (replace) history.replaceState(state, "", url.href);
+        else history.pushState(state, "", url.href);
+      } catch (error) {
+        observer.disconnect();
+        return false;
+      }
+      setTimeout(() => {
+        observer.disconnect();
+        if (changed || document.title !== title) return;
+        if (location.href === url.href) location.replace(url.href);
+      }, windowMs);
+      page.dispatchEvent(popstate);
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
 
   // The same step as the shell's FOLLOW_LINK script for WebView: offers a navigation to the page as
   // a click on its own link to the URL. True when the page's script took the click.
