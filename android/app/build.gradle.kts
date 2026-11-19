@@ -89,6 +89,17 @@ android {
             isMinifyEnabled = false
             if (releaseSigned) signingConfig = signingConfigs.getByName("release")
         }
+        // The debuggable build for applet builders: the release's bundled applets and native
+        // library under its own applicationId, so it installs beside the release app. It signs
+        // with the release key when one is set, and with the debug key otherwise.
+        create("developer") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".dev"
+            versionNameSuffix = "-dev"
+            isDebuggable = true
+            matchingFallbacks += "debug"
+            if (releaseSigned) signingConfig = signingConfigs.getByName("release")
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -119,9 +130,9 @@ androidComponents {
                     "tsconfig.base.json", ".nvmrc", "tools/**", "crates/contracts/**", "let/packages/**", "let/package.json", "let/tsconfig.base.json", "genesis.workspace.json", "genesis.packages.json", "android/native/**")
                 exclude("**/node_modules/**", "**/target/**")
             })
-            // Release builds bundle the published releases genesis.packages.json pins, so only the
-            // other build types read applet and servelet source. A missing directory is an empty tree.
-            if (variant.buildType != "release") {
+            // Release and developer builds bundle the published releases genesis.packages.json pins,
+            // so only debug builds read applet and servelet source. A missing directory is an empty tree.
+            if (variant.buildType == "debug") {
                 inputs.files(fileTree(appletsDirectory) {
                     exclude("**/node_modules/**", "**/target/**", ".git/**")
                 })
