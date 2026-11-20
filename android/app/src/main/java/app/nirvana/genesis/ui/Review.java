@@ -10,6 +10,7 @@ import android.widget.RadioButton;
 import android.widget.TextView;
 import app.nirvana.genesis.R;
 import com.google.android.material.button.MaterialButton;
+import com.google.android.material.materialswitch.MaterialSwitch;
 import java.util.ArrayList;
 import java.util.List;
 import org.json.JSONObject;
@@ -27,6 +28,10 @@ public final class Review {
     private JSONObject review;
     private boolean answered;
     private boolean eraseOnReplace = true;
+    /** Whether a new install keeps a separate sign-in; on by default, since it comes from another source. */
+    private boolean separate = true;
+    /** The applet whose new install asked for a separate sign-in, applied once it is installed. */
+    private String separatePending;
 
     /** `finished` closes the pages of the flow that led here. */
     public Review(Ui ui, Runnable finished) {
@@ -38,6 +43,7 @@ public final class Review {
         review = command;
         answered = false;
         eraseOnReplace = true;
+        separate = true;
         ui.pages.push(REVIEW, this::page, () -> answer(false), false);
     }
 
@@ -46,6 +52,7 @@ public final class Review {
         answered = true;
         String kind = review.optJSONObject("outcome") == null ? "install" : review.optJSONObject("outcome").optString("kind");
         String replace = accept && "replace".equals(kind) ? (eraseOnReplace ? "erase" : "keep") : null;
+        separatePending = accept && asksSignIn(kind) && separate && ui.actions.separateSignInAvailable() ? review.optString("appletId") : null;
         if (!"blocked".equals(kind) || !accept) ui.actions.reviewDecision(review.optString("reviewId"), accept, replace);
         ui.pages.remove(REVIEW);
         finished.run();
@@ -62,6 +69,11 @@ public final class Review {
             case "blocked": return ui.page(header, blocked(outcome), blockedFooter());
             default: return ui.page(header, install(kind, outcome), installFooter(kind));
         }
+    }
+
+    /** A new applet chooses its sign-in: a first install, or a replacement that erases the old data. */
+    private boolean asksSignIn(String kind) {
+        return "install".equals(kind) || ("replace".equals(kind) && eraseOnReplace);
     }
 
     private String name() { return review.optString("name"); }
@@ -99,8 +111,31 @@ public final class Review {
         content.addView(ui.paragraph(lead, Tokens.Type.BODY_LARGE, t.onSurfaceVariant));
         content.addView(summary(), t.margins(20, 8));
         reach(content, origins(), services(), storage());
+        if (asksSignIn(kind)) signIn(content);
         trust(content);
         return content;
+    }
+
+    /** SIGN-IN: a new applet starts signed out unless the user lets it share the sign-ins they have. */
+    private void signIn(LinearLayout content) {
+        Tokens t = ui.tokens;
+        String hosts = Ui.and(Ui.hosts(origins()));
+        content.addView(t.section("Sign-in"));
+        if (!ui.actions.separateSignInAvailable()) {
+            content.addView(t.banner(R.drawable.ic_warning, null, "This phone's WebView cannot keep sign-ins apart. " + name() + " will use the sign-ins you already have on " + hosts + ".",
+                t.warningContainer, t.onWarningContainer, 0), t.margins(20, 0));
+            return;
+        }
+        MaterialSwitch toggle = new MaterialSwitch(ui.activity);
+        toggle.setChecked(separate);
+        toggle.setContentDescription("Keep a separate sign-in");
+        toggle.setOnCheckedChangeListener((button, checked) -> {
+            separate = checked;
+            ui.pages.push(REVIEW, this::page, () -> answer(false), false);
+        });
+        String detail = separate ? name() + " starts signed out and never sees the sign-ins of your other applets."
+            : name() + " uses the sign-ins you already have on " + hosts + ".";
+        content.addView(t.row(R.drawable.ic_lock, "Keep a separate sign-in", detail, toggle, false, separate ? t.onSurface : t.onWarningContainer, null));
     }
 
     private View installFooter(String kind) {
@@ -153,7 +188,7 @@ public final class Review {
         Tokens t = ui.tokens;
         content.addView(t.section("Websites"));
         for (String origin : origins) {
-            content.addView(t.row(R.drawable.ic_website, Ui.host(origin), "Uses your sign-in on this site, and sees what you see there", null, false, t.onSurface, null));
+            content.addView(t.row(R.drawable.ic_website, "Can read and change your data on " + Ui.host(origin), "It acts as you on this site while you are signed in", null, false, t.onSurface, null));
         }
         if (!services.isEmpty()) {
             content.addView(t.section("Outside services"));
@@ -236,7 +271,7 @@ public final class Review {
             TextView heading = t.text(changes == 1 ? "1 change needs your OK" : changes + " changes need your OK", Tokens.Type.TITLE_MEDIUM, t.onWarningContainer);
             heading.setPadding(t.dp(16), 0, t.dp(16), t.dp(4));
             box.addView(heading);
-            for (String origin : newOrigins) box.addView(t.row(R.drawable.ic_website, "New site: " + Ui.host(origin), "It can use your sign-in there", null, false, t.onWarningContainer, null));
+            for (String origin : newOrigins) box.addView(t.row(R.drawable.ic_website, "Can read and change your data on " + Ui.host(origin), "New site. It acts as you there while you are signed in", null, false, t.onWarningContainer, null));
             for (String service : newServices) box.addView(t.row(R.drawable.ic_services, "New outside service: " + service, "Sends data to a server the developer runs", null, false, t.onWarningContainer, null));
             if (gainsStorage) box.addView(t.row(R.drawable.ic_storage, "Keeps data on this phone", "Erased when you remove the applet", null, false, t.onWarningContainer, null));
             content.addView(box, t.margins(20, 8));
@@ -292,6 +327,7 @@ public final class Review {
         content.addView(t.section("Your data"));
         content.addView(choice("Erase and start fresh", "Recommended. The new build can't read what the old one saved.", true));
         content.addView(choice("Keep my data", "Only if you trust the new publisher with it.", false));
+        if (asksSignIn("replace")) signIn(content);
         trust(content);
         return content;
     }
@@ -405,6 +441,10 @@ public final class Review {
     // S12: installed
 
     public void installed(JSONObject command) {
+        String id = command.optString("appletId");
+        // Applied only now, so a cancelled or failed install leaves no sign-in behind.
+        if (id.equals(separatePending) && !command.optBoolean("updated")) ui.actions.startSeparateSignIn(id);
+        separatePending = null;
         ui.pages.push(INSTALLED, () -> installedPage(command), () -> ui.pages.remove(INSTALLED), false);
     }
 
