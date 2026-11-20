@@ -1,6 +1,6 @@
 # Third-party notices
 
-The Genesis Android app (APK) includes the third-party software listed below. Each component is distributed under its own licence, named here by its SPDX identifier and linked to its source. This file lists what the release APK contains as of Genesis 0.1.0. It does not cover the licence of Genesis itself.
+The Genesis Android app (APK) includes the third-party software listed below. Each component is distributed under its own licence, named here by its SPDX identifier and linked to its source. This file lists what the release APK contains as of Genesis 0.1.0-alpha.1. It does not cover the licence of Genesis itself.
 
 ## GeckoView (Mozilla)
 
@@ -101,7 +101,7 @@ The applet bundled into the APK includes these npm packages in its compiled user
 | react-dom | 19.3.1 | MIT | <https://github.com/facebook/react> |
 | scheduler | 0.28.0 | MIT | <https://github.com/facebook/react> |
 
-It also includes `@let/sdk` and `@let/core` from this project's Let framework.
+It also includes `@nirvanacp/sdk` and `@nirvanacp/core` from this project's Let framework.
 
 ## Go
 
