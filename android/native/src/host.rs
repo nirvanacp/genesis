@@ -24,8 +24,13 @@ const SUSPEND_RETIRE_MS: u64 = 30_000;
 const REVEALED_RETIRE_MS: u64 = 600_000;
 /// At most this many applets stay live. Starting another retires the one suspended longest.
 const LIVE_APPLETS_MAX: usize = 3;
-/// `ComponentCallbacks2.TRIM_MEMORY_BACKGROUND`: the process is in the background list.
-const TRIM_MEMORY_BACKGROUND: u32 = 40;
+/// `ComponentCallbacks2.TRIM_MEMORY_MODERATE`: the process is in the middle of the background
+/// list, so the system kills it soon. Some phones send `TRIM_MEMORY_BACKGROUND` (40) within a second
+/// of every app switch; retiring then would restart the applet on every return, so suspended
+/// applets wait for `SUSPEND_RETIRE_MS` at that level. Android 14 and later send apps only
+/// `TRIM_MEMORY_UI_HIDDEN` (20) and `TRIM_MEMORY_BACKGROUND`, so there `SUSPEND_RETIRE_MS` alone
+/// retires suspended applets.
+const TRIM_MEMORY_MODERATE: u32 = 60;
 
 #[derive(Default)]
 pub struct Host {
@@ -637,7 +642,7 @@ impl Host {
     /// Under memory pressure in the background, every applet whose window is not resumed retires
     /// to its resume target, freeing its WebViews and its running servelets.
     fn trim_memory(&mut self, level: u32) {
-        if level < TRIM_MEMORY_BACKGROUND {
+        if level < TRIM_MEMORY_MODERATE {
             return;
         }
         let suspended: Vec<String> =
