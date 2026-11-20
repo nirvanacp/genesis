@@ -62,28 +62,43 @@ function releaseUrl({ repository, tag }, asset) {
   return `https://github.com/${repository}/releases/download/${tag.split("/").map(encodeURIComponent).join("/")}/${asset}`;
 }
 
+const DOWNLOAD_TIMEOUT_MS = 60_000;
+
 async function download(url) {
   let response;
-  try { response = await fetch(url); }
+  try { response = await fetch(url, { signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS) }); }
   catch (error) { throw new Error(`Cannot download ${url}: ${error.cause?.message ?? error.message}`); }
   if (!response.ok) throw new Error(`Cannot download ${url}: HTTP ${response.status}`);
-  return Buffer.from(await response.arrayBuffer());
+  try { return Buffer.from(await response.arrayBuffer()); }
+  catch (error) { throw new Error(`Cannot download ${url}: ${error.cause?.message ?? error.message}`); }
 }
 
-// The bundle and release record of an applet's published release. A cached bundle whose SHA-256
-// equals the pinned one is reused, so a rebuild works offline. Both files are checked before
-// they are cached: the bundle's SHA-256 equals the pinned one and the record's, the record is
-// valid and names this applet, and so does the bundle's manifest.
+// The bundle and release record of an applet's published release. A cached pair that still passes
+// the checks below is reused, so a rebuild works offline; a damaged one is downloaded again. Both
+// files are checked before they are cached: the bundle's SHA-256 equals the pinned one and the
+// record's, the record is valid and names this applet and the pinned tag's version, and the
+// bundle's manifest names this applet.
 async function downloadRelease({ id, release }) {
-  const { validateReleaseRecord } = await import("@nirvanacp/core");
   const directory = path.join(root, "target/genesis/releases", id, release.tag.replace(/[^A-Za-z0-9._-]/g, "_").replace(/^\./, "_"));
   const bundleFile = path.join(directory, `applet-${id}.bundle.json`);
   const recordFile = path.join(directory, `applet-${id}.release.json`);
   const cached = await Promise.all([readFile(bundleFile), readFile(recordFile)]).catch(() => null);
-  const fresh = !(cached && sha256(cached[0]) === release.sha256);
-  const [bundleBytes, recordBytes] = fresh
-    ? [await download(releaseUrl(release, path.basename(bundleFile))), await download(releaseUrl(release, path.basename(recordFile)))]
-    : cached;
+  if (cached) {
+    try { return { bundleFile, recordFile, ...await checkRelease(id, release, ...cached), cached: true }; }
+    catch {}
+  }
+  const bundleBytes = await download(releaseUrl(release, path.basename(bundleFile)));
+  const recordBytes = await download(releaseUrl(release, path.basename(recordFile)));
+  const checked = await checkRelease(id, release, bundleBytes, recordBytes);
+  await mkdir(directory, { recursive: true });
+  await writeFile(bundleFile, bundleBytes);
+  await writeFile(recordFile, recordBytes);
+  return { bundleFile, recordFile, ...checked, cached: false };
+}
+
+// Fails unless the bundle and record bytes are the pinned release of this applet.
+async function checkRelease(id, release, bundleBytes, recordBytes) {
+  const { validateReleaseRecord } = await import("@nirvanacp/core");
   const failure = `${id} release ${release.tag} from ${release.repository}`;
   const actual = sha256(bundleBytes);
   if (actual !== release.sha256) throw new Error(`${failure}: the bundle's SHA-256 is ${actual}, but genesis.packages.json pins ${release.sha256}`);
@@ -92,15 +107,11 @@ async function downloadRelease({ id, release }) {
   catch (error) { throw new Error(`${failure}: invalid release record: ${error.message}`); }
   if (record.appletId !== id) throw new Error(`${failure}: the release record is for ${record.appletId}`);
   if (record.bundle.sha256 !== actual) throw new Error(`${failure}: the release record's bundle SHA-256 is ${record.bundle.sha256}, not ${actual}`);
+  if (release.tag !== `v${record.version}` && !release.tag.endsWith(`/v${record.version}`)) throw new Error(`${failure}: the release record is for version ${record.version}, which the tag does not name`);
   try { bundle = JSON.parse(bundleBytes.toString("utf8")); }
   catch (error) { throw new Error(`${failure}: the bundle is not JSON: ${error.message}`); }
   if (bundle?.bundle?.manifest?.id !== id || !Array.isArray(bundle.entries)) throw new Error(`${failure}: the bundle is not an import file for ${id}`);
-  if (fresh) {
-    await mkdir(directory, { recursive: true });
-    await writeFile(bundleFile, bundleBytes);
-    await writeFile(recordFile, recordBytes);
-  }
-  return { bundleFile, recordFile, bundle, version: record.version, cached: !fresh };
+  return { bundle, version: record.version };
 }
 
 // The icon file of a bundle: the entry at `shell.icon`, or null when there is none.
@@ -112,15 +123,16 @@ function bundleIcon({ bundle: { manifest }, entries }) {
 // Where an applet's bundle comes from. A release or developer build always uses the published release; a debug
 // build uses the source directory when there is one, and the published release otherwise.
 // assets() has already refused an applet the variant cannot bundle.
+let frameworkReady = false;
 async function resolveApplet({ id, drawer, release, base, manifest }) {
   if (published || !base) {
     const downloaded = await downloadRelease({ id, release });
     console.log(`${id}: published release ${downloaded.version} (${release.tag}${downloaded.cached ? ", cached" : ", downloaded"})`);
     return { manifest: downloaded.bundle.bundle.manifest, drawer, bundleFile: downloaded.bundleFile, recordFile: downloaded.recordFile, icon: bundleIcon(downloaded.bundle) };
   }
-  // The applets directory is its own npm workspace: its node_modules holds the SDK and React.
-  const { appletsDirectory } = (await import("./workspace.mjs")).readWorkspace();
-  await requireFile(path.join(appletsDirectory, "node_modules"), `Missing the applets' npm dependencies. Run npm ci in ${appletsDirectory}.`);
+  // The applets directory is its own npm workspace: its node_modules holds the SDK and React,
+  // which a source build takes from this checkout's framework, reinstalled when it changed.
+  if (!frameworkReady) { (await import("./workspace.mjs")).ensureFramework(); frameworkReady = true; }
   const { buildApplet } = await import("../let/packages/applet-tools/src/build.mjs");
   const { containedFile } = await import("../let/packages/applet-tools/src/manifest.mjs");
   const built = await buildApplet(base, path.join(intermediates, "bundles", manifest.id), { debug: variant === "debug" });
