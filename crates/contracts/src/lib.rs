@@ -55,8 +55,13 @@ impl Default for HostCompat {
 pub const MAX_CONTEXTS: usize = 3;
 /// The largest import file the shell reads and the host accepts.
 pub const IMPORT_MAX_BYTES: usize = 64 * 1024 * 1024;
-/// Origin that serves foreground documents through `WebViewAssetLoader`.
-pub const FOREGROUND_ORIGIN: &str = "https://appassets.androidplatform.net";
+/// The origin that serves an applet's own screens through `WebViewAssetLoader`. Each applet has
+/// its own, so its storage, cookies and files are out of reach of every other applet's screens.
+/// `.invalid` never resolves (RFC 6761), so only the shell can answer for it, and one label under
+/// the top-level name leaves no parent domain that two applets could share a cookie on.
+pub fn foreground_origin(applet_id: &str) -> String {
+    format!("https://genesis-{applet_id}.invalid")
+}
 
 // ---------------------------------------------------------------------------------------------
 // Views
