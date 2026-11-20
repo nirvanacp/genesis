@@ -16,6 +16,18 @@ val localSettings = Properties().apply {
 }
 val configuredNode = localSettings.getProperty("genesis.node", "node")
 
+// Release signing: each value comes from an environment variable, or else from a Gradle property
+// such as one in ~/.gradle/gradle.properties, never from a file in the repository. Without all
+// four, release builds stay unsigned.
+fun signingValue(environment: String, property: String): String? =
+    providers.environmentVariable(environment).orNull?.takeIf { it.isNotBlank() }
+        ?: providers.gradleProperty(property).orNull?.takeIf { it.isNotBlank() }
+val signingKeystore = signingValue("GENESIS_KEYSTORE_FILE", "genesis.keystore.file")
+val signingKeystorePassword = signingValue("GENESIS_KEYSTORE_PASSWORD", "genesis.keystore.password")
+val signingKeyAlias = signingValue("GENESIS_KEY_ALIAS", "genesis.key.alias")
+val signingKeyPassword = signingValue("GENESIS_KEY_PASSWORD", "genesis.key.password")
+val releaseSigned = listOf(signingKeystore, signingKeystorePassword, signingKeyAlias, signingKeyPassword).all { it != null }
+
 abstract class GenesisBuild : DefaultTask() {
     @get:Input abstract val variant: Property<String>
     @get:Input abstract val nodeExecutable: Property<String>
@@ -57,13 +69,37 @@ android {
         minSdk = 26
         targetSdk = 37
         versionCode = 1
-        versionName = "0.1.0"
+        versionName = "0.1.0-alpha.1"
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
+    signingConfigs {
+        if (releaseSigned) {
+            create("release") {
+                storeFile = file(signingKeystore!!)
+                storePassword = signingKeystorePassword
+                keyAlias = signingKeyAlias
+                keyPassword = signingKeyPassword
+            }
+        }
+    }
     buildTypes {
         debug { isMinifyEnabled = false }
-        release { isMinifyEnabled = false }
+        release {
+            isMinifyEnabled = false
+            if (releaseSigned) signingConfig = signingConfigs.getByName("release")
+        }
+        // The debuggable build for applet builders: the release's bundled applets and native
+        // library under its own applicationId, so it installs beside the release app. It signs
+        // with the release key when one is set, and with the debug key otherwise.
+        create("developer") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".dev"
+            versionNameSuffix = "-dev"
+            isDebuggable = true
+            matchingFallbacks += "debug"
+            if (releaseSigned) signingConfig = signingConfigs.getByName("release")
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -94,9 +130,9 @@ androidComponents {
                     "tsconfig.base.json", ".nvmrc", "tools/**", "crates/contracts/**", "let/packages/**", "let/package.json", "let/tsconfig.base.json", "genesis.workspace.json", "genesis.packages.json", "android/native/**")
                 exclude("**/node_modules/**", "**/target/**")
             })
-            // Release builds bundle the published releases genesis.packages.json pins, so only the
-            // other build types read applet and servelet source. A missing directory is an empty tree.
-            if (variant.buildType != "release") {
+            // Release and developer builds bundle the published releases genesis.packages.json pins,
+            // so only debug builds read applet and servelet source. A missing directory is an empty tree.
+            if (variant.buildType == "debug") {
                 inputs.files(fileTree(appletsDirectory) {
                     exclude("**/node_modules/**", "**/target/**", ".git/**")
                 })
