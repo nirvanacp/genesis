@@ -244,3 +244,7 @@ Work in this workspace falls into three layers, each with its own instructions:
 | Servelets | An applet's Go backend | `let/factory/servelets/AGENTS.md` |
 
 The instructions are written for coding agents and read just as well for people. They cover nested repositories, worktrees, branch names (`feat/…`, `fix/…`, `docs/…`), the commit format `feat/(<area>): message`, and the checks to run before committing. Pull requests go to `develop`. Run `sh tools/git-hooks/install.sh` once after cloning to install the branch name and worktree hooks.
+
+## Licence
+
+MIT, see [LICENSE](LICENSE).
