@@ -94,12 +94,16 @@ androidComponents {
                     "tsconfig.base.json", ".nvmrc", "tools/**", "crates/contracts/**", "let/packages/**", "let/package.json", "let/tsconfig.base.json", "genesis.workspace.json", "genesis.packages.json", "android/native/**")
                 exclude("**/node_modules/**", "**/target/**")
             })
-            inputs.files(fileTree(appletsDirectory) {
-                exclude("**/node_modules/**", "**/target/**", ".git/**")
-            })
-            inputs.files(fileTree(File(workspaceRoot, "servelets")) {
-                exclude("**/node_modules/**", "**/target/**", ".git/**", "**/dist/**")
-            })
+            // Release builds bundle the published releases genesis.packages.json pins, so only the
+            // other build types read applet and servelet source. A missing directory is an empty tree.
+            if (variant.buildType != "release") {
+                inputs.files(fileTree(appletsDirectory) {
+                    exclude("**/node_modules/**", "**/target/**", ".git/**")
+                })
+                inputs.files(fileTree(File(workspaceRoot, "servelets")) {
+                    exclude("**/node_modules/**", "**/target/**", ".git/**", "**/dist/**")
+                })
+            }
             assetsDirectory.set(layout.buildDirectory.dir("generated/genesis/${variant.name}/assets"))
             jniDirectory.set(layout.buildDirectory.dir("generated/genesis/${variant.name}/jniLibs"))
             resDirectory.set(layout.buildDirectory.dir("generated/genesis/${variant.name}/res"))

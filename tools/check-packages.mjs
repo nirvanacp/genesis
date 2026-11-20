@@ -56,50 +56,73 @@ export async function checkFrameworkVersions(framework) {
   requireValue(problems.length === 0, `Framework package versions differ from FRAMEWORK_VERSION:\n${problems.join('\n')}`);
 }
 
-/**
- * One `genesis.packages.json` entry: an applet directory name, or `{ id, drawer }` where `id` is
- * the directory name and `drawer: true` gives the bundled applet an app drawer entry.
- */
-function selectionEntry(entry) {
-  if (typeof entry === 'string') return { directory: entry, drawer: false };
-  requireValue(entry && typeof entry === 'object' && !Array.isArray(entry) && typeof entry.id === 'string'
-    && Object.keys(entry).every(key => key === 'id' || key === 'drawer')
-    && (entry.drawer === undefined || typeof entry.drawer === 'boolean'), 'Invalid bundle selection entry');
-  return { directory: entry.id, drawer: entry.drawer === true };
+const REPOSITORY = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
+const SHA256 = /^[0-9a-f]{64}$/;
+
+/** A `release` object: the GitHub repository, the release tag and the SHA-256 of its bundle asset. */
+function releaseEntry(release) {
+  requireValue(release && typeof release === 'object' && !Array.isArray(release)
+    && Object.keys(release).every(key => ['repository', 'tag', 'sha256'].includes(key))
+    && typeof release.repository === 'string' && REPOSITORY.test(release.repository)
+    && typeof release.tag === 'string' && release.tag.trim() !== ''
+    && typeof release.sha256 === 'string' && SHA256.test(release.sha256),
+  'Invalid bundle selection release: use { repository: "owner/name", tag, sha256 } with a 64-character hex sha256');
+  return { repository: release.repository, tag: release.tag, sha256: release.sha256 };
 }
 
 /**
- * The selected applets from `genesis.packages.json`: each directory resolved inside the applets
- * directory that `genesis.workspace.json` names, and whether it has a drawer entry.
+ * One `genesis.packages.json` entry: an applet directory name, or `{ id, drawer, release }` where
+ * `id` is the directory name, `drawer: true` gives the bundled applet an app drawer entry and
+ * `release` names its published GitHub release. An entry without `release` is source only.
+ */
+function selectionEntry(entry) {
+  if (typeof entry === 'string') return { id: entry, drawer: false, release: null };
+  requireValue(entry && typeof entry === 'object' && !Array.isArray(entry) && typeof entry.id === 'string'
+    && Object.keys(entry).every(key => ['id', 'drawer', 'release'].includes(key))
+    && (entry.drawer === undefined || typeof entry.drawer === 'boolean'), 'Invalid bundle selection entry');
+  return { id: entry.id, drawer: entry.drawer === true, release: entry.release === undefined ? null : releaseEntry(entry.release) };
+}
+
+/**
+ * The selected applets from `genesis.packages.json`: each one's id, drawer choice and release,
+ * `directory`, where its source belongs inside the applets directory that `genesis.workspace.json`
+ * names, and `base`, that directory's real path, or null when it, or the whole applets directory,
+ * is missing.
  */
 async function readSelection(packagesIndex) {
   const selection = JSON.parse(await readFile(path.join(root, 'genesis.packages.json'), 'utf8'));
   requireValue(selection.schemaVersion === packagesIndex && Array.isArray(selection.applets), 'Invalid bundle selection');
   const entries = selection.applets.map(selectionEntry);
-  requireValue(new Set(entries.map(e => e.directory)).size === entries.length, 'Invalid bundle selection');
+  requireValue(new Set(entries.map(e => e.id)).size === entries.length, 'Invalid bundle selection');
   const { appletsDirectory } = readWorkspace();
-  let applets;
-  try { applets = await realpath(appletsDirectory); }
-  catch { throw new Error(`Missing applets directory ${appletsDirectory}. Run npm run workspace -- setup, then npm install.`); }
+  const applets = await realpath(appletsDirectory).catch(() => null);
   const selected = [];
-  for (const { directory, drawer } of entries) {
-    requireValue(safePath(directory), 'Invalid selected directory');
-    let base;
-    try { base = await realpath(path.join(applets, directory)); }
-    catch { throw new Error(`Selected applet ${directory} is missing from ${applets}`); }
-    requireValue(base.startsWith(applets + path.sep), 'Selected applet escapes the applets directory');
-    selected.push({ base, drawer });
+  for (const entry of entries) {
+    requireValue(safePath(entry.id), 'Invalid selected directory');
+    const base = applets && await realpath(path.join(applets, entry.id)).catch(() => null);
+    requireValue(!base || base.startsWith(applets + path.sep), 'Selected applet escapes the applets directory');
+    selected.push({ ...entry, directory: path.join(appletsDirectory, entry.id), base });
   }
   return selected;
 }
 
-/** Every selected applet, read and validated, with its `drawer` choice. Fails on the first invalid one. */
+/** Fails for a selected applet that has neither its source directory nor a published release. */
+export function requireSource({ id, release, base, directory }) {
+  requireValue(base || release, `Selected applet ${id} has no source directory ${directory} and names no published release. Run npm run workspace -- setup, or pin its release in genesis.packages.json.`);
+}
+
+/**
+ * Every selected applet: `{ id, drawer, release, base }`, plus the applet read and validated from
+ * its source directory when `base` is set. Fails on the first invalid one. An applet with neither
+ * source nor release is returned too, so the build can say what its variant needs.
+ */
 export async function readPackages() {
   const { table } = await typescriptTable();
   const packages = [], ids = new Set();
-  for (const { base, drawer } of await readSelection(table.packagesIndex)) {
-    const applet = await readApplet(base);
-    requireValue(!ids.has(applet.manifest.id), 'Duplicate selected applet ID'); ids.add(applet.manifest.id); packages.push({ ...applet, drawer });
+  for (const entry of await readSelection(table.packagesIndex)) {
+    if (!entry.base) { packages.push(entry); continue; }
+    const applet = await readApplet(entry.base);
+    requireValue(!ids.has(applet.manifest.id), 'Duplicate selected applet ID'); ids.add(applet.manifest.id); packages.push({ ...applet, ...entry });
   }
   return packages;
 }
@@ -107,14 +130,18 @@ export async function readPackages() {
 /**
  * The workspace checks: the workspace layout, the compat mirror, the framework versions, and the selected applets.
  * A selected applet built for other versions is reported, not failed: `genesis-applet check`
- * and the APK build refuse it.
+ * and the APK build refuse it. Without an applets directory, as in the release workflow, every
+ * selected applet must name its published release, which is checked from that `release` entry.
  */
 async function checkWorkspace() {
-  checkLayout();
+  checkLayout({ requireApplets: false });
   const { table, framework } = await checkCompatMirror();
   await checkFrameworkVersions(framework);
   const passed = [], incompatible = [], ids = new Set();
-  for (const { base } of await readSelection(table.packagesIndex)) {
+  for (const entry of await readSelection(table.packagesIndex)) {
+    requireSource(entry);
+    const { base, id, release } = entry;
+    if (!base) { passed.push(`${id} (release ${release.tag})`); continue; }
     const compat = await appletCompat(base);
     if (compat.mismatches.length > 0) { incompatible.push(`${base} (${compat.id}):\n${formatMismatches(compat.mismatches)}`); continue; }
     const { manifest } = await readApplet(base);

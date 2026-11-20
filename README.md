@@ -89,8 +89,8 @@ To start by hand:
 ```sh
 cd applets
 npx genesis-applet create my-applet --origin https://example.com --name "Example"
-cd .. && npm install                       # the root installs every applet's dependencies
-cd applets/my-applet
+npm install                                # the applets directory installs every applet's dependencies
+cd my-applet
 npm run check                              # manifest, compatibility, TypeScript and page module
 npm run build                              # writes dist/ with the bundle
 npx genesis-applet dev install . --device emulator-5554
@@ -110,9 +110,9 @@ Requirements:
 `tools/build.mjs` checks each version and prints the install command for a missing one.
 
 ```sh
-npm run workspace -- setup     # clone Let and the applets, create an empty servelets directory
+npm run workspace -- setup     # clone Let and the applets (and npm ci in them), create an empty servelets directory
 git clone https://github.com/nirvanacp/servelets.git servelets   # the example servelets, if setup left it empty
-npm install
+npm ci
 npm run typecheck
 npm run build                  # native library, packages and bundled applets
 
@@ -126,7 +126,14 @@ Genesis runs on Android 8.0 (API 26) and later.
 
 A debug build accepts `genesis-applet dev install` over `adb`. A release build refuses it. Release builds install the applets bundled into the APK and the applets people add from **Add applet** in the Genesis menu, from a public GitHub repository or a downloaded bundle file. Genesis shows each build's origins and capabilities for review before installing it, and offers updates from the same source. In an applet repository, CI rebuilds every tagged version and publishes the release only when the rebuild matches the committed build; the [publishing guide](https://github.com/nirvanacp/let/blob/develop/factory/applets/guides/publishing.md) covers versions, tags and the reusable workflows, which live in the Let repository.
 
-`genesis.packages.json` lists the applets bundled into the APK, by directory name. An entry such as `{ "id": "hn-bookmarks", "drawer": true }` also gives that applet its own icon in the Android app drawer, drawn from the manifest's `shell.icon` and accent color.
+`genesis.packages.json` lists the applets bundled into the APK, by applet id, which is also the applet's directory name. An entry such as `{ "id": "hn-bookmarks", "drawer": true }` also gives that applet its own icon in the Android app drawer, drawn from the manifest's `shell.icon` and accent color. An entry's `release` object pins the applet's published GitHub release:
+
+```json
+{ "id": "hn-bookmarks", "drawer": true,
+  "release": { "repository": "nirvanacp/applets", "tag": "hn-bookmarks/v0.0.7", "sha256": "<SHA-256 of applet-hn-bookmarks.bundle.json>" } }
+```
+
+A release build bundles only pinned releases, so it needs Genesis and Let but not the applets or servelets. It downloads `applet-<id>.bundle.json` and `applet-<id>.release.json` from the release into `target/genesis/releases/`, and fails unless the bundle's SHA-256 matches the pin and the release record, and the record is valid and names the applet. A cached download is reused, so a rebuild works offline. A debug build builds an applet from its source directory when the applets directory has it, and uses the pinned release otherwise.
 
 ## Workspace
 
@@ -135,11 +142,13 @@ A debug build accepts `genesis-applet dev install` over `adb`. A release build r
 | Command | What it does |
 | --- | --- |
 | `path` | Prints the applets directory |
-| `setup` | Clones Let and the applets into their directories when they are missing, creates the servelets directory (cloning it when the config names a repository), then runs `sync` |
-| `sync` | Links `applets/` to the configured directory when it lives elsewhere, and links its `node_modules` to the root install |
+| `setup` | Clones Let and the applets into their directories when they are missing and runs `npm ci` in a newly cloned applets directory, creates the servelets directory (cloning it when the config names a repository), then runs `sync` |
+| `sync` | Links `applets/` to the configured directory when it lives elsewhere |
+| `link-framework` | Installs a packed copy of this checkout's `let/packages/*` into the applets' `node_modules` without saving, so the applets build against the local framework. Run it again after changing the framework |
+| `unlink-framework` | Runs `npm ci` in the applets directory, back to the npm registry versions |
 | `check` | Fails with the repairing command when the checkout differs from the config. `npm run check:packages` runs it too |
 
-The root `package.json` is an npm workspace over `let/packages/*` and `applets/*`, so every applet resolves the same SDK, tools and React. Run `npm install` at the root only.
+The root `package.json` is an npm workspace over `let/packages/*`. The applets directory is its own npm workspace with its own lockfile, so run `npm ci` in both. Applets build against the Let packages from npm; run `npm run workspace -- link-framework` to try them against a local framework change, and `unlink-framework` when done. `let-applet publish` refuses linked tools, so a linked framework never reaches a release.
 
 ## Repository map
 
