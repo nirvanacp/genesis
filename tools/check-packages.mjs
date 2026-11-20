@@ -108,7 +108,7 @@ async function readSelection(packagesIndex) {
 
 /** Fails for a selected applet that has neither its source directory nor a published release. */
 export function requireSource({ id, release, base, directory }) {
-  requireValue(base || release, `Selected applet ${id} has no source directory ${directory} and names no published release. Run npm run workspace -- setup.`);
+  requireValue(base || release, `Selected applet ${id} has no source directory ${directory} and names no published release. Run npm run workspace -- setup, or pin its release in genesis.packages.json.`);
 }
 
 /**
@@ -130,10 +130,11 @@ export async function readPackages() {
 /**
  * The workspace checks: the workspace layout, the compat mirror, the framework versions, and the selected applets.
  * A selected applet built for other versions is reported, not failed: `genesis-applet check`
- * and the APK build refuse it.
+ * and the APK build refuse it. Without an applets directory, as in the release workflow, every
+ * selected applet must name its published release, which is checked from that `release` entry.
  */
 async function checkWorkspace() {
-  checkLayout();
+  checkLayout({ requireApplets: false });
   const { table, framework } = await checkCompatMirror();
   await checkFrameworkVersions(framework);
   const passed = [], incompatible = [], ids = new Set();
