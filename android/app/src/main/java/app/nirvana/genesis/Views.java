@@ -17,6 +17,8 @@ import org.json.JSONObject;
  */
 final class Views {
     static final String BRIDGE = "__genesisBridge";
+    /** A path inside one revision folder of an applet: `<digits>/<file>`. */
+    private static final java.util.regex.Pattern REVISION_PATH = java.util.regex.Pattern.compile("[0-9]+/.+");
     /** Where the applet UI previews picked files, on the applet's own origin. */
     static final String PICKED_FILES = "/genesis-files/";
     /** The start of the page agent's blob download messages, which stay in the shell. */
@@ -201,8 +203,14 @@ final class Views {
         if (host == null || appletId.isEmpty()) return null;
         return new WebViewAssetLoader.Builder()
             .setDomain(host)
-            .addPathHandler("/genesis/" + appletId + "/", new WebViewAssetLoader.InternalStoragePathHandler(activity, new File(applets, appletId)))
+            .addPathHandler("/genesis/" + appletId + "/", revisions(new File(applets, appletId)))
             .build();
+    }
+
+    /** Serves `<revision>/<path>` from the applet's folder, and nothing outside a numbered revision. */
+    private WebViewAssetLoader.PathHandler revisions(File folder) {
+        WebViewAssetLoader.InternalStoragePathHandler files = new WebViewAssetLoader.InternalStoragePathHandler(activity, folder);
+        return path -> REVISION_PATH.matcher(path).matches() ? files.handle(path) : null;
     }
 
     static String origin(String url) {
