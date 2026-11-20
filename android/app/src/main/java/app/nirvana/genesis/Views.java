@@ -16,9 +16,8 @@ import org.json.JSONObject;
  * themselves are `WebsitePage`s; `WebViewPage` runs them in Android WebView, `GeckoPage` in GeckoView.
  */
 final class Views {
-    static final String FOREGROUND_ORIGIN = "https://appassets.androidplatform.net";
     static final String BRIDGE = "__genesisBridge";
-    /** Where the applet UI previews picked files, on `FOREGROUND_ORIGIN`. */
+    /** Where the applet UI previews picked files, on the applet's own origin. */
     static final String PICKED_FILES = "/genesis-files/";
     /** The start of the page agent's blob download messages, which stay in the shell. */
     static final String BLOB_MESSAGE = "{\"type\":\"genesis.blob";
@@ -184,14 +183,25 @@ final class Views {
 
     private final Activity activity;
     private final Listener listener;
-    private final WebViewAssetLoader assets;
+    private final File applets;
 
     Views(Activity activity, Listener listener) {
         this.activity = activity;
         this.listener = listener;
-        File applets = new File(activity.getFilesDir(), "applets");
-        assets = new WebViewAssetLoader.Builder()
-            .addPathHandler("/genesis/", new WebViewAssetLoader.InternalStoragePathHandler(activity, applets))
+        applets = new File(activity.getFilesDir(), "applets");
+    }
+
+    /**
+     * The files an applet's own screens may load: only its revision folders, at `/genesis/<id>/`
+     * on its own origin, which the host names as the page's one origin. Its stored values, resume
+     * file and every other applet's files stay out of reach.
+     */
+    private WebViewAssetLoader assets(String appletId, Set<String> origins) {
+        String host = origins.isEmpty() ? null : Uri.parse(origins.iterator().next()).getHost();
+        if (host == null || appletId.isEmpty()) return null;
+        return new WebViewAssetLoader.Builder()
+            .setDomain(host)
+            .addPathHandler("/genesis/" + appletId + "/", new WebViewAssetLoader.InternalStoragePathHandler(activity, new File(applets, appletId)))
             .build();
     }
 
@@ -209,7 +219,7 @@ final class Views {
         page.origins.addAll(origins);
         page.tab = site instanceof GeckoSites
             ? GeckoPage.document(activity, listener, page, startScript)
-            : WebViewPage.document(activity, listener, assets, page, startScript);
+            : WebViewPage.document(activity, listener, page.isForeground() ? assets(ref.optString("appletId"), origins) : null, page, startScript);
         return page;
     }
 
