@@ -135,6 +135,8 @@ final class Views {
         int downloads;
         /** The page's own view fills the screen for the website's full screen, which counts as shown. */
         boolean fullScreen;
+        /** The last activity level the host chose for this covered context, or null for none. */
+        String activity;
         /** `SystemClock.uptimeMillis()` of the user's last touch on this revealed context; 0 for none or used. */
         long touchedAt;
         /** `SystemClock.uptimeMillis()` of the last trusted input dispatched here; 0 for none. */
