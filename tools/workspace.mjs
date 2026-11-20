@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, lstatSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, lstatSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,19 +16,22 @@ const help = `Usage: npm run workspace -- <command>   (or node tools/workspace.m
           print a directory named in ${CONFIG} (default applets)
   setup   clone the applets and Let repositories when they are missing, create an empty
           servelets repository when it is missing and has no remote, then sync; after
-          cloning the applets, run npm ci in them
+          cloning the applets, run npm ci in them when they have a package-lock.json
   sync    when the applets directory is elsewhere, link applets/ to it
   check   fail unless the workspace matches ${CONFIG}
   link-framework
           install a copy of this checkout's let/packages/* into the applets' node_modules,
           so the applets build against the local framework instead of the npm registry
-          copy; run it again after changing the framework
+          copy; a debug build runs it by itself whenever the framework changed
   unlink-framework
           run npm ci in the applets directory, back to the registry copy
 
 Run npm ci at the Genesis root after setup.`;
 const NESTED = ['let', 'servelets'];
 const FRAMEWORK = ['core', 'sdk', 'applet-tools', 'servelet-tools'];
+// Written by link-framework into the applets' node_modules: the fingerprint of the framework it
+// installed. npm ci deletes node_modules, and with it this file.
+const FRAMEWORK_STAMP = path.join('node_modules', '.let-framework.json');
 
 function requireValue(condition, message) {
   if (!condition) throw new Error(message);
@@ -140,7 +144,8 @@ function setup() {
     requireValue(repository, `${CONFIG}: set applets.repository to clone the applets directory`);
     const result = spawnSync('git', ['clone', repository, appletsDirectory], { stdio: 'inherit', shell: false });
     requireValue(!result.error && result.status === 0, `git clone ${repository} failed`);
-    npm(appletsDirectory, ['ci']);
+    if (existsSync(path.join(appletsDirectory, 'package-lock.json'))) npm(appletsDirectory, ['ci']);
+    else console.log(`${appletsDirectory} has no package-lock.json yet; the first debug build installs this checkout's Let packages into it.`);
   }
   sync();
   console.log('Run npm ci at the Genesis root to install the Let packages.');
@@ -156,10 +161,12 @@ function npm(directory, args) {
 // package's prepack step (builds, the servelet tools' Go library and templates) and the applets
 // install the tarballs. A copy, not a link: a linked SDK would resolve React from the Genesis root,
 // a second copy beside the applets' own, and hooks would fail. --no-save keeps the applets'
-// package.json and lockfile on the registry versions. Run it again after changing the framework.
+// package.json and lockfile on the registry versions. A debug build runs it again when the
+// framework changed (ensureFramework).
 function linkFramework() {
   const { appletsDirectory, let: framework } = readWorkspace();
   requireValue(existsSync(appletsDirectory), `Missing applets directory ${appletsDirectory}. Run npm run workspace -- setup.`);
+  const fingerprint = frameworkFingerprint(framework.directory);
   const packed = mkdtempSync(path.join(tmpdir(), 'genesis-framework-'));
   try {
     for (const name of FRAMEWORK) npm(path.join(framework.directory, 'packages', name), ['pack', '--pack-destination', packed]);
@@ -167,12 +174,47 @@ function linkFramework() {
   } finally {
     rmSync(packed, { recursive: true, force: true });
   }
+  if (fingerprint) writeFileSync(path.join(appletsDirectory, FRAMEWORK_STAMP), `${JSON.stringify({ fingerprint })}\n`);
   console.log('The applets use the local Let packages. npm run workspace -- unlink-framework restores the registry copy.');
+}
+
+/**
+ * A SHA-256 over the path and content of every file git lists in the framework packages, tracked
+ * or untracked but not ignored, so build output and node_modules do not count. Null when the Let
+ * directory is not a git checkout; the framework then counts as changed on every build.
+ */
+function frameworkFingerprint(letDirectory) {
+  const packages = FRAMEWORK.map(name => `packages/${name}`);
+  const result = spawnSync('git', ['-C', letDirectory, 'ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', ...packages], { shell: false, maxBuffer: 64 * 1024 * 1024 });
+  if (result.error || result.status !== 0) return null;
+  const hash = createHash('sha256');
+  for (const file of result.stdout.toString('utf8').split('\0').filter(Boolean).sort()) {
+    const full = path.join(letDirectory, file);
+    if (!existsSync(full)) continue;
+    hash.update(`${file}\0`).update(readFileSync(full)).update('\0');
+  }
+  return hash.digest('hex');
+}
+
+/**
+ * Makes the applets' node_modules hold this checkout's framework, for a debug build from applet
+ * source: runs link-framework when the copy there is missing or was installed from other framework
+ * files, or from the registry. Without this, a debug build bundles whatever SDK was installed last.
+ */
+export function ensureFramework() {
+  const { appletsDirectory, let: framework } = readWorkspace();
+  const fingerprint = frameworkFingerprint(framework.directory);
+  let installed = null;
+  try { installed = JSON.parse(readFileSync(path.join(appletsDirectory, FRAMEWORK_STAMP), 'utf8')).fingerprint; } catch {}
+  if (fingerprint && installed === fingerprint) return;
+  console.log(`The applets' Let packages differ from ${framework.directory}; installing this checkout's copy.`);
+  linkFramework();
 }
 
 function unlinkFramework() {
   const { appletsDirectory } = readWorkspace();
   requireValue(existsSync(appletsDirectory), `Missing applets directory ${appletsDirectory}. Run npm run workspace -- setup.`);
+  requireValue(existsSync(path.join(appletsDirectory, 'package-lock.json')), `${appletsDirectory} has no package-lock.json to install the registry copy from.`);
   npm(appletsDirectory, ['ci']);
 }
 
