@@ -99,7 +99,7 @@ A version with a `-`, such as `0.3.0-beta.1`, is published as a prerelease. Gene
 
 ## Build your own applet
 
-Applets are built with [Let](https://github.com/nirvanacp/let), in any directory. You need Node 24.15.0, a device or emulator with the Genesis developer build ([download](#download)) reachable over `adb`, and Go 1.24 or later if your app needs a servelet. You don't need this repository.
+Applets are built with [Let](https://github.com/nirvanacp/let), in any directory; its [quick start](https://github.com/nirvanacp/let#quick-start) takes you from nothing to an applet on a device. You need Node 24.15.0 or later, a device or emulator with the Genesis developer build ([download](#download)) reachable over `adb`, and Go 1.24 or later if your app needs a servelet. You don't need this repository.
 
 ```sh
 npx @nirvanacp/applet-tools create my-applet --origin https://example.com --name "Example"
