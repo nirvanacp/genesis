@@ -27,7 +27,7 @@ An applet can:
 │ Applet UI: your web app, in any framework               │  visible
 │ screens, application rules, stored records              │
 └──────────────┬──────────────────────────────────────────┘
-               │ watches, inputs, navigation  (@let/sdk)
+               │ watches, inputs, navigation  (@nirvanacp/sdk)
 ┌──────────────▼──────────────────────────────────────────┐
 │ Genesis                                                 │
 │ Rust host: routes every message, deadlines, limits,     │
@@ -58,7 +58,7 @@ Genesis is split into four repositories that check out into one workspace.
 | Project | Location in the workspace | What it is |
 | --- | --- | --- |
 | Genesis | this repository | The Android app: the Java shell, the Rust host, the servelet runtime and the APK build |
-| [Let](https://github.com/nirvanacp/let) | `let/` | The framework applets and servelets are built with: `@let/sdk`, `@let/core`, the `let-applet` and `let-servelet` tools, the Go servelet library, and the instructions coding agents follow |
+| [Let](https://github.com/nirvanacp/let) | `let/` | The framework applets and servelets are built with: `@nirvanacp/sdk`, `@nirvanacp/core`, the `let-applet` and `let-servelet` tools, the Go servelet library, and the instructions coding agents follow |
 | [Applets](https://github.com/nirvanacp/applets) | `applets/` | Example applets, one directory each |
 | [Servelets](https://github.com/nirvanacp/servelets) | `servelets/` | Example servelets used by those applets |
 
@@ -158,7 +158,7 @@ The root `package.json` is an npm workspace over `let/packages/*` and `applets/*
 
 What works today, on Android emulators and a physical Samsung phone:
 
-- the runtime: manifest schema 6, bundle format 3, document protocol 2, page control API 1, with `@let/sdk` and the tools at `0.0.0`;
+- the runtime: manifest schema 6, bundle format 3, document protocol 2, page control API 1, with `@nirvanacp/sdk` and the tools at `0.1.0-alpha.1`;
 - up to three website contexts per applet, on WebView or GeckoView;
 - applet storage, HTTPS services with pinned certificates, and servelets on the phone;
 - installing applets from GitHub releases or bundle files, with review and updates;

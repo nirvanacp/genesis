@@ -50,7 +50,7 @@ export async function checkFrameworkVersions(framework) {
     const json = JSON.parse(await readFile(path.join(root, directory, 'package.json'), 'utf8'));
     if (json.version !== framework) problems.push(`  ${json.name} version ${json.version}, expected ${framework}`);
     for (const [name, range] of Object.entries({ ...json.dependencies, ...json.devDependencies, ...json.peerDependencies })) {
-      if (name.startsWith('@let/') && range !== framework) problems.push(`  ${json.name} depends on ${name} ${range}, expected ${framework}`);
+      if (name.startsWith('@nirvanacp/') && range !== framework) problems.push(`  ${json.name} depends on ${name} ${range}, expected ${framework}`);
     }
   }
   requireValue(problems.length === 0, `Framework package versions differ from FRAMEWORK_VERSION:\n${problems.join('\n')}`);

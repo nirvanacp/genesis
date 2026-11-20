@@ -78,7 +78,7 @@ async function publishedRelease(base, id) {
 // the first launch after an install or update. The release variant ships the committed release
 // with its record; the debug variant, and an applet without a current release, is built here.
 async function assets() {
-  // The applet tools import @let/core, which check() has just built.
+  // The applet tools import @nirvanacp/core, which check() has just built.
   const { readPackages } = await import("./check-packages.mjs");
   const { buildApplet } = await import("../let/packages/applet-tools/src/build.mjs");
   const output = path.join(generated, "assets");
