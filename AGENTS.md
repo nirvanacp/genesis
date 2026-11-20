@@ -37,9 +37,10 @@ Do not edit any `AGENTS.md` file unless the user explicitly asks you to update i
 | `let/go/servelet/` | The Go library servelets import | Platform |
 | `tools/` | APK asset and native build pipeline, package index check, service helpers, git hooks | Platform |
 | `let/factory/` | Applet-builder (`applets/`) and servelet-builder (`servelets/`) instructions, guides, skills and templates | Platform (shared guidance) |
-| `servelets/` | The servelets directory, a nested repository (`hn-bookmarks`) | Servelets |
-| `applets/` | The applets directory, a nested repository (`hn-bookmarks`, `x-bookmarks`, `gmail-only`), with its port registry and backend launcher | Applets |
+| `servelets/` | The servelets directory, a nested repository (`hn-bookmarks`, `x-bookmarks`) | Servelets |
+| `applets/` | The applets directory, a nested repository (`hn-bookmarks`, `x-bookmarks`, `gmail-only`, `discord`, `instagram`, `spotify`), with its port registry and backend launcher | Applets |
 | `genesis.workspace.json` | Workspace layout: the applets directory (relative or absolute) and its repository. `npm run workspace -- path` prints the directory, `setup` clones it, `check` verifies the checkout | Platform |
+| `LICENSE` | The MIT licence of this repository; Let, the applets and the servelets carry their own copies | Platform |
 | `genesis.packages.json` | Applets bundled into the APK, by directory name inside the applets directory | Platform |
 
 The untracked root folders `notes/` and `.skills/` stay local to each machine and belong to the developer. Never commit them, and never save generated documents in them; documents go where the layer instructions say. The root `notes/` is unrelated to any notes folder in the developer workspace.
@@ -256,8 +257,8 @@ To babysit is to watch the open pull requests of the current task until their au
 
 The developer controls every version that belongs to this project. Do not raise, lower or reset one on your own, even when a change seems to call for it. This includes:
 
-- the versions of the packages and crates in this repository (`@nirvanacp/core`, `@nirvanacp/sdk`, `@nirvanacp/applet-tools`, `@nirvanacp/servelet-tools`, `genesis-contracts`, `genesis-host`) and the dependency ranges that point at them;
-- the root `package.json` version. Applet versions are not platform versions: applet work follows `factory/AGENTS.md` for them;
+- the versions of the packages and crates in this repository (`@nirvanacp/core`, `@nirvanacp/sdk`, `@nirvanacp/applet-tools`, `@nirvanacp/servelet-tools`, `genesis-contracts`, `genesis-host`, `genesis-servelet-runtime`) and the dependency ranges that point at them;
+- the root `package.json` version. Applet versions are not platform versions: each applet's developer chooses them, and the applets directory's `AGENTS.md` holds the rule for that collection;
 - the Android `versionCode` and `versionName`;
 - format and protocol numbers such as the manifest `schemaVersion`, the bundle format, the kit version and the service envelope version;
 - the compatibility table in `let/packages/core/src/compat.ts` and its mirror in `crates/contracts` (manifest schema, bundle format, document protocol, adapter API, session state, import envelope, credential envelope, packages index);
