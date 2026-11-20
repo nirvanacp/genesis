@@ -192,15 +192,39 @@ final class WebViewPage implements WebsitePage {
      * When the page takes the click and starts no navigation within LINK_FALLBACK_MS of the script's
      * callback, the URL loads as before. The time counts from the callback, as in go().
      */
-    @Override public void followLink(String url) {
+    @Override public void followLink(String url) { follow(url, () -> web.loadUrl(url)); }
+
+    /**
+     * `untaken` runs when the page has no link to the URL or does not take its click, and also when
+     * it takes the click and nothing moves within LINK_FALLBACK_MS.
+     */
+    private void follow(String url, Runnable untaken) {
         int before = moves;
         web.evaluateJavascript(FOLLOW_LINK + "(" + JSONObject.quote(url) + ")", result -> {
             if (destroyed) return;
-            if (!"true".equals(result)) { web.loadUrl(url); return; }
+            if (!"true".equals(result)) { untaken.run(); return; }
             web.postDelayed(() -> {
-                if (!destroyed && moves == before) web.loadUrl(url);
+                if (!destroyed && moves == before) untaken.run();
             }, LINK_FALLBACK_MS);
         });
+    }
+
+    /**
+     * A push still offers the page its own link first; when the page has no link, or takes the
+     * click and does not move, the route runs in the document. When the page's half of the route
+     * answers false, the URL loads as `followLink` or `replace` would; otherwise the page owns the
+     * outcome.
+     */
+    @Override public void route(String url, boolean replace) {
+        Runnable inDocument = () -> web.evaluateJavascript(
+            ROUTE + "(" + JSONObject.quote(url) + ", " + replace + ", " + ROUTE_WINDOW_MS + ")",
+            result -> {
+                if (destroyed || "true".equals(result)) return;
+                if (replace) replace(url);
+                else web.loadUrl(url);
+            });
+        if (replace) inDocument.run();
+        else follow(url, inDocument);
     }
 
     /**

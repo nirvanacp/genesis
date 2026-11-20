@@ -315,12 +315,15 @@ final class Shell implements Views.Listener, Ui.Actions {
     /**
      * `push` first lets the page follow its own link to the URL, and loads the URL when the page
      * shows no such link or does not take the click. `replace` swaps the current history entry
-     * through the page, falling back to a push when it cannot run script.
+     * through the page, falling back to a push when it cannot run script. With `sameDocument`, the
+     * applet asked the page's router to try the URL inside the document before either load.
      */
-    void loadUrl(JSONObject ref, String url, String mode) {
+    void loadUrl(JSONObject ref, String url, String mode, boolean sameDocument) {
         Views.Page page = pages.get(key(ref));
         if (page == null) return;
-        if ("replace".equals(mode)) page.tab.replace(url);
+        boolean replace = "replace".equals(mode);
+        if (sameDocument) page.tab.route(url, replace);
+        else if (replace) page.tab.replace(url);
         else page.tab.followLink(url);
     }
 

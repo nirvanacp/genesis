@@ -31,6 +31,67 @@ interface WebsitePage {
     void followLink(String url);
 
     /**
+     * Like `followLink` for a push, or `replace`, but before loading asks the page's router to show
+     * a same-origin URL inside the current document: the URL becomes the current entry (pushed or
+     * replaced) and the page hears `popstate`, as on Back. When the page's elements and title do
+     * not change within `ROUTE_WINDOW_MS`, the page loads the URL over that entry, so history
+     * holds one entry for it either way. Only applet-driven navigation uses this, never a tap on
+     * the revealed website.
+     */
+    void route(String url, boolean replace);
+
+    /** How long the page has to change after the `popstate` of `route` before the URL loads. */
+    long ROUTE_WINDOW_MS = 1000;
+
+    /**
+     * The page's half of `route`, shared by both engines: `(url, replace, windowMs)` answers false
+     * when it did not change the history entry (another origin, the same path and query, a page
+     * without a body, or an error), and the caller loads the URL instead.
+     */
+    String ROUTE = """
+        (function (target, replace, windowMs) {
+          try {
+            var url = new URL(target);
+            var here = new URL(location.href);
+            if (url.origin !== here.origin || !document.body) return false;
+            // The same path and query is a reload or a fragment move, which a load already does in place.
+            if (url.pathname === here.pathname && url.search === here.search) return false;
+            var title = document.title;
+            var changed = false;
+            var hasElement = function (nodes) {
+              for (var i = 0; i < nodes.length; i++) if (nodes[i].nodeType === 1) return true;
+              return false;
+            };
+            var observer = new MutationObserver(function (records) {
+              for (var i = 0; i < records.length; i++) {
+                if (hasElement(records[i].addedNodes) || hasElement(records[i].removedNodes)) changed = true;
+              }
+            });
+            var state = history.state;
+            var popstate = new PopStateEvent("popstate", { state: state });
+            // Observed from before the entry changes: a website that routes on pushState itself counts too.
+            observer.observe(document.documentElement, { childList: true, subtree: true });
+            try {
+              if (replace) history.replaceState(state, "", url.href);
+              else history.pushState(state, "", url.href);
+            } catch (error) {
+              observer.disconnect();
+              return false;
+            }
+            setTimeout(function () {
+              observer.disconnect();
+              if (changed || document.title !== title) return;
+              // The router ignored it. A later navigation that moved on is left alone.
+              if (location.href === url.href) location.replace(url.href);
+            }, windowMs);
+            dispatchEvent(popstate);
+            return true;
+          } catch (error) {
+            return false;
+          }
+        })""";
+
+    /**
      * Moves `delta` entries through the page's history. `unmoved` runs when nothing moved within
      * a second and the engine cannot move either.
      */

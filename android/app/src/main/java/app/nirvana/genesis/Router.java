@@ -136,7 +136,7 @@ final class Router {
                 break;
             }
             case "destroyView": { Shell shell = view(command, type); if (shell != null) shell.destroyView(command.getJSONObject("view")); break; }
-            case "loadUrl": { Shell shell = view(command, type); if (shell != null) shell.loadUrl(command.getJSONObject("view"), command.getString("url"), command.optString("mode", "push")); break; }
+            case "loadUrl": { Shell shell = view(command, type); if (shell != null) shell.loadUrl(command.getJSONObject("view"), command.getString("url"), command.optString("mode", "push"), command.optBoolean("sameDocument")); break; }
             case "revealContext": { Shell shell = view(command, type); if (shell != null) shell.revealContext(command.getJSONObject("view"), command.getString("title")); break; }
             case "historyGo": { Shell shell = view(command, type); if (shell != null) shell.historyGo(command.getJSONObject("view"), command.getInt("delta")); break; }
             case "reload": { Shell shell = view(command, type); if (shell != null) shell.reload(command.getJSONObject("view")); break; }
