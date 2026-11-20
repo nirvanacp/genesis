@@ -86,8 +86,12 @@ function ignoredByRoot(file) {
   return result.status !== 1;
 }
 
-/** Fails with the command that repairs the first difference between the workspace and its config. */
-export function checkLayout() {
+/**
+ * Fails with the command that repairs the first difference between the workspace and its config.
+ * With `requireApplets: false`, a missing applets directory is accepted: a release checkout has
+ * only Genesis and Let, and its bundled applets come from their published releases.
+ */
+export function checkLayout({ requireApplets = true } = {}) {
   const workspace = readWorkspace();
   const { appletsDirectory, inside, linked } = workspace;
   const { workspaces } = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
@@ -97,6 +101,7 @@ export function checkLayout() {
     const { directory } = workspace[name];
     requireValue(ignoredByRoot(directory), `Add /${path.relative(root, directory).split(path.sep).join('/')} to .gitignore: the ${name} directory is its own repository.`);
   }
+  if (!requireApplets && !existsSync(appletsDirectory) && !existsSync(ENTRY)) return workspace;
   requireValue(existsSync(appletsDirectory), `Missing applets directory ${appletsDirectory}. Run npm run workspace -- setup.`);
   requireValue(realpathOrNull(ENTRY) === realpathSync(appletsDirectory), `applets/ does not lead to ${appletsDirectory}. Run npm run workspace -- sync.`);
   requireValue(ignoredByRoot(ENTRY), 'Add /applets to .gitignore: the applets directory is its own repository.');
