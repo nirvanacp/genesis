@@ -1,6 +1,6 @@
 # Third-party notices
 
-The Genesis Android app (APK) includes the third-party software listed below. Each component is distributed under its own licence, named here by its SPDX identifier and linked to its source. This file lists what the release APK contains as of Genesis 0.1.0-alpha.1. Genesis itself is under the MIT licence, see [LICENSE](LICENSE).
+The Genesis Android app (APK) includes the third-party software listed below. Each component is distributed under its own licence, named here by its SPDX identifier and linked to its source. This file lists what the release APK contains as of Genesis 0.2.0. Genesis itself is under the MIT licence, see [LICENSE](LICENSE).
 
 ## GeckoView (Mozilla)
 

@@ -84,7 +84,7 @@ gh attestation verify genesis-<version>.apk --repo nirvanacp/genesis
 adb -s <serial> install genesis-<version>.apk
 ```
 
-A version with a `-`, such as `0.1.0-alpha.1`, is published as a prerelease. Genesis runs on Android 8.0 (API 26) and later.
+A version with a `-`, such as `0.3.0-beta.1`, is published as a prerelease. Genesis runs on Android 8.0 (API 26) and later.
 
 ## Example applets
 
@@ -217,7 +217,7 @@ The root `package.json` is an npm workspace over `let/packages/*`. The applets d
 
 What works today, on Android emulators and a physical Samsung phone:
 
-- the runtime: manifest schema 6, bundle format 3, document protocol 2, page control API 1, with `@nirvanacp/sdk` and the tools at `0.1.0-alpha.1`;
+- the runtime: manifest schema 6, bundle format 3, document protocol 2, page control API 1, with `@nirvanacp/sdk` and the tools at `0.2.0`;
 - up to three website contexts per applet, on WebView or GeckoView;
 - applet storage, HTTPS services with pinned certificates, and servelets on the phone;
 - installing applets from GitHub releases or bundle files, with review and updates;
