@@ -10,8 +10,8 @@ use crate::{
     source::Source,
 };
 use genesis_contracts::{
-    AppletStatus, Bundle, BundleHeader, Compatibility, Direction, FOREGROUND_ORIGIN, LauncherEntry, Manifest, Mismatch,
-    ReleaseCapabilities,
+    AppletStatus, Bundle, BundleHeader, Compatibility, Direction, LauncherEntry, Manifest, Mismatch, ReleaseCapabilities,
+    foreground_origin,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -235,7 +235,7 @@ impl Applets {
     }
 
     pub fn foreground_url(&self, applet_id: &str, revision: u64, entry: &str) -> String {
-        format!("{FOREGROUND_ORIGIN}/genesis/{applet_id}/{revision}/{entry}")
+        format!("{}/genesis/{applet_id}/{revision}/{entry}", foreground_origin(applet_id))
     }
 
     pub fn read_text(&self, applet_id: &str, revision: u64, path: &str) -> Result<String, String> {

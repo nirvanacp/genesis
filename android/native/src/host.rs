@@ -541,7 +541,7 @@ impl Host {
         self.out.push(ShellCommand::CreateView {
             view: ViewRef { applet_id: applet_id.into(), role: Role::Foreground },
             url: self.applets.foreground_url(applet_id, revision, &manifest.foreground.entry),
-            origins: vec![FOREGROUND_ORIGIN.into()],
+            origins: vec![foreground_origin(applet_id)],
             start_script: None,
         });
         // Every context exists from the start, at the URL its view will load once it starts.

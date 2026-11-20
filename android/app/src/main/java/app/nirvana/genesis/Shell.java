@@ -1686,6 +1686,16 @@ final class Shell implements Views.Listener, Ui.Actions {
         ui.pages.refresh();
     }
 
+    /**
+     * A new applet starts in its own profile. It has not run yet, so unlike `setSeparateSignIn`
+     * there are no kept page values to forget and nothing to reload.
+     */
+    @Override public void startSeparateSignIn(String appletId) {
+        if (separateSignIn(appletId) || !WebViewSites.profilesSupported()) return;
+        String name = "applet-" + appletId + "-" + Long.toString(System.currentTimeMillis(), 36);
+        state.edit().putBoolean(profileKey(appletId), true).putString(profileNameKey(appletId), name).apply();
+    }
+
     // -----------------------------------------------------------------------------------------
     // Debug log
 

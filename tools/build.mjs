@@ -27,16 +27,20 @@ for (let i = 2; i < process.argv.length; i += 2) {
 }
 const stage = options.get("--stage") ?? "all";
 const variant = options.get("--variant") ?? "debug";
-if (!["check", "assets", "native", "all"].includes(stage) || !["debug", "release"].includes(variant)) {
-  throw new Error("Use --stage check|assets|native|all and --variant debug|release");
+if (!["check", "assets", "native", "all"].includes(stage) || !["debug", "release", "developer"].includes(variant)) {
+  throw new Error("Use --stage check|assets|native|all and --variant debug|release|developer");
 }
+// The developer variant is the release build that Android marks debuggable for applet builders:
+// it bundles the same published releases and the same optimized native library as release.
+const published = variant !== "debug";
 const cargo = options.get("--cargo") || "cargo";
 const sdk = options.get("--sdk") || process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT;
 const generated = path.join(root, "android/app/build/generated/genesis", variant);
 const intermediates = path.join(root, "target/genesis", variant);
 // The manifest overlay with the drawer aliases; Gradle passes the location AGP chose.
 const manifestOverlay = path.resolve(options.get("--manifest") ?? path.join(generated, "manifest", "AndroidManifest.xml"));
-const env = { CARGO_TARGET_DIR: path.join(intermediates, "cargo") };
+// Release and developer builds share one optimized Cargo build.
+const env = { CARGO_TARGET_DIR: path.join(root, "target/genesis", published ? "release" : "debug", "cargo") };
 
 async function requireFile(filename, message) {
   try { await access(filename); } catch { throw new Error(message); }
@@ -116,12 +120,12 @@ function bundleIcon({ bundle: { manifest }, entries }) {
   return entry ? Buffer.from(entry.content, entry.encoding === "base64" ? "base64" : "utf8") : null;
 }
 
-// Where an applet's bundle comes from. A release build always uses the published release; a debug
+// Where an applet's bundle comes from. A release or developer build always uses the published release; a debug
 // build uses the source directory when there is one, and the published release otherwise.
 // assets() has already refused an applet the variant cannot bundle.
 let frameworkReady = false;
 async function resolveApplet({ id, drawer, release, base, manifest }) {
-  if (variant === "release" || !base) {
+  if (published || !base) {
     const downloaded = await downloadRelease({ id, release });
     console.log(`${id}: published release ${downloaded.version} (${release.tag}${downloaded.cached ? ", cached" : ", downloaded"})`);
     return { manifest: downloaded.bundle.bundle.manifest, drawer, bundleFile: downloaded.bundleFile, recordFile: downloaded.recordFile, icon: bundleIcon(downloaded.bundle) };
@@ -147,7 +151,7 @@ async function assets() {
   await mkdir(path.join(output, "bundles"), { recursive: true });
   const applets = [];
   for (const entry of await readPackages()) {
-    if (variant === "release" && !entry.release) throw new Error(`A release build needs a published release for ${entry.id}: add release to its genesis.packages.json entry`);
+    if (published && !entry.release) throw new Error(`A ${variant} build needs a published release for ${entry.id}: add release to its genesis.packages.json entry`);
     requireSource(entry);
     const applet = await resolveApplet(entry);
     for (const file of [applet.bundleFile, applet.recordFile].filter(Boolean)) {
@@ -230,7 +234,7 @@ async function native() {
   await rm(output, { recursive: true, force: true });
   await mkdir(output, { recursive: true });
   run(cargo, ["ndk", "-t", "arm64-v8a", "-t", "x86_64", "--platform", "26", "-o", output,
-    "build", "--locked", "-p", "genesis-host", ...(variant === "release" ? ["--release"] : [])],
+    "build", "--locked", "-p", "genesis-host", ...(published ? ["--release"] : [])],
   { ...env, ANDROID_NDK_HOME: ndk, ANDROID_HOME: sdk });
   for (const abi of ["arm64-v8a", "x86_64"]) {
     await requireFile(path.join(output, abi, "libgenesis_host.so"), `Native build did not produce ${abi}/libgenesis_host.so`);

@@ -104,7 +104,7 @@ dependencies = [
 
 [[package]]
 name = "genesis-contracts"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -113,7 +113,7 @@ dependencies = [
 
 [[package]]
 name = "genesis-host"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "genesis-contracts",
  "genesis-servelet-runtime",
@@ -126,7 +126,7 @@ dependencies = [
 
 [[package]]
 name = "genesis-servelet-runtime"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "base64",
  "getrandom",

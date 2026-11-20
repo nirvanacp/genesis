@@ -60,6 +60,8 @@ public final class Ui {
         /** Offers to move the applet to GeckoView, where a separate sign-in works on every phone. */
         void offerSeparateSignIn(String appletId);
         void setSeparateSignIn(String appletId, boolean on);
+        /** Gives a newly installed applet its own sign-in before it first opens. */
+        void startSeparateSignIn(String appletId);
         /** Websites' cookies and storage were removed, so Genesis forgets the page values it kept. */
         void websiteDataRemoved();
         /** The engine the applet's websites run in: "webview" (the default) or "gecko". */

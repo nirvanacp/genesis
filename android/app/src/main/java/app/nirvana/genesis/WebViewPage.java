@@ -29,7 +29,9 @@ import androidx.webkit.WebMessageCompat;
 import androidx.webkit.WebViewAssetLoader;
 import androidx.webkit.WebViewCompat;
 import androidx.webkit.WebViewFeature;
+import java.io.ByteArrayInputStream;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -126,7 +128,7 @@ final class WebViewPage implements WebsitePage {
     /** A foreground or context view. The bridge listener and start script apply on the page's origins only. */
     @SuppressLint("RequiresFeature") // WebFeatures.supported() and the NAVIGATION_LISTENER check gate every feature call.
     static WebViewPage document(Activity activity, Views.Listener listener, WebViewAssetLoader assets, Views.Page page, String startScript) {
-        WebViewPage tab = new WebViewPage(activity, listener, page, page.isForeground() ? assets : null);
+        WebViewPage tab = new WebViewPage(activity, listener, page, assets);
         WebViewCompat.addWebMessageListener(tab.web, Views.BRIDGE, page.origins, (view, message, sourceOrigin, isMainFrame, reply) -> {
             if (!isMainFrame) return;
             // Only the page agent posts bytes, and only for a download the shell asked it to read.
@@ -317,7 +319,7 @@ final class WebViewPage implements WebsitePage {
             String url = request.getUrl().toString();
             String scheme = request.getUrl().getScheme();
             boolean web = "https".equals(scheme) || "http".equals(scheme);
-            if (page.isForeground()) return !Views.FOREGROUND_ORIGIN.equals(Views.origin(url));
+            if (page.isForeground()) return !page.origins.contains(Views.origin(url));
             // A context browses any website; the bridge exists only on declared origins.
             if (web) return false;
             // Only the revealed page may hand a link to another app, and only from a tap. A server
@@ -337,11 +339,11 @@ final class WebViewPage implements WebsitePage {
         @Override public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
             Uri url = request.getUrl();
             String path = url.getPath();
-            if (assets == null) return null;
-            if (Views.FOREGROUND_ORIGIN.equals(Views.origin(url.toString())) && path != null && path.startsWith(Views.PICKED_FILES)) {
-                return listener.pickedFile(path.substring(Views.PICKED_FILES.length()));
-            }
-            return assets.shouldInterceptRequest(url);
+            if (assets == null || !page.origins.contains(Views.origin(url.toString()))) return null;
+            if (path != null && path.startsWith(Views.PICKED_FILES)) return listener.pickedFile(path.substring(Views.PICKED_FILES.length()));
+            WebResourceResponse file = assets.shouldInterceptRequest(url);
+            // Nothing else on the applet's origin exists: its origin never reaches the network.
+            return file != null ? file : notFound();
         }
 
         // onPageStarted fires at commit, once per cross-document navigation, with the final URL.
@@ -581,5 +583,10 @@ final class WebViewPage implements WebsitePage {
         }
 
         @Override public void onCloseWindow(WebView window) { if (page.opener != null) listener.closeWindow(page); }
+    }
+
+    /** An empty 404, for a path on an applet's origin that has no file. */
+    private static WebResourceResponse notFound() {
+        return new WebResourceResponse("text/plain", "utf-8", 404, "Not Found", Collections.emptyMap(), new ByteArrayInputStream(new byte[0]));
     }
 }
