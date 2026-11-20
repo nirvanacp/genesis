@@ -4,7 +4,7 @@ Genesis is an Android app that runs apps you build on top of the websites you al
 
 You describe the app you want to a coding agent: "a Hacker News app with a saved library and categories", "Gmail, but every email can become a reminder". The agent writes an **applet**, a phone UI that reads the real website underneath, signed in as you, and acts on it. Screens you designed look and behave like a native app. Pages you didn't redesign show the website itself, in the same session and history, so nothing the website can do is lost.
 
-Genesis is an alpha. It runs five example applets today, and expect breaking changes until the first stable release. See [download](#download) and [status](#status).
+Genesis is an alpha. It runs six example applets today, and expect breaking changes until the first stable release. See [download](#download) and [status](#status).
 
 ## Why
 
@@ -95,6 +95,7 @@ A version with a `-`, such as `0.1.0-alpha.1`, is published as a prerelease. Gen
 | [Gmail Only](https://github.com/nirvanacp/applets/tree/develop/gmail-only) | mail.google.com | Turns emails into reminders and to-dos, with snoozes and "remind me if no reply", across several Google accounts |
 | [Instagram](https://github.com/nirvanacp/applets/tree/develop/instagram) | instagram.com | Feed, stories tray, posts, comments, profiles, Explore, search, notifications and messages |
 | [Spotify](https://github.com/nirvanacp/applets/tree/develop/spotify) | open.spotify.com | A native player frame over the web player: tabs, mini-player, Now Playing, albums, playlists, artists and search. In progress |
+| [Discord](https://github.com/nirvanacp/applets/tree/develop/discord) | discord.com | Direct messages, servers, channels and chat in a phone UI over the signed-in Discord session |
 
 ## Build your own applet
 
@@ -183,7 +184,7 @@ A debug or developer build accepts `let-applet dev install` over `adb`. A releas
   "release": { "repository": "nirvanacp/applets", "tag": "hn-bookmarks/v0.0.7", "sha256": "<SHA-256 of applet-hn-bookmarks.bundle.json>" } }
 ```
 
-A release or developer build bundles only pinned releases, and fails when a selected applet has no `release` pin. It downloads `applet-<id>.bundle.json` and `applet-<id>.release.json` from the release into `target/genesis/releases/`, and fails unless the bundle's SHA-256 matches the pin and the release record, and the record is valid and names the applet. A cached download is reused, so a rebuild works offline. A debug build builds an applet from its source directory when the applets directory has it, and uses the pinned release otherwise.
+A release or developer build bundles only pinned releases, and fails when a selected applet has no `release` pin. It downloads `applet-<id>.bundle.json` and `applet-<id>.release.json` from the release into `target/genesis/releases/`, and fails unless the bundle's SHA-256 matches the pin and the release record, and the record is valid and names the applet and the pinned tag's version. A cached download that still passes these checks is reused, so a rebuild works offline; a damaged one is downloaded again. Each download times out after a minute. A debug build builds an applet from its source directory when the applets directory has it, and uses the pinned release otherwise.
 
 ## Workspace
 
@@ -192,13 +193,13 @@ A release or developer build bundles only pinned releases, and fails when a sele
 | Command | What it does |
 | --- | --- |
 | `path` | Prints the applets directory |
-| `setup` | Clones Let and the applets into their directories when they are missing and runs `npm ci` in a newly cloned applets directory, creates the servelets directory (cloning it when the config names a repository), then runs `sync` |
+| `setup` | Clones Let and the applets into their directories when they are missing and runs `npm ci` in a newly cloned applets directory that has a lockfile, creates the servelets directory (cloning it when the config names a repository), then runs `sync` |
 | `sync` | Links `applets/` to the configured directory when it lives elsewhere |
-| `link-framework` | Installs a packed copy of this checkout's `let/packages/*` into the applets' `node_modules` without saving, so the applets build against the local framework. Run it again after changing the framework |
-| `unlink-framework` | Runs `npm ci` in the applets directory, back to the npm registry versions |
+| `link-framework` | Installs a packed copy of this checkout's `let/packages/*` into the applets' `node_modules` without saving, so the applets build against the local framework. A debug build runs it by itself when the framework files changed since the last run |
+| `unlink-framework` | Runs `npm ci` in the applets directory, back to the npm registry versions. Needs the applets' lockfile |
 | `check` | Fails with the repairing command when the checkout differs from the config. `npm run check:packages` runs it too |
 
-The root `package.json` is an npm workspace over `let/packages/*`. The applets directory is its own npm workspace with its own lockfile, so run `npm ci` in both. Applets build against the Let packages from npm; run `npm run workspace -- link-framework` to try them against a local framework change, and `unlink-framework` when done. `let-applet publish` refuses linked tools, so a linked framework never reaches a release.
+The root `package.json` is an npm workspace over `let/packages/*`. The applets directory is its own npm workspace with its own lockfile, so run `npm ci` in both. A debug build of Genesis builds applets from source against this checkout's `let/packages/*`: it fingerprints their files and runs `link-framework` when the copy in the applets' `node_modules` came from other files or from npm. `let-applet publish` refuses tools and an SDK that differ from the applets' committed lockfile, so run `unlink-framework` (`npm ci`) before publishing; a local framework never reaches a release.
 
 ## Repository map
 
